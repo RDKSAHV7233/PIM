@@ -147,7 +147,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
           description="Tenant plan management."
           breadcrumb={<><Link href="/dashboard" className="underline">Dashboard</Link> / <Link href="/admin" className="underline">Admin</Link> / <span className="font-semibold text-slate-700">Commercial</span></>}
         />
-        <InlineAlert tone="error" title="Failed to load" message={error instanceof Error ? error.message : "Unknown error"} />
+        <InlineAlert tone="error" title="Commercial data unavailable" message="Tenant and billing data could not be loaded. Retry in a moment or check the PIM_COMMERCIAL_OPS_TOKEN configuration." />
       </div>
     );
   }

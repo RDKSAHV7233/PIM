@@ -77,6 +77,13 @@ function run() {
     "Product detail route must only surface the readiness summary bar on supported tabs and must pass the top-level publish/export summary cards into it.",
   );
   assert(
+    pageSource.includes('label: "Unavailable"') &&
+      pageSource.includes("Latest export activity could not be loaded right now.") &&
+      pageSource.includes("Connector account status could not be loaded right now.") &&
+      pageSource.includes("Publish readiness could not be loaded right now."),
+    "Product detail route must surface unavailable states when supporting channel, export, or connector reads fail instead of defaulting to false healthy cards.",
+  );
+  assert(
     pageSource.includes("returnTo ? <Link href={returnTo}") &&
       pageSource.includes('{canWrite ? <button type="submit" form="product-edit-form"') &&
       pageSource.includes('{canWrite ? <button type="submit" form="product-validate-form"') &&

@@ -39,17 +39,27 @@ function run() {
     "Issue Inbox must rely on the shared editor-capable warning-resolution rule.",
   );
   assert(
-    issuesSource.includes("Promise.all([") &&
-      issuesSource.includes("getIssueInbox(") &&
-      issuesSource.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader") &&
-      issuesSource.includes("getInstalledConnectors({ role: actorRole, authHeader })"),
-    "Issue Inbox must load inbox items, categories, and installed connectors together from the shared auth context.",
+    issuesSource.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
+      issuesSource.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
+      issuesSource.includes("Promise.all([") &&
+      issuesSource.includes("loadSharedRead(getIssueInbox(") &&
+      issuesSource.includes("loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }))") &&
+      issuesSource.includes("loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader }))"),
+    "Issue Inbox must load inbox items, categories, and installed connectors through explicit shared-read wrappers.",
   );
   assert(
     issuesSource.includes('filterParams.set("limit", String(limit));') &&
       issuesSource.includes('if (query.hideTestData === "false") {') &&
       issuesSource.includes('const returnTo = buildReturnTo(filterParams);'),
     "Issue Inbox must preserve normalized filter state when building its stable return path.",
+  );
+  assert(
+    issuesSource.includes("QualityIssueInboxStatusState") &&
+      issuesSource.includes("Issue inbox access is restricted") &&
+      issuesSource.includes("Issue inbox is temporarily unavailable") &&
+      issuesSource.includes("Category filters are limited for your role.") &&
+      issuesSource.includes("Connector filters are temporarily unavailable."),
+    "Issue Inbox must distinguish restricted and unavailable truth on the inbox feed and supporting filter reads.",
   );
   assert(
     issuesSource.includes("function issueFamily(issue: { fieldPath: string | null; sellerMessage: string }): string {") &&
@@ -77,9 +87,10 @@ function run() {
     "Issue Inbox must surface a truthful empty state when the current filter scope has no open issues.",
   );
   assert(
-    issuesSource.includes('if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {') &&
+    !issuesSource.includes('actorRole === "viewer"') &&
+      issuesSource.includes('if (error instanceof ApiHttpError && error.status === 401) {') &&
       issuesSource.includes('redirect(buildLoginRedirect("/quality/issues", error));'),
-    "Issue Inbox must redirect expired or forbidden sessions through the centralized login redirect helper.",
+    "Issue Inbox must not treat read-only roles as expired sessions and must redirect only real authentication failures.",
   );
 
   console.log(
@@ -89,10 +100,11 @@ function run() {
         validated: [
           "quality_issues_route_normalizes_filters_and_page_size",
           "quality_issues_route_uses_shared_warning_resolution_capability",
-          "quality_issues_route_fetches_inbox_categories_and_installations_in_parallel",
+          "quality_issues_route_fetches_inbox_categories_and_installations_with_explicit_shared_read_states",
           "quality_issues_route_preserves_filter_scope_for_return_and_pagination",
+          "quality_issues_route_distinguishes_restricted_and_unavailable_truth",
           "quality_issues_route_limits_bulk_resolution_to_warning_workflow",
-          "quality_issues_route_surfaces_empty_state_and_auth_redirects",
+          "quality_issues_route_surfaces_empty_state_and_redirects_only_auth_failures",
         ],
         checkedAt: new Date().toISOString(),
       },

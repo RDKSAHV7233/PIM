@@ -20,6 +20,12 @@ import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 interface CatalogAttributesPageProps {
   searchParams: Promise<{
     categoryId?: string;
@@ -55,6 +61,83 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
 
+function isCatalogAttributesApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 429 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isCatalogAttributesApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function CatalogAttributesStatusState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Attributes"
+        description="Manage category-level attribute definitions, required flags, and allowed values."
+        breadcrumb={
+          <>
+            Dashboard / Catalog / <span className="font-semibold text-slate-700">Attributes</span>
+          </>
+        }
+      />
+      <Card aria-live="polite" aria-atomic="true">
+        <CardTitle>{title}</CardTitle>
+        <p className="mt-3 text-sm text-slate-600">{description}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/catalog/categories" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Open Categories
+          </Link>
+          <Link href="/catalog/products" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Open Products
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default async function CatalogAttributesPage({ searchParams }: CatalogAttributesPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
@@ -62,15 +145,35 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
   const canManageTaxonomy = actorRole === "admin";
 
   try {
-    const categories = filterTestData(
-      await getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-      hideTestData,
+    const categoriesResult = await loadSharedRead(
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
     );
+
+    if (categoriesResult.state === "restricted") {
+      return (
+        <CatalogAttributesStatusState
+          title="Attribute scope is restricted"
+          description="Your role can open catalog navigation, but category-level attribute definitions are intentionally redacted."
+        />
+      );
+    }
+
+    if (categoriesResult.state === "unavailable") {
+      return (
+        <CatalogAttributesStatusState
+          title="Attribute scope is temporarily unavailable"
+          description="We could not load category scope right now. The page is held in an unavailable state instead of showing a false empty attribute catalog."
+        />
+      );
+    }
+
+    const categories = filterTestData(categoriesResult.value, hideTestData);
     const selectedCategoryId = String(query.categoryId ?? "").trim() || categories[0]?.id || "";
     const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
-    const definitions = selectedCategoryId
-      ? await getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 })
-      : [];
+    const definitionsResult: SharedReadResult<AttributeDefinition[]> = selectedCategoryId
+      ? await loadSharedRead(getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 }))
+      : { state: "available", value: [] };
+    const definitions = definitionsResult.state === "available" ? definitionsResult.value : [];
 
     const toggleHref = hideTestData
       ? `/catalog/attributes${selectedCategoryId ? `?categoryId=${encodeURIComponent(selectedCategoryId)}&hideTestData=false` : "?hideTestData=false"}`
@@ -153,7 +256,15 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
 
         <Card>
           <CardTitle>Attribute Definitions</CardTitle>
-          {definitions.length > 0 ? (
+          {definitionsResult.state === "restricted" ? (
+            <div className="mt-3 rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">
+              Attribute definitions are restricted for your role.
+            </div>
+          ) : definitionsResult.state === "unavailable" ? (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-6 text-sm text-amber-900/90">
+              Attribute definitions are temporarily unavailable.
+            </div>
+          ) : definitions.length > 0 ? (
             <DataGrid className="mt-3" columns={definitionColumns} rows={definitions} getRowKey={(definition) => definition.id} />
           ) : (
             <div className="mt-3 rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">
@@ -241,7 +352,11 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
           <Card>
             <CardTitle>Attribute Governance</CardTitle>
             <p className="mt-2 text-sm text-slate-600">
-              Only admins can add or change attribute definitions.
+              {definitionsResult.state === "restricted"
+                ? "Attribute governance controls are limited because definition scope is restricted for your role."
+                : definitionsResult.state === "unavailable"
+                  ? "Attribute governance controls remain disabled while definition scope reconnects."
+                  : "Only admins can add or change attribute definitions."}
             </p>
           </Card>
         )}
@@ -260,7 +375,7 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/catalog/attributes", error));
     }
     throw error;

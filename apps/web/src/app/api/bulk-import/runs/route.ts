@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     },
     body,
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
 
   const payload = await response.text();

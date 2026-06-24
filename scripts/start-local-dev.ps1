@@ -31,32 +31,39 @@ function Write-Error {
 
 # Check prerequisites
 function Test-Prerequisites {
-    Write-Info "🔍 Checking prerequisites..."
+    Write-Info "Checking prerequisites..."
     
     # Check Node.js
     $nodeVersion = node --version 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "❌ Node.js not found. Please install Node.js 18+"
+        Write-Error "Node.js not found. Please install Node.js 18+"
         exit 1
     }
-    Write-Success "✓ Node.js: $nodeVersion"
+    Write-Success "Node.js: $nodeVersion"
     
     # Check npm
     $npmVersion = npm --version 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "❌ npm not found"
+        Write-Error "npm not found"
         exit 1
     }
-    Write-Success "✓ npm: $npmVersion"
+    Write-Success "npm: $npmVersion"
     
     # Check Docker (optional)
     if (-not $SkipDocker) {
         $dockerVersion = docker --version 2>$null
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "⚠️  Docker not found. Skipping Docker services."
+            Write-Warning "Docker not found. Skipping Docker services."
             $SkipDocker = $true
         } else {
-            Write-Success "✓ Docker: $dockerVersion"
+            Write-Success "Docker: $dockerVersion"
+            $dockerInfo = docker info 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Docker CLI is installed, but the Docker daemon is not reachable."
+                Write-Error "Start Docker Desktop and retry, or pass -SkipDocker to use the script without containers."
+                Write-Error $dockerInfo
+                exit 1
+            }
         }
     }
     
@@ -65,23 +72,23 @@ function Test-Prerequisites {
 
 # Setup environment
 function Setup-Environment {
-    Write-Info "🔧 Setting up environment..."
+    Write-Info "Setting up environment..."
     
     # Copy .env if it doesn't exist
     if (-not (Test-Path ".env")) {
         if (Test-Path ".env.example") {
             Write-Info "Creating .env from .env.example..."
             Copy-Item ".env.example" ".env"
-            Write-Success "✓ .env created"
+            Write-Success ".env created"
             
             # Highlight sections to update
-            Write-Warning "⚠️  Update these in .env:"
+            Write-Warning "Update these in .env:"
             Write-Warning "   - JWT_SECRET (min 32 chars)"
             Write-Warning "   - PIM_AUTH_PASSWORD (demo password)"
             Write-Warning "   - Connector credentials (Amazon, Flipkart, Meesho)"
         }
     } else {
-        Write-Success "✓ .env already exists"
+        Write-Success ".env already exists"
     }
     
     Write-Info ""
@@ -90,38 +97,50 @@ function Setup-Environment {
 # Start Docker services
 function Start-Docker {
     if ($SkipDocker) {
-        Write-Warning "⏭️  Skipping Docker startup (--SkipDocker flag)"
+        Write-Warning "Skipping Docker startup (--SkipDocker flag)"
         return
     }
-    
-    Write-Info "🐳 Starting Docker services..."
+
+    Write-Info "Starting Docker services..."
+    $composeFile = "docker-compose.yml"
+
+    function Invoke-DockerComposeUp {
+        param(
+            [string[]]$Arguments
+        )
+
+        $composeOutput = & docker compose @Arguments 2>&1
+        $composeExitCode = $LASTEXITCODE
+        if ($composeExitCode -ne 0) {
+            Write-Error "docker compose $($Arguments -join ' ') failed."
+            if ($composeOutput) {
+                Write-Error ($composeOutput | Out-String)
+            }
+            exit 1
+        }
+        return $composeOutput
+    }
     
     # Check if containers are already running
     $runningContainers = docker ps --filter "name=pim1-" --format "{{.Names}}" 2>$null
     
     if ($runningContainers) {
-        Write-Warning "⚠️  Some PIM1 containers already running:"
+        Write-Warning "Some PIM1 containers already running:"
         Write-Warning $runningContainers
         Write-Info "Ensuring all services are up..."
-        docker compose up -d 2>&1 | Out-Null
+        Invoke-DockerComposeUp -Arguments @("-f", $composeFile, "up", "-d", "--remove-orphans") | Out-Null
     } else {
         Write-Info "Starting fresh Docker stack..."
-        docker compose up -d
+        Invoke-DockerComposeUp -Arguments @("-f", $composeFile, "up", "-d", "--remove-orphans") | Out-Null
     }
-    
-    # Check if startup successful
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "❌ Docker startup failed"
-        exit 1
-    }
-    
-    Write-Success "✓ Docker services started"
+
+    Write-Success "Docker services started"
     Write-Info "   - PostgreSQL: localhost:5432"
     Write-Info "   - Redis: localhost:6379"
     Write-Info "   - RabbitMQ: localhost:5672 (UI: http://localhost:15672)"
     
     # Wait for services to be ready
-    Write-Info "⏳ Waiting for services to be healthy..."
+    Write-Info "Waiting for services to be healthy..."
     $maxAttempts = 30
     $attempt = 0
     
@@ -131,7 +150,7 @@ function Start-Docker {
             $redisReady = docker exec pim1-redis redis-cli ping 2>$null | Select-String "PONG"
             
             if ($pgReady -and $redisReady) {
-                Write-Success "✓ All services are healthy"
+                Write-Success "All services are healthy"
                 break
             }
         } catch {
@@ -143,7 +162,7 @@ function Start-Docker {
     }
     
     if ($attempt -eq $maxAttempts) {
-        Write-Warning "⚠️  Services may not be fully ready, continuing anyway..."
+        Write-Warning "Services may not be fully ready, continuing anyway..."
     }
     
     Write-Info ""
@@ -151,7 +170,7 @@ function Start-Docker {
 
 # Install dependencies
 function Install-Dependencies {
-    Write-Info "📦 Installing dependencies..."
+    Write-Info "Installing dependencies..."
     
     if (Test-Path "node_modules" -PathType Container) {
         Write-Info "node_modules already exists, skipping install"
@@ -159,10 +178,10 @@ function Install-Dependencies {
     } else {
         npm install
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ npm install failed"
+            Write-Error "npm install failed"
             exit 1
         }
-        Write-Success "✓ Dependencies installed"
+        Write-Success "Dependencies installed"
     }
     
     Write-Info ""
@@ -170,14 +189,14 @@ function Install-Dependencies {
 
 # Generate Prisma client
 function Generate-Prisma {
-    Write-Info "🔄 Generating Prisma client..."
+    Write-Info "Generating Prisma client..."
     
     npm run prisma:generate
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "❌ Prisma generation failed"
+        Write-Error "Prisma generation failed"
         exit 1
     }
-    Write-Success "✓ Prisma client generated"
+    Write-Success "Prisma client generated"
     
     Write-Info ""
 }
@@ -185,18 +204,18 @@ function Generate-Prisma {
 # Run migrations
 function Run-Migrations {
     if ($SkipMigrations) {
-        Write-Warning "⏭️  Skipping migrations (--SkipMigrations flag)"
+        Write-Warning "Skipping migrations (--SkipMigrations flag)"
         return
     }
     
-    Write-Info "🗄️  Running database migrations..."
+    Write-Info "Running database migrations..."
     
     npm run prisma:migrate:deploy
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "❌ Migration failed"
+        Write-Error "Migration failed"
         exit 1
     }
-    Write-Success "✓ Migrations completed"
+    Write-Success "Migrations completed"
     
     Write-Info ""
 }
@@ -204,17 +223,17 @@ function Run-Migrations {
 # Bootstrap admin (optional)
 function Bootstrap-Admin {
     if ($SkipBootstrap) {
-        Write-Warning "⏭️  Skipping admin bootstrap (--SkipBootstrap flag)"
+        Write-Warning "Skipping admin bootstrap (--SkipBootstrap flag)"
         return
     }
     
-    Write-Info "👤 Bootstrapping admin user..."
+    Write-Info "Bootstrapping admin user..."
     
     npm run auth:bootstrap-admin
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "⚠️  Admin bootstrap had issues, but continuing..."
+        Write-Warning "Admin bootstrap had issues, but continuing..."
     } else {
-        Write-Success "✓ Admin bootstrapped"
+        Write-Success "Admin bootstrapped"
     }
     
     Write-Info ""
@@ -222,84 +241,77 @@ function Bootstrap-Admin {
 
 # Start development servers
 function Start-DevServers {
-    # ── Bug 3 fix: clear ports before binding to prevent EADDRINUSE ──────────
-    # Stale node processes from a previous run (killed mid-request or crashed)
-    # may still hold ports 3000/4000. This call terminates them unconditionally
-    # so the new servers always bind to clean ports.
-    Write-Info "🧹 Clearing ports 3000 and 4000..."
+    # Clear ports before binding to prevent EADDRINUSE.
+    # Stale node processes from a previous run may still hold ports 3000/4000.
+    $repoRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Parent (Split-Path -Parent $PSCommandPath) } else { (Get-Location).Path }
+    Write-Info "Clearing ports 3000 and 4000..."
     $stopScript = Join-Path $PSScriptRoot "stop-servers.ps1"
     if (Test-Path $stopScript) {
         & $stopScript -Ports @(3000, 4000)
     } else {
-        Write-Warning "  stop-servers.ps1 not found at $stopScript — skipping port cleanup."
+        Write-Warning "stop-servers.ps1 not found at $stopScript - skipping port cleanup."
     }
     Write-Info ""
-    # ─────────────────────────────────────────────────────────────────────────
-
-    Write-Info "🚀 Starting development servers..."
-    Write-Success "✓ Configuration complete!"
+    Write-Info "Starting development servers..."
+    Write-Success "Configuration complete!"
     Write-Info ""
     Write-Info "Starting servers in the background..."
     Write-Info ""
     
-    # Create a helper script to run both servers
-    $serverScript = @'
-$ErrorActionPreference = "Continue"
-Write-Host "📡 Starting API server (port 4000)..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList {
-    cd $pwd
-    npm run dev:api
-} -NoNewWindow
+    Write-Info "Starting API server (port 4000)..."
+    $apiProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev:api" -WorkingDirectory $repoRoot -PassThru -NoNewWindow
+    if (-not $apiProcess) {
+        Write-Error "Failed to start the API server."
+        exit 1
+    }
 
-Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 2
 
-Write-Host "📡 Starting Web server (port 3000)..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList {
-    cd $pwd
-    npm run dev:web
-} -NoNewWindow
+    Write-Info "Starting Web server (port 3000)..."
+    $webProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev:web" -WorkingDirectory $repoRoot -PassThru -NoNewWindow
+    if (-not $webProcess) {
+        Write-Error "Failed to start the Web server."
+        exit 1
+    }
 
-Write-Host ""
-Write-Host "✅ Both servers started!" -ForegroundColor Green
-Write-Host ""
-Write-Host "Access the application:" -ForegroundColor Green
-Write-Host "  🌐 Web UI:  http://localhost:3000" -ForegroundColor Cyan
-Write-Host "  📡 API:     http://localhost:4000/api/v1" -ForegroundColor Cyan
-Write-Host "  📚 Docs:    http://localhost:4000/api/docs" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Default Credentials:" -ForegroundColor Green
-Write-Host "  Workspace: default" -ForegroundColor Cyan
-Write-Host "  Email:     admin@pim1.local" -ForegroundColor Cyan
-Write-Host "  Password:  vexa-pim-demo-password (or from .env PIM_AUTH_PASSWORD)" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "RabbitMQ UI: http://localhost:15672 (guest/guest)" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "Press Ctrl+C to stop servers" -ForegroundColor Yellow
-Write-Host ""
+    Write-Host ""
+    Write-Host "Both servers started!" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Access the application:" -ForegroundColor Green
+    Write-Host "  Web UI:  http://localhost:3000" -ForegroundColor Cyan
+    Write-Host "  API:     http://localhost:4000/api/v1" -ForegroundColor Cyan
+    Write-Host "  Docs:    http://localhost:4000/api/docs" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Default Credentials:" -ForegroundColor Green
+    Write-Host "  Workspace: default" -ForegroundColor Cyan
+    Write-Host "  Email:     admin@pim1.local" -ForegroundColor Cyan
+    Write-Host "  Password:  vexa-pim-demo-password (or from .env PIM_AUTH_PASSWORD)" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "RabbitMQ UI: http://localhost:15672 (guest/guest)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Press Ctrl+C to stop servers" -ForegroundColor Yellow
+    Write-Host ""
 
-# Keep the parent script running
-while ($true) { Start-Sleep -Seconds 1 }
-'@
-    
-    # Execute the server startup script
-    Invoke-Expression $serverScript
+    while ($true) {
+        Start-Sleep -Seconds 1
+    }
 }
 
 # Main execution
 function Main {
     Clear-Host
     Write-Host ""
-    Write-Success "╔════════════════════════════════════════════════════════════════╗"
-    Write-Success "║           PIM1 LOCAL DEVELOPMENT STARTUP SCRIPT                 ║"
-    Write-Success "╚════════════════════════════════════════════════════════════════╝"
+    Write-Success "==============================================================="
+    Write-Success "PIM1 LOCAL DEVELOPMENT STARTUP SCRIPT"
+    Write-Success "==============================================================="
     Write-Host ""
     
     # Navigate to repo root
-    $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $scriptPath = if ($PSScriptRoot) { $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { (Get-Location).Path }
     $repoRoot = Split-Path -Parent $scriptPath
     Set-Location $repoRoot
     
-    Write-Info "📍 Working directory: $(Get-Location)"
+    Write-Info "Working directory: $(Get-Location)"
     Write-Info ""
     
     # Run all steps

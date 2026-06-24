@@ -4,7 +4,8 @@ import { resolveBearerToken, validateCsrf } from "../_auth";
 
 export async function GET(request: NextRequest) {
   const authHeader = resolveBearerToken(request) ?? undefined;
-  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "12");
+  const rawLimit = Number(request.nextUrl.searchParams.get("limit") ?? "12");
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 12;
   const cursor = request.nextUrl.searchParams.get("cursor");
 
   try {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
       if (error.body && typeof error.body === "object") {
         return NextResponse.json(error.body, { status: error.status });
       }
-      return NextResponse.json({ error: "notifications_list_failed", message: error.message }, { status: error.status });
+      return NextResponse.json({ error: "notifications_list_failed" }, { status: error.status });
     }
     return NextResponse.json({ error: "notifications_list_failed" }, { status: 500 });
   }
@@ -36,7 +37,7 @@ export async function PATCH(request: NextRequest) {
       if (error.body && typeof error.body === "object") {
         return NextResponse.json(error.body, { status: error.status });
       }
-      return NextResponse.json({ error: "notifications_mark_all_failed", message: error.message }, { status: error.status });
+      return NextResponse.json({ error: "notifications_mark_all_failed" }, { status: error.status });
     }
     return NextResponse.json({ error: "notifications_mark_all_failed" }, { status: 500 });
   }

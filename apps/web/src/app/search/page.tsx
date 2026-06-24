@@ -8,12 +8,9 @@ import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
-type EntityType = "all" | "product" | "category" | "attribute" | "sku";
-
 interface SearchPageProps {
   searchParams: Promise<{
     q?: string;
-    type?: EntityType;
     page?: string;
   }>;
 }
@@ -30,27 +27,25 @@ function statusLabel(status: string): string {
   return status.replace(/_/g, " ");
 }
 
-const ENTITY_TABS: { key: EntityType; label: string }[] = [
-  { key: "all", label: "All results" },
-  { key: "product", label: "Products" },
-  { key: "category", label: "Categories" },
-  { key: "attribute", label: "Attributes" },
-  { key: "sku", label: "SKUs" },
-];
-
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const session = await getServerSession();
-  if (!session) redirect(buildLoginRedirect("/search"));
+  const { authHeader } = await getServerSession();
+  if (!authHeader) redirect(buildLoginRedirect("/search"));
 
   const params = await searchParams;
   const query = (params.q ?? "").trim();
-  const activeType = (params.type as EntityType) || "all";
   const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
 
+  const PAGE_SIZE = 20;
   let results: Awaited<ReturnType<typeof searchCatalogProducts>> = [];
+  let hasNextPage = false;
   if (query.length > 0) {
     try {
-      results = await searchCatalogProducts({ q: query, limit: 20 });
+      const raw = await searchCatalogProducts(
+        { q: query, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE },
+        { authHeader },
+      );
+      hasNextPage = raw.length > PAGE_SIZE;
+      results = hasNextPage ? raw.slice(0, PAGE_SIZE) : raw;
     } catch {
       results = [];
     }
@@ -62,8 +57,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         title="Search"
         description={
           query
-            ? `${results.length} results for "${query}"`
-            : "Search across products, categories, attributes, and SKUs"
+            ? `${results.length} product results for "${query}"`
+            : "Search products by title, SKU, category, or matched product metadata"
         }
       />
 
@@ -88,29 +83,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-12 pr-4 text-sm shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
           autoFocus
         />
-        {params.type && params.type !== "all" && (
-          <input type="hidden" name="type" value={params.type} />
-        )}
       </form>
 
       {query && (
         <>
-          <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="Result type filter">
-            {ENTITY_TABS.map((tab) => (
-              <Link
-                key={tab.key}
-                href={`/search?q=${encodeURIComponent(query)}&type=${tab.key}`}
-                role="tab"
-                aria-selected={activeType === tab.key}
-                className={`rounded-t-md px-3 py-2 text-sm font-medium transition ${
-                  activeType === tab.key
-                    ? "border-b-2 border-blue-600 text-blue-700"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                {tab.label}
-              </Link>
-            ))}
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+            Results are product-only in this release. Category, attribute, and connector discovery stay in their dedicated workspaces.
           </div>
 
           <div className="space-y-3" role="list" aria-label="Search results">
@@ -156,11 +134,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             )}
           </div>
 
-          {results.length >= 20 && (
+          {(page > 1 || hasNextPage) && (
             <nav className="flex items-center justify-center gap-1" aria-label="Search results pages">
               {page > 1 && (
                 <Link
-                  href={`/search?q=${encodeURIComponent(query)}&type=${activeType}&page=${page - 1}`}
+                  href={`/search?q=${encodeURIComponent(query)}&page=${page - 1}`}
                   className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                   aria-label="Previous page"
                 >
@@ -168,13 +146,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                 </Link>
               )}
               <span className="px-3 py-1.5 text-xs font-medium text-slate-900">Page {page}</span>
-              <Link
-                href={`/search?q=${encodeURIComponent(query)}&type=${activeType}&page=${page + 1}`}
-                className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                aria-label="Next page"
-              >
-                Next →
-              </Link>
+              {hasNextPage && (
+                <Link
+                  href={`/search?q=${encodeURIComponent(query)}&page=${page + 1}`}
+                  className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  aria-label="Next page"
+                >
+                  Next →
+                </Link>
+              )}
             </nav>
           )}
         </>

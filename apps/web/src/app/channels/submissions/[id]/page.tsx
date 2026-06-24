@@ -171,8 +171,8 @@ export default async function SubmissionDetailPage({ params }: SubmissionDetailP
       </div>
     );
   } catch (error) {
-    if (error instanceof ApiHttpError && error.status === 401) {
-      redirect(buildLoginRedirect(`/channels/submissions/${submissionId}`, 401));
+    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+      redirect(buildLoginRedirect(`/channels/submissions/${submissionId}`, error));
     }
     if (error instanceof ApiHttpError && error.status === 404) {
       return (
@@ -189,6 +189,27 @@ export default async function SubmissionDetailPage({ params }: SubmissionDetailP
         </div>
       );
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Submission Detail"
+          description="Submission data is temporarily unavailable."
+          breadcrumb={
+            <nav aria-label="Breadcrumb">
+              <Link href="/channels/submissions" className="text-slate-500 hover:text-slate-700">
+                Submission Log
+              </Link>
+              <span className="mx-1 text-slate-400">/</span>
+              <span className="text-slate-700">{submissionId.slice(0, 8)}…</span>
+            </nav>
+          }
+        />
+        <InlineAlert
+          tone="error"
+          title="Submission unavailable"
+          message="Submission data could not be loaded. Retry in a moment or contact support if the issue persists."
+        />
+      </div>
+    );
   }
 }

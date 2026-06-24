@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/app-dialog";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
-import type { AppRole, CatalogStatus } from "@/lib/api";
+import type { CatalogStatus } from "@/lib/api";
 
 interface BulkEditPreviewProduct {
   id: string;
@@ -18,7 +18,6 @@ interface BulkEditPreviewProduct {
 }
 
 interface BulkEditDiffPreviewProps {
-  actorRole: AppRole;
   requestedCount: number;
   products: BulkEditPreviewProduct[];
   updates: Record<string, unknown>;
@@ -90,7 +89,6 @@ function renderNextValueList(product: BulkEditPreviewProduct, fields: string[], 
 }
 
 export function BulkEditDiffPreview({
-  actorRole,
   requestedCount,
   products,
   updates,
@@ -173,7 +171,6 @@ export function BulkEditDiffPreview({
       )}
 
       <form action={applyAction} className="space-y-2">
-        <input type="hidden" name="actorRole" value={actorRole} />
         <input type="hidden" name="categoryId" value={scope.categoryId} />
         <input type="hidden" name="status" value={scope.status} />
         <input type="hidden" name="brandContains" value={scope.brandContains} />

@@ -57,6 +57,12 @@ function extractCookieValue(setCookieHeader: string | null, name: string): strin
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+const PUBLIC_PATHS = ["/login", "/signup", "/contact", "/health", "/consent", "/rejection", "/account-suspended"];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.includes(".")) {
@@ -65,9 +71,22 @@ export async function middleware(request: NextRequest) {
 
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
-  if (!accessToken || !refreshToken || !shouldRefresh(accessToken)) {
+
+  // Fail-fast auth gate: no tokens at all on a protected route → redirect to login
+  if (!accessToken && !refreshToken && !isPublicPath(pathname)) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("reason", "session_expired");
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Skip refresh if: no refresh token available (can't recover), OR access token is valid and not expiring
+  if (!refreshToken || (accessToken && !shouldRefresh(accessToken))) {
     return NextResponse.next();
   }
+  // Fall through: refresh token present AND (access token missing OR close to expiry)
 
   try {
     const refreshResponse = await fetch(`${getApiBaseUrl(request)}/auth/refresh`, {

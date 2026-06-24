@@ -23,6 +23,14 @@ import { formatDate, formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+type PricingDisplayState = SharedReadState | "not_configured";
+
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 function isDashboardApiUnavailable(error: unknown): boolean {
   if (error instanceof ApiHttpError) {
     return error.status === 502 || error.status === 503 || error.status === 504;
@@ -42,6 +50,28 @@ function isDashboardApiUnavailable(error: unknown): boolean {
     causeDetails.includes("enotfound") ||
     causeDetails.includes("socket hang up")
   );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isDashboardApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
 }
 
 function DashboardUnavailableState() {
@@ -95,6 +125,36 @@ function DashboardUnavailableState() {
         </div>
       </section>
     </div>
+  );
+}
+
+function DashboardSharedReadNotice({ states }: { states: SharedReadState[] }) {
+  const hasUnavailable = states.includes("unavailable");
+  const hasRestricted = states.includes("restricted");
+  if (!hasUnavailable && !hasRestricted) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-live="polite"
+      aria-atomic="true"
+      role="status"
+      className={`rounded-xl border p-4 shadow-sm ${
+        hasUnavailable ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <h2 className={`text-sm font-semibold ${hasUnavailable ? "text-amber-900" : "text-slate-900"}`}>
+        {hasUnavailable
+          ? "Some dashboard data is temporarily unavailable"
+          : "Some dashboard data is restricted"}
+      </h2>
+      <p className={`mt-2 text-sm ${hasUnavailable ? "text-amber-900/90" : "text-slate-700"}`}>
+        {hasUnavailable
+          ? "We could not load every dashboard feed right now. Unavailable cards are held back instead of defaulting to healthy values."
+          : "Your role can still open the dashboard, but some usage, pricing, queue, or approval details are intentionally redacted."}
+      </p>
+    </section>
   );
 }
 
@@ -183,7 +243,7 @@ function resolveSignupHealthAlert({
   };
 }
 
-function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<typeof getKpiTrends>>>) {
+function buildSignupSparklineRows(signupTrendsData: NonNullable<Awaited<ReturnType<typeof getKpiTrends>>>) {
   const rows = new Map<
     string,
     {
@@ -193,7 +253,7 @@ function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<t
     }
   >();
 
-  for (const point of signupTrends.signupRequests) {
+  for (const point of signupTrendsData.signupRequests) {
     rows.set(point.date, {
       date: point.date,
       requests: Number.isFinite(point.value) ? Number(point.value) : 0,
@@ -201,7 +261,7 @@ function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<t
     });
   }
 
-  for (const point of signupTrends.signupVerifications) {
+  for (const point of signupTrendsData.signupVerifications) {
     const existing = rows.get(point.date) ?? {
       date: point.date,
       requests: 0,
@@ -235,54 +295,103 @@ export default async function DashboardPage() {
   const canViewSignupAnalytics = hasSignupAnalyticsAccess(adminBoundaryRoles);
 
   try {
-    const [health, usage, operationsSummary, products, signupTrends, pricingCoverage] = await Promise.all([
-      getDashboardHealth({ role: actorRole, authHeader }),
-      canViewBillingUsage ? getBillingUsage({ role: actorRole, authHeader }) : Promise.resolve(null),
+    const [healthResult, usageResult, operationsSummaryResult, productsResult, signupTrendsResult, pricingCoverageResult] = await Promise.all([
+      loadSharedRead(getDashboardHealth({ role: actorRole, authHeader })),
+      canViewBillingUsage
+        ? loadSharedRead(getBillingUsage({ role: actorRole, authHeader }))
+        : Promise.resolve({ state: "restricted" } as const),
       canViewOperationsSummary
-        ? getDashboardOperationsSummary({ role: actorRole, authHeader })
-        : Promise.resolve(null),
-      getProductList({ slim: true }, { role: actorRole, authHeader }),
+        ? loadSharedRead(getDashboardOperationsSummary({ role: actorRole, authHeader }))
+        : Promise.resolve({ state: "restricted" } as const),
+      loadSharedRead(getProductList({ slim: true }, { role: actorRole, authHeader })),
       canViewSignupAnalytics
-        ? getKpiTrends({ days: 30 }, { role: actorRole, authHeader })
-        : Promise.resolve(null),
-      // Non-fatal: pricing may not be configured yet; null = skip the KPI card.
-      getPricingCoverage({ role: actorRole, authHeader }).catch(() => null),
+        ? loadSharedRead(getKpiTrends({ days: 30 }, { role: actorRole, authHeader }))
+        : Promise.resolve({ state: "restricted" } as const),
+      canViewBillingUsage
+        ? loadSharedRead(getPricingCoverage({ role: actorRole, authHeader }))
+        : Promise.resolve({ state: "restricted" } as const),
     ]);
-    const activeConnectors = operationsSummary?.activeConnectors ?? null;
-    const blockingIssues = health.snapshot.openIssuesBlocking;
-    const warningIssues = health.snapshot.openIssuesWarning;
-    const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-    const readinessTotal = Object.values(health.snapshot.publishReadyByConnector).reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-    const blockedListingsTotal =
-      typeof health.blockedTotal === "number" ? health.blockedTotal : blockedListings;
-    const readinessGrandTotal =
-      typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : readinessTotal;
-    const completeness =
-      health.snapshot.totalSkus > 0
-        ? (health.snapshot.completeSkus / health.snapshot.totalSkus) * 100
-        : 0;
+
+    if (healthResult.state === "unavailable") {
+      return <DashboardUnavailableState />;
+    }
+
+    const healthData =
+      healthResult.state === "available"
+        ? (() => {
+            const blockedListings = Object.values(healthResult.value.snapshot.blockedByConnector).reduce(
+              (sum, count) => sum + count,
+              0,
+            );
+            const readinessTotal = Object.values(healthResult.value.snapshot.publishReadyByConnector).reduce(
+              (sum, count) => sum + count,
+              0,
+            );
+            const blockedListingsTotal =
+              typeof healthResult.value.blockedTotal === "number"
+                ? healthResult.value.blockedTotal
+                : blockedListings;
+            const readinessGrandTotal =
+              typeof healthResult.value.publishReadyTotal === "number"
+                ? healthResult.value.publishReadyTotal
+                : readinessTotal;
+            const completeness =
+              healthResult.value.snapshot.totalSkus > 0
+                ? (healthResult.value.snapshot.completeSkus / healthResult.value.snapshot.totalSkus) * 100
+                : 0;
+            return {
+              incompleteSkus: healthResult.value.snapshot.incompleteSkus,
+              totalSkus: healthResult.value.snapshot.totalSkus,
+              blockingIssues: healthResult.value.snapshot.openIssuesBlocking,
+              warningIssues: healthResult.value.snapshot.openIssuesWarning,
+              blockedListingsTotal,
+              readinessGrandTotal,
+              completeness,
+              pendingApprovals: Number(healthResult.value.pendingApprovals ?? 0),
+              connectorBreakdownRedacted:
+                healthResult.value.redactedSections?.includes("connector_breakdown") ?? false,
+              approvalQueueRedacted:
+                healthResult.value.redactedSections?.includes("approval_queue") ?? false,
+            };
+          })()
+        : null;
+    const health = { pendingApprovals: healthData?.pendingApprovals ?? 0 };
     const pendingApprovals = Number(health.pendingApprovals ?? 0);
-    const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;
-    const approvalQueueRedacted = health.redactedSections?.includes("approval_queue") ?? false;
+
+    const operationsSummary =
+      operationsSummaryResult.state === "available" ? operationsSummaryResult.value : null;
+    const usage = usageResult.state === "available" ? usageResult.value : null;
+    const products = productsResult.state === "available" ? productsResult.value : [];
+    const signupTrendsData =
+      signupTrendsResult.state === "available" ? signupTrendsResult.value : null;
+    const signupTrends = signupTrendsData;
+    const pricingCoverageData =
+      pricingCoverageResult.state === "available" ? pricingCoverageResult.value : null;
+    const pricingState: PricingDisplayState =
+      pricingCoverageResult.state === "available"
+        ? pricingCoverageResult.value.totalActivePriceLists > 0
+          ? "available"
+          : "not_configured"
+        : pricingCoverageResult.state;
+
+    const activeConnectors = operationsSummary?.activeConnectors ?? null;
     const failedImportJobs = operationsSummary?.failedImportJobs ?? null;
     const jobsNeedingRetry = operationsSummary?.jobsNeedingRetry ?? null;
-    const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
-    const signupVerifications = signupTrends
-      ? Math.round(sumTrendValues(signupTrends.signupVerifications))
+
+    const signupRequests = signupTrendsData
+      ? Math.round(sumTrendValues(signupTrendsData.signupRequests))
+      : 0;
+    const signupVerifications = signupTrendsData
+      ? Math.round(sumTrendValues(signupTrendsData.signupVerifications))
       : 0;
     const signupPendingBacklog = Math.max(signupRequests - signupVerifications, 0);
-    const signupVerificationRate = signupTrends
-      ? getLatestTrendValue(signupTrends.signupVerificationRate)
+    const signupVerificationRate = signupTrendsData
+      ? getLatestTrendValue(signupTrendsData.signupVerificationRate)
       : 0;
-    const signupMedianVerifyHours = signupTrends
-      ? getLatestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
+    const signupMedianVerifyHours = signupTrendsData
+      ? getLatestTrendValue(signupTrendsData.signupMedianTimeToVerifyHours)
       : 0;
+    const signupRangeDays = signupTrends?.rangeDays ?? 30;
     const signupWindowLabel = signupTrends ? `Last ${signupTrends.rangeDays} days` : "";
     const signupHealthAlert = signupTrends
       ? resolveSignupHealthAlert({
@@ -293,15 +402,15 @@ export default async function DashboardPage() {
           medianVerifyHours: signupMedianVerifyHours,
         })
       : null;
-    const signupSparklineRows = signupTrends ? buildSignupSparklineRows(signupTrends) : [];
-    const signupDrilldownHref = signupTrends
+    const signupSparklineRows = signupTrendsData ? buildSignupSparklineRows(signupTrendsData) : [];
+    const signupDrilldownHref = signupTrendsData && signupTrends
       ? `/admin/commercial?days=${signupTrends.rangeDays}#signup-conversion`
       : "/admin/commercial";
-    // Pricing coverage — null when pricing is not yet configured.
-    const pricingConfigured = pricingCoverage !== null && pricingCoverage.totalActivePriceLists > 0;
-    const pricingCoveragePercent = pricingCoverage?.defaultListCoverage ?? 0;
-    const pricingUnpriced = pricingCoverage?.unpricedInDefaultList ?? 0;
-    const pricingDefaultListName = pricingCoverage?.defaultPriceList?.name ?? null;
+
+    const pricingCoveragePercent = pricingCoverageData?.defaultListCoverage ?? 0;
+    const pricingUnpriced = pricingCoverageData?.unpricedInDefaultList ?? 0;
+    const pricingDefaultListName = pricingCoverageData?.defaultPriceList?.name ?? null;
+
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -343,6 +452,7 @@ export default async function DashboardPage() {
         return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
       })
       .slice(0, 5);
+
     const priorityProductColumns: Column<(typeof priorityProducts)[number]>[] = [
       {
         key: "product",
@@ -373,7 +483,11 @@ export default async function DashboardPage() {
         ),
       },
       { key: "complete", header: "Complete %", render: (product) => `${product.completenessScore}%` },
-      { key: "updated", header: "Updated", render: (product) => <span className="text-slate-600">{formatUpdatedAt(product.updatedAt)}</span> },
+      {
+        key: "updated",
+        header: "Updated",
+        render: (product) => <span className="text-slate-600">{formatUpdatedAt(product.updatedAt)}</span>,
+      },
       {
         key: "action",
         header: "Action",
@@ -394,7 +508,7 @@ export default async function DashboardPage() {
           actions={
             <>
               <Link
-                href="/catalog/products"
+                href="/catalog/products?create=1"
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 New Product
@@ -415,7 +529,18 @@ export default async function DashboardPage() {
           }
         />
 
-        {products.length === 0 ? (
+        <DashboardSharedReadNotice
+          states={[
+            healthResult.state,
+            productsResult.state,
+            operationsSummaryResult.state,
+            usageResult.state,
+            pricingCoverageResult.state,
+            signupTrendsResult.state,
+          ]}
+        />
+
+        {productsResult.state === "available" && products.length === 0 ? (
           <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -481,39 +606,71 @@ export default async function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label="Products Needing Enrichment"
-              value={health.snapshot.incompleteSkus}
-              helper={`${formatPercent(completeness)} completeness`}
-              tone={health.snapshot.incompleteSkus > 0 ? "warning" : "success"}
-              href="/catalog/products?view=needs_attention"
+              value={healthData ? healthData.incompleteSkus : "Restricted"}
+              helper={
+                healthData
+                  ? `${formatPercent(healthData.completeness)} completeness`
+                  : "Catalog health totals are limited for your role."
+              }
+              tone={healthData ? (healthData.incompleteSkus > 0 ? "warning" : "success") : "default"}
+              href={healthData ? "/catalog/products?view=needs_attention" : undefined}
             />
             <KpiCard
               label="Blocking Issues"
-              value={blockingIssues}
-              helper={`${warningIssues} warnings to review`}
-              tone={blockingIssues > 0 ? "danger" : "success"}
-              href="/quality/issues?severity=BLOCKING"
+              value={healthData ? healthData.blockingIssues : "Restricted"}
+              helper={
+                healthData
+                  ? `${healthData.warningIssues} warnings to review`
+                  : "Issue totals are limited for your role."
+              }
+              tone={healthData ? (healthData.blockingIssues > 0 ? "danger" : "success") : "default"}
+              href={healthData ? "/quality/issues?severity=BLOCKING" : undefined}
             />
             <KpiCard
               label="Pending Approvals"
-              value={approvalQueueRedacted ? "-" : pendingApprovals}
-              helper={
-                approvalQueueRedacted
-                  ? "Approval queue visibility requires reviewer, editor, or admin access."
-                  : "Products waiting for review"
+              value={
+                healthData
+                  ? healthData.approvalQueueRedacted
+                    ? "Restricted"
+                    : healthData.pendingApprovals
+                  : "Restricted"
               }
-              tone={approvalQueueRedacted ? "default" : pendingApprovals > 0 ? "warning" : "default"}
-              href={approvalQueueRedacted ? undefined : "/quality/approvals"}
+              helper={
+                healthData
+                  ? healthData.approvalQueueRedacted
+                    ? "Approval queue visibility requires reviewer, editor, or admin access."
+                    : "Products waiting for review"
+                  : "Approval queue totals are limited for your role."
+              }
+              tone={
+                healthData
+                  ? healthData.approvalQueueRedacted
+                    ? "default"
+                    : healthData.pendingApprovals > 0
+                      ? "warning"
+                      : "default"
+                  : "default"
+              }
+              href={healthData && !healthData.approvalQueueRedacted ? "/quality/approvals" : undefined}
             />
             <KpiCard
               label="Ready to Publish"
-              value={readinessGrandTotal}
+              value={healthData ? healthData.readinessGrandTotal : "Restricted"}
               helper={
-                connectorBreakdownRedacted
-                  ? "Aggregate readiness is visible. Channel-level breakdown requires editor or admin access."
-                  : `${health.snapshot.totalSkus} total products`
+                healthData
+                  ? healthData.connectorBreakdownRedacted
+                    ? "Aggregate readiness is visible. Channel-level breakdown requires editor or admin access."
+                    : `${healthData.totalSkus} total products`
+                  : "Readiness totals are limited for your role."
               }
-              tone={readinessGrandTotal > 0 ? "success" : "info"}
-              href={connectorBreakdownRedacted ? "/channels/health" : "/catalog/products?view=ready"}
+              tone={healthData ? (healthData.readinessGrandTotal > 0 ? "success" : "info") : "default"}
+              href={
+                healthData
+                  ? healthData.connectorBreakdownRedacted
+                    ? "/channels/health"
+                    : "/catalog/products?view=ready"
+                  : undefined
+              }
             />
           </div>
         </section>
@@ -528,66 +685,96 @@ export default async function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label="Blocked Listings"
-              value={blockedListingsTotal}
+              value={healthData ? healthData.blockedListingsTotal : "Restricted"}
               helper={
-                connectorBreakdownRedacted
-                  ? "Aggregate blocked counts are visible. Channel-level breakdown requires editor or admin access."
-                  : "Publish-ready products currently blocked by channel rules"
+                healthData
+                  ? healthData.connectorBreakdownRedacted
+                    ? "Aggregate blocked counts are visible. Channel-level breakdown requires editor or admin access."
+                    : "Publish-ready products currently blocked by channel rules"
+                  : "Blocked-listing totals are limited for your role."
               }
-              tone={blockedListingsTotal > 0 ? "danger" : "success"}
-              href="/channels/health"
+              tone={healthData ? (healthData.blockedListingsTotal > 0 ? "danger" : "success") : "default"}
+              href={healthData ? "/channels/health" : undefined}
             />
             <KpiCard
               label="Active Channels"
-              value={activeConnectors ?? "-"}
+              value={
+                operationsSummaryResult.state === "available"
+                  ? activeConnectors ?? "-"
+                  : operationsSummaryResult.state === "restricted"
+                    ? "Restricted"
+                    : "Unavailable"
+              }
               helper={
-                operationsSummary
-                  ? `${operationsSummary.installedConnectors} installed`
-                  : "Channel operations are limited to editor and admin roles."
+                operationsSummaryResult.state === "available"
+                  ? `${operationsSummaryResult.value.installedConnectors} installed`
+                  : operationsSummaryResult.state === "restricted"
+                    ? "Channel operations are limited to editor and admin roles."
+                    : "Channel operations are temporarily unavailable."
               }
               tone={
-                operationsSummary
-                  ? operationsSummary.activeConnectors > 0
+                operationsSummaryResult.state === "available"
+                  ? operationsSummaryResult.value.activeConnectors > 0
                     ? "info"
                     : "warning"
-                  : "default"
+                  : operationsSummaryResult.state === "unavailable"
+                    ? "warning"
+                    : "default"
               }
-              href={operationsSummary ? "/channels/connectors" : undefined}
+              href={operationsSummaryResult.state === "available" ? "/channels/connectors" : undefined}
             />
             <KpiCard
               label="Warnings to Review"
-              value={warningIssues}
-              helper="Non-blocking quality issues worth resolving"
-              tone={warningIssues > 0 ? "warning" : "default"}
-              href="/quality/issues?severity=WARNING"
+              value={healthData ? healthData.warningIssues : "Restricted"}
+              helper={
+                healthData
+                  ? "Non-blocking quality issues worth resolving"
+                  : "Warning totals are limited for your role."
+              }
+              tone={healthData ? (healthData.warningIssues > 0 ? "warning" : "default") : "default"}
+              href={healthData ? "/quality/issues?severity=WARNING" : undefined}
             />
             <KpiCard
               label="Pricing Coverage"
-              value={pricingConfigured ? formatPercent(pricingCoveragePercent) : "—"}
+              value={
+                pricingState === "available"
+                  ? formatPercent(pricingCoveragePercent)
+                  : pricingState === "not_configured"
+                    ? "Not configured"
+                    : pricingState === "restricted"
+                      ? "Restricted"
+                      : "Unavailable"
+              }
               helper={
-                !pricingConfigured
-                  ? "No price lists configured yet"
-                  : pricingUnpriced > 0
-                    ? `${pricingUnpriced} unpriced variant${pricingUnpriced === 1 ? "" : "s"}${pricingDefaultListName ? ` in ${pricingDefaultListName}` : ""}`
-                    : pricingDefaultListName
-                      ? `All variants priced in ${pricingDefaultListName}`
-                      : "All variants priced in default list"
+                pricingState === "restricted"
+                  ? "Pricing coverage is limited for your role."
+                  : pricingState === "unavailable"
+                    ? "Pricing coverage is temporarily unavailable."
+                    : pricingState === "not_configured"
+                      ? "No price lists configured yet"
+                      : pricingUnpriced > 0
+                        ? `${pricingUnpriced} unpriced variant${pricingUnpriced === 1 ? "" : "s"}${pricingDefaultListName ? ` in ${pricingDefaultListName}` : ""}`
+                        : pricingDefaultListName
+                          ? `All variants priced in ${pricingDefaultListName}`
+                          : "All variants priced in default list"
               }
               tone={
-                !pricingConfigured
-                  ? "default"
-                  : pricingCoveragePercent >= 90
+                pricingState === "available"
+                  ? pricingCoveragePercent >= 90
                     ? "success"
                     : pricingCoveragePercent >= 60
                       ? "warning"
                       : "danger"
+                  : pricingState === "unavailable"
+                    ? "warning"
+                    : "default"
               }
-              href="/settings/pricing"
+              href={pricingState === "available" || pricingState === "not_configured" ? "/settings/pricing" : undefined}
             />
           </div>
         </section>
 
-        {actorRole !== "viewer" && signupTrends && (signupTrends.mappingCompletionRate.length > 0 || signupTrends.firstPublishSuccessRate.length > 0) ? (
+        {actorRole !== "viewer" && signupTrendsData && (signupTrendsData.mappingCompletionRate.length > 0 || signupTrendsData.firstPublishSuccessRate.length > 0) ? (
           <section className="space-y-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Connector Performance</h2>
@@ -599,21 +786,21 @@ export default async function DashboardPage() {
               <KpiCard
                 label="Mapping Completion Rate"
                 value={
-                  signupTrends.mappingCompletionRate.length > 0
-                    ? `${Math.round((signupTrends.mappingCompletionRate.at(-1)?.value ?? 0) * 10) / 10}%`
+                  signupTrendsData.mappingCompletionRate.length > 0
+                    ? `${Math.round((signupTrendsData.mappingCompletionRate.at(-1)?.value ?? 0) * 10) / 10}%`
                     : "—"
                 }
                 helper={
-                  signupTrends.mappingCompletionRate.length > 0
-                    ? `${signupTrends.mappingCompletionRate.at(-1)?.connectorSlug ?? "across connectors"} · last 30 days`
+                  signupTrendsData.mappingCompletionRate.length > 0
+                    ? `${signupTrendsData.mappingCompletionRate.at(-1)?.connectorSlug ?? "across connectors"} · last 30 days`
                     : "No mapping activity yet"
                 }
                 tone={
-                  signupTrends.mappingCompletionRate.length === 0
+                  signupTrendsData.mappingCompletionRate.length === 0
                     ? "default"
-                    : (signupTrends.mappingCompletionRate.at(-1)?.value ?? 0) >= 80
+                    : (signupTrendsData.mappingCompletionRate.at(-1)?.value ?? 0) >= 80
                       ? "success"
-                      : (signupTrends.mappingCompletionRate.at(-1)?.value ?? 0) >= 50
+                      : (signupTrendsData.mappingCompletionRate.at(-1)?.value ?? 0) >= 50
                         ? "warning"
                         : "danger"
                 }
@@ -622,21 +809,21 @@ export default async function DashboardPage() {
               <KpiCard
                 label="First Publish Success Rate"
                 value={
-                  signupTrends.firstPublishSuccessRate.length > 0
-                    ? `${Math.round((signupTrends.firstPublishSuccessRate.at(-1)?.value ?? 0) * 10) / 10}%`
+                  signupTrendsData.firstPublishSuccessRate.length > 0
+                    ? `${Math.round((signupTrendsData.firstPublishSuccessRate.at(-1)?.value ?? 0) * 10) / 10}%`
                     : "—"
                 }
                 helper={
-                  signupTrends.firstPublishSuccessRate.length > 0
-                    ? `${signupTrends.firstPublishSuccessRate.at(-1)?.connectorSlug ?? "across connectors"} · last 30 days`
+                  signupTrendsData.firstPublishSuccessRate.length > 0
+                    ? `${signupTrendsData.firstPublishSuccessRate.at(-1)?.connectorSlug ?? "across connectors"} · last 30 days`
                     : "No publish activity yet"
                 }
                 tone={
-                  signupTrends.firstPublishSuccessRate.length === 0
+                  signupTrendsData.firstPublishSuccessRate.length === 0
                     ? "default"
-                    : (signupTrends.firstPublishSuccessRate.at(-1)?.value ?? 0) >= 80
+                    : (signupTrendsData.firstPublishSuccessRate.at(-1)?.value ?? 0) >= 80
                       ? "success"
-                      : (signupTrends.firstPublishSuccessRate.at(-1)?.value ?? 0) >= 50
+                      : (signupTrendsData.firstPublishSuccessRate.at(-1)?.value ?? 0) >= 50
                         ? "warning"
                         : "danger"
                 }
@@ -645,21 +832,21 @@ export default async function DashboardPage() {
               <KpiCard
                 label="Avg Setup to First Publish"
                 value={
-                  signupTrends.setupTimeToFirstPublishHours.length > 0
-                    ? `${Math.round(signupTrends.setupTimeToFirstPublishHours.at(-1)?.value ?? 0)}h`
+                  signupTrendsData.setupTimeToFirstPublishHours.length > 0
+                    ? `${Math.round(signupTrendsData.setupTimeToFirstPublishHours.at(-1)?.value ?? 0)}h`
                     : "—"
                 }
                 helper={
-                  signupTrends.setupTimeToFirstPublishHours.length > 0
+                  signupTrendsData.setupTimeToFirstPublishHours.length > 0
                     ? "Hours from connector install to first successful publish"
                     : "No completed installs with publish yet"
                 }
                 tone={
-                  signupTrends.setupTimeToFirstPublishHours.length === 0
+                  signupTrendsData.setupTimeToFirstPublishHours.length === 0
                     ? "default"
-                    : (signupTrends.setupTimeToFirstPublishHours.at(-1)?.value ?? 0) <= 24
+                    : (signupTrendsData.setupTimeToFirstPublishHours.at(-1)?.value ?? 0) <= 24
                       ? "success"
-                      : (signupTrends.setupTimeToFirstPublishHours.at(-1)?.value ?? 0) <= 72
+                      : (signupTrendsData.setupTimeToFirstPublishHours.at(-1)?.value ?? 0) <= 72
                         ? "warning"
                         : "danger"
                 }
@@ -669,7 +856,7 @@ export default async function DashboardPage() {
           </section>
         ) : null}
 
-        {canViewSignupAnalytics && signupTrends ? (
+        {canViewSignupAnalytics && signupTrendsData ? (
           <section className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -712,8 +899,8 @@ export default async function DashboardPage() {
                     <div className="font-semibold">Pending Verification Backlog</div>
                     <div className="mt-1">
                       {signupPendingBacklog > 0
-                        ? `${signupPendingBacklog} signup requests in the last ${signupTrends.rangeDays} days still need email verification. Use the admin trend view to spot the slowest days.`
-                        : `No pending verifications remain in the last ${signupTrends.rangeDays} days.`}
+                        ? `${signupPendingBacklog} signup requests in the last ${signupRangeDays} days still need email verification. Use the admin trend view to spot the slowest days.`
+                        : `No pending verifications remain in the last ${signupRangeDays} days.`}
                     </div>
                   </div>
                   <Link
@@ -821,6 +1008,25 @@ export default async function DashboardPage() {
               />
             </div>
           </section>
+        ) : canViewSignupAnalytics ? (
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Signup Funnel</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {signupTrendsResult.state === "restricted"
+                    ? "Signup funnel metrics are limited for your current access."
+                    : "Signup funnel metrics are temporarily unavailable."}
+                </p>
+              </div>
+              <Link
+                href="/admin/commercial"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Open signup trends
+              </Link>
+            </div>
+          </section>
         ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
@@ -829,7 +1035,11 @@ export default async function DashboardPage() {
             <p className="mt-1 text-sm text-slate-500">
               Start here instead of hunting through separate channel and operations screens.
             </p>
-            {priorityProducts.length === 0 ? (
+            {productsResult.state === "restricted" ? (
+              <p className="mt-4 text-sm text-slate-600">Product work queue visibility is limited for your role.</p>
+            ) : productsResult.state === "unavailable" ? (
+              <p className="mt-4 text-sm text-slate-600">Product work queue is temporarily unavailable.</p>
+            ) : priorityProducts.length === 0 ? (
               <p className="mt-4 text-sm text-slate-600">No products need immediate attention.</p>
             ) : (
               <DataGrid className="mt-4" columns={priorityProductColumns} rows={priorityProducts} getRowKey={(product) => product.id} />
@@ -876,22 +1086,45 @@ export default async function DashboardPage() {
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               <li className="flex items-center justify-between">
                 <span>Products needing enrichment</span>
-                <StatusChip label={String(health.snapshot.incompleteSkus)} tone={health.snapshot.incompleteSkus > 0 ? "warning" : "neutral"} />
+                <StatusChip
+                  label={healthData ? String(healthData.incompleteSkus) : "Restricted"}
+                  tone={healthData ? (healthData.incompleteSkus > 0 ? "warning" : "neutral") : "neutral"}
+                />
               </li>
               <li className="flex items-center justify-between">
                 <span>Pending approvals</span>
                 <StatusChip
-                  label={approvalQueueRedacted ? "Restricted" : String(pendingApprovals)}
-                  tone={approvalQueueRedacted ? "neutral" : pendingApprovals > 0 ? "warning" : "neutral"}
+                  label={
+                    healthData
+                      ? healthData.approvalQueueRedacted
+                        ? "Restricted"
+                        : String(healthData.pendingApprovals)
+                      : "Restricted"
+                  }
+                  tone={
+                    healthData
+                      ? healthData.approvalQueueRedacted
+                        ? "neutral"
+                        : healthData.pendingApprovals > 0
+                          ? "warning"
+                          : "neutral"
+                      : "neutral"
+                  }
                 />
               </li>
               <li className="flex items-center justify-between">
                 <span>Blocking issues</span>
-                <StatusChip label={String(blockingIssues)} tone={blockingIssues > 0 ? "danger" : "neutral"} />
+                <StatusChip
+                  label={healthData ? String(healthData.blockingIssues) : "Restricted"}
+                  tone={healthData ? (healthData.blockingIssues > 0 ? "danger" : "neutral") : "neutral"}
+                />
               </li>
               <li className="flex items-center justify-between">
                 <span>Warnings to review</span>
-                <StatusChip label={String(warningIssues)} tone={warningIssues > 0 ? "warning" : "neutral"} />
+                <StatusChip
+                  label={healthData ? String(healthData.warningIssues) : "Restricted"}
+                  tone={healthData ? (healthData.warningIssues > 0 ? "warning" : "neutral") : "neutral"}
+                />
               </li>
             </ul>
             <div className="mt-4 flex gap-2">
@@ -915,10 +1148,10 @@ export default async function DashboardPage() {
                 {operationsSummary ? (
                   <StatusChip
                     label={String(failedImportJobs)}
-                    tone={operationsSummary.failedImportJobs > 0 ? "warning" : "neutral"}
+                    tone={(failedImportJobs ?? 0) > 0 ? "warning" : "neutral"}
                   />
                 ) : (
-                  <StatusChip label="Restricted" tone="neutral" />
+                  <StatusChip label={operationsSummaryResult.state === "restricted" ? "Restricted" : "Unavailable"} tone="neutral" />
                 )}
               </li>
               <li className="flex items-center justify-between">
@@ -926,15 +1159,17 @@ export default async function DashboardPage() {
                 {operationsSummary ? (
                   <StatusChip
                     label={String(jobsNeedingRetry)}
-                    tone={operationsSummary.jobsNeedingRetry > 0 ? "warning" : "neutral"}
+                    tone={(jobsNeedingRetry ?? 0) > 0 ? "warning" : "neutral"}
                   />
                 ) : (
-                  <StatusChip label="Restricted" tone="neutral" />
+                  <StatusChip label={operationsSummaryResult.state === "restricted" ? "Restricted" : "Unavailable"} tone="neutral" />
                 )}
               </li>
               {!operationsSummary ? (
                 <li className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Operational job counts are limited to editor and admin roles.
+                  {operationsSummaryResult.state === "restricted"
+                    ? "Operational job counts are limited to editor and admin roles."
+                    : "Operational job counts are temporarily unavailable."}
                 </li>
               ) : null}
               {usage ? (
@@ -950,7 +1185,9 @@ export default async function DashboardPage() {
                 </>
               ) : (
                 <li className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Plan and billing usage are limited to editor and admin roles.
+                  {usageResult.state === "restricted"
+                    ? "Plan and billing usage are limited to editor and admin roles."
+                    : "Plan and billing usage are temporarily unavailable."}
                 </li>
               )}
             </ul>
@@ -971,7 +1208,7 @@ export default async function DashboardPage() {
       </div>
     );
   } catch (error) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/dashboard", error));
     }
     if (isDashboardApiUnavailable(error)) {

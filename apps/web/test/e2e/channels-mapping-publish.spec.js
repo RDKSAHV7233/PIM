@@ -17,6 +17,7 @@ const STEP_UP_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-passw
 
 function buildMappingsUrl(categoryId, productId, extra = {}) {
   const params = new URLSearchParams({
+    step: "scope",
     channel: "flipkart",
     categoryId,
     productId,
@@ -255,7 +256,10 @@ test("admin can create, validate, and publish a connector mapping version from t
     },
   });
   const targetCategoryValue = uniqueName("flipkart-target").toLowerCase();
-  const mappingsUrl = buildMappingsUrl(category.id, product.id, { showContext: "1" });
+  const mappingsUrl = buildMappingsUrl(category.id, product.id, {
+    step: "map",
+    publishCategoryId: targetCategoryValue,
+  });
 
   let versionId = null;
 
@@ -263,22 +267,9 @@ test("admin can create, validate, and publish a connector mapping version from t
     await loginViaUi(page, "admin");
     await page.goto(mappingsUrl, { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByRole("heading", { name: "Mapping Workbench" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: new RegExp(product.title) })).toBeVisible();
-    await expect(page.getByText("Publish Readiness (Hard Gate)")).toBeVisible();
-
-    const targetCategoryControl = page.locator('[name="targetCategory"]').first();
-    await expect(targetCategoryControl).toBeVisible();
-    const targetCategoryTag = await targetCategoryControl.evaluate((node) => node.tagName.toLowerCase());
-    if (targetCategoryTag === "select") {
-      const optionValue = await targetCategoryControl.locator("option").nth(0).getAttribute("value");
-      if (!optionValue) {
-        throw new Error("Mappings publish e2e requires a target category option.");
-      }
-      await targetCategoryControl.selectOption(optionValue);
-    } else {
-      await targetCategoryControl.fill(targetCategoryValue);
-    }
+    await expect(page.getByRole("heading", { name: "Channel Mapping" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Step 2: Map Required Fields" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Change scope" })).toBeVisible();
 
     const requiredMappings = [
       ["title", "Title"],
@@ -293,10 +284,13 @@ test("admin can create, validate, and publish a connector mapping version from t
       await fieldSelect.selectOption({ label: sourceField });
     }
 
-    await page.getByLabel("Default fallback category").fill(targetCategoryValue);
+    const fallbackCategoryField = page.getByLabel("Default fallback category");
+    if (await fallbackCategoryField.isVisible()) {
+      await fallbackCategoryField.fill(targetCategoryValue);
+    }
     await submitContainingForm(page.getByRole("button", { name: "Save draft version" }));
 
-    await expect(page).toHaveURL(new RegExp(`/channels/mappings\\?`), { timeout: 30000 });
+    await expect(page).toHaveURL(/step=review/, { timeout: 30000 });
 
     await expect.poll(async () => {
       const versions = await listVersions(adminToken, category.id);
@@ -307,9 +301,10 @@ test("admin can create, validate, and publish a connector mapping version from t
       return draftVersion?.lifecycleState ?? "";
     }, { timeout: 30000 }).toBe("draft");
 
-    await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+    await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue }), {
       waitUntil: "domcontentloaded",
     });
+    await expect(page.getByText("Publish Readiness (Hard Gate)")).toBeVisible();
     const draftRow = page.locator("tbody tr", { hasText: versionId }).first();
     await expect(draftRow).toBeVisible();
     await submitContainingForm(draftRow.getByRole("button", { name: "Validate" }));
@@ -322,7 +317,7 @@ test("admin can create, validate, and publish a connector mapping version from t
       return version?.lifecycleState ?? "";
     }, { timeout: 30000 }).toBe("validated");
 
-    await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+    await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue }), {
       waitUntil: "domcontentloaded",
     });
     const validatedRow = page.locator("tbody tr", { hasText: versionId }).first();
@@ -330,11 +325,9 @@ test("admin can create, validate, and publish a connector mapping version from t
     const fallbackAcknowledgement = validatedRow.getByRole("checkbox", { name: /Acknowledge fallback/i });
     if (await fallbackAcknowledgement.count()) {
       await fallbackAcknowledgement.check();
-      await Promise.all([
-        page.waitForURL(/fallbackAcknowledged=true/),
-        validatedRow.getByRole("button", { name: "Save acknowledgement" }).click(),
-      ]);
-      await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1", fallbackAcknowledged: "true", fallbackAckVersionId: versionId }), {
+      await submitContainingForm(validatedRow.getByRole("button", { name: "Save acknowledgement" }));
+      await expect(page).toHaveURL(/fallbackAcknowledged=true/, { timeout: 30000 });
+      await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue, fallbackAcknowledged: "true", fallbackAckVersionId: versionId }), {
         waitUntil: "domcontentloaded",
       });
     }
@@ -354,7 +347,7 @@ test("admin can create, validate, and publish a connector mapping version from t
       return version?.lifecycleState ?? "";
     }, { timeout: 30000 }).toBe("published");
 
-    await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+    await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue }), {
       waitUntil: "domcontentloaded",
     });
     const publishedRow = page.locator("tbody tr", { hasText: versionId }).first();

@@ -41,6 +41,7 @@ export function ConsentPageClient() {
           policyVersion: "dpdp-v1",
           purpose: "catalog_operations",
         }),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (!response.ok) {

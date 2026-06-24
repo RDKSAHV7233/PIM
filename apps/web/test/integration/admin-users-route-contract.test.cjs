@@ -102,6 +102,16 @@ function run() {
     "Admin users must explain the read-only fallback clearly when the current role cannot manage workspace access.",
   );
   assert(
+    source.includes("isAuthPolicyApiUnavailable") &&
+      source.includes("authPolicyUnavailable = true") &&
+      contentSource.includes("authPolicyUnavailable") &&
+      contentSource.includes("Auth policy temporarily unavailable") &&
+      contentSource.includes("We could not load the workspace auth policy, so this page will not guess whether MFA is required or optional right now.") &&
+      contentSource.includes("Workspace auth policy unavailable") &&
+      contentSource.includes("Retry users page"),
+    "Admin users must treat auth-policy read failures as explicit unavailability instead of defaulting MFA to optional.",
+  );
+  assert(
     contentSource.includes('href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}') &&
       contentSource.includes("form action={createWorkspaceUserAction}") &&
       contentSource.includes("capabilities.availableRoles.map(") &&

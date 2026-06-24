@@ -50,6 +50,13 @@ function run() {
   );
 
   assert(
+    page.includes("AdminAuthPolicyUnavailableState") &&
+      page.includes("Auth policy data is temporarily unavailable") &&
+      page.includes("Review audit evidence"),
+    "Admin auth policy page must expose a dedicated unavailable state instead of collapsing upstream auth-policy or plan failures into ambiguous UI.",
+  );
+
+  assert(
     page.includes("runtimeApplied.sessionTimeout") &&
       page.includes("runtimeApplied.mfaEnrollment") &&
       page.includes("runtimeApplied.externalIdentity") &&
@@ -59,14 +66,15 @@ function run() {
   );
 
   assert(
-    page.includes("form action={updateTenantAuthPolicyAction}") &&
+    page.includes('label={policy.isPersisted ? "persisted" : "not configured"}') &&
+      page.includes("form action={updateTenantAuthPolicyAction}") &&
       page.includes('name="externalIdentityMode"') &&
       page.includes('name="mfaRequired"') &&
       page.includes('name="mfaGracePeriodDays"') &&
       page.includes('name="sessionTimeoutMinutes"') &&
       page.includes('name="allowedAuthMethods"') &&
       page.includes('href="/admin/audit"'),
-    "Admin auth policy page must expose the tenant auth policy form, the supported fields, and the audit follow-up path.",
+    "Admin auth policy page must expose not-configured policy truth, the tenant auth policy form, the supported fields, and the audit follow-up path.",
   );
 
   assert(

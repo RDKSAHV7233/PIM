@@ -43,7 +43,8 @@ interface AdminUsersPageContentProps {
   workspaceUsers: WorkspaceUser[];
   accessScopeAssignments: AccessScopeAssignment[];
   capabilities: RoleCapabilityMatrix;
-  authPolicy: TenantAuthPolicy;
+  authPolicy: TenantAuthPolicy | null;
+  authPolicyUnavailable: boolean;
   byPrincipalType: Record<string, number>;
   activeUsers: number;
   lockedUsers: number;
@@ -115,6 +116,7 @@ export function AdminUsersPageContent({
   accessScopeAssignments,
   capabilities,
   authPolicy,
+  authPolicyUnavailable,
   byPrincipalType,
   activeUsers,
   lockedUsers,
@@ -128,6 +130,7 @@ export function AdminUsersPageContent({
   const showInvite = String(query.showInvite ?? "").trim() === "true";
   const confirmDeactivateUserId = String(query.confirmDeactivate ?? "").trim();
   const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
+  const hasAuthPolicy = authPolicy !== null && !authPolicyUnavailable;
 
   return (
     <div className="space-y-5">
@@ -136,7 +139,7 @@ export function AdminUsersPageContent({
         description="Manage workspace access while keeping the role model and connector overrides visible in one place."
         breadcrumb={
           <>
-            Dashboard / Admin / <span className="font-semibold text-slate-700">Users & Roles</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Users & Roles</span>
           </>
         }
         actions={
@@ -203,8 +206,22 @@ export function AdminUsersPageContent({
         <KpiCard
           label="MFA Enrolled"
           value={`${mfaEnrolledCount}/${activeUsers}`}
-          tone={authPolicy.mfaRequired && mfaUnenrolledCount > 0 ? "danger" : mfaEnrolledCount === activeUsers && activeUsers > 0 ? "success" : "default"}
-          helper={authPolicy.mfaRequired ? "MFA required" : "MFA optional"}
+          tone={
+            hasAuthPolicy && authPolicy.mfaRequired && mfaUnenrolledCount > 0
+              ? "danger"
+              : hasAuthPolicy && mfaEnrolledCount === activeUsers && activeUsers > 0
+              ? "success"
+              : authPolicyUnavailable
+              ? "warning"
+              : "default"
+          }
+          helper={
+            authPolicyUnavailable
+              ? "Workspace auth policy unavailable"
+              : hasAuthPolicy && authPolicy.mfaRequired
+              ? "MFA required"
+              : "MFA optional"
+          }
         />
       </section>
 
@@ -655,26 +672,56 @@ export function AdminUsersPageContent({
 
       <Card>
         <CardTitle>MFA Policy</CardTitle>
-        <p className="mt-2 text-sm text-slate-600">
-          MFA is currently{" "}
-          <span className={`font-semibold ${authPolicy.mfaRequired ? "text-emerald-700" : "text-slate-600"}`}>
-            {authPolicy.mfaRequired ? "required" : "optional"}
-          </span>
-          {" "}for this workspace.{" "}
-          {mfaUnenrolledCount > 0 && authPolicy.mfaRequired
-            ? `${mfaUnenrolledCount} active user${mfaUnenrolledCount === 1 ? " has" : "s have"} not yet enrolled.`
-            : mfaEnrolledCount === activeUsers && activeUsers > 0
-            ? "All active users are enrolled."
-            : null}
-        </p>
-        <div className="mt-3">
-          <Link
-            href="/admin/auth-policy"
-            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Manage Auth Policy
-          </Link>
-        </div>
+        {authPolicyUnavailable || !authPolicy ? (
+          <div className="mt-2 space-y-3">
+            <InlineAlert
+              tone="warning"
+              title="Auth policy temporarily unavailable"
+              message="We could not load the workspace auth policy, so this page will not guess whether MFA is required or optional right now."
+            />
+            <p className="text-sm text-slate-600">
+              MFA enrollment counts still come from live workspace users, but enforcement posture is hidden until the
+              policy read succeeds.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/admin/users"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Retry users page
+              </Link>
+              <Link
+                href="/admin/auth-policy"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Manage Auth Policy
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="mt-2 text-sm text-slate-600">
+              MFA is currently{" "}
+              <span className={`font-semibold ${authPolicy.mfaRequired ? "text-emerald-700" : "text-slate-600"}`}>
+                {authPolicy.mfaRequired ? "required" : "optional"}
+              </span>
+              {" "}for this workspace.{" "}
+              {mfaUnenrolledCount > 0 && authPolicy.mfaRequired
+                ? `${mfaUnenrolledCount} active user${mfaUnenrolledCount === 1 ? " has" : "s have"} not yet enrolled.`
+                : mfaEnrolledCount === activeUsers && activeUsers > 0
+                ? "All active users are enrolled."
+                : null}
+            </p>
+            <div className="mt-3">
+              <Link
+                href="/admin/auth-policy"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Manage Auth Policy
+              </Link>
+            </div>
+          </>
+        )}
       </Card>
 
       <Card>

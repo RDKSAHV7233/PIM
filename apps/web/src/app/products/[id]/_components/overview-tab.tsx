@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/status-chip";
-import { formatDateTime, RoleHiddenInput } from "./product-detail-shared";
+import { formatDateTime } from "./product-detail-shared";
 import { ArchiveProductButton } from "./archive-product-button";
 import type { ProductDetailPageData } from "./product-detail-types";
 
@@ -140,7 +140,7 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
               <p className="mt-1 text-xs text-slate-600">
                 Archived products are hidden from the catalog and can be restored by changing status.
               </p>
-              <ArchiveProductButton productId={data.productId} actorRole={data.actorRole} />
+              <ArchiveProductButton productId={data.productId} />
             </div>
             {data.actorRole === "admin" ? (
               <div className="rounded-md border border-red-200 bg-red-50 p-3">
@@ -149,7 +149,6 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
                   This removes the product permanently. Type <span className="font-semibold">{data.deleteConfirmToken}</span> to confirm.
                 </p>
                 <form action={purgeProductAction} className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                  <RoleHiddenInput role={data.actorRole} />
                   <input type="hidden" name="productId" value={data.productId} />
                   <input type="hidden" name="confirmDelete" value="yes" />
                   <input type="hidden" name="returnTo" value="/catalog/products" />

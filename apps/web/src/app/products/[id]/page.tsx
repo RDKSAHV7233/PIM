@@ -49,7 +49,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
-  const returnTo = String(query.returnTo ?? "").trim().startsWith("/") ? String(query.returnTo ?? "").trim() : "";
+  const returnTo = ((): string => { const v = String(query.returnTo ?? "").trim(); return /^\/(?!\/)/.test(v) ? v : ""; })();
   const updateStatus = String(query.updateStatus ?? "").trim();
   const conflictVersion = String(query.currentVersion ?? "").trim();
   const deleteStatus = String(query.deleteStatus ?? "").trim();
@@ -67,10 +67,24 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     return encoded ? `/products/${encodeURIComponent(id)}?${encoded}` : `/products/${encodeURIComponent(id)}`;
   })();
 
+  let channelsUnavailable = false;
+  let installedConnectorsUnavailable = false;
+  let exportJobsUnavailable = false;
+  let mediaAssetsUnavailable = false;
+  let readinessUnavailable = false;
   const variantsPromise = getProductVariants(id, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getProductVariants>>);
-  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getMarketplaceChannels>>);
-  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getInstalledConnectors>>);
-  const exportJobsPromise = getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>);
+  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => {
+    channelsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getMarketplaceChannels>>;
+  });
+  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader }).catch(() => {
+    installedConnectorsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
+  });
+  const exportJobsPromise = getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => {
+    exportJobsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>;
+  });
 
   let product;
   try { product = await getProduct(id, { role: actorRole, authHeader }); } catch (error: unknown) {
@@ -82,8 +96,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     mapMarketplaceChannelToConnectorSlug(selectedChannel),
     { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
     { role: actorRole, authHeader },
-  ).catch(() => null);
-  const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getMediaAssets>>);
+  ).catch(() => {
+    readinessUnavailable = true;
+    return null;
+  });
+  const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader }).catch(() => {
+    mediaAssetsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getMediaAssets>>;
+  });
 
   const [variants, channels, installedConnectors, exportJobs, readiness, mediaAssets] = await Promise.all([
     variantsPromise,
@@ -108,13 +128,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   )?.channel;
   const effectiveSelectedChannel =
     !query.channel && firstPublishableChannel ? firstPublishableChannel : selectedChannel;
+  let effectiveReadinessUnavailable = readinessUnavailable || channelsUnavailable;
   const effectiveReadiness =
     effectiveSelectedChannel !== selectedChannel
       ? await evaluateConnectorPublishReadiness(
           mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
           { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
           { role: actorRole, authHeader },
-        ).catch(() => null)
+        ).catch(() => {
+          effectiveReadinessUnavailable = true;
+          return null;
+        })
       : readiness;
 
   const tabHref = (tab: DetailTab): string => {
@@ -198,6 +222,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     };
   })();
   const mappingReadiness = (() => {
+    if (effectiveReadinessUnavailable) {
+      return {
+        label: "Unavailable",
+        tone: "neutral" as const,
+        detail: "Publish readiness could not be loaded right now. Refresh or check the channel workspace before acting on this state.",
+      };
+    }
     const blockers = effectiveReadiness?.blockers ?? [];
     const warnings = effectiveReadiness?.warnings ?? [];
     if (blockers.length > 0) {
@@ -221,6 +252,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     };
   })();
   const mediaReadiness = (() => {
+    if (mediaAssetsUnavailable) {
+      return {
+        label: "Unavailable",
+        tone: "neutral" as const,
+        detail: "Media readiness could not be loaded right now.",
+      };
+    }
     if (imageAssetCount === 0) {
       return { label: "Blocked", tone: "danger" as const, detail: "No image assets are linked to this product." };
     }
@@ -238,6 +276,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     };
   })();
   const connectorReadiness = (() => {
+    if (installedConnectorsUnavailable) {
+      return {
+        label: "Unavailable",
+        tone: "neutral" as const,
+        detail: "Connector account status could not be loaded right now.",
+      };
+    }
     if (!selectedConnectorInstallation) {
       return { label: "Missing", tone: "danger" as const, detail: "Install a connector account before you export." };
     }
@@ -270,7 +315,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 : ("neutral" as const),
         detail: `${selectedChannelConfig?.displayName ?? latestExportJob.channel} updated ${formatDateTime(latestExportJob.updatedAt)}.`,
       }
-    : {
+    : exportJobsUnavailable
+      ? {
+          label: "Unavailable",
+          tone: "neutral" as const,
+          detail: "Latest export activity could not be loaded right now.",
+        }
+      : {
         label: "Not queued",
         tone: "neutral" as const,
         detail: "No export attempt has been queued for this product yet.",
@@ -376,6 +427,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       };
     }
     if (product.status === "approved") {
+      if (effectiveReadinessUnavailable || installedConnectorsUnavailable || exportJobsUnavailable) {
+        return {
+          title: "Channel truth is temporarily unavailable",
+          detail: "One or more supporting channel reads failed, so publish readiness should be rechecked before moving this product forward.",
+          href: tabHref("channels"),
+          cta: "Open Channels tab",
+          tone: "border-slate-200 bg-slate-50/70",
+        };
+      }
       if ((effectiveReadiness?.blockers ?? []).length > 0 || (effectiveReadiness?.warnings ?? []).length > 0) {
         return {
           title: "Map remaining attributes to go live",
@@ -394,6 +454,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       };
     }
     if (product.status === "active") {
+      if (exportJobsUnavailable || installedConnectorsUnavailable) {
+        return {
+          title: "Channel status is temporarily unavailable",
+          detail: "Latest connector or export status could not be loaded, so this product should not be treated as fully healthy yet.",
+          href: tabHref("channels"),
+          cta: "Open Channels tab",
+          tone: "border-slate-200 bg-slate-50/70",
+        };
+      }
       const latestExportStatus = String(latestExportJob?.status ?? "").trim().toLowerCase();
       const hasConnectorErrors =
         latestExportStatus === "failed" ||

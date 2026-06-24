@@ -45,7 +45,7 @@ function redirectWithError(message: string, redirectTo = "/admin/users") {
 
 function resolveRedirectTarget(formData: FormData, key: string, fallback: string) {
   const raw = String(formData.get(key) ?? "").trim();
-  return raw.startsWith("/") ? raw : fallback;
+  return /^\/(?!\/)/.test(raw) ? raw : fallback;
 }
 
 function resolveCreateUserErrorMessage(error: unknown): string {

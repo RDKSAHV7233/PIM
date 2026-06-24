@@ -59,6 +59,14 @@ export async function getCategoryTree(
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
+export async function getCategoryCounts(options?: ApiRequestOptions) {
+  return fetchJson<Array<{ categoryId: string; childCount: number; productCount: number }>>(
+    "/taxonomy/categories/counts",
+    undefined,
+    options,
+  );
+}
+
 export async function getProductList(
   inputOrOptions?: ProductListQuery | ApiRequestOptions,
   maybeOptions?: ApiRequestOptions,
@@ -132,7 +140,7 @@ export async function getProductRevisions(productId: string, options?: ApiReques
 }
 
 export async function searchCatalogProducts(
-  input: { q: string; limit?: number },
+  input: { q: string; limit?: number; offset?: number },
   options?: ApiRequestOptions,
 ) {
   const params = new URLSearchParams();
@@ -141,6 +149,9 @@ export async function searchCatalogProducts(
   }
   if (typeof input.limit === "number" && Number.isFinite(input.limit)) {
     params.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  if (typeof input.offset === "number" && input.offset > 0) {
+    params.set("offset", String(Math.floor(input.offset)));
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<CatalogSearchResult[]>(`/catalog/products/search${query}`, undefined, options);
@@ -247,6 +258,7 @@ export interface WorkflowSlaConfig {
 
 export interface OverdueCountResponse {
   count: number;
+  asOf?: string;
 }
 
 export type ProductRelationshipType = "bundle_component" | "accessory" | "substitute" | "upsell";

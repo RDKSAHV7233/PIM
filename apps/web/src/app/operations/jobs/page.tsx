@@ -21,6 +21,12 @@ import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 interface OperationsJobsPageProps {
   searchParams: Promise<{
     status?: string;
@@ -142,6 +148,84 @@ function submissionTimelineItems(submission: {
   return items;
 }
 
+function isOperationsJobsApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 429 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isOperationsJobsApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function OperationsJobsStatusState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="space-y-5">
+      <RefreshOnInterval intervalMs={30_000} />
+      <PageHeader
+        title="Jobs"
+        description="Submission jobs, recovery decisions, and retries across all channels."
+        breadcrumb={
+          <>
+            Dashboard / Operations / <span className="font-semibold text-slate-700">Jobs</span>
+          </>
+        }
+      />
+      <Card aria-live="polite" aria-atomic="true">
+        <CardTitle>{title}</CardTitle>
+        <p className="mt-3 text-sm text-slate-600">{description}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/operations" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Open operations overview
+          </Link>
+          <Link href="/operations/repair" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Open Repair Center
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default async function OperationsJobsPage({ searchParams }: OperationsJobsPageProps) {
   const visibleSubmissionLimit = 100;
   const deadLetterLimit = 100;
@@ -153,19 +237,39 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
   const canWrite = canEditWorkspace(actorRole);
 
   try {
-    const [submissionsResponse, deadLetterResponse] = await Promise.all([
-      getSubmissions(
+    const [submissionsResult, deadLetterResult] = await Promise.all([
+      loadSharedRead(getSubmissions(
         {
           limit: visibleSubmissionLimit,
           status: statusFilter || undefined,
           connectorSlug: connectorSlug || undefined,
         },
         { role: actorRole, authHeader },
-      ),
-      getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader }),
+      )),
+      loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader })),
     ]);
-    const submissions = toItems(submissionsResponse);
-    const deadLetterSubmissions = toItems(deadLetterResponse);
+
+    if (submissionsResult.state === "restricted") {
+      return (
+        <OperationsJobsStatusState
+          title="Job recovery access is restricted"
+          description="Your role can open the operations area, but submission job and retry details are intentionally redacted."
+        />
+      );
+    }
+
+    if (submissionsResult.state === "unavailable") {
+      return (
+        <OperationsJobsStatusState
+          title="Job recovery is temporarily unavailable"
+          description="We could not load submission jobs right now. The page holds the recovery workspace in an unavailable state instead of showing a false empty queue."
+        />
+      );
+    }
+
+    const submissions = toItems(submissionsResult.value);
+    const deadLetterSubmissions =
+      deadLetterResult.state === "available" ? toItems(deadLetterResult.value) : [];
     const selectedSubmission = selectedSubmissionId
       ? submissions.find((submission) => submission.id === selectedSubmissionId) ?? null
       : null;
@@ -322,6 +426,18 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         render: (job) => <span className="text-xs text-slate-600">{formatDateTime(job.updatedAt)}</span>,
       },
     ];
+    const deadLetterCount =
+      deadLetterResult.state === "available"
+        ? deadLetterSubmissions.length
+        : deadLetterResult.state === "restricted"
+          ? "Restricted"
+          : "Unavailable";
+    const failedCountValue =
+      deadLetterResult.state === "available"
+        ? (statusCounts.REJECTED ?? 0) + (statusCounts.ERROR ?? 0) + deadLetterSubmissions.length
+        : deadLetterResult.state === "restricted"
+          ? "Restricted"
+          : "Unavailable";
 
     return (
       <div className="space-y-5">
@@ -331,7 +447,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
           description="Submission jobs, recovery decisions, and retries across all channels."
           breadcrumb={
             <>
-              Dashboard / Operations / <span className="font-semibold text-slate-700">Jobs</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Jobs</span>
             </>
           }
           actions={
@@ -345,6 +461,28 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
             </>
           }
         />
+
+        {deadLetterResult.state !== "available" ? (
+          <section
+            aria-live="polite"
+            aria-atomic="true"
+            role="status"
+            className={`rounded-xl border p-4 shadow-sm ${
+              deadLetterResult.state === "unavailable" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+            }`}
+          >
+            <h2 className={`text-sm font-semibold ${deadLetterResult.state === "unavailable" ? "text-amber-900" : "text-slate-900"}`}>
+              {deadLetterResult.state === "unavailable"
+                ? "Dead-letter recovery data is temporarily unavailable"
+                : "Dead-letter recovery data is restricted"}
+            </h2>
+            <p className={`mt-2 text-sm ${deadLetterResult.state === "unavailable" ? "text-amber-900/90" : "text-slate-700"}`}>
+              {deadLetterResult.state === "unavailable"
+                ? "We could not load escalated recovery jobs right now. Dead-letter counts are held back instead of defaulting to healthy zeroes."
+                : "Your role can still review the latest submission jobs, but dead-letter recovery details are intentionally redacted."}
+            </p>
+          </section>
+        ) : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
@@ -360,14 +498,43 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
           />
           <KpiCard
             label="Failed Count"
-            value={(statusCounts.REJECTED ?? 0) + (statusCounts.ERROR ?? 0) + deadLetterSubmissions.length}
-            tone={(statusCounts.REJECTED ?? 0) + (statusCounts.ERROR ?? 0) + deadLetterSubmissions.length > 0 ? "danger" : "success"}
+            value={failedCountValue}
+            helper={
+              deadLetterResult.state === "available"
+                ? "Rejected, errored, and dead-letter jobs needing attention"
+                : deadLetterResult.state === "restricted"
+                  ? "Combined failure totals are limited for your role."
+                  : "Combined failure totals are temporarily unavailable."
+            }
+            tone={
+              deadLetterResult.state === "available"
+                ? (statusCounts.REJECTED ?? 0) + (statusCounts.ERROR ?? 0) + deadLetterSubmissions.length > 0
+                  ? "danger"
+                  : "success"
+                : deadLetterResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
           />
           <KpiCard
             label="Dead Letter"
-            value={deadLetterSubmissions.length}
-            helper={`Latest ${deadLetterLimit} dead-letter jobs`}
-            tone={deadLetterSubmissions.length > 0 ? "warning" : "default"}
+            value={deadLetterCount}
+            helper={
+              deadLetterResult.state === "available"
+                ? `Latest ${deadLetterLimit} dead-letter jobs`
+                : deadLetterResult.state === "restricted"
+                  ? "Dead-letter volume is limited for your role."
+                  : "Dead-letter volume is temporarily unavailable."
+            }
+            tone={
+              deadLetterResult.state === "available"
+                ? deadLetterSubmissions.length > 0
+                  ? "warning"
+                  : "default"
+                : deadLetterResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
           />
         </section>
 
@@ -391,8 +558,14 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Needs recovery</p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-900">{deadLetterSubmissions.length}</p>
-                  <p className="mt-1 text-xs text-slate-500">Jobs that already escalated out of the normal queue.</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900">{deadLetterCount}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {deadLetterResult.state === "available"
+                      ? "Jobs that already escalated out of the normal queue."
+                      : deadLetterResult.state === "restricted"
+                        ? "Dead-letter recovery counts are limited for your role."
+                        : "Dead-letter recovery counts are temporarily unavailable."}
+                  </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -494,7 +667,11 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
 
         <Card>
           <CardTitle>Needs Recovery</CardTitle>
-          {deadLetterSubmissions.length === 0 ? (
+          {deadLetterResult.state === "restricted" ? (
+            <p className="mt-2 text-sm text-slate-600">Dead-letter recovery details are restricted for your role.</p>
+          ) : deadLetterResult.state === "unavailable" ? (
+            <p className="mt-2 text-sm text-slate-600">Dead-letter recovery details are temporarily unavailable.</p>
+          ) : deadLetterSubmissions.length === 0 ? (
             <p className="mt-2 text-sm text-slate-600">No jobs need recovery right now.</p>
           ) : (
             <div className="mt-3 space-y-3">
@@ -569,7 +746,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/operations/jobs", error));
     }
     throw error;

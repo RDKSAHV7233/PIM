@@ -1,11 +1,13 @@
 import type {
   ApiRequestOptions,
   ConnectorDefinition,
+  ConnectorInstallationsHealthResponse,
   ConnectorInstallation,
   ConnectorPermission,
   ConnectorPublicationTarget,
   ConnectorPublicationTargetsUpdateResponse,
   ConnectorRecoveryGroup,
+  ConnectorSummaryResponse,
   ConnectorRecoveryRetryResult,
   PaginatedResponse,
   ShopifyProductPreview,
@@ -42,6 +44,18 @@ export async function getInstalledConnectors(options?: ApiRequestOptions) {
     return response.map(normalizeShopifyLaunchMetadata);
   }
   return (response.items ?? []).map(normalizeShopifyLaunchMetadata);
+}
+
+export async function getConnectorInstallationsHealth(options?: ApiRequestOptions) {
+  return fetchJson<ConnectorInstallationsHealthResponse>(
+    "/connectors/installations/health",
+    undefined,
+    options,
+  );
+}
+
+export async function getConnectorSummary(options?: ApiRequestOptions) {
+  return fetchJson<ConnectorSummaryResponse>("/connectors/summary", undefined, options);
 }
 
 export async function getConnectorDefinitions(options?: ApiRequestOptions) {

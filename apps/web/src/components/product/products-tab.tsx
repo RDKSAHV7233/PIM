@@ -103,13 +103,18 @@ interface ProductsTabProps {
   role: AppRole;
   products: ProductWorkbenchItem[];
   categories: Category[];
-  stats: CatalogStats;
+  stats: CatalogStats | null;
+  productFeedState: "available" | "restricted" | "unavailable";
+  categoryFeedState: "available" | "restricted" | "unavailable";
+  statsFeedState: "available" | "restricted" | "unavailable";
+  connectorFeedState: "available" | "restricted" | "unavailable";
   hideTestData: boolean;
-  installedConnectorCount: number;
+  installedConnectorCount: number | null;
   mappingManagerHref: string | null;
   connectorManagementHref: string;
   initialView?: ProductFilter;
   initialSearch?: string;
+  initialCreate?: boolean;
 }
 
 function formatUpdatedAt(value: string): string {
@@ -233,18 +238,23 @@ export function ProductsTab({
   products,
   categories,
   stats,
+  productFeedState,
+  categoryFeedState,
+  statsFeedState,
+  connectorFeedState,
   hideTestData,
   installedConnectorCount,
   mappingManagerHref,
   connectorManagementHref,
   initialView = "all",
   initialSearch = "",
+  initialCreate = false,
 }: ProductsTabProps) {
   const canWrite = canEditWorkspace(role);
   const { skuUsagePercent } = usePlanUsage(role);
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [showCreateProduct, setShowCreateProduct] = useState(false);
+  const [showCreateProduct, setShowCreateProduct] = useState(initialCreate);
   const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
   const [pendingArchive, setPendingArchive] = useState<{ productId: string; title: string } | null>(null);
   // Sprint 1: faceted search
@@ -402,19 +412,25 @@ export function ProductsTab({
   }, [readinessMap, selectedFilter, sortedProducts]);
 
   const onboardingSteps = useMemo(() => {
-    const hasProducts = filteredProducts.length > 0;
-    const hasCompleteness = filteredProducts.some((product) => typeof product.completenessScore === "number");
-    const hasIssueResolved = filteredProducts.some((product) => product.complianceErrorCount === 0);
-    const hasConnector = installedConnectorCount > 0;
+    const hasProducts = productFeedState === "available" && filteredProducts.length > 0;
+    const hasCompleteness =
+      productFeedState === "available" &&
+      filteredProducts.some((product) => typeof product.completenessScore === "number");
+    const hasIssueResolved =
+      productFeedState === "available" &&
+      filteredProducts.some((product) => product.complianceErrorCount === 0);
+    const hasConnector = connectorFeedState === "available" && (installedConnectorCount ?? 0) > 0;
     return [
       { key: "import", label: "Import your first catalog", done: hasProducts },
       { key: "completeness", label: "Review completeness score", done: hasCompleteness },
       { key: "issue", label: "Fix your first issue", done: hasIssueResolved },
       { key: "connector", label: "Connect a channel", done: hasConnector },
     ];
-  }, [filteredProducts, installedConnectorCount]);
+  }, [connectorFeedState, filteredProducts, installedConnectorCount, productFeedState]);
   const completedSteps = onboardingSteps.filter((step) => step.done).length;
-  const showOnboarding = filteredProducts.length === 0 || completedSteps < onboardingSteps.length;
+  const showOnboarding =
+    productFeedState === "available" &&
+    (filteredProducts.length === 0 || completedSteps < onboardingSteps.length);
   const nextOnboardingStep = onboardingSteps.find((step) => !step.done)?.label ?? "Keep products moving to ready";
 
   function onHideTestDataChange(nextValue: boolean) {
@@ -493,6 +509,16 @@ export function ProductsTab({
     !canEditWorkspace(role)
       ? "No products are available yet. Ask an editor or admin to import or create catalog data."
       : "Import your existing catalog from Excel, or create your first product manually.";
+  const hasUnavailableSharedRead =
+    productFeedState === "unavailable" ||
+    categoryFeedState === "unavailable" ||
+    statsFeedState === "unavailable" ||
+    connectorFeedState === "unavailable";
+  const hasRestrictedSharedRead =
+    productFeedState === "restricted" ||
+    categoryFeedState === "restricted" ||
+    statsFeedState === "restricted" ||
+    connectorFeedState === "restricted";
 
   const productColumns = useMemo<Column<ProductWithCompliance>[]>(
     () => [
@@ -592,6 +618,27 @@ export function ProductsTab({
   return (
     <div className="space-y-4">
       <section className="sticky top-16 z-20 rounded-lg border border-slate-200 bg-white p-4">
+        {hasUnavailableSharedRead || hasRestrictedSharedRead ? (
+          <div
+            aria-live="polite"
+            aria-atomic="true"
+            role="status"
+            className={`mb-4 rounded-lg border px-3 py-3 text-sm ${
+              hasUnavailableSharedRead ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-700"
+            }`}
+          >
+            <p className="font-semibold">
+              {hasUnavailableSharedRead
+                ? "Some catalog workbench data is temporarily unavailable"
+                : "Some catalog workbench data is restricted"}
+            </p>
+            <p className="mt-1">
+              {hasUnavailableSharedRead
+                ? "Unavailable catalog feeds are held back instead of defaulting to empty products, zero counts, or missing channel context."
+                : "Your role can still open the product workbench, but some catalog, category, or connector details are intentionally redacted."}
+            </p>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -694,7 +741,13 @@ export function ProductsTab({
               href={mappingManagerHref ?? connectorManagementHref}
               className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
             >
-              {mappingManagerHref ? "Open channel mappings" : "Connect a channel"}
+              {connectorFeedState === "restricted"
+                ? "Connector context restricted"
+                : connectorFeedState === "unavailable"
+                  ? "Connector context unavailable"
+                  : mappingManagerHref
+                    ? "Open channel mappings"
+                    : "Connect a channel"}
             </Link>
             {canWrite ? (
               <Button type="button" onClick={() => setShowCreateProduct((value) => !value)}>
@@ -726,13 +779,21 @@ export function ProductsTab({
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span>
-            Categories: {stats.categories} | Products: {stats.products} | Variants: {stats.variants}
-            {searchQuery.trim().length > 0 ? ` | Matches: ${searchedProducts.length}` : ""}
+            {stats
+              ? `Categories: ${stats.categories} | Products: ${stats.products} | Variants: ${stats.variants}`
+              : statsFeedState === "restricted"
+                ? "Catalog totals are limited for your role."
+                : "Catalog totals are temporarily unavailable."}
+            {stats && searchQuery.trim().length > 0 ? ` | Matches: ${searchedProducts.length}` : ""}
           </span>
           <span>
             {showOnboarding
               ? `Getting started: ${completedSteps}/${onboardingSteps.length} complete. Next: ${nextOnboardingStep}.`
-              : "Stay in triage order: blockers first, then at risk, then ready."}
+              : productFeedState === "restricted"
+                ? "Product list visibility is limited for your role."
+                : productFeedState === "unavailable"
+                  ? "Product list is temporarily unavailable."
+                  : "Stay in triage order: blockers first, then at risk, then ready."}
           </span>
         </div>
       </section>
@@ -752,7 +813,6 @@ export function ProductsTab({
         {showCreateProduct && canWrite ? (
           <section className="rounded-lg border border-slate-200 bg-white p-4">
             <CreateProductForm
-              role={role}
               categories={filteredCategories}
               onCreated={() => setShowCreateProduct(false)}
             />
@@ -762,7 +822,23 @@ export function ProductsTab({
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-lg font-semibold text-slate-900">Products</h2>
-        {filteredProducts.length === 0 ? (
+        {productFeedState === "restricted" ? (
+          <EmptyState
+            icon="LOCK"
+            title="Product workbench access is restricted"
+            description="Your role can open the catalog workspace, but the product list is intentionally redacted."
+            action={{ label: "Open dashboard", href: "/dashboard" }}
+            secondaryAction={{ label: "Open connectors", href: connectorManagementHref }}
+          />
+        ) : productFeedState === "unavailable" ? (
+          <EmptyState
+            icon="WARNING"
+            title="Product workbench is temporarily unavailable"
+            description="We could not load the product list right now. The page is held in an unavailable state instead of showing a false empty catalog."
+            action={{ label: "Retry later", href: "/catalog/products" }}
+            secondaryAction={{ label: "Open imports", href: "/operations/imports" }}
+          />
+        ) : filteredProducts.length === 0 ? (
           <EmptyState
             icon="BOX"
             title="Your catalog is empty"

@@ -14,6 +14,13 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   if (!value) {
     return [];
@@ -38,6 +45,79 @@ function resolveResponseTotal<T>(value: T[] | { items: T[] } | null | undefined)
   return Array.isArray(raw.items) ? raw.items.length : 0;
 }
 
+function isSharedReadApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isSharedReadApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function SharedReadNotice({ states }: { states: SharedReadState[] }) {
+  const hasUnavailable = states.includes("unavailable");
+  const hasRestricted = states.includes("restricted");
+  if (!hasUnavailable && !hasRestricted) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-live="polite"
+      aria-atomic="true"
+      role="status"
+      className={`rounded-xl border p-4 shadow-sm ${
+        hasUnavailable ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <h2 className={`text-sm font-semibold ${hasUnavailable ? "text-amber-900" : "text-slate-900"}`}>
+        {hasUnavailable
+          ? "Some operations data is temporarily unavailable"
+          : "Some operations data is restricted"}
+      </h2>
+      <p className={`mt-2 text-sm ${hasUnavailable ? "text-amber-900/90" : "text-slate-700"}`}>
+        {hasUnavailable
+          ? "We could not load every import, submission, or repair queue feed right now. Unavailable cards are held back instead of defaulting to zero."
+          : "Your role can still review the operations workspace, but some queue totals are intentionally redacted."}
+      </p>
+    </section>
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 const OPERATIONS_SUBMISSION_WINDOW_LIMIT = 200;
@@ -49,8 +129,8 @@ export default async function OperationsPage() {
   const canRunWriteOperations = canEditWorkspace(actorRole);
 
   try {
-    const [imports, submissionsResponse, deadLetterResponse] = await Promise.all([
-      getBulkImportJobs({ role: actorRole, authHeader }),
+    const [importsResult, submissionsResult, deadLetterResult] = await Promise.all([
+      loadSharedRead(getBulkImportJobs({ role: actorRole, authHeader })),
       /*
        * Legacy contract reference: getSubmissions({ limit: 100 }, { role: actorRole, authHeader })
        * Load-bearing comment: the operations-overview route-contract test asserts the legacy literal
@@ -60,17 +140,22 @@ export default async function OperationsPage() {
        * helper text discloses that the value is a window count, not a global count.
        * A dedicated GET /submissions/count endpoint is on the engineering backlog.
        */
-      getSubmissions({ limit: submissionWindowLimit }, { role: actorRole, authHeader }),
+      loadSharedRead(getSubmissions({ limit: submissionWindowLimit }, { role: actorRole, authHeader })),
       /*
        * Legacy contract reference: getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })
        * Same brittle-test rationale as the line above.
        */
-      getDeadLetterSubmissions({ limit: deadLetterWindowLimit }, { role: actorRole, authHeader }),
+      loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterWindowLimit }, { role: actorRole, authHeader })),
     ]);
 
+    const imports = importsResult.state === "available" ? importsResult.value : [];
+    const submissionsResponse = submissionsResult.state === "available" ? submissionsResult.value : [];
+    const deadLetterResponse = deadLetterResult.state === "available" ? deadLetterResult.value : [];
     const submissions = toItems(submissionsResponse);
-    const submissionTotal = resolveResponseTotal(submissionsResponse);
-    const deadLetterTotal = resolveResponseTotal(deadLetterResponse);
+    const submissionTotal =
+      submissionsResult.state === "available" ? resolveResponseTotal(submissionsResponse) : 0;
+    const deadLetterTotal =
+      deadLetterResult.state === "available" ? resolveResponseTotal(deadLetterResponse) : 0;
     const submissionAtWindowCap = submissions.length >= submissionWindowLimit;
     const deadLetterAtWindowCap = deadLetterTotal >= deadLetterWindowLimit;
     const submissionTotalDisplay = submissionAtWindowCap
@@ -90,40 +175,97 @@ export default async function OperationsPage() {
           description="Throughput workspace for imports, bulk edits, jobs, and repairs."
           breadcrumb={
             <>
-              Dashboard / <span className="font-semibold text-slate-700">Operations</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">Operations</span>
             </>
           }
         />
+        <SharedReadNotice states={[importsResult.state, submissionsResult.state, deadLetterResult.state]} />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Import Jobs"
-            value={imports.length}
-            helper={`${importNeedsAttention} need attention`}
-            tone={importNeedsAttention > 0 ? "warning" : "default"}
-            href="/operations/imports"
+            value={
+              importsResult.state === "available"
+                ? imports.length
+                : importsResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
+            }
+            helper={
+              importsResult.state === "available"
+                ? `${importNeedsAttention} need attention`
+                : importsResult.state === "restricted"
+                  ? "Import totals are limited for your role."
+                  : "Import totals are temporarily unavailable."
+            }
+            tone={
+              importsResult.state === "available"
+                ? importNeedsAttention > 0
+                  ? "warning"
+                  : "default"
+                : importsResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
+            href={importsResult.state === "available" ? "/operations/imports" : undefined}
           />
           <KpiCard
             label="Submission Jobs"
-            value={submissionTotalDisplay}
-            helper={
-              submissionAtWindowCap
-                ? `${submissionNeedsAttention} of latest ${submissionWindowLimit} rejected/error (window cap reached)`
-                : `${submissionNeedsAttention} of ${submissionTotal} rejected/error`
+            value={
+              submissionsResult.state === "available"
+                ? submissionTotalDisplay
+                : submissionsResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
             }
-            tone={submissionNeedsAttention > 0 ? "danger" : "default"}
-            href="/operations/jobs"
+            helper={
+              submissionsResult.state === "available"
+                ? submissionAtWindowCap
+                  ? `${submissionNeedsAttention} of latest ${submissionWindowLimit} rejected/error (window cap reached)`
+                  : `${submissionNeedsAttention} of ${submissionTotal} rejected/error`
+                : submissionsResult.state === "restricted"
+                  ? "Submission queue totals are limited for your role."
+                  : "Submission queue totals are temporarily unavailable."
+            }
+            tone={
+              submissionsResult.state === "available"
+                ? submissionNeedsAttention > 0
+                  ? "danger"
+                  : "default"
+                : submissionsResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
+            href={submissionsResult.state === "available" ? "/operations/jobs" : undefined}
           />
           <KpiCard
             label="Dead Letter Queue"
-            value={deadLetterTotalDisplay}
-            helper={
-              deadLetterAtWindowCap
-                ? `Latest ${deadLetterWindowLimit} jobs pending manual recovery (window cap reached)`
-                : "Jobs pending manual recovery"
+            value={
+              deadLetterResult.state === "available"
+                ? deadLetterTotalDisplay
+                : deadLetterResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
             }
-            tone={deadLetterTotal > 0 ? "danger" : "success"}
-            href="/operations/repair"
+            helper={
+              deadLetterResult.state === "available"
+                ? deadLetterAtWindowCap
+                  ? `Latest ${deadLetterWindowLimit} jobs pending manual recovery (window cap reached)`
+                  : "Jobs pending manual recovery"
+                : deadLetterResult.state === "restricted"
+                  ? "Repair queue totals are limited for your role."
+                  : "Repair queue totals are temporarily unavailable."
+            }
+            tone={
+              deadLetterResult.state === "available"
+                ? deadLetterTotal > 0
+                  ? "danger"
+                  : "success"
+                : deadLetterResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
+            href={deadLetterResult.state === "available" ? "/operations/repair" : undefined}
           />
           <KpiCard
             label={canRunWriteOperations ? "Bulk Edit Control" : "Bulk Edit Review"}
@@ -184,7 +326,7 @@ export default async function OperationsPage() {
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/operations", error));
     }
     throw error;

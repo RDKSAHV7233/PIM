@@ -1,8 +1,13 @@
 import { Transform } from "class-transformer";
-import { IsInt, IsOptional, IsString, Max, Min, MinLength } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Max, Min, MinLength } from "class-validator";
 import { Matches, MaxLength } from "class-validator";
+import { APP_ROLES } from "../../common/rbac/roles";
 
 export class LoginDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(APP_ROLES)
+  role?: string;
   @Transform(({ value }) => String(value ?? "").trim().toLowerCase())
   @IsString()
   @MinLength(3)

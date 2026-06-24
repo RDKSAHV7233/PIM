@@ -22,6 +22,7 @@ import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ApprovalEvidenceDrawer } from "./approval-evidence-drawer";
+import type { ProductRevisionsResponse } from "@/lib/api/revisions";
 
 /** Maximum characters to display for a diff field value in the "What Changed" section. */
 const MAX_DIFF_VALUE_LENGTH = 120;
@@ -35,12 +36,82 @@ interface QualityApprovalsPageProps {
   }>;
 }
 
+type SupportingReadState = "available" | "restricted" | "unavailable";
+
+type SupportingReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 function summarizeDecisionNote(note: string | null | undefined): string | null {
   const normalized = String(note ?? "").trim();
   if (!normalized) {
     return null;
   }
   return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
+}
+
+function normalizeRevisionEvidence(revisions: ProductRevisionsResponse): ProductRevision[] {
+  return revisions.items.map((revision) => ({
+    productId: revision.productId,
+    revisionId: revision.revisionId,
+    action: "REVISION_CAPTURED",
+    actorId: revision.actorId ?? "unknown",
+    actorLabel: revision.actorLabel ?? "Unknown actor",
+    actorRole: "unknown",
+    createdAt: revision.createdAt,
+    changedFields: revision.changedFields.map((field) => ({
+      path: field.field,
+      label: field.displayLabel ?? field.field,
+      before: field.before,
+      after: field.after,
+    })),
+    summary: {
+      changedFieldCount: revision.changedFields.length,
+      changedSectionCount: revision.summary?.changedSectionCount ?? 0,
+    },
+    decisionNote: null,
+  }));
+}
+
+function isApprovalApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSupportingRead<T>(promise: Promise<T>): Promise<SupportingReadResult<T>> {
+  try {
+    return { state: "available", value: await promise };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isApprovalApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    return { state: "unavailable" };
+  }
 }
 
 export default async function QualityApprovalsPage({ searchParams }: QualityApprovalsPageProps) {
@@ -61,7 +132,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
             description="Review products in workflow review and resolve remaining publish-readiness blockers."
             breadcrumb={
               <>
-                Dashboard / Quality / <span className="font-semibold text-slate-700">Approval Queue</span>
+                <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/quality" className="hover:underline">Quality</Link>{" / "}<span className="font-semibold text-slate-700">Approval Queue</span>
               </>
             }
           />
@@ -83,7 +154,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         </div>
       );
     }
-    const [stats, inbox, products, slaConfig, overdueCount] = await Promise.all([
+    const [stats, inbox, products, slaConfigResult, overdueCountResult] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getIssueInbox(
         {
@@ -93,8 +164,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         { role: actorRole, authHeader },
       ),
       getAllProductsSlim({ role: actorRole, authHeader }),
-      getWorkflowSla({ role: actorRole, authHeader }).catch(() => ({ reviewTargetDays: 3, tenantKey: "" })),
-      getOverdueCount({ role: actorRole, authHeader }).catch(() => ({ count: 0 })),
+      loadSupportingRead(getWorkflowSla({ role: actorRole, authHeader })),
+      loadSupportingRead(getOverdueCount({ role: actorRole, authHeader })),
     ]);
 
     const blockingProducts = new Set(
@@ -117,7 +188,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
       inReviewProducts.map(async (product) => {
         try {
           const revisions = await getProductRevisions(product.id, { role: actorRole, authHeader });
-          revisionsByProduct.set(product.id, revisions.items as unknown as ProductRevision[]);
+          revisionsByProduct.set(product.id, normalizeRevisionEvidence(revisions));
         } catch {
           // Graceful degradation — revision fetch failure does not block approval flow
         }
@@ -172,7 +243,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           description="Review products in workflow review and resolve remaining publish-readiness blockers."
           breadcrumb={
             <>
-              Dashboard / Quality / <span className="font-semibold text-slate-700">Approval Queue</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/quality" className="hover:underline">Quality</Link>{" / "}<span className="font-semibold text-slate-700">Approval Queue</span>
             </>
           }
         />
@@ -215,8 +286,31 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           />
           <KpiCard
             label="SLA At Risk"
-            value={overdueCount.count}
-            tone={overdueCount.count > 0 ? "danger" : "success"}
+            value={
+              overdueCountResult.state === "available"
+                ? overdueCountResult.value.count
+                : overdueCountResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
+            }
+            tone={
+              overdueCountResult.state === "available"
+                ? overdueCountResult.value.count > 0
+                  ? "danger"
+                  : "success"
+                : overdueCountResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
+            helper={
+              overdueCountResult.state === "available"
+                ? overdueCountResult.value.count > 0
+                  ? `Overdue as of ${overdueCountResult.value.asOf ? formatDateTime(overdueCountResult.value.asOf) : "latest workflow snapshot"}`
+                  : "No overdue approvals right now."
+                : overdueCountResult.state === "restricted"
+                  ? "Overdue approval totals are limited for your role."
+                  : "Overdue approval totals are temporarily unavailable."
+            }
           />
         </section>
 
@@ -360,10 +454,16 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         {/* SLA configuration banner — PUT /catalog/workflow/sla (admin only) */}
         <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 shadow-sm">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-slate-400" aria-hidden><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          <span>Review SLA: <strong className="text-slate-800">{slaConfig.reviewTargetDays} days</strong> from <code className="rounded bg-slate-200 px-1 py-0.5 font-mono text-xs">in_review</code> transition.</span>
-          {overdueCount.count > 0 && (
+          {slaConfigResult.state === "available" ? (
+            <span>Review SLA: <strong className="text-slate-800">{slaConfigResult.value.reviewTargetDays} days</strong> from <code className="rounded bg-slate-200 px-1 py-0.5 font-mono text-xs">in_review</code> transition.</span>
+          ) : slaConfigResult.state === "restricted" ? (
+            <span>Review SLA settings are limited for your role.</span>
+          ) : (
+            <span>Review SLA settings are temporarily unavailable.</span>
+          )}
+          {overdueCountResult.state === "available" && overdueCountResult.value.count > 0 && (
             <span className="ml-auto rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
-              {overdueCount.count} overdue
+              {overdueCountResult.value.count} overdue
             </span>
           )}
         </div>

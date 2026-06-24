@@ -28,7 +28,9 @@ function run() {
       approvalsSource.includes("getIssueInbox(") &&
       approvalsSource.includes('productStatus: "in_review",') &&
       approvalsSource.includes("limit: 50,") &&
-      approvalsSource.includes("getAllProductsSlim({ role: actorRole, authHeader })"),
+      approvalsSource.includes("getAllProductsSlim({ role: actorRole, authHeader })") &&
+      approvalsSource.includes("loadSupportingRead(getWorkflowSla({ role: actorRole, authHeader }))") &&
+      approvalsSource.includes("loadSupportingRead(getOverdueCount({ role: actorRole, authHeader }))"),
     "Approval Queue must load stats, in-review issue inbox data, and the full slim product catalog together from the shared auth context.",
   );
   assert(
@@ -60,13 +62,26 @@ function run() {
   assert(
     approvalsSource.includes("getProductRevisions(product.id, { role: actorRole, authHeader })") &&
       approvalsSource.includes("const revisionsByProduct = new Map(") &&
-      approvalsSource.includes("revisionsByProduct.set(product.id, revisions.items as unknown as ProductRevision[]);") &&
+      approvalsSource.includes("function normalizeRevisionEvidence(revisions: ProductRevisionsResponse): ProductRevision[]") &&
+      approvalsSource.includes('action: "REVISION_CAPTURED"') &&
+      approvalsSource.includes('actorRole: "unknown"') &&
+      approvalsSource.includes("revisionsByProduct.set(product.id, normalizeRevisionEvidence(revisions));") &&
       approvalsSource.includes("Revision Evidence Coverage") &&
       approvalsSource.includes("with revision evidence") &&
       approvalsSource.includes("ApprovalEvidenceDrawer") &&
       approvalsSource.includes("productQualityHref") &&
       approvalsSource.includes("productHref"),
     "Approval Queue must fetch product revisions and hand them into an in-workspace evidence drawer instead of forcing reviewers to infer what changed.",
+  );
+  assert(
+    approvalsSource.includes('overdueCountResult.state === "available"') &&
+      approvalsSource.includes("Overdue approval totals are temporarily unavailable.") &&
+      approvalsSource.includes("Overdue approval totals are limited for your role.") &&
+      approvalsSource.includes('label="SLA At Risk"') &&
+      approvalsSource.includes("value={") &&
+      approvalsSource.includes("Review SLA settings are temporarily unavailable.") &&
+      approvalsSource.includes("Review SLA settings are limited for your role."),
+    "Approval Queue must consume the canonical overdue count contract and keep SLA truth explicit instead of defaulting failed reads to healthy values.",
   );
   assert(
     approvalsSource.includes('import { PendingSubmitButton } from "@/components/ui/pending-submit-button";') &&

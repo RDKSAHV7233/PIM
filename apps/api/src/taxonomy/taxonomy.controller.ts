@@ -1,12 +1,12 @@
 import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
+import { ListCategoriesQueryDto } from "./dto/list-categories-query.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateAttributeDefinitionDto } from "./dto/update-attribute-definition.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
@@ -39,12 +39,11 @@ export class TaxonomyController {
   @ApiClientScopes("taxonomy.read")
   @Header("Cache-Control", "private, max-age=60, stale-while-revalidate=300")
   listCategories(
-    @Query() pagination: CursorPaginationDto,
-    @Query("all") all?: string,
+    @Query() query: ListCategoriesQueryDto,
     @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     // Unbounded tree fetch is deprecated for default callers; pass ?all=true when the full tree is required.
-    return this.taxonomyService.listCategories(pagination, { all: all === "true" }, this.resolveActor(request ?? {} as never));
+    return this.taxonomyService.listCategories(query, { all: query.all === "true" }, this.resolveActor(request ?? {} as never));
   }
 
   @Get("counts")

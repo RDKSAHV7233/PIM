@@ -29,6 +29,12 @@ import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 interface QualityIssuePageProps {
   searchParams: Promise<{
     severity?: IssueInboxSeverity;
@@ -139,13 +145,92 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
 
+function isIssueInboxApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isIssueInboxApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function QualityIssueInboxStatusState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Issue Inbox"
+        description="Find issues, assign ownership, and fix products quickly."
+        breadcrumb={
+          <>
+            Dashboard / Quality / <span className="font-semibold text-slate-700">Issue Inbox</span>
+          </>
+        }
+      />
+      <Card aria-live="polite" aria-atomic="true">
+        <CardTitle>{title}</CardTitle>
+        <p className="mt-3 text-sm text-slate-600">{description}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href="/quality"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Open quality overview
+          </Link>
+          <Link
+            href="/catalog/products"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Open products
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default async function QualityIssuePage({ searchParams }: QualityIssuePageProps) {
   const query = await searchParams;
   const { authHeader, actorRole } = await getServerSession();
-
-  if (actorRole === "viewer") {
-    redirect(buildLoginRedirect("/quality/issues", { status: 403 }));
-  }
 
   const canResolveWarnings = canResolveIssueInboxWarnings(actorRole);
   const hideTestData = resolveHideTestData(query.hideTestData);
@@ -176,8 +261,8 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
   }
 
   try {
-    const [inbox, categoriesRaw, installations] = await Promise.all([
-      getIssueInbox(
+    const [inboxResult, categoriesResult, installationsResult] = await Promise.all([
+      loadSharedRead(getIssueInbox(
         {
           severity: query.severity,
           fieldFamily: query.fieldFamily,
@@ -188,11 +273,32 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
           limit,
         },
         { role: actorRole, authHeader },
-      ),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-      getInstalledConnectors({ role: actorRole, authHeader }),
+      )),
+      loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 })),
+      loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader })),
     ]);
 
+    if (inboxResult.state === "restricted") {
+      return (
+        <QualityIssueInboxStatusState
+          title="Issue inbox access is restricted"
+          description="Your current role can open Quality, but the detailed issue inbox feed is limited right now."
+        />
+      );
+    }
+
+    if (inboxResult.state === "unavailable") {
+      return (
+        <QualityIssueInboxStatusState
+          title="Issue inbox is temporarily unavailable"
+          description="We could not load the live issue feed right now. Retry from Quality after the upstream API recovers."
+        />
+      );
+    }
+
+    const inbox = inboxResult.value;
+    const categoriesRaw = categoriesResult.state === "available" ? categoriesResult.value : [];
+    const installations = installationsResult.state === "available" ? installationsResult.value : [];
     const categories = filterTestData(categoriesRaw, hideTestData);
     const sortedInstallations = installations.slice().sort((left, right) =>
       `${left.displayName} ${left.accountAlias}`.localeCompare(`${right.displayName} ${right.accountAlias}`),
@@ -413,6 +519,25 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             <h2 className="text-base font-semibold text-slate-900">Filters</h2>
             <span className="text-xs text-slate-500">Use filters to narrow assignment and severity scope.</span>
           </div>
+          {categoriesResult.state !== "available" || installationsResult.state !== "available" ? (
+            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {categoriesResult.state !== "available" ? (
+                <span>
+                  {categoriesResult.state === "restricted"
+                    ? "Category filters are limited for your role."
+                    : "Category filters are temporarily unavailable."}
+                </span>
+              ) : null}
+              {categoriesResult.state !== "available" && installationsResult.state !== "available" ? " " : null}
+              {installationsResult.state !== "available" ? (
+                <span>
+                  {installationsResult.state === "restricted"
+                    ? "Connector filters are limited for your role."
+                    : "Connector filters are temporarily unavailable."}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <form method="get" className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="issue-severity">
@@ -540,7 +665,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/quality/issues", error));
     }
     throw error;

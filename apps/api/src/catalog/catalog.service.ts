@@ -627,12 +627,15 @@ export class CatalogService {
       // 2. connectorSubmission.findMany({ where: { installationId: { in: ids } } })
       // ConnectorSubmission has no Prisma @relation to ConnectorInstallation,
       // so $queryRaw is the only option without a schema migration.
+      const tenantKey = getTenantKeyFromContext();
       const channelProductRows = await this.prisma.tenant().$queryRaw<Array<{ productId: string }>>(
         Prisma.sql`
           SELECT DISTINCT cs.product_id AS "productId"
           FROM connector_submissions cs
           JOIN connector_installations ci ON ci.id = cs.installation_id
           WHERE ci.connector_id = ${channelDef.id}
+            AND ci.tenant_key = ${tenantKey}
+            AND cs.tenant_key = ${tenantKey}
           LIMIT 50000
         `,
       );

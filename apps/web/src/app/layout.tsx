@@ -5,9 +5,8 @@ import { cookies } from "next/headers";
 import { AuthenticatedShell } from "@/components/nav/authenticated-shell";
 import { BillingStatusBanner } from "@/components/nav/billing-status-banner";
 import { BrandLogo } from "@/components/ui/brand-logo";
-import { hasServerAuthToken } from "@/lib/server-auth";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSessionClaims } from "@/lib/server-session";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,8 +26,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const cookieStore = await cookies();
   const locale = resolveLocale(cookieStore.get(PIM_LOCALE_COOKIE)?.value);
   const sessionClaims = await getServerSessionClaims();
-  const hasAuthToken = await hasServerAuthToken();
-  const actorRole = await getServerActorRole();
+  const hasAuthToken = Boolean(sessionClaims);
+  const actorRole = sessionClaims?.role ?? "viewer";
   const assignedRoles = (sessionClaims?.assignedRoles ?? []) as string[];
   return (
     <html lang="en" suppressHydrationWarning>

@@ -17,7 +17,6 @@ import { translateExportStatus } from "@/lib/errors";
 import type { ConnectorPublishReadiness, ConnectorSubmission } from "@/lib/api";
 import {
   lifecycleStatusTone,
-  RoleHiddenInput,
   translateReadinessBlocker,
 } from "./product-detail-shared";
 import { formatDateTime } from "@/lib/format";
@@ -186,7 +185,6 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
         <div className="flex flex-wrap gap-2">
           {data.canWrite ? (
             <form action={processExportJobAction}>
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="jobId" value={job.id} />
               <input type="hidden" name="productId" value={data.productId} />
               <PendingSubmitButton
@@ -200,7 +198,6 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
           {data.canWrite &&
           (job.status === "dead_letter" || job.status === "retrying" || job.status === "failed") ? (
             <form action={requeueExportJobAction}>
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="jobId" value={job.id} />
               <input type="hidden" name="productId" value={data.productId} />
               <PendingSubmitButton
@@ -306,7 +303,6 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
           {data.canWrite && data.publishableChannels.length > 0 ? (
             <>
               <form action={createExportJobAction} className="space-y-3">
-                <RoleHiddenInput role={data.actorRole} />
                 <input type="hidden" name="productId" value={data.productId} />
                 <input type="hidden" name="channel" value={data.defaultExportChannel} />
                 <select name="fallbackAcknowledged" defaultValue={data.fallbackAckRequired ? "false" : "true"} className="sr-only" aria-hidden="true">
@@ -451,7 +447,6 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
           ) : null}
           {!data.mappingManagerInstallation && data.canWrite ? (
             <form action={createMappingTemplateAction} className="grid gap-3 md:grid-cols-2">
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="productId" value={data.productId} />
               <input type="hidden" name="categoryId" value={data.product.categoryId} />
               <div className="space-y-1">

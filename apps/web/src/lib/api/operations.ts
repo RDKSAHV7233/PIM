@@ -1,4 +1,4 @@
-import type { AiAttributeEnrichment, AiCategorySuggestion, AiTitleSuggestion, ApiRequestOptions, BulkEditOperation, BulkEditPreview, BulkEditScope, BulkEditUpdates, BulkImportJob, BulkImportMappingSuggestion, BulkImportRow, BulkImportRowStatus, BulkImportRun, BulkImportRunRow, BulkImportRunStatus, BulkImportTemplate, BulkMediaAssociationResult, ConnectorSubmission, ConnectorSubmissionIssue, MarketplaceChannel, MarketplaceExportJob, MediaAsset, MediaValidation, OndcMapping, OndcSimulation, OndcVersionInfo, PaginatedResponse, RejectionIntelligenceScore } from "./core";
+import type { AiAttributeEnrichment, AiCategorySuggestion, AiTitleSuggestion, ApiRequestOptions, BulkEditOperation, BulkEditPreview, BulkEditScope, BulkEditUpdates, BulkImportJob, BulkImportMappingSuggestion, BulkImportRow, BulkImportRowStatus, BulkImportRun, BulkImportRunRow, BulkImportRunStatus, BulkImportTemplate, BulkMediaAssociationResult, ConnectorSubmission, ConnectorSubmissionIssue, MarketplaceChannel, MarketplaceExportJob, MediaAsset, MediaValidation, OndcMapping, OndcSimulation, OndcVersionInfo, PaginatedResponse, RejectionIntelligenceScore, SubmissionCountResponse } from "./core";
 import { fetchJson, postFormData, postJson } from "./core";
 
 export async function getSubmissions(
@@ -41,6 +41,36 @@ export async function getSubmissions(
     undefined,
     options,
   );
+}
+
+export async function getSubmissionCount(
+  filters?: {
+    productId?: string;
+    connectorSlug?: string;
+    installationId?: string;
+    status?: string;
+    minAttempt?: number;
+  },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (filters?.productId) {
+    params.set("productId", filters.productId);
+  }
+  if (filters?.connectorSlug) {
+    params.set("connectorSlug", filters.connectorSlug);
+  }
+  if (filters?.installationId) {
+    params.set("installationId", filters.installationId);
+  }
+  if (filters?.status) {
+    params.set("status", filters.status);
+  }
+  if (typeof filters?.minAttempt === "number" && Number.isFinite(filters.minAttempt)) {
+    params.set("minAttempt", String(Math.max(1, Math.floor(filters.minAttempt))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<SubmissionCountResponse>(`/submissions/count${query}`, undefined, options);
 }
 
 export async function getDeadLetterSubmissions(

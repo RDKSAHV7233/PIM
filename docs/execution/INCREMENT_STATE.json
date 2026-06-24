@@ -112,13 +112,14 @@
           "commit": "2ac55f3",
           "tests_passed": [
             "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
+            "node apps/web/test/integration/product-detail-route-contract.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Product-detail seller action is still labeled as publish even though the active action path queues export jobs, creating product-truth drift in the main channel workflow.",
-          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const page = fs.readFileSync('apps/web/src/app/products/[id]/page.tsx','utf8'); const actions = fs.readFileSync('apps/web/src/app/actions.ts','utf8'); if (!page.includes('Publish to a channel')) { console.error('Expected misleading publish label not found.'); process.exit(1); } if (!actions.includes('/export-jobs')) { console.error('Expected export-jobs action path not found.'); process.exit(1); } console.error('FAIL: product detail still labels the seller action as publish while createExportJobAction routes to /export-jobs. Likely files: apps/web/src/app/products/[id]/page.tsx and apps/web/src/app/actions.ts.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: product detail still labels the seller action as publish while createExportJobAction routes to /export-jobs. Likely files: apps/web/src/app/products/[id]/page.tsx and apps/web/src/app/actions.ts."
+          "reopened_reason": "Product detail still degrades to false healthy summary states when supporting reads fail, so channel truth can show Ready, Missing, or Not queued even when the backing connector or export read is unavailable.",
+          "regression_evidence": "Exact failing command: rg -n 'evaluateConnectorPublishReadiness\\(|\\.catch\\(\\(\\) => null\\)|label: \"Ready\"|label: \"Missing\"|label: \"Not queued\"' apps/web/src/app/products/[id]/page.tsx. Failing output snippet: readiness/export/media fetches are caught to null/[] and the summary builders still default to Ready, Missing, and Not queued branches. Likely file responsible: apps/web/src/app/products/[id]/page.tsx."
         },
         {
           "storyId": "ST-UI-AUTH-SHELL-005",
@@ -195,14 +196,15 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "0980970",
+          "commit": "f26e1a6e",
           "tests_passed": [
             "node apps/web/test/integration/global-search-ui.test.cjs",
             "npx tsc -p apps/api/tsconfig.build.json --noEmit",
             "npm run build --workspace @pim1/api",
             "node apps/api/test/integration/catalog-global-search.test.cjs",
             "npm run lint --workspace @pim1/web",
-            "npm run build --workspace @pim1/web"
+            "npm run build --workspace @pim1/web",
+            "node apps/web/test/integration/search-route-contract.test.cjs"
           ],
           "reopened_by": "",
           "reopened_reason": "",
@@ -335,16 +337,26 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "d0c8573",
+          "commit": "f26e1a6e",
+          "scope": [
+            "apps/web/src/app/operations/page.tsx",
+            "apps/web/src/app/operations/jobs/page.tsx",
+            "apps/web/test/integration/operations-overview-route-contract.test.cjs",
+            "apps/web/test/integration/operations-jobs-route-contract.test.cjs",
+            "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
           "tests_passed": [
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "node apps/web/test/integration/ops-cockpit-ui.test.cjs",
+            "node apps/web/test/integration/operations-jobs-route-contract.test.cjs",
             "npm run lint --workspace @pim1/web",
-            "npm run build --workspace @pim1/web"
+            "npm run build --workspace @pim1/web",
+            "node apps/web/test/integration/operations-overview-route-contract.test.cjs"
           ],
-          "reopened_by": "codex",
-          "reopened_reason": "Bundle the remaining Operations overview KPI cleanup into the operational cockpit story so all top-level operational KPI surfaces use the same KpiCard system.",
-          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/app/operations/page.tsx','utf8'); if (s.includes('<KpiCard') || s.includes('KpiCard')) { console.error('Expected missing Operations overview KpiCard usage, but KpiCard markers already exist.'); process.exit(1); } console.error('FAIL: operations overview still uses raw Card KPI blocks instead of KpiCard.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: operations overview still uses raw Card KPI blocks instead of KpiCard. Likely file: apps/web/src/app/operations/page.tsx."
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         },
         {
           "storyId": "ST-OPS-READINESS-BATCH-002",
@@ -374,14 +386,21 @@
           "locked": true,
           "owner": "codex",
           "commit": "9cbe6b9",
+          "scope": [
+            "apps/web/src/app/notifications/page.tsx",
+            "apps/web/test/integration/notifications-page-route-contract.test.cjs",
+            "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
           "tests_passed": [
             "node apps/web/test/integration/notification-center-ui.test.cjs",
+            "node apps/web/test/integration/notifications-page-route-contract.test.cjs",
             "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Notification drawer overflowed the viewport and allowed the dashboard shell to scroll behind it, causing notification actions to overlap the page content.",
-          "regression_evidence": "Exact failing command: @' const { execSync } = require('node:child_process'); const center = execSync('git show HEAD:apps/web/src/components/nav/notification-center.tsx', { encoding: 'utf8' }); const missing = []; if (!center.includes('document.body.style.overflow = \\\"hidden\\\"')) missing.push('body scroll lock'); if (!center.includes('flex h-full w-full max-w-md flex-col')) missing.push('bounded flex drawer shell'); if (!center.includes('min-h-0 flex-1 overflow-y-auto')) missing.push('bounded internal scroll region'); if (missing.length === 0) { console.error('Expected notification drawer layout regression markers not found.'); process.exit(1); } console.error(`FAIL: Notification drawer can overflow the viewport and scroll the page behind the panel because the HEAD version is missing: ${missing.join(', ')}.`); process.exit(1); '@ | node -. Failing output snippet: FAIL: Notification drawer can overflow the viewport and scroll the page behind the panel because the HEAD version is missing: body scroll lock, bounded flex drawer shell, bounded internal scroll region. Likely file: apps/web/src/components/nav/notification-center.tsx."
+          "reopened_reason": "Notifications page feed truth still collapses failed local API reads into the same empty inbox path, so valid users can see a false healthy state when the feed is restricted or temporarily unavailable.",
+          "regression_evidence": "Exact failing command: rg -n 'if \\(!response\\.ok\\) return null;|You\\x27re up to date|New import, publish, connector, mapping, and approval updates will appear here\\.' apps/web/src/app/notifications/page.tsx. Failing output snippet: the page returns null on any non-OK /api/notifications response and then falls through to empty-state copy, so 403 and 5xx feed failures can render as a false up-to-date inbox. Likely file: apps/web/src/app/notifications/page.tsx."
         },
         {
           "storyId": "ST-OPS-QUEUE-DURABILITY-004",
@@ -469,14 +488,21 @@
           "locked": true,
           "owner": "codex",
           "commit": "567f3ff",
+          "scope": [
+            "apps/web/src/app/quality/issues/page.tsx",
+            "apps/web/test/integration/quality-issues-route-contract.test.cjs",
+            "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
           "tests_passed": [
             "npm run lint --workspace @pim1/web",
             "node apps/web/test/integration/issue-inbox-ui.test.cjs",
+            "node apps/web/test/integration/quality-issues-route-contract.test.cjs",
             "npm run build --workspace @pim1/web"
           ],
           "reopened_by": "codex",
-          "reopened_reason": "P0 UX execution reopens the issue inbox workflow story to preserve filtered inbox context when users jump from Fix Now into product detail and need a direct return path.",
-          "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/quality/issues/page.tsx','utf8'); if (s.includes('returnTo=') || s.includes('returnTo%3D')) { console.error('Expected missing returnTo link context, but returnTo already appears in Fix Now links.'); process.exit(1); } console.error('FAIL: Issue Inbox Fix Now links do not preserve returnTo context for the filtered inbox view.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Issue Inbox Fix Now links do not preserve returnTo context for the filtered inbox view. Likely files: apps/web/src/app/quality/issues/page.tsx, apps/web/src/app/products/[id]/page.tsx."
+          "reopened_reason": "Issue inbox still treats read-only access and degraded supporting reads as auth failures or empty filters, so operators can be redirected away from a valid shared read surface or misread missing filter options as real zero-state data.",
+          "regression_evidence": "Exact failing command: rg -n 'actorRole === \"viewer\"|redirect\\(buildLoginRedirect\\(\"/quality/issues\", \\{ status: 403 \\}\\)\\)|getCategoryTree\\(|getInstalledConnectors\\(|if \\(error instanceof ApiHttpError && \\(error.status === 401 \\|\\| error.status === 403\\)\\)' apps/web/src/app/quality/issues/page.tsx. Failing output snippet: the page hard-redirects viewers before rendering and collapses category/connector shared reads into the same page-level auth path instead of distinguishing restricted or unavailable states. Likely file: apps/web/src/app/quality/issues/page.tsx."
         },
         {
           "storyId": "ST-QUALITY-REVIEWER-ROLE-002",
@@ -485,6 +511,18 @@
           "locked": true,
           "owner": "codex",
           "commit": "1104e5c",
+          "scope": [
+            "apps/web/src/app/quality/approvals/page.tsx",
+            "apps/web/src/app/quality/page.tsx",
+            "apps/web/src/app/quality/validation/page.tsx",
+            "apps/web/src/app/quality/completeness/page.tsx",
+            "apps/web/test/integration/quality-overview-route-contract.test.cjs",
+            "apps/web/test/integration/quality-approvals-route-contract.test.cjs",
+            "apps/web/test/integration/quality-validation-route-contract.test.cjs",
+            "apps/web/test/integration/quality-completeness-route-contract.test.cjs",
+            "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
           "tests_passed": [
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "npx tsc -p apps/api/tsconfig.build.json --noEmit",
@@ -494,12 +532,15 @@
             "node apps/web/test/integration/quality-reviewer-role-ui.test.cjs",
             "node apps/web/test/integration/issue-inbox-ui.test.cjs",
             "node apps/web/test/integration/product-workbench-ui.test.cjs",
+            "node apps/web/test/integration/quality-approvals-route-contract.test.cjs",
+            "node apps/web/test/integration/quality-validation-route-contract.test.cjs",
+            "node apps/web/test/integration/quality-completeness-route-contract.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "codex",
+          "reopened_reason": "Approval queue truth drift remains: the page still mixes an overdue contract mismatch with broken revision evidence handling, which can hide real review evidence or misstate SLA risk.",
+          "regression_evidence": "Exact failing command: rg -n 'getOverdueCount|overdueCount\\.count|revisions\\.items as unknown as ProductRevision\\[\\]' apps/web/src/app/quality/approvals/page.tsx apps/web/src/lib/api/catalog.ts apps/api/src/catalog/catalog.service.ts. Failing output snippet: frontend expects count while backend returns overdueCount, and revisionsByProduct stores revisions.items even though the helper already returns an array. Likely files responsible: apps/web/src/app/quality/approvals/page.tsx, apps/web/src/lib/api/catalog.ts, apps/api/src/catalog/catalog.service.ts."
         }
       ]
     },
@@ -1122,15 +1163,28 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "connector-kpi-dashboard",
+          "commit": "f26e1a6e",
+          "scope": [
+            "apps/web/src/app/channels/health/page.tsx",
+            "apps/web/src/app/channels/connectors/[installationId]/page.tsx",
+            "apps/web/src/app/channels/page.tsx",
+            "apps/web/test/integration/channels-health-route-contract.test.cjs",
+            "apps/web/test/integration/channel-connector-detail-route-contract.test.cjs",
+            "apps/web/test/integration/channels-overview-route-contract.test.cjs",
+            "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
           "tests_passed": [
             "npm run build --workspace @pim1/web",
             "npm run test --workspace @pim1/web",
-            "npm run test:integration:metrics-kpi-trends"
+            "npm run test:integration:metrics-kpi-trends",
+            "node apps/web/test/integration/channels-health-route-contract.test.cjs",
+            "node apps/web/test/integration/channel-connector-detail-route-contract.test.cjs",
+            "node apps/web/test/integration/channels-overview-route-contract.test.cjs"
           ],
-          "reopened_by": "codex",
-          "reopened_reason": "Tenant-safety hardening found that the locked KPI trends story still depends on manual raw SQL against tenant KPI and issue data, which breaks the current release-blocking isolation standard.",
-          "regression_evidence": "Exact failing command: rg -n \"RLS-BYPASS|queryRawUnsafe|executeRawUnsafe\" apps/api/src/metrics/metrics.service.ts. Failing output snippet: matches in emit(), getKpiTrends() readiness/throughput/rejection/reliability/mapping/signup/blocker queries. Likely file responsible: apps/api/src/metrics/metrics.service.ts."
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         },
         {
           "storyId": "ST-CON-ROLLBACK-001",
@@ -1729,15 +1783,27 @@
           "owner": "codex",
           "commit": "8a0fc7a",
           "scope": [
+            "apps/api/src/marketplace/marketplace.controller.ts",
+            "apps/api/test/integration/mapping-taxonomy-rbac-contract.test.cjs",
             "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/app/actions.ts",
             "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/components/channel/mapping-dirty-navigation-guard.tsx",
             "apps/web/src/components/channel/mapping-workflow.tsx",
+            "apps/web/src/components/channel/taxonomy-search.tsx",
             "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/lib/channel-mappings.ts",
             "apps/web/test/integration/mapping-canonical-ui.test.cjs",
-            "apps/web/test/integration/mapping-structured-editor.test.cjs",
+            "apps/web/test/integration/channels-mappings-route-contract.test.cjs",
+            "apps/web/test/integration/mapping-dirty-state-ui.test.cjs",
             "apps/web/test/integration/mapping-editor-component.test.cjs",
+            "apps/web/test/integration/mapping-lazy-panels.test.cjs",
+            "apps/web/test/integration/mapping-readiness-version-context-ui.test.cjs",
+            "apps/web/test/integration/mapping-structured-editor.test.cjs",
             "apps/web/test/integration/mapping-step-up-ui.test.cjs",
+            "apps/web/test/integration/taxonomy-search-component.test.cjs",
             "apps/web/test/integration/mapping-workflow-ui.test.cjs",
+            "apps/web/test/e2e/channels-mapping-publish.spec.js",
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
@@ -1748,16 +1814,25 @@
             "Existing mapping lifecycle, structured editor, and step-up UI tests remain green."
           ],
           "tests_passed": [
+            "node apps/api/test/integration/mapping-taxonomy-rbac-contract.test.cjs",
             "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/channels-mappings-route-contract.test.cjs",
+            "node apps/web/test/integration/mapping-dirty-state-ui.test.cjs",
             "node apps/web/test/integration/mapping-structured-editor.test.cjs",
             "node apps/web/test/integration/mapping-editor-component.test.cjs",
+            "node apps/web/test/integration/mapping-lazy-panels.test.cjs",
+            "node apps/web/test/integration/mapping-readiness-version-context-ui.test.cjs",
             "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
+            "node apps/web/test/integration/taxonomy-search-component.test.cjs",
             "node apps/web/test/integration/mapping-workflow-ui.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "POST /api/auth/login -> 201 on production web start",
             "GET /channels/mappings?categoryId=cmmcaxhap0001uxl0v0p9wpcf&channel=amazon&productId=cmmlilq5k000luxgk9oxvfe8l -> 200 on production web start"
-          ]
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Implement the approved mapping wizard redesign because the current task-first workbench still has proven UX-contract regressions and cannot cleanly support the channel-manager flow without a bounded route/helper/UI refactor.",
+          "regression_evidence": "Exact failing command: node --input-type=commonjs -e \"const fs=require('fs'); const src=fs.readFileSync('apps/web/src/components/channel/mapping-editor.tsx','utf8'); if(!src.includes('Default mapping')) throw new Error('default mapping option not found'); if(!src.includes('Category scope')) throw new Error('category scope input not found'); console.error('FAIL: mapping editor offers Default mapping in the primary authoring path while the same form keeps category scope on the current category value, but backend validation requires tenant_connector_default to use categoryScope=* only. Likely files: apps/web/src/components/channel/mapping-editor.tsx and apps/api/src/marketplace/connector-mapping.service.ts.'); process.exit(1);\". Failing output snippet: FAIL: mapping editor offers Default mapping in the primary authoring path while the same form keeps category scope on the current category value, but backend validation requires tenant_connector_default to use categoryScope=* only. Likely files: apps/web/src/components/channel/mapping-editor.tsx and apps/api/src/marketplace/connector-mapping.service.ts. Additional failing command: node --input-type=commonjs -e \"const fs=require('fs'); const src=fs.readFileSync('apps/web/src/lib/channel-mappings.ts','utf8'); const line=(src.split('\\n').find(l=>l.includes('const redirectTo ='))||'not found').trim(); console.error('FAIL: mapping redirect builder preserves category/channel/install/product/fallback state but omits wizard/panel UI state such as showHistory/showResolved/showTaxonomy/showContext, so save/validate/publish actions collapse the operator workflow after redirect. Failing output snippet: '+line+' Likely file: apps/web/src/lib/channel-mappings.ts.'); process.exit(1);\". Failing output snippet: FAIL: mapping redirect builder preserves category/channel/install/product/fallback state but omits wizard/panel UI state such as showHistory/showResolved/showTaxonomy/showContext, so save/validate/publish actions collapse the operator workflow after redirect. Likely file: apps/web/src/lib/channel-mappings.ts."
         }
       ]
     },
@@ -2042,6 +2117,7 @@
             "apps/web/src/app/catalog/attributes/page.tsx",
             "apps/web/src/app/catalog/categories/page.tsx",
             "apps/web/src/app/catalog/products/page.tsx",
+            "apps/web/src/components/product/products-tab.tsx",
             "apps/web/src/app/channels/mappings/page.tsx",
             "apps/web/src/app/connectors/page.tsx",
             "apps/web/src/app/dashboard/page.tsx",
@@ -2053,11 +2129,19 @@
             "apps/web/src/app/quality/issues/page.tsx",
             "apps/web/src/app/rejection/page.tsx",
             "apps/web/src/lib/api.ts",
+            "apps/web/test/integration/dashboard-route-contract.test.cjs",
+            "apps/web/test/integration/dashboard-api-fallback-ui.test.cjs",
+            "apps/web/test/integration/catalog-attributes-route-contract.test.cjs",
+            "apps/web/test/integration/catalog-products-route-contract.test.cjs",
+            "apps/web/test/integration/media-route-contract.test.cjs",
+            "apps/web/test/integration/ondc-route-contract.test.cjs",
+            "apps/web/test/integration/rejection-route-contract.test.cjs",
             "apps/api/test/integration/catalog-products-list-projections.test.cjs",
             "apps/api/test/integration/taxonomy-categories-pagination.test.cjs",
             "apps/api/test/integration/export-jobs-template-summary.test.cjs",
             "apps/web/test/integration/quality-reviewer-role-ui.test.cjs",
             "apps/api/test/integration/rls-isolation.test.cjs",
+            "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
@@ -2073,10 +2157,21 @@
             "node apps/api/test/integration/catalog-products-list-projections.test.cjs",
             "node apps/api/test/integration/taxonomy-categories-pagination.test.cjs",
             "node apps/api/test/integration/export-jobs-template-summary.test.cjs",
+            "node apps/web/test/integration/catalog-attributes-route-contract.test.cjs",
+            "node apps/web/test/integration/catalog-categories-route-contract.test.cjs",
+            "node apps/web/test/integration/media-route-contract.test.cjs",
+            "node apps/web/test/integration/media-governance-ui.test.cjs",
+            "node apps/web/test/integration/catalog-products-route-contract.test.cjs",
+            "node apps/web/test/integration/ondc-route-contract.test.cjs",
+            "node apps/web/test/integration/internal-surface-gating.test.cjs",
+            "node apps/web/test/integration/rejection-route-contract.test.cjs",
             "node apps/api/test/integration/submission-lifecycle-api.test.cjs",
             "npm run test:product",
             "npx playwright test --config=playwright.config.cjs"
-          ]
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Several consumers still rely on drifted or partial contracts after the pagination/slim rollout: category counts are inferred from a partial product slice, overdue shape is inconsistent, and submission count lacks a bounded contract for truth checks.",
+          "regression_evidence": "Exact failing command: rg -n 'getProductList\\(\\{ slim: true \\}\\)|overdueCount: count|OverdueCountResponse|/catalog/workflow/sla/overdue|/submissions/count' apps/web/src/app/catalog/categories/page.tsx apps/web/src/app/quality/approvals/page.tsx apps/web/src/lib/api/catalog.ts apps/api/src/catalog/catalog.service.ts apps/api/src/marketplace/submissions.controller.ts. Failing output snippet: categories derive counts from the first slim product page, overdue service returns overdueCount instead of count, and submissions count endpoint is absent. Likely files responsible: apps/web/src/app/catalog/categories/page.tsx, apps/web/src/app/quality/approvals/page.tsx, apps/web/src/lib/api/catalog.ts, apps/api/src/catalog/catalog.service.ts, apps/api/src/marketplace/submissions.controller.ts."
         }
       ]
     },
@@ -2691,6 +2786,8 @@
             "apps/api/src/auth/auth.service.ts",
             "apps/api/src/auth/jwt-blocklist.service.ts",
             "apps/api/src/auth/account-deletion-worker.service.ts",
+            "apps/web/src/app/admin/auth-policy/page.tsx",
+            "apps/web/test/integration/admin-auth-policy-route-contract.test.cjs",
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
@@ -2705,8 +2802,12 @@
             "npm run build --workspace @pim1/api",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
-            "node apps/web/test/integration/mfa-web-pages-contract.test.cjs"
-          ]
+            "node apps/web/test/integration/mfa-web-pages-contract.test.cjs",
+            "node apps/web/test/integration/admin-auth-policy-route-contract.test.cjs"
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Track 2A admin auth-policy honesty pass: the route needs explicit unavailable semantics before further enterprise identity rollout because operator truth still depends on upstream success instead of a dedicated degraded state.",
+          "regression_evidence": "Exact failing command: rg -n 'Promise.all\\(|getTenantAuthPolicy|getBillingPlanProfile|Plan Upgrade Required|Admin Role Required' apps/web/src/app/admin/auth-policy/page.tsx. Failing output snippet: the page handles admin restriction and plan gating but does not present a dedicated unavailable state when upstream auth-policy or billing reads fail, leaving degraded operator truth implicit. Likely file responsible: apps/web/src/app/admin/auth-policy/page.tsx."
         },
         {
           "storyId": "ST-IDENTITY-MFA-002",
@@ -2742,8 +2843,12 @@
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "npm run test --workspace @pim1/web",
-            "node apps/web/test/integration/mfa-web-pages-contract.test.cjs"
-          ]
+            "node apps/web/test/integration/mfa-web-pages-contract.test.cjs",
+            "node apps/web/test/integration/admin-users-route-contract.test.cjs"
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Track 2A security-settings honesty pass: the account security route currently fabricates plan and policy defaults when supporting reads fail, which is unsafe for MFA and entitlement truth.",
+          "regression_evidence": "Exact failing command: rg -n 'mfaRequired = false|planTier = \"TRIAL\"|policy unavailable|plan profile unavailable' apps/web/src/app/settings/security/page.tsx. Failing output snippet: supporting API failures fall back to mfaRequired=false and planTier=TRIAL, which can present false entitlement or enforcement states instead of explicit unavailability. Likely files responsible: apps/web/src/app/settings/security/page.tsx and apps/web/src/components/settings/account-security-client.tsx."
         }
       ]
     },
@@ -3043,8 +3148,12 @@
           "owner": "claude",
           "commit": "56b7aba",
           "tests_passed": [
-            "npm run build --workspace @pim1/api"
-          ]
+            "npm run build --workspace @pim1/api",
+            "node apps/web/test/integration/admin-oidc-config-route-contract.test.cjs"
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Track 2A OIDC admin-surface honesty pass: the canonical page needs a distinct unavailable state and the legacy admin alias must stop acting as a second editable configuration surface.",
+          "regression_evidence": "Exact failing command: rg -n 'Enterprise Plan Required|loadConfig\\(|No IdP Configured|saveOidcConfigAction|deleteOidcConfigAction' apps/web/src/app/admin/auth-policy/oidc/page.tsx apps/web/src/app/admin/oidc/page.tsx. Failing output snippet: the canonical OIDC page distinguishes plan gating and missing config but not explicit upstream unavailability, and /admin/oidc still exposes a second editable OIDC surface instead of redirecting to /admin/auth-policy/oidc. Likely files responsible: apps/web/src/app/admin/auth-policy/oidc/page.tsx and apps/web/src/app/admin/oidc/page.tsx."
         }
       ],
       "evidence": [

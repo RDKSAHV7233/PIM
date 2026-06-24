@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 interface RouteErrorStateProps {
   title?: string;
@@ -28,10 +28,8 @@ export function RouteErrorState({
               Try again
             </Button>
           ) : null}
-          <Link href={homeHref}>
-            <Button type="button" variant="secondary">
-              Go to dashboard
-            </Button>
+          <Link href={homeHref} className={buttonVariants({ variant: "secondary" })}>
+            Go to dashboard
           </Link>
         </div>
       </div>

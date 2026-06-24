@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ProductsTab } from "@/components/product/products-tab";
 import { PageHeader } from "@/components/ui/page-header";
@@ -19,6 +20,12 @@ import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 interface CatalogProductsPageProps {
   searchParams: Promise<{
     hideTestData?: string;
@@ -26,6 +33,7 @@ interface CatalogProductsPageProps {
     view?: string;
     page?: string;
     limit?: string;
+    create?: string;
     // Sprint 1: faceted search params
     categoryId?: string;
     brand?: string;
@@ -138,11 +146,55 @@ async function loadVisibleProducts(
   };
 }
 
+function isCatalogProductsApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 429 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isCatalogProductsApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
 export default async function CatalogProductsPage({ searchParams }: CatalogProductsPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
   const initialView = resolveProductView(query.view);
   const initialSearch = resolveProductSearch(query.search);
+  const initialCreate = query.create === "1";
   const page = resolvePositiveInteger(query.page, 1, 10_000);
   const limit = resolvePositiveInteger(query.limit, 50, 200);
   // Sprint 1: faceted search
@@ -153,38 +205,53 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const { authHeader, actorRole } = await getServerSession();
 
   try {
-    const [stats, categories, productWindow, installedConnectors] = await Promise.all([
-      getStats({ role: actorRole, authHeader }),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
+    const [statsResult, categoriesResult, productWindowResult, installedConnectorsResult] = await Promise.all([
+      loadSharedRead(getStats({ role: actorRole, authHeader })),
+      loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 })),
       // Sprint 1: use advanced-search endpoint when any facet is active
-      hasFacets
-        ? getAdvancedSearchProducts(
-            { q: initialSearch || undefined, categoryId, brand, status: facetStatus, limit },
-            { role: actorRole, authHeader },
-          ).then((res) => ({
-            items: res.items as ProductListItem[],
-            firstProduct: res.items[0] as ProductListItem | null,
-            totals: null,
-          }))
-        : loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
-      getInstalledConnectors({ role: actorRole, authHeader }).catch((err) => {
-        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
-          return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
-        }
-        throw err;
-      }),
+      loadSharedRead(
+        hasFacets
+          ? getAdvancedSearchProducts(
+              { q: initialSearch || undefined, categoryId, brand, status: facetStatus, limit },
+              { role: actorRole, authHeader },
+            ).then((res) => ({
+              items: res.items as ProductListItem[],
+              firstProduct: res.items[0] as ProductListItem | null,
+              totals: null,
+            }))
+          : loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
+      ),
+      loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader })),
     ]);
 
+    const categories = categoriesResult.state === "available" ? categoriesResult.value : [];
+    const productWindow =
+      productWindowResult.state === "available"
+        ? productWindowResult.value
+        : {
+            items: [],
+            firstProduct: null,
+            totals: null,
+          };
     const filteredCategories = filterTestData(categories, hideTestData);
-    const filteredStats = hideTestData
-      ? {
-          ...stats,
-          categories: filteredCategories.length,
-          products: productWindow.totals?.products ?? 0,
-          variants: productWindow.totals?.variants ?? 0,
-        }
-      : stats;
-    const installedConnectorCount = installedConnectors.length;
+    const filteredStats =
+      statsResult.state === "available"
+        ? hideTestData
+          ? {
+              ...statsResult.value,
+              categories:
+                categoriesResult.state === "available"
+                  ? filteredCategories.length
+                  : statsResult.value.categories,
+              products: productWindow.totals?.products ?? statsResult.value.products,
+              variants: productWindow.totals?.variants ?? statsResult.value.variants,
+            }
+          : statsResult.value
+        : null;
+    const installedConnectors =
+      installedConnectorsResult.state === "available" ? installedConnectorsResult.value : [];
+    const installedConnectorCount =
+      installedConnectorsResult.state === "available" ? installedConnectors.length : null;
     const firstProduct = productWindow.firstProduct;
     const firstActiveConnector = installedConnectors.find(
       (item) => item.status === "ACTIVE" && mapConnectorSlugToMarketplaceChannel(item.slug),
@@ -204,7 +271,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           description="Daily catalog workspace for triage, fixes, and publish readiness."
           breadcrumb={
             <>
-              Dashboard / Catalog / <span className="font-semibold text-slate-700">Products</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/catalog/products" className="hover:underline">Catalog</Link>{" / "}<span className="font-semibold text-slate-700">Products</span>
             </>
           }
         />
@@ -213,17 +280,22 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           products={productWindow.items}
           categories={categories}
           stats={filteredStats}
+          productFeedState={productWindowResult.state}
+          categoryFeedState={categoriesResult.state}
+          statsFeedState={statsResult.state}
+          connectorFeedState={installedConnectorsResult.state}
           hideTestData={hideTestData}
           installedConnectorCount={installedConnectorCount}
           mappingManagerHref={mappingManagerHref}
           connectorManagementHref="/channels/connectors"
           initialView={initialView}
           initialSearch={initialSearch}
+          initialCreate={initialCreate}
         />
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/catalog/products", error));
     }
     throw error;

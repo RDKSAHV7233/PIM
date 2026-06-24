@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import { formatINR } from "@/lib/format";
-import { lifecycleStatusTone, RoleHiddenInput } from "./product-detail-shared";
+import { lifecycleStatusTone } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 export function VariantsTab({ data }: { data: ProductDetailPageData }) {
@@ -101,7 +101,6 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
             {data.canWrite && !["approved", "active", "archived"].includes(data.product.status) ? (
               <div className="space-y-3">
                 <form id={editFormId} action={updateVariantAction} className="space-y-2">
-                  <RoleHiddenInput role={data.actorRole} />
                   <input type="hidden" name="productId" value={data.productId} />
                   <input type="hidden" name="variantId" value={variant.id} />
                   <Button type="submit" variant="secondary" size="sm">
@@ -111,7 +110,6 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
                 <details className="rounded-md border border-red-200 bg-red-50 p-2">
                   <summary className="cursor-pointer text-xs font-semibold text-red-700">Remove variant</summary>
                   <form id={removeFormId} action={deleteVariantAction} className="mt-2 space-y-2">
-                    <RoleHiddenInput role={data.actorRole} />
                     <input type="hidden" name="productId" value={data.productId} />
                     <input type="hidden" name="variantId" value={variant.id} />
                     <label className="flex items-start gap-2 text-xs text-red-800">
@@ -145,7 +143,6 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
           </p>
         ) : data.canWrite ? (
           <form action={createVariantAction} className="grid gap-3 md:grid-cols-2">
-            <RoleHiddenInput role={data.actorRole} />
             <input type="hidden" name="productId" value={data.productId} />
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-sku-code">

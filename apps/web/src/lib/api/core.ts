@@ -226,6 +226,49 @@ export interface ConnectorInstallation {
   actions?: ConnectorActionMatrix;
 }
 
+export interface ConnectorHealthAggregate {
+  slug: string;
+  displayName: string;
+  ready: number;
+  blocked: number;
+  pending: number;
+  installationCount: number;
+  activeInstallationCount: number;
+  notConnected?: boolean;
+}
+
+export interface ConnectorInstallationHealthRow {
+  installationId: string;
+  connectorId: string;
+  slug: string;
+  displayName: string;
+  accountAlias: string;
+  externalAccountRef: string | null;
+  status: string;
+  ready: number;
+  blocked: number;
+  pending: number;
+  lastSubmittedAt: string | null;
+}
+
+export interface ConnectorInstallationsHealthResponse {
+  connectors: ConnectorHealthAggregate[];
+  installations: ConnectorInstallationHealthRow[];
+  asOf: string;
+}
+
+export interface ConnectorSummaryResponse {
+  connectors: ConnectorHealthAggregate[];
+  totals: {
+    ready: number;
+    blocked: number;
+    pending: number;
+    installations: number;
+    activeInstallations: number;
+  };
+  asOf: string;
+}
+
 export interface ConnectorDefinition {
   id: string;
   slug: string;
@@ -672,6 +715,10 @@ export interface KpiTrendsResponse {
   signupMedianTimeToVerifyHours: KpiTrendPoint[];
   blockerResolutionRate: KpiTrendPoint[];
   medianBlockerResolutionHours: KpiTrendPoint[];
+}
+
+export interface SubmissionCountResponse {
+  count: number;
 }
 
 export interface PlanLimitExceededPayload {

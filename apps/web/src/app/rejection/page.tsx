@@ -130,7 +130,7 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
         description="Evaluate rejection risk, see patterns, and apply targeted fixes before submission."
         breadcrumb={
           <>
-            Dashboard / Quality / <span className="font-semibold text-slate-700">Rejection Insights</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/quality" className="hover:underline">Quality</Link>{" / "}<span className="font-semibold text-slate-700">Rejection Insights</span>
           </>
         }
         actions={

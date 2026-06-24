@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       "x-pim-operator-role": boundaryRoles.includes("super_admin") ? "super_admin" : "system_admin",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
   });
 
   const body = await response.text();

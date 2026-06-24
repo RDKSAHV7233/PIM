@@ -7,7 +7,6 @@ import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import {
   ApiHttpError,
-  AppRole,
   getAiAttributeEnrichment,
   getAiCategorySuggestion,
   getBillingPlanProfile,
@@ -20,10 +19,6 @@ import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
-
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
-}
 
 interface AiPageProps {
   searchParams: Promise<{    productId?: string;
@@ -47,7 +42,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
           <PageHeader
             title="AI Labs"
             description="Experimental enrichment tools for catalog operators."
-            breadcrumb={<>Dashboard / <span className="font-semibold text-slate-700">AI Labs</span></>}
+            breadcrumb={<><Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">AI Labs</span></>}
           />
           <Card>
             <CardTitle>Growth Plan Required</CardTitle>
@@ -82,7 +77,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/ai", error));
     }
-    throw error;
+    products = [];
   }
   const filteredProducts = filterTestData(products, true);
   const [titleSuggestion, attributeSuggestion, categorySuggestion] = productId
@@ -95,28 +90,27 @@ export default async function AiPage({ searchParams }: AiPageProps) {
 
   return (
     <div className="space-y-5">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Smart Suggestions</h1>
-        <p className="text-sm text-slate-600">
-          Rule-based title suggestions, attribute suggestions, category suggestions, and repair guidance.
-        </p>
-      </header>
+      <PageHeader
+        title="Smart Suggestions"
+        description="Rule-based title suggestions, attribute suggestions, category suggestions, and repair guidance."
+        breadcrumb={<><Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">AI Labs</span></>}
+      />
 
       <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <strong>Labs — Experimental.</strong> This feature is under active development and is not available to workspace users. Results are rule-based only and should not be presented as AI-powered enrichment. Not for production catalogues.
       </div>
 
       <div className="flex flex-wrap gap-2 text-sm">
-        <Link className="rounded-md border border-border px-3 py-2" href={`/`}>
+        <Link className="rounded-md border border-border px-3 py-2" href="/dashboard">
           Dashboard
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/media`}>
+        <Link className="rounded-md border border-border px-3 py-2" href="/media">
           Media Validation
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/rejection`}>
+        <Link className="rounded-md border border-border px-3 py-2" href="/rejection">
           Rejection Intelligence
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/ondc`}>
+        <Link className="rounded-md border border-border px-3 py-2" href="/ondc">
           ONDC Expansion
         </Link>
       </div>
@@ -182,7 +176,6 @@ export default async function AiPage({ searchParams }: AiPageProps) {
           <Card>
             <CardTitle>Suggested Catalog Repair</CardTitle>
             <form action={applyAiRepairAction} className="space-y-2">
-              <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="productId" value={productId} />
               <Button type="submit">Apply suggested repair</Button>
             </form>

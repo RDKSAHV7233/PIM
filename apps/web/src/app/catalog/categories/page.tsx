@@ -1,15 +1,18 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createCategoryAction } from "@/app/actions";
 import { CategoryDeleteButton } from "@/components/catalog/category-delete-button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
-import { ApiHttpError, getCategoryTree, getProductList } from "@/lib/api";
+import { ApiHttpError, getCategoryTree } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
+import { getCategoryCounts } from "@/lib/api/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -52,27 +55,17 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
   const canAdmin = actorRole === "admin";
 
   try {
-    const [categories, products] = await Promise.all([
+    const [categories, categoryCounts] = await Promise.all([
       getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-      getProductList({ slim: true }, { role: actorRole, authHeader }),
+      getCategoryCounts({ role: actorRole, authHeader }),
     ]);
     const filteredCategories = filterTestData(categories, hideTestData);
-    const filteredProducts = filterTestData(products, hideTestData);
     const visibleCategories = filteredCategories.slice(0, categoryLimit);
     const toggleHref = hideTestData ? "/catalog/categories?hideTestData=false" : "/catalog/categories";
     const showMoreHref = `/catalog/categories?categoryLimit=${categoryLimit + 100}${hideTestData ? "" : "&hideTestData=false"}`;
     const showAllHref = `/catalog/categories?categoryLimit=${filteredCategories.length}${hideTestData ? "" : "&hideTestData=false"}`;
 
-    const childCounts = filteredCategories.reduce<Record<string, number>>((acc, category) => {
-      if (category.parentId) {
-        acc[category.parentId] = (acc[category.parentId] ?? 0) + 1;
-      }
-      return acc;
-    }, {});
-    const productCounts = filteredProducts.reduce<Record<string, number>>((acc, product) => {
-      acc[product.categoryId] = (acc[product.categoryId] ?? 0) + 1;
-      return acc;
-    }, {});
+    const countsByCategoryId = new Map(categoryCounts.map((count) => [count.categoryId, count]));
 
     const returnParams = new URLSearchParams();
     if (query.hideTestData) {
@@ -91,12 +84,12 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
       {
         key: "children",
         header: "Children",
-        render: (category) => childCounts[category.id] ?? 0,
+        render: (category) => countsByCategoryId.get(category.id)?.childCount ?? 0,
       },
       {
         key: "products",
         header: "Products",
-        render: (category) => productCounts[category.id] ?? 0,
+        render: (category) => countsByCategoryId.get(category.id)?.productCount ?? 0,
       },
       ...(canAdmin
         ? [
@@ -106,8 +99,8 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
               headerClassName: "text-right",
               cellClassName: "text-right",
               render: (category) => {
-                const childCount = childCounts[category.id] ?? 0;
-                const productCount = productCounts[category.id] ?? 0;
+                const childCount = countsByCategoryId.get(category.id)?.childCount ?? 0;
+                const productCount = countsByCategoryId.get(category.id)?.productCount ?? 0;
                 const disabledReason =
                   childCount > 0
                     ? `This category has ${childCount} child ${childCount === 1 ? "category" : "categories"}.`
@@ -130,19 +123,18 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
 
     return (
       <div className="space-y-5">
-        <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold text-slate-900">Catalog Categories</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Review taxonomy structure and manage category hierarchy.
-              </p>
-            </div>
-            <a href={toggleHref} className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+        <PageHeader
+          title="Catalog Categories"
+          description="Review taxonomy structure and manage category hierarchy."
+          breadcrumb={
+            <><Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/catalog/products" className="hover:underline">Catalog</Link>{" / "}<span className="font-semibold text-slate-700">Categories</span></>
+          }
+          actions={
+            <Link href={toggleHref} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               {hideTestData ? "Show test data" : "Hide test data"}
-            </a>
-          </div>
-        </header>
+            </Link>
+          }
+        />
 
         {deleteStatus === "deleted" ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
@@ -163,12 +155,12 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
                 Showing {visibleCategories.length} of {filteredCategories.length} categories.
               </p>
               <div className="flex gap-2">
-                <a href={showMoreHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                <Link href={showMoreHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
                   Show 100 more
-                </a>
-                <a href={showAllHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                </Link>
+                <Link href={showAllHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
                   Show all
-                </a>
+                </Link>
               </div>
             </div>
           ) : null}

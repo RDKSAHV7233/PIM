@@ -11,6 +11,13 @@ import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   if (!value) {
     return [];
@@ -21,17 +28,93 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   return Array.isArray(value.items) ? value.items : [];
 }
 
+function isSharedReadApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isSharedReadApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function SharedReadNotice({ states }: { states: SharedReadState[] }) {
+  const hasUnavailable = states.includes("unavailable");
+  const hasRestricted = states.includes("restricted");
+  if (!hasUnavailable && !hasRestricted) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-live="polite"
+      aria-atomic="true"
+      role="status"
+      className={`rounded-xl border p-4 shadow-sm ${
+        hasUnavailable ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <h2 className={`text-sm font-semibold ${hasUnavailable ? "text-amber-900" : "text-slate-900"}`}>
+        {hasUnavailable
+          ? "Some connection data is temporarily unavailable"
+          : "Some connection data is restricted"}
+      </h2>
+      <p className={`mt-2 text-sm ${hasUnavailable ? "text-amber-900/90" : "text-slate-700"}`}>
+        {hasUnavailable
+          ? "We could not load every connector, submission, or health feed right now. Unavailable cards are held back instead of defaulting to zero."
+          : "Your role can still see the shared connection workspace, but some connector or submission totals are intentionally redacted."}
+      </p>
+    </section>
+  );
+}
+
 export default async function ChannelsOverviewPage() {
   const { authHeader, actorRole } = await getServerSession();
   const canEditChannelSetup = canManageChannels(actorRole);
   const canManageConnectorAccess = actorRole === "admin";
 
   try {
-    const [connectors, submissionsResponse, health] = await Promise.all([
-      getInstalledConnectors({ role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getInstalledConnectors>>),
-      getSubmissions({ limit: 100 }, { role: actorRole, authHeader }),
-      getDashboardHealth({ role: actorRole, authHeader }),
+    const [connectorsResult, submissionsResult, healthResult] = await Promise.all([
+      loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader })),
+      loadSharedRead(getSubmissions({ limit: 100 }, { role: actorRole, authHeader })),
+      loadSharedRead(getDashboardHealth({ role: actorRole, authHeader })),
     ]);
+    const connectors = connectorsResult.state === "available" ? connectorsResult.value : [];
+    const submissionsResponse = submissionsResult.state === "available" ? submissionsResult.value : [];
+    const health = healthResult.state === "available" ? healthResult.value : null;
     const submissions = toItems(submissionsResponse);
     const activeConnectors = connectors.filter((item) => item.status === "ACTIVE").length;
     const inactiveConnectors = connectors.length - activeConnectors;
@@ -39,13 +122,17 @@ export default async function ChannelsOverviewPage() {
       (submission) => submission.status === "REJECTED" || submission.status === "ERROR",
     ).length;
     const pendingSubmissions = submissions.filter((submission) => submission.status === "PENDING").length;
-    const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);
-    const readyToPublish = Object.values(health.snapshot.publishReadyByConnector).reduce((sum, count) => sum + count, 0);
+    const blockedListings = health
+      ? Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0)
+      : 0;
+    const readyToPublish = health
+      ? Object.values(health.snapshot.publishReadyByConnector).reduce((sum, count) => sum + count, 0)
+      : 0;
     const blockedListingsTotal =
-      typeof health.blockedTotal === "number" ? health.blockedTotal : blockedListings;
+      health && typeof health.blockedTotal === "number" ? health.blockedTotal : blockedListings;
     const readyToPublishTotal =
-      typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : readyToPublish;
-    const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;
+      health && typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : readyToPublish;
+    const connectorBreakdownRedacted = health?.redactedSections?.includes("connector_breakdown") ?? false;
 
     return (
       <div className="space-y-5">
@@ -54,48 +141,159 @@ export default async function ChannelsOverviewPage() {
           description="Catalog channel operations cockpit for connection health, mappings, issues, and governance."
           breadcrumb={
             <>
-              Dashboard / <span className="font-semibold text-slate-700">Connections</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">Connections</span>
             </>
           }
         />
+        <SharedReadNotice
+          states={[connectorsResult.state, submissionsResult.state, healthResult.state]}
+        />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Installed Connections" value={connectors.length} helper={`${activeConnectors} active`} />
+          <KpiCard
+            label="Installed Connections"
+            value={
+              connectorsResult.state === "available"
+                ? connectors.length
+                : connectorsResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
+            }
+            helper={
+              connectorsResult.state === "available"
+                ? `${activeConnectors} active`
+                : connectorsResult.state === "restricted"
+                  ? "Connector installation totals are limited for your role."
+                  : "Connector installation totals are temporarily unavailable."
+            }
+            tone={connectorsResult.state === "unavailable" ? "warning" : "default"}
+          />
           <KpiCard
             label="Submission Jobs"
-            value={submissions.length}
-            helper={`${failedSubmissions} rejected/error | ${pendingSubmissions} pending`}
-            tone={failedSubmissions > 0 ? "warning" : "default"}
+            value={
+              submissionsResult.state === "available"
+                ? submissions.length
+                : submissionsResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
+            }
+            helper={
+              submissionsResult.state === "available"
+                ? `${failedSubmissions} rejected/error | ${pendingSubmissions} pending`
+                : submissionsResult.state === "restricted"
+                  ? "Submission queue totals are limited for your role."
+                  : "Submission queue totals are temporarily unavailable."
+            }
+            tone={
+              submissionsResult.state === "available"
+                ? failedSubmissions > 0
+                  ? "warning"
+                  : "default"
+                : submissionsResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
           />
           <KpiCard
             label="Ready for Publish"
-            value={readyToPublishTotal}
-            helper={
-              connectorBreakdownRedacted
-                ? "Aggregate readiness is visible. Channel-level breakdown requires editor or admin access."
-                : undefined
+            value={
+              healthResult.state === "available"
+                ? readyToPublishTotal
+                : healthResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
             }
-            tone="success"
+            helper={
+              healthResult.state === "available"
+                ? connectorBreakdownRedacted
+                  ? "Aggregate readiness is visible. Channel-level breakdown requires editor or admin access."
+                  : undefined
+                : healthResult.state === "restricted"
+                  ? "Aggregate connection health is limited for your role."
+                  : "Connection health is temporarily unavailable."
+            }
+            tone={
+              healthResult.state === "available"
+                ? "success"
+                : healthResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
           />
           <KpiCard
             label="Blocked Listings"
-            value={blockedListingsTotal}
-            helper={
-              connectorBreakdownRedacted
-                ? "Aggregate blocked totals are visible. Channel-level breakdown requires editor or admin access."
-                : undefined
+            value={
+              healthResult.state === "available"
+                ? blockedListingsTotal
+                : healthResult.state === "restricted"
+                  ? "Restricted"
+                  : "Unavailable"
             }
-            tone={blockedListingsTotal > 0 ? "danger" : "default"}
+            helper={
+              healthResult.state === "available"
+                ? connectorBreakdownRedacted
+                  ? "Aggregate blocked totals are visible. Channel-level breakdown requires editor or admin access."
+                  : undefined
+                : healthResult.state === "restricted"
+                  ? "Blocked-listing totals are limited for your role."
+                  : "Blocked-listing totals are temporarily unavailable."
+            }
+            tone={
+              healthResult.state === "available"
+                ? blockedListingsTotal > 0
+                  ? "danger"
+                  : "default"
+                : healthResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
           />
         </section>
 
         <Card>
           <CardTitle>Channel Health Snapshot</CardTitle>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StatusChip label={`${activeConnectors} active`} tone="success" />
-            <StatusChip label={`${inactiveConnectors} inactive`} tone={inactiveConnectors > 0 ? "warning" : "neutral"} />
-            <StatusChip label={`${failedSubmissions} failed/rejected`} tone={failedSubmissions > 0 ? "danger" : "neutral"} />
-            <StatusChip label={`${blockedListingsTotal} blocked listings`} tone={blockedListingsTotal > 0 ? "danger" : "neutral"} />
-            {connectorBreakdownRedacted ? <StatusChip label="Per-channel details limited" tone="neutral" /> : null}
+            {connectorsResult.state === "available" ? (
+              <>
+                <StatusChip label={`${activeConnectors} active`} tone="success" />
+                <StatusChip label={`${inactiveConnectors} inactive`} tone={inactiveConnectors > 0 ? "warning" : "neutral"} />
+              </>
+            ) : (
+              <StatusChip
+                label={
+                  connectorsResult.state === "restricted"
+                    ? "Connector status restricted"
+                    : "Connector status unavailable"
+                }
+                tone="neutral"
+              />
+            )}
+            {submissionsResult.state === "available" ? (
+              <StatusChip label={`${failedSubmissions} failed/rejected`} tone={failedSubmissions > 0 ? "danger" : "neutral"} />
+            ) : (
+              <StatusChip
+                label={
+                  submissionsResult.state === "restricted"
+                    ? "Submission queue restricted"
+                    : "Submission queue unavailable"
+                }
+                tone="neutral"
+              />
+            )}
+            {healthResult.state === "available" ? (
+              <>
+                <StatusChip label={`${blockedListingsTotal} blocked listings`} tone={blockedListingsTotal > 0 ? "danger" : "neutral"} />
+                {connectorBreakdownRedacted ? <StatusChip label="Per-channel details limited" tone="neutral" /> : null}
+              </>
+            ) : (
+              <StatusChip
+                label={
+                  healthResult.state === "restricted"
+                    ? "Connection health restricted"
+                    : "Connection health unavailable"
+                }
+                tone="neutral"
+              />
+            )}
           </div>
         </Card>
 
@@ -151,7 +349,7 @@ export default async function ChannelsOverviewPage() {
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/channels", error));
     }
     throw error;

@@ -44,8 +44,8 @@ function run() {
     source.includes("const [permissions, submissionsRaw, products, shopifyPublicationState] = await Promise.all([") &&
       source.includes("getConnectorPermissions(installation.slug, { role: actorRole, authHeader })") &&
       source.includes("getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader })") &&
-      source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
-    "Channel connector detail must fetch permissions, installation-scoped submissions, and product lookup data together.",
+      source.includes("getAllProductsSlim({ role: actorRole, authHeader })"),
+    "Channel connector detail must fetch permissions, installation-scoped submissions, and authoritative catalog lookup data together.",
   );
   assert(
       source.includes("getConnectorPublications(installation.id, { role: actorRole, authHeader })") &&
