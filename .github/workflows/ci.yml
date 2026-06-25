@@ -152,3 +152,21 @@ jobs:
         # only Chromium is installed above. Cross-browser coverage is a nightly concern.
         run: npm run test:e2e:smoke -- --project=chromium
         timeout-minutes: 12
+
+      - name: E2E - Shopify connector journey
+        run: |
+          npx playwright test \
+            shopify-connector-managed-install \
+            shopify-field-mapping \
+            shopify-publish-journey \
+            shopify-publication-targets \
+            shopify-account-mismatch \
+            --project=chromium
+        timeout-minutes: 15
+        env:
+          PLAYWRIGHT_SHOPIFY_STORE_DOMAIN: ${{ secrets.PLAYWRIGHT_SHOPIFY_STORE_DOMAIN || 'demo-store.myshopify.com' }}
+          PLAYWRIGHT_SHOPIFY_STORE_NAME: ${{ secrets.PLAYWRIGHT_SHOPIFY_STORE_NAME || 'Demo Store' }}
+          PLAYWRIGHT_SHOPIFY_STORE_ID: ${{ secrets.PLAYWRIGHT_SHOPIFY_STORE_ID || 'gid://shopify/Shop/9001' }}
+          PLAYWRIGHT_SHOPIFY_PUBLICATION_NAME: ${{ secrets.PLAYWRIGHT_SHOPIFY_PUBLICATION_NAME || 'Online Store' }}
+          PLAYWRIGHT_SHOPIFY_PUBLICATION_COUNT_LABEL: ${{ secrets.PLAYWRIGHT_SHOPIFY_PUBLICATION_COUNT_LABEL || '1 publication target' }}
+          PIM_SHOPIFY_ADMIN_API_BASE_URL: http://127.0.0.1:9090

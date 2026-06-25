@@ -49,6 +49,84 @@ async function followCallbackRedirect(page, callbackUrl, redirectedUrlPattern) {
   await page.goto(location, { waitUntil: "domcontentloaded" });
 }
 
+test("install with an invalid shop domain is rejected with a domain validation error", async () => {
+  const adminToken = await apiLogin("admin");
+
+  const definitionsRaw = await apiRequest("GET", "/connectors/definitions", adminToken);
+  const definitions = Array.isArray(definitionsRaw) ? definitionsRaw : (definitionsRaw?.items ?? []);
+  const shopifyDef = definitions.find((item) => item.slug === "shopify");
+  test.skip(!shopifyDef, "shopify connector not configured in this environment");
+
+  // Attempt install with a non-myshopify.com domain
+  const response = await fetch(`${API_URL}/connectors/shopify/install`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({
+      accountAlias: uniqueName("e2e-bad-domain").toLowerCase(),
+      shopDomain: "not-a-shopify-store.com",
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  expect(response.status).toBeGreaterThanOrEqual(400);
+  let errorPayload = null;
+  try { errorPayload = await response.json(); } catch { errorPayload = await response.text().catch(() => ""); }
+  const errorText = String(
+    errorPayload?.message ?? errorPayload?.error ?? errorPayload ?? "",
+  ).toLowerCase();
+  // Must mention domain, shopify, or invalid — not a generic 500 error
+  expect(errorText).toMatch(/domain|shopify|myshopify|invalid/i);
+});
+
+test("credential state shows connected after successful OAuth callback", async ({ page }) => {
+  const adminToken = await apiLogin("admin");
+
+  const definitionsRaw = await apiRequest("GET", "/connectors/definitions", adminToken);
+  const definitions = Array.isArray(definitionsRaw) ? definitionsRaw : (definitionsRaw?.items ?? []);
+  test.skip(!definitions.find((item) => item.slug === "shopify"), "shopify connector not configured");
+
+  let installation = null;
+
+  try {
+    installation = await apiRequest("POST", "/connectors/shopify/install", adminToken, {
+      accountAlias: uniqueName("e2e-cred-val").toLowerCase(),
+      shopDomain: SHOP_DOMAIN,
+    });
+
+    const callbackUrl =
+      `${API_ROOT}/api/v1/connectors/shopify/oauth/callback` +
+      `?state=${encodeURIComponent(installation.id)}` +
+      `&shop=${encodeURIComponent(SHOP_DOMAIN)}` +
+      `&session_token=${encodeURIComponent(`session-${installation.id}`)}`;
+
+    await loginViaUi(page, "admin");
+    await followCallbackRedirect(
+      page,
+      callbackUrl,
+      new RegExp(`/channels/connectors/${escapeRegExp(installation.id)}\\?status=oauth_complete$`),
+    );
+
+    // Credentials tab must show the connected shop and not show the "OAuth not yet complete" warning
+    await page.goto(
+      `/channels/connectors/${installation.id}?tab=credentials&status=oauth_complete`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await expect(page.getByText("Shopify OAuth is not yet complete.")).toHaveCount(0);
+    await expect(
+      page.getByText(new RegExp(`${escapeRegExp(SHOP_NAME)} is connected`, "i")),
+    ).toBeVisible();
+  } finally {
+    if (installation?.id) {
+      try { await apiRequest("POST", `/connectors/${installation.id}/uninstall`, adminToken, {}); } catch {}
+      try { await apiRequest("DELETE", `/connectors/shopify/install/${installation.id}`, adminToken); } catch {}
+    }
+  }
+});
+
 test("admin can complete Shopify managed install and save publication targets", async ({ page }) => {
   const adminToken = await apiLogin("admin");
   const accountAlias = uniqueName("e2e-shopify-store").toLowerCase();
