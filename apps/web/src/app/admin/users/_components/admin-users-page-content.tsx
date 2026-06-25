@@ -742,7 +742,7 @@ export function AdminUsersPageContent({
                 header: "Updated",
                 mobileHide: true,
                 cellClassName: "text-xs",
-                render: (permission) => new Date(permission.updatedAt).toLocaleString(),
+                render: (permission) => new Date(permission.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
               },
             ]}
             rows={connectorPermissions}
