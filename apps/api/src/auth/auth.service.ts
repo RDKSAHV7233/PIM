@@ -998,9 +998,12 @@ export class AuthService implements OnModuleDestroy {
     reset: true;
     workspaceSlug: string | null;
   }> {
-    const normalizedPassword = String(password ?? "");
-    if (normalizedPassword.trim().length < 8) {
+    const normalizedPassword = String(password ?? "").trim();
+    if (normalizedPassword.length < 8) {
       throw new BadRequestException({ error: "PASSWORD_TOO_SHORT", minLength: 8 });
+    }
+    if (normalizedPassword.length > 72) {
+      throw new BadRequestException({ error: "PASSWORD_TOO_LONG", maxLength: 72 });
     }
 
     const directPrisma = this.prismaDirect.getClient();
