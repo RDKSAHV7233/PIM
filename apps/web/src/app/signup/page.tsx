@@ -1,6 +1,7 @@
 import { SignupPageClient } from "@/components/auth/signup-page-client";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
 import { isPublicSignupEnabled } from "@/lib/public-signup";
+import { getServerSessionClaims } from "@/lib/server-session";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -18,6 +19,10 @@ function getString(value: string | string[] | undefined): string {
 }
 
 export default async function SignupPage({ searchParams }: SignupPageProps) {
+  const claims = await getServerSessionClaims();
+  if (claims) {
+    redirect("/dashboard");
+  }
   if (!isPublicSignupEnabled()) {
     redirect(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "/contact");
   }

@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
 import { sanitizeNextPath } from "@/lib/auth-redirect";
 import { isPublicSignupEnabled } from "@/lib/public-signup";
+import { getServerSessionClaims } from "@/lib/server-session";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,10 @@ function getString(value: string | string[] | undefined): string {
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const claims = await getServerSessionClaims();
+  if (claims) {
+    redirect("/dashboard");
+  }
   const params = await searchParams;
   const cookieStore = await cookies();
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);

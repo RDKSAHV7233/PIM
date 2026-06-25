@@ -11,6 +11,7 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
   const canDecide = canDecideApproval(data.actorRole);
   const status = data.product.status;
   const returnTo = `/products/${encodeURIComponent(data.productId)}?tab=quality`;
+  const hasBlockers = data.blockingIssueCount > 0;
 
   return (
     <>
@@ -21,7 +22,9 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
             <p className="text-sm text-slate-600">
               {status === "rejected"
                 ? "Address the reviewer feedback above, then resubmit for another review pass."
-                : "Quality blockers are clear. Move this draft forward for reviewer approval."}
+                : hasBlockers
+                  ? `Fix ${data.blockingIssueCount} blocking issue${data.blockingIssueCount === 1 ? "" : "s"} before submitting for review.`
+                  : "Quality blockers are clear. Move this draft forward for reviewer approval."}
             </p>
             <form action={updateProductAction}>
               <input type="hidden" name="productId" value={data.productId} />
@@ -35,7 +38,11 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
               <input type="hidden" name="gstRate" value={data.product.gstRate ?? ""} />
               <input type="hidden" name="status" value="in_review" />
               <input type="hidden" name="currentTab" value="quality" />
-              <PendingSubmitButton idleLabel="Submit for review" pendingLabel="Submitting…" />
+              <PendingSubmitButton
+                idleLabel={hasBlockers ? "Fix blockers first" : "Submit for review"}
+                pendingLabel="Submitting…"
+                disabled={hasBlockers}
+              />
             </form>
           </div>
         </Card>
