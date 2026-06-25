@@ -622,7 +622,7 @@ export class ShopifyConnector implements ConnectorInterface {
           }
         }
       `,
-    });
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
 
     const nodes = Array.isArray(response.publications?.nodes) ? response.publications?.nodes : [];
     const publications: ConnectorPublicationTarget[] = [];
@@ -735,7 +735,7 @@ export class ShopifyConnector implements ConnectorInterface {
       variables: {
         id: externalRef,
       },
-    });
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
 
     const product = response.node;
     if (!product?.id) {
@@ -1231,7 +1231,7 @@ export class ShopifyConnector implements ConnectorInterface {
         input: this.buildProductSetInput(product),
         identifier: this.buildProductIdentifier(product, externalRef),
       },
-    });
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
 
     const mutation = response.productSet;
     const rawUserErrors = Array.isArray(mutation?.userErrors) ? mutation.userErrors : [];
@@ -1302,7 +1302,7 @@ export class ShopifyConnector implements ConnectorInterface {
         }
       `,
       variables: { productId: shopifyProductId, variants: [variantInput] },
-    });
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
     const variantErrors = (
       Array.isArray(variantResponse.productVariantsBulkUpdate?.userErrors)
         ? variantResponse.productVariantsBulkUpdate?.userErrors
@@ -1558,7 +1558,7 @@ export class ShopifyConnector implements ConnectorInterface {
         id: productId,
         publicationId,
       },
-    });
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
 
     const mutation = response.publishablePublish;
     const errors = (Array.isArray(mutation?.userErrors) ? mutation?.userErrors : [])
@@ -1610,7 +1610,7 @@ export class ShopifyConnector implements ConnectorInterface {
         }
       `,
       variables: { id: shopifyGid },
-    });
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
 
     const node = response.node;
     if (!node) {
