@@ -30,6 +30,8 @@ type CanonicalRowPayload = {
   title?: string;
   description?: string;
   brand?: string;
+  skuCode?: string;
+  sellingPrice?: number;
   hsnCode?: string;
   gstRate?: number;
   status?: string;
@@ -49,6 +51,8 @@ const CANONICAL_FIELDS = [
   "title",
   "description",
   "brand",
+  "skuCode",
+  "sellingPrice",
   "hsnCode",
   "gstRate",
   "status",
@@ -59,6 +63,8 @@ const DEFAULT_MAPPING: Record<(typeof CANONICAL_FIELDS)[number], string> = {
   title: "title",
   description: "description",
   brand: "brand",
+  skuCode: "skuCode",
+  sellingPrice: "sellingPrice",
   hsnCode: "hsnCode",
   gstRate: "gstRate",
   status: "status",
@@ -69,6 +75,8 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
   title: ["name", "product_name", "item_name", "title"],
   description: ["description", "product_description", "details"],
   brand: ["brand", "brand_name", "maker"],
+  skuCode: ["sku", "sku_code", "skucode", "item_sku", "variant_sku"],
+  sellingPrice: ["selling_price", "price", "unit_price", "sale_price"],
   hsnCode: ["hsn", "hsn_code", "hsncode", "tax_code"],
   gstRate: ["gst", "gst_rate", "tax_rate", "gstrate"],
   status: ["status", "state"],
@@ -969,6 +977,18 @@ export class BulkImportService {
         },
       });
 
+      const skuCode = (payload.skuCode ?? "").trim();
+      if (skuCode) {
+        await this.prisma.tenant().variant.create({
+          data: {
+            productId: product.id,
+            skuCode,
+            sellingPrice: payload.sellingPrice ?? null,
+            status: RecordStatus.draft,
+          },
+        });
+      }
+
       // Write international tax codes if the row included any.
       // Uses a single TaxRegime lookup per row — regimes are a tiny seeded table (5 rows).
       // Silently skips any entry whose regimeKey is not in the DB (e.g. seed not yet run).
@@ -1273,6 +1293,8 @@ export class BulkImportService {
     const title = this.pickMappedValue(input, mapping.title);
     const description = this.pickMappedValue(input, mapping.description);
     const brand = this.pickMappedValue(input, mapping.brand);
+    const skuCodeRaw = this.pickMappedValue(input, mapping.skuCode);
+    const sellingPriceRaw = this.pickMappedValue(input, mapping.sellingPrice);
     const hsnCode = this.pickMappedValue(input, mapping.hsnCode);
     const gstRateRaw = this.pickMappedValue(input, mapping.gstRate);
     const status = this.pickMappedValue(input, mapping.status);
@@ -1283,6 +1305,8 @@ export class BulkImportService {
       title: this.asTrimmedString(title),
       description: this.asTrimmedString(description),
       brand: this.asTrimmedString(brand),
+      skuCode: this.asTrimmedString(skuCodeRaw),
+      sellingPrice: this.asOptionalNumber(sellingPriceRaw),
       hsnCode: this.asTrimmedString(hsnCode),
       gstRate: this.asOptionalNumber(gstRateRaw),
       status: this.asTrimmedString(status),
@@ -1421,7 +1445,10 @@ export class BulkImportService {
     return values.map((value) => value.trim());
   }
 
-  private pickMappedValue(row: Record<string, unknown>, key: string) {
+  private pickMappedValue(row: Record<string, unknown>, key: string | undefined) {
+    if (!key) {
+      return undefined;
+    }
     if (key in row) {
       return row[key];
     }
@@ -1484,6 +1511,13 @@ export class BulkImportService {
         severity: "warning",
         code: "BRAND_RECOMMENDED",
         message: "Brand is recommended for marketplace readiness.",
+      });
+    }
+    if (row.sellingPrice !== undefined && Number.isFinite(row.sellingPrice) && row.sellingPrice < 0) {
+      issues.push({
+        severity: "warning",
+        code: "NEGATIVE_PRICE",
+        message: "Selling price is negative.",
       });
     }
     if (row.gstRate !== undefined && (!Number.isFinite(row.gstRate) || row.gstRate < 0)) {

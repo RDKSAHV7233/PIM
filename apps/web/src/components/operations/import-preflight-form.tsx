@@ -50,8 +50,11 @@ const DEFAULT_MAPPING = JSON.stringify({
   title: "title",
   description: "description",
   brand: "brand",
+  skuCode: "sku",
+  sellingPrice: "sellingPrice",
   hsnCode: "hsnCode",
   gstRate: "gstRate",
+  status: "status",
   attributes: "attributes",
 });
 
@@ -345,7 +348,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
         <p className="font-medium text-slate-800">Accepted columns</p>
         <p>
-          Use the canonical fields <code>title</code>, <code>description</code>, <code>brand</code>, <code>hsnCode</code>, <code>gstRate</code>, <code>status</code>, and <code>attributes</code>.
+          Use the canonical fields <code>title</code>, <code>description</code>, <code>brand</code>, <code>sku</code>, <code>sellingPrice</code>, <code>hsnCode</code>, <code>gstRate</code>, <code>status</code>, and <code>attributes</code>.
         </p>
         <p>
           The <code>attributes</code> column should contain a JSON object for category-specific fields, for example <code>{'{"material":"cotton","color":"black"}'}</code>.

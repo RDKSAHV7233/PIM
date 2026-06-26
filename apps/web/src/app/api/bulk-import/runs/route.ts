@@ -14,17 +14,22 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.text();
-  const response = await fetch(`${getApiBaseUrl()}/bulk-import/runs`, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-      "Content-Type": request.headers.get("content-type") ?? "application/json",
-    },
-    body,
-    cache: "no-store",
-    signal: AbortSignal.timeout(15_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}/bulk-import/runs`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": request.headers.get("content-type") ?? "application/json",
+      },
+      body,
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    return NextResponse.json({ error: "UPSTREAM_UNAVAILABLE" }, { status: 503 });
+  }
 
   const payload = await response.text();
   return new NextResponse(payload, {

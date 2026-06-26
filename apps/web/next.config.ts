@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
       // Legacy connector route tree — canonical path is /channels/connectors
       { source: "/connectors", destination: "/channels/connectors", permanent: true },
       { source: "/connectors/:path*", destination: "/channels/connectors/:path*", permanent: true },
+      // URL pattern consistency — Settings pages use /admin/ except Account Security
+      { source: "/admin/security", destination: "/settings/security", permanent: true },
+      { source: "/settings/users", destination: "/admin/users", permanent: true },
+      // Quality pages use /quality/ except Rejection Insights
+      { source: "/quality/rejection", destination: "/rejection", permanent: true },
+      { source: "/quality/rejections", destination: "/rejection", permanent: true },
     ];
   },
   devIndicators: false,
