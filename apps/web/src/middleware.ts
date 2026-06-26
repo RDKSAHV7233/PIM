@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const ACCESS_COOKIE = "pim_access_token";
 const REFRESH_COOKIE = "pim_refresh_token";
+const CSRF_COOKIE = "pim_csrf_token";
 const REFRESH_THRESHOLD_SECONDS = 10 * 60;
 
 function useSecureCookies(): boolean {
@@ -110,12 +111,21 @@ export async function middleware(request: NextRequest) {
 
     const response = NextResponse.next();
     const secureCookies = useSecureCookies();
+    const maxAge = Number.isFinite(payload.expiresInSeconds) ? Number(payload.expiresInSeconds) : 4 * 60 * 60;
     response.cookies.set(ACCESS_COOKIE, payload.accessToken, {
       httpOnly: true,
       secure: secureCookies,
       sameSite: "lax",
       path: "/",
-      maxAge: Number.isFinite(payload.expiresInSeconds) ? Number(payload.expiresInSeconds) : 4 * 60 * 60,
+      maxAge,
+    });
+
+    response.cookies.set(CSRF_COOKIE, crypto.randomUUID(), {
+      httpOnly: false,
+      secure: secureCookies,
+      sameSite: "lax",
+      path: "/",
+      maxAge,
     });
 
     const nextRefreshToken = extractCookieValue(refreshResponse.headers.get("set-cookie"), REFRESH_COOKIE);

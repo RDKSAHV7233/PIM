@@ -149,11 +149,21 @@ export class BulkImportRunService implements OnModuleInit {
     const tenantKey = this.resolveTenantKey();
     const runId = randomUUID();
 
-    const { storageKey } = await this.storageService.storeStagedCsv({
-      tenantKey,
-      runId,
-      content: fileBuffer,
-    });
+    let storageKey: string;
+    try {
+      ({ storageKey } = await this.storageService.storeStagedCsv({
+        tenantKey,
+        runId,
+        content: fileBuffer,
+      }));
+    } catch (error) {
+      this.logger.error(
+        `Failed to store staged CSV for run ${runId}: ${error instanceof Error ? error.message : error}`,
+      );
+      throw new BadRequestException(
+        "Failed to stage import file for processing. Check storage configuration.",
+      );
+    }
 
     const sourceExpiresAt = new Date();
     sourceExpiresAt.setDate(sourceExpiresAt.getDate() + STAGED_FILE_EXPIRY_DAYS);
