@@ -1,0 +1,11 @@
+title,description,brand,sku,sellingPrice,mainImageUrl,productType,hsnCode,gstRate
+Duplicate SKU Product A,First product with duplicated SKU code.,TestBrand,DUP-SKU-001,29.99,https://cdn.example.com/images/dup-a-001.jpg,T-Shirts,61091000,5
+Duplicate SKU Product B,Second product with same SKU as row 1.,TestBrand,DUP-SKU-001,39.99,https://cdn.example.com/images/dup-b-001.jpg,Accessories,42050000,18
+Unique Product 1,This product has a unique SKU.,TestBrand,UNIQ-SKU-002,49.99,https://cdn.example.com/images/uniq-002.jpg,T-Shirts,61091000,5
+Unique Product 2,Another product with unique SKU.,TestBrand,UNIQ-SKU-003,59.99,https://cdn.example.com/images/uniq-003.jpg,Bags,42021200,18
+Triplicate SKU Product X,First of three products sharing same SKU.,TestBrand,TRIP-SKU-004,29.99,https://cdn.example.com/images/trip-x-004.jpg,T-Shirts,61091000,5
+Triplicate SKU Product Y,Second of three products sharing same SKU.,TestBrand,TRIP-SKU-004,39.99,https://cdn.example.com/images/trip-y-004.jpg,Accessories,42050000,18
+Triplicate SKU Product Z,Third of three products sharing same SKU.,TestBrand,TRIP-SKU-004,49.99,https://cdn.example.com/images/trip-z-004.jpg,Bags,42021200,18
+Unique Product 3,Yet another unique product.,TestBrand,UNIQ-SKU-005,69.99,https://cdn.example.com/images/uniq-005.jpg,Shoes,64035100,18
+Case Sensitive SKU Lower,SKU in lowercase — should test case sensitivity.,TestBrand,case-sku-006,29.99,https://cdn.example.com/images/case-low-006.jpg,T-Shirts,61091000,5
+Case Sensitive SKU Upper,Same SKU in uppercase — may or may not collide.,TestBrand,CASE-SKU-006,39.99,https://cdn.example.com/images/case-up-006.jpg,T-Shirts,61091000,5

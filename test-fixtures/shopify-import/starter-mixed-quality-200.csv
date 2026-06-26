@@ -1,0 +1,201 @@
+title,description,brand,sku,sellingPrice,mainImageUrl,productType,hsnCode,gstRate
+Premium Leather Wallet Brown,Genuine full-grain leather bifold wallet. RFID-blocking with 8 card slots.,UrbanEdge,UE-WAL-BRN-001,59.99,https://cdn.example.com/images/wallet-brown-001.jpg,Wallets,42023100,18
+Premium Leather Wallet Black,Genuine full-grain leather bifold wallet. RFID-blocking with 8 card slots.,UrbanEdge,UE-WAL-BLK-002,59.99,https://cdn.example.com/images/wallet-black-002.jpg,Wallets,42023100,18
+Slim Card Holder Tan,Minimalist card holder in tan leather. Holds 6 cards with centre pocket.,UrbanEdge,UE-CRD-TAN-003,29.99,https://cdn.example.com/images/cardholder-tan-003.jpg,Wallets,42023100,18
+Slim Card Holder Navy,Minimalist card holder in navy leather. Holds 6 cards with centre pocket.,UrbanEdge,UE-CRD-NAV-004,29.99,https://cdn.example.com/images/cardholder-navy-004.jpg,Wallets,42023100,18
+Leather Belt Classic Brown,Genuine leather belt with brushed nickel buckle. 35mm width.,UrbanEdge,UE-BLT-BRN-005,44.99,https://cdn.example.com/images/belt-brown-005.jpg,Belts,42031000,18
+Leather Belt Classic Black,Genuine leather belt with brushed nickel buckle. 35mm width.,UrbanEdge,UE-BLT-BLK-006,44.99,https://cdn.example.com/images/belt-black-006.jpg,Belts,42031000,18
+Canvas Weekender Bag Olive,Waxed canvas weekender with leather trim. Shoe compartment and detachable strap.,UrbanEdge,UE-WKD-OLV-007,149.99,https://cdn.example.com/images/weekender-olive-007.jpg,Bags,42021200,18
+Canvas Weekender Bag Charcoal,Waxed canvas weekender with leather trim. Shoe compartment and detachable strap.,UrbanEdge,UE-WKD-CHR-008,149.99,https://cdn.example.com/images/weekender-charcoal-008.jpg,Bags,42021200,18
+Laptop Sleeve 15 inch Grey,Neoprene laptop sleeve with fleece lining. Fits 14-15 inch laptops.,UrbanEdge,UE-LPS-GRY-009,34.99,https://cdn.example.com/images/laptop-grey-009.jpg,Tech Accessories,42029200,18
+Laptop Sleeve 13 inch Black,Neoprene laptop sleeve with fleece lining. Fits 12-13 inch laptops.,UrbanEdge,UE-LPS-BLK-010,29.99,https://cdn.example.com/images/laptop-black-010.jpg,Tech Accessories,42029200,18
+Crossbody Sling Bag Black,Compact crossbody sling bag with anti-theft pocket. Water-resistant nylon.,UrbanEdge,UE-SLG-BLK-011,39.99,https://cdn.example.com/images/sling-black-011.jpg,Bags,42021200,18
+Crossbody Sling Bag Grey,Compact crossbody sling bag with anti-theft pocket. Water-resistant nylon.,UrbanEdge,UE-SLG-GRY-012,39.99,https://cdn.example.com/images/sling-grey-012.jpg,Bags,42021200,18
+Leather Passport Cover Tan,Smooth leather passport cover with two card slots.,UrbanEdge,UE-PSP-TAN-013,24.99,https://cdn.example.com/images/passport-tan-013.jpg,Travel,42023100,18
+Leather Passport Cover Black,Smooth leather passport cover with two card slots.,UrbanEdge,UE-PSP-BLK-014,24.99,https://cdn.example.com/images/passport-black-014.jpg,Travel,42023100,18
+Toiletry Kit Canvas Olive,Roll-up toiletry kit in waxed canvas. Water-resistant lining with 4 compartments.,UrbanEdge,UE-TLT-OLV-015,49.99,https://cdn.example.com/images/toiletry-olive-015.jpg,Travel,42021200,18
+Aviator Sunglasses Gold,Classic aviator sunglasses with gold metal frame. Polarised UV400 lenses.,UrbanEdge,UE-SNG-GLD-016,79.99,https://cdn.example.com/images/aviator-gold-016.jpg,Eyewear,90041000,18
+Aviator Sunglasses Silver,Classic aviator sunglasses with silver metal frame. Polarised UV400 lenses.,UrbanEdge,UE-SNG-SLV-017,79.99,https://cdn.example.com/images/aviator-silver-017.jpg,Eyewear,90041000,18
+Wayfarer Sunglasses Tortoise,Retro wayfarer sunglasses in tortoise shell. Polarised UV400 lenses.,UrbanEdge,UE-SNG-TRT-018,69.99,https://cdn.example.com/images/wayfarer-tortoise-018.jpg,Eyewear,90041000,18
+Watch Classic Silver,Minimalist analogue watch with silver case. Japanese quartz movement and leather strap.,UrbanEdge,UE-WCH-SLV-019,129.99,https://cdn.example.com/images/watch-silver-019.jpg,Watches,91029900,18
+Watch Classic Rose Gold,Minimalist analogue watch with rose gold case. Japanese quartz movement and leather strap.,UrbanEdge,UE-WCH-RSG-020,139.99,https://cdn.example.com/images/watch-rosegold-020.jpg,Watches,91029900,18
+Beanie Wool Charcoal,Ribbed merino wool beanie in charcoal. Lined with soft fleece for warmth.,UrbanEdge,UE-BNE-CHR-021,24.99,https://cdn.example.com/images/beanie-charcoal-021.jpg,Hats,65050000,12
+Beanie Wool Navy,Ribbed merino wool beanie in navy. Lined with soft fleece for warmth.,UrbanEdge,UE-BNE-NAV-022,24.99,https://cdn.example.com/images/beanie-navy-022.jpg,Hats,65050000,12
+Baseball Cap Black,Structured six-panel baseball cap in black. Adjustable snapback closure.,UrbanEdge,UE-CAP-BLK-023,19.99,https://cdn.example.com/images/cap-black-023.jpg,Hats,65050000,12
+Baseball Cap Khaki,Structured six-panel baseball cap in khaki. Adjustable snapback closure.,UrbanEdge,UE-CAP-KHK-024,19.99,https://cdn.example.com/images/cap-khaki-024.jpg,Hats,65050000,12
+Leather Gloves Brown,Touchscreen-compatible leather gloves in brown. Cashmere-lined for warmth.,UrbanEdge,UE-GLV-BRN-025,49.99,https://cdn.example.com/images/gloves-brown-025.jpg,Gloves,42032100,18
+Silk Pocket Square Navy,Hand-rolled silk pocket square in navy. 33cm x 33cm with hand-stitched edges.,UrbanEdge,UE-PKT-NAV-026,29.99,https://cdn.example.com/images/pocketsquare-navy-026.jpg,Accessories,62151000,5
+Silk Pocket Square Burgundy,Hand-rolled silk pocket square in burgundy. 33cm x 33cm with hand-stitched edges.,UrbanEdge,UE-PKT-BRG-027,29.99,https://cdn.example.com/images/pocketsquare-burgundy-027.jpg,Accessories,62151000,5
+Leather Keychain Brown,Braided leather keychain with brass clasp. 12cm length.,UrbanEdge,UE-KEY-BRN-028,14.99,https://cdn.example.com/images/keychain-brown-028.jpg,Accessories,42050000,18
+Leather Keychain Black,Braided leather keychain with brass clasp. 12cm length.,UrbanEdge,UE-KEY-BLK-029,14.99,https://cdn.example.com/images/keychain-black-029.jpg,Accessories,42050000,18
+Dopp Kit Leather Tan,Leather dopp kit with waterproof lining. Brass hardware and YKK zipper.,UrbanEdge,UE-DOP-TAN-030,69.99,https://cdn.example.com/images/dopp-tan-030.jpg,Travel,42021200,18
+Umbrella Compact Black,Auto-open compact umbrella in black. Fibreglass ribs for wind resistance.,UrbanEdge,UE-UMB-BLK-031,29.99,https://cdn.example.com/images/umbrella-black-031.jpg,Accessories,66019100,18
+Tie Silk Navy Stripe,100% silk tie in navy with diagonal stripe. Hand-made with keeper loop.,UrbanEdge,UE-TIE-NAV-032,44.99,https://cdn.example.com/images/tie-navy-032.jpg,Accessories,62151000,5
+Tie Silk Burgundy Solid,100% silk tie in solid burgundy. Hand-made with keeper loop.,UrbanEdge,UE-TIE-BRG-033,44.99,https://cdn.example.com/images/tie-burgundy-033.jpg,Accessories,62151000,5
+Cufflinks Silver Square,Polished stainless steel cufflinks in square shape. Toggle closure.,UrbanEdge,UE-CUF-SLV-034,39.99,https://cdn.example.com/images/cufflinks-silver-034.jpg,Accessories,71179000,18
+Cufflinks Gunmetal Round,Brushed gunmetal cufflinks in round shape. Toggle closure.,UrbanEdge,UE-CUF-GUN-035,39.99,https://cdn.example.com/images/cufflinks-gunmetal-035.jpg,Accessories,71179000,18
+Money Clip Silver,Slim stainless steel money clip. Holds up to 15 folded bills.,UrbanEdge,UE-MNC-SLV-036,19.99,https://cdn.example.com/images/moneyclip-silver-036.jpg,Accessories,71179000,18
+Travel Wallet Leather Black,Large travel wallet in black leather. Holds passport and boarding pass and cards.,UrbanEdge,UE-TVL-BLK-037,79.99,https://cdn.example.com/images/travel-wallet-037.jpg,Travel,42023100,18
+Gym Bag Duffel Black,Nylon gym duffel with wet-dry separation. Padded shoulder strap.,UrbanEdge,UE-GYM-BLK-038,59.99,https://cdn.example.com/images/gym-black-038.jpg,Bags,42021200,18
+Gym Bag Duffel Grey,Nylon gym duffel with wet-dry separation. Padded shoulder strap.,UrbanEdge,UE-GYM-GRY-039,59.99,https://cdn.example.com/images/gym-grey-039.jpg,Bags,42021200,18
+Scarf Wool Herringbone,Soft lambswool scarf in herringbone pattern. 180cm x 30cm with fringed ends.,UrbanEdge,UE-SCF-HBN-040,39.99,https://cdn.example.com/images/scarf-herringbone-040.jpg,Scarves,61171000,12
+Scarf Cashmere Navy,Pure cashmere scarf in navy. 200cm x 35cm with hand-rolled edges.,UrbanEdge,UE-SCF-NAV-041,89.99,https://cdn.example.com/images/scarf-navy-041.jpg,Scarves,61171000,12
+Laptop Backpack Black,Professional laptop backpack with USB charging port. Fits 15.6 inch laptops.,UrbanEdge,UE-BPK-BLK-042,89.99,https://cdn.example.com/images/backpack-black-042.jpg,Bags,42021200,18
+Laptop Backpack Grey,Professional laptop backpack with USB charging port. Fits 15.6 inch laptops.,UrbanEdge,UE-BPK-GRY-043,89.99,https://cdn.example.com/images/backpack-grey-043.jpg,Bags,42021200,18
+Leather Journal Brown,A5 leather-bound journal with 200 lined pages. Refillable with brass clasp.,UrbanEdge,UE-JRN-BRN-044,34.99,https://cdn.example.com/images/journal-brown-044.jpg,Stationery,48201000,12
+Leather Journal Black,A5 leather-bound journal with 200 lined pages. Refillable with brass clasp.,UrbanEdge,UE-JRN-BLK-045,34.99,https://cdn.example.com/images/journal-black-045.jpg,Stationery,48201000,12
+Pen Set Executive,Ballpoint and rollerball pen set in gift box. Brass body with chrome accents.,UrbanEdge,UE-PEN-EXC-046,49.99,https://cdn.example.com/images/pen-set-046.jpg,Stationery,96081000,18
+Flask Stainless 500ml,Double-wall insulated flask in stainless steel. Keeps drinks hot 12 hours or cold 24.,UrbanEdge,UE-FLK-STL-047,29.99,https://cdn.example.com/images/flask-steel-047.jpg,Drinkware,73239300,18
+Flask Matte Black 500ml,Double-wall insulated flask in matte black. Keeps drinks hot 12 hours or cold 24.,UrbanEdge,UE-FLK-BLK-048,34.99,https://cdn.example.com/images/flask-black-048.jpg,Drinkware,73239300,18
+Cable Organiser Leather,Roll-up leather cable organiser with 5 elastic loops. Keeps cables tidy while travelling.,UrbanEdge,UE-CBL-LTH-049,24.99,https://cdn.example.com/images/cable-org-049.jpg,Tech Accessories,42050000,18
+Phone Case Leather Black,Full-grain leather phone case with card slot. Compatible with MagSafe.,UrbanEdge,UE-PHN-BLK-050,44.99,https://cdn.example.com/images/phone-black-050.jpg,Tech Accessories,42023100,18
+Desk Mat Leather Brown,Full-grain leather desk mat 80x40cm. Non-slip backing with stitched edges.,UrbanEdge,UE-DSK-BRN-051,59.99,https://cdn.example.com/images/deskmat-brown-051.jpg,Office,42050000,18
+Desk Mat Leather Black,Full-grain leather desk mat 80x40cm. Non-slip backing with stitched edges.,UrbanEdge,UE-DSK-BLK-052,59.99,https://cdn.example.com/images/deskmat-black-052.jpg,Office,42050000,18
+Bookmark Leather Embossed,Italian leather bookmark with blind emboss. 15cm x 4cm with tassel.,UrbanEdge,UE-BMK-LTH-053,9.99,https://cdn.example.com/images/bookmark-leather-053.jpg,Stationery,42050000,18
+Bracelet Woven Leather Brown,Hand-woven leather bracelet with magnetic clasp. Unisex design.,UrbanEdge,UE-BRC-BRN-054,19.99,https://cdn.example.com/images/bracelet-brown-054.jpg,Jewellery,71179000,3
+Bracelet Woven Leather Black,Hand-woven leather bracelet with magnetic clasp. Unisex design.,UrbanEdge,UE-BRC-BLK-055,19.99,https://cdn.example.com/images/bracelet-black-055.jpg,Jewellery,71179000,3
+Messenger Bag Canvas Tan,Vintage-style canvas messenger bag with leather buckle straps.,UrbanEdge,UE-MSG-TAN-056,79.99,https://cdn.example.com/images/messenger-tan-056.jpg,Bags,42021200,18
+Messenger Bag Canvas Grey,Vintage-style canvas messenger bag with leather buckle straps.,UrbanEdge,UE-MSG-GRY-057,79.99,https://cdn.example.com/images/messenger-grey-057.jpg,Bags,42021200,18
+Shoe Horn Brass,Heavy brass shoe horn 45cm. Leather hanging loop for closet storage.,UrbanEdge,UE-SHH-BRS-058,29.99,https://cdn.example.com/images/shoehorn-brass-058.jpg,Shoe Care,83062900,18
+Shoe Brush Kit,Two-piece horsehair shoe brush kit. Applicator and polish brush in cotton bag.,UrbanEdge,UE-SBR-KIT-059,19.99,https://cdn.example.com/images/shoebrush-kit-059.jpg,Shoe Care,96039000,18
+Travel Adapter Universal,Universal travel adapter with 4 USB ports. Covers US UK EU AU plugs.,UrbanEdge,UE-ADP-UNV-060,24.99,https://cdn.example.com/images/adapter-universal-060.jpg,Tech Accessories,85044090,18
+Pocket Square Linen White,Crisp white linen pocket square. 33cm x 33cm with hand-rolled edges.,UrbanEdge,UE-LPK-WHT-061,19.99,https://cdn.example.com/images/pocket-linen-white-061.jpg,Accessories,62151000,5
+Suspenders Elastic Navy,Elastic suspenders in navy with leather trim. Y-back design with clip fasteners.,UrbanEdge,UE-SUS-NAV-062,34.99,https://cdn.example.com/images/suspenders-navy-062.jpg,Accessories,62171000,12
+Suspenders Elastic Burgundy,Elastic suspenders in burgundy with leather trim. Y-back design with clip fasteners.,UrbanEdge,UE-SUS-BRG-063,34.99,https://cdn.example.com/images/suspenders-burgundy-063.jpg,Accessories,62171000,12
+Cologne Travel Sprayer,Refillable cologne atomiser in brushed aluminium. 5ml capacity for carry-on.,UrbanEdge,UE-COL-SPR-064,14.99,https://cdn.example.com/images/cologne-sprayer-064.jpg,Grooming,96161000,18
+Grooming Kit Travel,6-piece grooming kit in leather zip case. Scissors and tweezers and nail file and comb.,UrbanEdge,UE-GRM-KIT-065,39.99,https://cdn.example.com/images/grooming-kit-065.jpg,Grooming,82141000,18
+Tie Bar Silver,Slim tie bar in polished stainless steel. 5.5cm width for standard ties.,UrbanEdge,UE-TBR-SLV-066,24.99,https://cdn.example.com/images/tiebar-silver-066.jpg,Accessories,71179000,18
+Tie Bar Gunmetal,Slim tie bar in brushed gunmetal. 5.5cm width for standard ties.,UrbanEdge,UE-TBR-GUN-067,24.99,https://cdn.example.com/images/tiebar-gunmetal-067.jpg,Accessories,71179000,18
+Leather Coaster Set,Set of 4 round leather coasters in gift box. 10cm diameter with embossed logo.,UrbanEdge,UE-CST-SET-068,29.99,https://cdn.example.com/images/coaster-set-068.jpg,Home,42050000,18
+Valet Tray Leather,Leather valet tray for keys and wallet. 20x15cm with snap corners.,UrbanEdge,UE-VLT-LTH-069,34.99,https://cdn.example.com/images/valet-tray-069.jpg,Home,42050000,18
+Luggage Tag Leather Brown,Leather luggage tag with privacy flap. Stainless steel buckle strap.,UrbanEdge,UE-LUG-BRN-070,14.99,https://cdn.example.com/images/luggage-tag-brown-070.jpg,Travel,42050000,18
+Luggage Tag Leather Black,Leather luggage tag with privacy flap. Stainless steel buckle strap.,UrbanEdge,UE-LUG-BLK-071,14.99,https://cdn.example.com/images/luggage-tag-black-071.jpg,Travel,42050000,18
+Garment Bag Canvas,Waxed canvas garment bag for suits. Shoulder strap and hanger opening.,UrbanEdge,UE-GMB-CNV-072,99.99,https://cdn.example.com/images/garment-bag-072.jpg,Travel,42021200,18
+Collar Stays Set Metal,Set of 4 stainless steel collar stays in leather case. Two sizes: 6.5cm and 7.5cm.,UrbanEdge,UE-CLS-MTL-073,19.99,https://cdn.example.com/images/collar-stays-073.jpg,Accessories,71179000,18
+Shoe Trees Cedar,Cedar shoe trees with split toe. Absorbs moisture and maintains shoe shape.,UrbanEdge,UE-SHT-CDR-074,34.99,https://cdn.example.com/images/shoe-trees-074.jpg,Shoe Care,44219900,18
+Wine Opener Lever,Professional lever wine opener in stainless steel. Foil cutter included.,UrbanEdge,UE-WIN-LVR-075,39.99,https://cdn.example.com/images/wine-opener-075.jpg,Home,82055100,18
+Hip Flask 180ml,Stainless steel hip flask 180ml. Captive lid with brown leather wrap.,UrbanEdge,UE-HIP-STL-076,34.99,https://cdn.example.com/images/hip-flask-076.jpg,Drinkware,73239300,18
+Cigar Case Leather,Three-finger cigar case in brown leather. Cedar-lined interior.,UrbanEdge,UE-CGR-LTH-077,44.99,https://cdn.example.com/images/cigar-case-077.jpg,Accessories,42023100,18
+Pocket Knife Multi-Tool,Compact multi-tool with 11 functions. Stainless steel with anodised aluminium handle.,UrbanEdge,UE-PKN-MTL-078,54.99,https://cdn.example.com/images/pocket-knife-078.jpg,Tools,82119300,18
+Duffle Coat Toggle Navy,Classic duffle coat in navy wool. Buffalo horn toggles with rope fastenings.,UrbanEdge,UE-DFL-NAV-079,249.99,https://cdn.example.com/images/duffle-navy-079.jpg,Outerwear,62011100,12
+Duffle Coat Toggle Camel,Classic duffle coat in camel wool. Buffalo horn toggles with rope fastenings.,UrbanEdge,UE-DFL-CML-080,249.99,https://cdn.example.com/images/duffle-camel-080.jpg,Outerwear,62011100,12
+Trench Coat Classic Tan,Double-breasted trench coat in tan cotton-gabardine. Storm flap and epaulettes.,UrbanEdge,UE-TRC-TAN-081,299.99,https://cdn.example.com/images/trench-tan-081.jpg,Outerwear,62019300,12
+Trench Coat Classic Black,Double-breasted trench coat in black cotton-gabardine. Storm flap and epaulettes.,UrbanEdge,UE-TRC-BLK-082,299.99,https://cdn.example.com/images/trench-black-082.jpg,Outerwear,62019300,12
+Blazer Wool Navy,Two-button wool blazer in navy. Half-canvassed with patch pockets.,UrbanEdge,UE-BLZ-NAV-083,199.99,https://cdn.example.com/images/blazer-navy-083.jpg,Blazers,62033100,12
+Blazer Wool Charcoal,Two-button wool blazer in charcoal. Half-canvassed with patch pockets.,UrbanEdge,UE-BLZ-CHR-084,199.99,https://cdn.example.com/images/blazer-charcoal-084.jpg,Blazers,62033100,12
+Dress Shirt White Slim,Slim-fit dress shirt in white cotton poplin. French cuffs with mother-of-pearl buttons.,UrbanEdge,UE-DRS-WHT-085,74.99,https://cdn.example.com/images/dress-shirt-white-085.jpg,Shirts,62052000,5
+Dress Shirt Blue Slim,Slim-fit dress shirt in sky blue cotton poplin. French cuffs with mother-of-pearl buttons.,UrbanEdge,UE-DRS-BLU-086,74.99,https://cdn.example.com/images/dress-shirt-blue-086.jpg,Shirts,62052000,5
+Knit Tie Charcoal,Silk knit tie in charcoal. 6cm width with squared end.,UrbanEdge,UE-KTI-CHR-087,34.99,https://cdn.example.com/images/knit-tie-charcoal-087.jpg,Accessories,62151000,5
+Knit Tie Navy,Silk knit tie in navy. 6cm width with squared end.,UrbanEdge,UE-KTI-NAV-088,34.99,https://cdn.example.com/images/knit-tie-navy-088.jpg,Accessories,62151000,5
+Bow Tie Silk Navy,Self-tie bow tie in navy silk. Adjustable neck band.,UrbanEdge,UE-BOW-NAV-089,29.99,https://cdn.example.com/images/bowtie-navy-089.jpg,Accessories,62151000,5
+Bow Tie Silk Burgundy,Self-tie bow tie in burgundy silk. Adjustable neck band.,UrbanEdge,UE-BOW-BRG-090,29.99,https://cdn.example.com/images/bowtie-burgundy-090.jpg,Accessories,62151000,5
+Driving Moccasins Tan,Italian suede driving moccasins in tan. Rubber pebble sole.,UrbanEdge,UE-MOC-TAN-091,119.99,https://cdn.example.com/images/moccasins-tan-091.jpg,Shoes,64035100,18
+Driving Moccasins Navy,Italian suede driving moccasins in navy. Rubber pebble sole.,UrbanEdge,UE-MOC-NAV-092,119.99,https://cdn.example.com/images/moccasins-navy-092.jpg,Shoes,64035100,18
+Chelsea Boots Brown,Leather Chelsea boots in brown. Goodyear welted with elastic side panels.,UrbanEdge,UE-CHB-BRN-093,179.99,https://cdn.example.com/images/chelsea-brown-093.jpg,Shoes,64035100,18
+Chelsea Boots Black,Leather Chelsea boots in black. Goodyear welted with elastic side panels.,UrbanEdge,UE-CHB-BLK-094,179.99,https://cdn.example.com/images/chelsea-black-094.jpg,Shoes,64035100,18
+Derby Shoes Oxblood,Full-grain leather derby shoes in oxblood. Blake-stitched with leather sole.,UrbanEdge,UE-DRB-OXB-095,159.99,https://cdn.example.com/images/derby-oxblood-095.jpg,Shoes,64035100,18
+Loafers Penny Brown,Classic penny loafers in brown calf leather. Leather sole with rubber heel tap.,UrbanEdge,UE-LFR-BRN-096,149.99,https://cdn.example.com/images/loafers-brown-096.jpg,Shoes,64035100,18
+Sneakers Minimalist White,Clean white leather sneakers with margom sole. Minimal stitching.,UrbanEdge,UE-SNK-WHT-097,139.99,https://cdn.example.com/images/sneakers-white-097.jpg,Shoes,64041100,18
+Sneakers Minimalist Black,Clean black leather sneakers with margom sole. Minimal stitching.,UrbanEdge,UE-SNK-BLK-098,139.99,https://cdn.example.com/images/sneakers-black-098.jpg,Shoes,64041100,18
+Wool Fedora Charcoal,Crushable wool fedora in charcoal. Grosgrain ribbon with contrast feather.,UrbanEdge,UE-FDR-CHR-099,59.99,https://cdn.example.com/images/fedora-charcoal-099.jpg,Hats,65040000,12
+Wool Fedora Brown,Crushable wool fedora in brown. Grosgrain ribbon with contrast feather.,UrbanEdge,UE-FDR-BRN-100,59.99,https://cdn.example.com/images/fedora-brown-100.jpg,Hats,65040000,12
+Panama Hat Natural,Genuine toquilla straw panama hat. Hand-woven in Ecuador.,UrbanEdge,UE-PNM-NAT-101,89.99,https://cdn.example.com/images/panama-natural-101.jpg,Hats,65040000,12
+Newsboy Cap Tweed,Harris Tweed newsboy cap. Fully lined with elastic comfort band.,UrbanEdge,UE-NWS-TWD-102,49.99,https://cdn.example.com/images/newsboy-tweed-102.jpg,Hats,65050000,12
+Flat Cap Herringbone,Wool herringbone flat cap. Quilted lining with moisture-wicking band.,UrbanEdge,UE-FLT-HBN-103,39.99,https://cdn.example.com/images/flatcap-herringbone-103.jpg,Hats,65050000,12
+Canvas Apron Barista,Heavy-duty canvas apron with leather straps. Cross-back design with 3 pockets.,UrbanEdge,UE-APR-CNV-104,44.99,https://cdn.example.com/images/apron-canvas-104.jpg,Home,62171000,12
+Whisky Glass Set,Set of 2 crystal whisky tumblers in gift box. Lead-free crystal 300ml.,UrbanEdge,UE-WHK-SET-105,49.99,https://cdn.example.com/images/whisky-glass-105.jpg,Home,70134100,18
+Cocktail Shaker Set,3-piece cocktail shaker set. 750ml stainless steel with strainer and jigger.,UrbanEdge,UE-CKT-SET-106,44.99,https://cdn.example.com/images/cocktail-set-106.jpg,Home,73239300,18
+Cheese Board Acacia,Acacia wood cheese board with 4 stainless steel tools. 35cm x 25cm.,UrbanEdge,UE-CHS-ACA-107,54.99,https://cdn.example.com/images/cheese-board-107.jpg,Home,44199000,18
+Decanter Crystal,Lead-free crystal decanter 1 litre. Hand-cut design with stopper.,UrbanEdge,UE-DCN-CRY-108,79.99,https://cdn.example.com/images/decanter-crystal-108.jpg,Home,70134100,18
+Candle Sandalwood,Soy wax candle in sandalwood scent. Hand-poured in ceramic vessel. 50-hour burn.,UrbanEdge,UE-CND-SND-109,34.99,https://cdn.example.com/images/candle-sandalwood-109.jpg,Home,34060000,18
+Candle Cedar and Moss,Soy wax candle in cedar and moss scent. Hand-poured in ceramic vessel. 50-hour burn.,UrbanEdge,UE-CND-CDR-110,34.99,https://cdn.example.com/images/candle-cedar-110.jpg,Home,34060000,18
+Shaving Brush Badger,Pure badger hair shaving brush with chrome handle. Drip stand included.,UrbanEdge,UE-SHV-BDG-111,39.99,https://cdn.example.com/images/shaving-brush-111.jpg,Grooming,96039000,18
+Safety Razor Chrome,Closed-comb double-edge safety razor. Heavy chrome-plated handle.,UrbanEdge,UE-RZR-CHR-112,49.99,https://cdn.example.com/images/safety-razor-112.jpg,Grooming,82121000,18
+Shaving Soap Sandalwood,Triple-milled shaving soap in sandalwood. Wooden bowl included.,UrbanEdge,UE-SHP-SND-113,24.99,https://cdn.example.com/images/shaving-soap-113.jpg,Grooming,34011100,18
+Beard Oil Cedar,Organic beard oil in cedar scent. 30ml dropper bottle.,UrbanEdge,UE-BRD-CDR-114,19.99,https://cdn.example.com/images/beard-oil-114.jpg,Grooming,33049900,18
+Beard Balm Sandalwood,Natural beard balm in sandalwood. Shea butter base. 60g tin.,UrbanEdge,UE-BBM-SND-115,17.99,https://cdn.example.com/images/beard-balm-115.jpg,Grooming,33049900,18
+Hair Comb Acetate,Hand-cut acetate hair comb. Anti-static with rounded teeth. 18cm length.,UrbanEdge,UE-CMB-ACT-116,14.99,https://cdn.example.com/images/comb-acetate-116.jpg,Grooming,96159000,18
+Cologne Woody 50ml,Eau de toilette in woody scent. 50ml glass bottle with atomiser.,UrbanEdge,UE-COL-WDY-117,69.99,https://cdn.example.com/images/cologne-woody-117.jpg,Grooming,33030000,18
+Cologne Citrus 50ml,Eau de toilette in citrus scent. 50ml glass bottle with atomiser.,UrbanEdge,UE-COL-CTR-118,69.99,https://cdn.example.com/images/cologne-citrus-118.jpg,Grooming,33030000,18
+Lip Balm SPF15,Beeswax lip balm with SPF 15 sun protection. Mint flavour.,UrbanEdge,UE-LIP-SPF-119,7.99,https://cdn.example.com/images/lip-balm-119.jpg,Grooming,33049900,18
+Hand Cream Leather,Moisturising hand cream for dry skin. Light leather scent. 75ml tube.,UrbanEdge,UE-HCR-LTH-120,12.99,https://cdn.example.com/images/hand-cream-120.jpg,Grooming,33049900,18
+Shoe Polish Kit,Complete shoe polish kit with 2 tins and application brush. Brown and black.,UrbanEdge,UE-SPL-KIT-121,24.99,https://cdn.example.com/images/shoe-polish-kit-121.jpg,Shoe Care,34053000,18
+Shirt Stays Elastic,Set of 4 elastic shirt stays with Y-clip design. Keep shirt tucked all day.,UrbanEdge,UE-SST-ELS-122,14.99,https://cdn.example.com/images/shirt-stays-122.jpg,Accessories,62171000,12
+Watch Roll Leather,Leather watch roll for 3 watches. Suede-lined with snap closure.,UrbanEdge,UE-WRL-LTH-123,49.99,https://cdn.example.com/images/watch-roll-123.jpg,Accessories,42050000,18
+Leather Catch-All Tray,Square leather catch-all tray 15cm. Snap-corner design for travel.,UrbanEdge,UE-CTR-LTH-124,24.99,https://cdn.example.com/images/catch-all-tray-124.jpg,Home,42050000,18
+Reusable Shopping Bag,Foldable canvas shopping bag with leather handles. Packs into built-in pouch.,UrbanEdge,UE-RSB-CNV-125,19.99,https://cdn.example.com/images/shopping-bag-125.jpg,Bags,42021200,18
+Packing Cubes Set,Set of 4 nylon packing cubes. Mesh top for visibility. Fits standard carry-on.,UrbanEdge,UE-PCK-SET-126,29.99,https://cdn.example.com/images/packing-cubes-126.jpg,Travel,42021200,18
+Earbuds Case Leather,Leather case for wireless earbuds. Fits AirPods and similar. Keyring loop.,UrbanEdge,UE-EBC-LTH-127,19.99,https://cdn.example.com/images/earbuds-case-127.jpg,Tech Accessories,42023100,18
+Cable Wrap Leather,Leather cable wrap with brass snap. Organises headphones and charging cables.,UrbanEdge,UE-CWR-LTH-128,9.99,https://cdn.example.com/images/cable-wrap-128.jpg,Tech Accessories,42050000,18
+Card Wallet Minimalist Black,Ultra-slim card wallet in black leather. Holds 4 cards with pull tab.,UrbanEdge,UE-CWL-BLK-129,24.99,https://cdn.example.com/images/card-wallet-black-129.jpg,Wallets,42023100,18
+Card Wallet Minimalist Brown,Ultra-slim card wallet in brown leather. Holds 4 cards with pull tab.,UrbanEdge,UE-CWL-BRN-130,24.99,https://cdn.example.com/images/card-wallet-brown-130.jpg,Wallets,42023100,18
+Zip Wallet Long Black,Full-length zip wallet in black leather. 12 card slots and phone pocket.,UrbanEdge,UE-ZWL-BLK-131,89.99,https://cdn.example.com/images/zip-wallet-black-131.jpg,Wallets,42023100,18
+Coin Pouch Leather Tan,Small leather coin pouch with squeeze frame. 8cm x 6cm.,UrbanEdge,UE-CPN-TAN-132,14.99,https://cdn.example.com/images/coin-pouch-tan-132.jpg,Wallets,42023100,18
+Trifold Wallet Brown,Classic trifold wallet in brown leather. 12 card slots with ID window.,UrbanEdge,UE-TRI-BRN-133,69.99,https://cdn.example.com/images/trifold-brown-133.jpg,Wallets,42023100,18
+Waist Bag Leather Black,Compact leather waist bag. Adjustable strap with brass hardware.,UrbanEdge,UE-WST-BLK-134,64.99,https://cdn.example.com/images/waist-bag-black-134.jpg,Bags,42021200,18
+Waist Bag Leather Tan,Compact leather waist bag. Adjustable strap with brass hardware.,UrbanEdge,UE-WST-TAN-135,64.99,https://cdn.example.com/images/waist-bag-tan-135.jpg,Bags,42021200,18
+Oxford Shoes Cap Toe Black,Cap-toe Oxford shoes in black calf leather. Goodyear welted with leather sole.,UrbanEdge,UE-OXF-BLK-136,189.99,https://cdn.example.com/images/oxford-black-136.jpg,Shoes,64035100,18
+Oxford Shoes Cap Toe Brown,Cap-toe Oxford shoes in brown calf leather. Goodyear welted with leather sole.,UrbanEdge,UE-OXF-BRN-137,189.99,https://cdn.example.com/images/oxford-brown-137.jpg,Shoes,64035100,18
+Suede Desert Boots Sand,Classic desert boots in sand suede. Crepe rubber sole with two-eyelet lacing.,UrbanEdge,UE-DSB-SND-138,129.99,https://cdn.example.com/images/desert-sand-138.jpg,Shoes,64035100,18
+Suede Desert Boots Brown,Classic desert boots in brown suede. Crepe rubber sole with two-eyelet lacing.,UrbanEdge,UE-DSB-BRN-139,129.99,https://cdn.example.com/images/desert-brown-139.jpg,Shoes,64035100,18
+Boat Shoes Tan,Classic boat shoes in tan nubuck leather. Siped rubber sole for wet grip.,UrbanEdge,UE-BOT-TAN-140,109.99,https://cdn.example.com/images/boat-tan-140.jpg,Shoes,64035100,18
+Boat Shoes Navy,Classic boat shoes in navy nubuck leather. Siped rubber sole for wet grip.,UrbanEdge,UE-BOT-NAV-141,109.99,https://cdn.example.com/images/boat-navy-141.jpg,Shoes,64035100,18
+Espadrilles Linen Natural,Natural linen espadrilles with jute rope sole. Slip-on with elasticated sides.,UrbanEdge,UE-ESP-NAT-142,49.99,https://cdn.example.com/images/espadrilles-natural-142.jpg,Shoes,64041100,12
+Espadrilles Linen Navy,Navy linen espadrilles with jute rope sole. Slip-on with elasticated sides.,UrbanEdge,UE-ESP-NAV-143,49.99,https://cdn.example.com/images/espadrilles-navy-143.jpg,Shoes,64041100,12
+Velvet Smoking Slippers Navy,Velvet smoking slippers in navy with embroidered crest. Leather sole.,UrbanEdge,UE-VLS-NAV-144,89.99,https://cdn.example.com/images/smoking-navy-144.jpg,Shoes,64041100,12
+Velvet Smoking Slippers Burgundy,Velvet smoking slippers in burgundy with embroidered crest. Leather sole.,UrbanEdge,UE-VLS-BRG-145,89.99,https://cdn.example.com/images/smoking-burgundy-145.jpg,Shoes,64041100,12
+Leather Sandals Tan,Two-strap leather sandals in tan. Contoured cork footbed with rubber outsole.,UrbanEdge,UE-SAN-TAN-146,69.99,https://cdn.example.com/images/sandals-tan-146.jpg,Shoes,64039100,18
+Leather Sandals Black,Two-strap leather sandals in black. Contoured cork footbed with rubber outsole.,UrbanEdge,UE-SAN-BLK-147,69.99,https://cdn.example.com/images/sandals-black-147.jpg,Shoes,64039100,18
+Pool Slides Black,Contoured pool slides in black. EVA foam with textured footbed.,UrbanEdge,UE-PSL-BLK-148,24.99,https://cdn.example.com/images/slides-black-148.jpg,Shoes,64029900,18
+Pool Slides Navy,Contoured pool slides in navy. EVA foam with textured footbed.,UrbanEdge,UE-PSL-NAV-149,24.99,https://cdn.example.com/images/slides-navy-149.jpg,Shoes,64029900,18
+Dress Socks Charcoal,Merino wool dress socks in charcoal. Over-the-calf length with reinforced heel and toe.,UrbanEdge,UE-SOC-CHR-150,14.99,https://cdn.example.com/images/socks-charcoal-150.jpg,Socks,61159600,5
+Dress Socks Navy,Merino wool dress socks in navy. Over-the-calf length with reinforced heel and toe.,UrbanEdge,UE-SOC-NAV-151,14.99,https://cdn.example.com/images/socks-navy-151.jpg,Socks,61159600,5
+No-Show Socks White 3-Pack,Low-cut no-show socks in white. Silicon heel grip. Pack of 3.,UrbanEdge,UE-NSW-WHT-152,12.99,https://cdn.example.com/images/noshow-white-152.jpg,Socks,61159600,5
+Athletic Socks Grey 3-Pack,Cushioned athletic crew socks in grey. Arch support and moisture wicking. Pack of 3.,UrbanEdge,UE-ATH-GRY-153,14.99,https://cdn.example.com/images/athletic-socks-grey-153.jpg,Socks,61159600,5
+Boot Socks Wool Oatmeal,Heavyweight wool boot socks in oatmeal. Fully cushioned with ribbed calf.,UrbanEdge,UE-BSK-OAT-154,12.99,https://cdn.example.com/images/boot-socks-oatmeal-154.jpg,Socks,61159600,5
+Boxer Briefs Black 3-Pack,Stretch modal boxer briefs in black. No-ride leg and tagless waistband. Pack of 3.,UrbanEdge,UE-BBR-BLK-155,29.99,https://cdn.example.com/images/boxer-black-155.jpg,Underwear,61071100,5
+Boxer Briefs Grey 3-Pack,Stretch modal boxer briefs in grey. No-ride leg and tagless waistband. Pack of 3.,UrbanEdge,UE-BBR-GRY-156,29.99,https://cdn.example.com/images/boxer-grey-156.jpg,Underwear,61071100,5
+Undershirt V-Neck White 3-Pack,Supima cotton V-neck undershirt in white. Stay-tucked length. Pack of 3.,UrbanEdge,UE-UDS-WHT-157,24.99,https://cdn.example.com/images/undershirt-white-157.jpg,Underwear,61091000,5
+Pyjama Set Plaid,Brushed cotton pyjama set in navy plaid. Button-front top with drawstring pants.,UrbanEdge,UE-PJM-PLD-158,59.99,https://cdn.example.com/images/pyjama-plaid-158.jpg,Sleepwear,62079100,5
+Robe Terry White,Terry cloth bathrobe in white. Shawl collar with tie belt and two patch pockets.,UrbanEdge,UE-RBE-WHT-159,79.99,https://cdn.example.com/images/robe-white-159.jpg,Sleepwear,62079100,5
+Sleep Shorts Modal Black,Modal sleep shorts in black. Elastic waistband with interior drawstring.,UrbanEdge,UE-SLS-BLK-160,24.99,https://cdn.example.com/images/sleep-shorts-160.jpg,Sleepwear,62079100,5
+Vest Undershirt Ribbed White,Classic ribbed vest undershirt in white cotton. Square neckline. Pack of 2.,UrbanEdge,UE-VUS-WHT-161,17.99,https://cdn.example.com/images/vest-undershirt-161.jpg,Underwear,61091000,5
+Trunk Briefs Navy 3-Pack,Stretch cotton trunk briefs in navy. Contour pouch with flat waistband. Pack of 3.,UrbanEdge,UE-TRK-NAV-162,27.99,https://cdn.example.com/images/trunk-navy-162.jpg,Underwear,61071100,5
+Wool Trousers Charcoal,Tailored wool trousers in charcoal. Flat front with cuffed hem.,UrbanEdge,UE-WTR-CHR-163,129.99,https://cdn.example.com/images/wool-trouser-charcoal-163.jpg,Pants,62034100,12
+Wool Trousers Navy,Tailored wool trousers in navy. Flat front with cuffed hem.,UrbanEdge,UE-WTR-NAV-164,129.99,https://cdn.example.com/images/wool-trouser-navy-164.jpg,Pants,62034100,12
+Corduroy Trousers Tan,Wide-wale corduroy trousers in tan. Relaxed fit with double pleat.,UrbanEdge,UE-CRD-TAN-165,89.99,https://cdn.example.com/images/corduroy-tan-165.jpg,Pants,62034200,12
+Corduroy Trousers Forest,Wide-wale corduroy trousers in forest green. Relaxed fit with double pleat.,UrbanEdge,UE-CRD-FOR-166,89.99,https://cdn.example.com/images/corduroy-forest-166.jpg,Pants,62034200,12
+Peacoat Wool Navy,Double-breasted peacoat in navy melton wool. Anchor buttons and throat latch.,UrbanEdge,UE-PCO-NAV-167,229.99,https://cdn.example.com/images/peacoat-navy-167.jpg,Outerwear,62011100,12
+Peacoat Wool Charcoal,Double-breasted peacoat in charcoal melton wool. Anchor buttons and throat latch.,UrbanEdge,UE-PCO-CHR-168,229.99,https://cdn.example.com/images/peacoat-charcoal-168.jpg,Outerwear,62011100,12
+Field Jacket Olive,Military-inspired field jacket in olive cotton. Four front pockets with drawstring waist.,UrbanEdge,UE-FLD-OLV-169,179.99,https://cdn.example.com/images/field-olive-169.jpg,Jackets,62019300,12
+Harrington Jacket Tan,Classic Harrington jacket in tan. Fraser tartan lining with Baracuta-style collar.,UrbanEdge,UE-HAR-TAN-170,159.99,https://cdn.example.com/images/harrington-tan-170.jpg,Jackets,62019300,12
+Denim Jacket Dark Wash,Classic trucker denim jacket in dark wash. Brass buttons with chest pockets.,UrbanEdge,UE-DNJ-DRK-171,119.99,https://cdn.example.com/images/denim-jacket-dark-171.jpg,Jackets,62032200,12
+Denim Jacket Light Wash,Classic trucker denim jacket in light wash. Brass buttons with chest pockets.,UrbanEdge,UE-DNJ-LGT-172,119.99,https://cdn.example.com/images/denim-jacket-light-172.jpg,Jackets,62032200,12
+Suede Jacket Tan,Butter-soft suede jacket in tan. Zip front with mandarin collar.,UrbanEdge,UE-SDJ-TAN-173,349.99,https://cdn.example.com/images/suede-jacket-tan-173.jpg,Jackets,42031000,18
+Leather Biker Jacket Black,Classic biker jacket in black sheep leather. Asymmetric zip with silver hardware.,UrbanEdge,UE-BKR-BLK-174,399.99,https://cdn.example.com/images/biker-black-174.jpg,Jackets,42031000,18
+Gilet Down Navy,Lightweight down gilet in navy. 90/10 duck down with packable pouch.,UrbanEdge,UE-GDN-NAV-175,99.99,https://cdn.example.com/images/gilet-navy-175.jpg,Outerwear,62019300,12
+Shirt Jacket Plaid Brown,Heavyweight overshirt in brown plaid. Quilted lining with snap buttons.,UrbanEdge,UE-SJK-BRN-176,109.99,https://cdn.example.com/images/shirtjacket-brown-176.jpg,Jackets,62052000,12
+Safari Jacket Khaki,Classic safari jacket in khaki cotton. Four bellows pockets with belt.,UrbanEdge,UE-SFR-KHK-177,169.99,https://cdn.example.com/images/safari-khaki-177.jpg,Jackets,62019300,12
+Varsity Jacket Wool Navy,Wool-body varsity jacket with leather sleeves. Chenille patch and snap front.,UrbanEdge,UE-VRS-NAV-178,199.99,https://cdn.example.com/images/varsity-navy-178.jpg,Jackets,62019300,12
+Anorak Pullover Olive,Half-zip anorak pullover in olive. Windproof with kangaroo pocket.,UrbanEdge,UE-ANR-OLV-179,139.99,https://cdn.example.com/images/anorak-olive-179.jpg,Outerwear,62019300,12
+Parka Long Black,Long parka in black with faux fur hood trim. Waterproof shell with down fill.,UrbanEdge,UE-PRK-BLK-180,279.99,https://cdn.example.com/images/parka-black-180.jpg,Outerwear,62019300,12
+Product Missing Image 1,This product has no image URL and should trigger a validation error.,,UE-ERR-NI-181,29.99,,T-Shirts,61091000,5
+Product Missing Image 2,Another product without an image for testing validation.,UrbanEdge,UE-ERR-NI-182,19.99,,Accessories,42050000,18
+Product Missing Image 3,Third product missing image URL.,UrbanEdge,UE-ERR-NI-183,39.99,,Bags,42021200,18
+Product Missing Image 4,Fourth product missing image URL.,UrbanEdge,UE-ERR-NI-184,49.99,,Shoes,64035100,18
+Product Missing Image 5,Fifth product missing image URL.,UrbanEdge,UE-ERR-NI-185,59.99,,Wallets,42023100,18
+Product Missing Description 1,,UrbanEdge,UE-ERR-ND-186,29.99,https://cdn.example.com/images/err-nd-186.jpg,T-Shirts,61091000,5
+Product Missing Description 2,,UrbanEdge,UE-ERR-ND-187,39.99,https://cdn.example.com/images/err-nd-187.jpg,Accessories,42050000,18
+Product Missing Description 3,,UrbanEdge,UE-ERR-ND-188,49.99,https://cdn.example.com/images/err-nd-188.jpg,Bags,42021200,18
+Product Missing Description 4,,UrbanEdge,UE-ERR-ND-189,59.99,https://cdn.example.com/images/err-nd-189.jpg,Shoes,64035100,18
+Product Missing Description 5,,UrbanEdge,UE-ERR-ND-190,69.99,https://cdn.example.com/images/err-nd-190.jpg,Wallets,42023100,18
+Product No Brand 1,This product is missing a brand name for validation testing.,UrbanEdge,UE-WRN-NB-191,0,https://cdn.example.com/images/wrn-nb-191.jpg,T-Shirts,61091000,5
+Product No Brand 2,Another product missing brand and zero price.,UrbanEdge,UE-WRN-NB-192,0,https://cdn.example.com/images/wrn-nb-192.jpg,Accessories,42050000,18
+Product No Brand 3,Third product with missing brand and zero price.,UrbanEdge,UE-WRN-NB-193,0,https://cdn.example.com/images/wrn-nb-193.jpg,Bags,42021200,18
+Product HTTP Image,Product with HTTP (non-HTTPS) image URL — should trigger IMAGE_URL_NOT_HTTPS.,UrbanEdge,UE-ERR-HI-194,29.99,http://cdn.example.com/images/http-only-194.jpg,T-Shirts,61091000,5
+Product HTTP Image 2,Another product with HTTP image URL.,UrbanEdge,UE-ERR-HI-195,29.99,http://cdn.example.com/images/http-only-195.jpg,Accessories,42050000,18
+Product Whitespace Description,   ,UrbanEdge,UE-WRN-WS-196,29.99,https://cdn.example.com/images/wrn-ws-196.jpg,T-Shirts,61091000,5
+Product Whitespace Description 2,     ,UrbanEdge,UE-WRN-WS-197,39.99,https://cdn.example.com/images/wrn-ws-197.jpg,Accessories,42050000,18
+Product No Type 1,Product missing product type for Shopify warning test.,UrbanEdge,UE-WRN-NT-198,29.99,https://cdn.example.com/images/wrn-nt-198.jpg,,61091000,5
+Product No Type 2,Another product missing product type.,UrbanEdge,UE-WRN-NT-199,39.99,https://cdn.example.com/images/wrn-nt-199.jpg,,42050000,18
+Product Complete Last,Complete product to end the import on a valid row.,UrbanEdge,UE-FIN-200,29.99,https://cdn.example.com/images/fin-200.jpg,Accessories,42050000,18

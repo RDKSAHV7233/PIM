@@ -1,0 +1,21 @@
+title,description,brand,sku,sellingPrice,mainImageUrl,productType,hsnCode,gstRate
+,Missing title product should fail validation.,TestBrand,ERR-NO-TITLE-001,29.99,https://cdn.example.com/images/err-001.jpg,T-Shirts,61091000,5
+,Another missing title.,TestBrand,ERR-NO-TITLE-002,39.99,https://cdn.example.com/images/err-002.jpg,Accessories,42050000,18
+No Description Product,,TestBrand,ERR-NO-DESC-003,29.99,https://cdn.example.com/images/err-003.jpg,T-Shirts,61091000,5
+No Description Either,,TestBrand,ERR-NO-DESC-004,39.99,https://cdn.example.com/images/err-004.jpg,Bags,42021200,18
+No Image Product,Product description is here but image URL is missing.,TestBrand,ERR-NO-IMG-005,29.99,,T-Shirts,61091000,5
+No Image Either,Another product without an image URL.,TestBrand,ERR-NO-IMG-006,39.99,,Accessories,42050000,18
+HTTP Image Only,Product with HTTP non-secure image URL.,TestBrand,ERR-HTTP-IMG-007,29.99,http://cdn.example.com/images/http-007.jpg,T-Shirts,61091000,5
+HTTP Image 2,Another product with insecure image.,TestBrand,ERR-HTTP-IMG-008,39.99,http://cdn.example.com/images/http-008.jpg,Bags,42021200,18
+Zero Price Product,Product with zero selling price.,TestBrand,ERR-ZERO-PRC-009,0,https://cdn.example.com/images/err-009.jpg,T-Shirts,61091000,5
+Negative Price Product,Product with negative price.,TestBrand,ERR-NEG-PRC-010,-5.99,https://cdn.example.com/images/err-010.jpg,Accessories,42050000,18
+No Brand Product,Product without a brand.,ERR-NO-BRAND-011,,19.99,https://cdn.example.com/images/err-011.jpg,T-Shirts,61091000,5
+Whitespace Description,   ,TestBrand,ERR-WS-DESC-012,29.99,https://cdn.example.com/images/err-012.jpg,T-Shirts,61091000,5
+Empty Everything,,,,ERR-EMPTY-013,0,,,
+Almost Empty,Has description only.,,ERR-MINIMAL-014,0,,,
+All Warnings Product,Valid but triggers all Shopify warnings.,ERR-ALL-WARN-015,,0,https://cdn.example.com/images/err-015.jpg,,61091000,5
+No SKU Product,Product missing the SKU code which is required for Shopify sync.,TestBrand,,29.99,https://cdn.example.com/images/err-016.jpg,T-Shirts,61091000,5
+,,,ERR-TRIPLE-MISS-017,29.99,,,61091000,5
+Complete But No HS Code,Product complete except no HS commodity code for international tax.,TestBrand,ERR-NO-HS-018,29.99,https://cdn.example.com/images/err-018.jpg,T-Shirts,,5
+Normal Valid Product,This product is fully valid for Shopify.,TestBrand,ERR-VALID-019,49.99,https://cdn.example.com/images/valid-019.jpg,T-Shirts,61091000,5
+Another Valid Product,Second valid product as control group.,TestBrand,ERR-VALID-020,59.99,https://cdn.example.com/images/valid-020.jpg,Accessories,42050000,18
