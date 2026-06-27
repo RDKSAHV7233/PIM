@@ -26,6 +26,7 @@ interface ExportWithPreviewFormProps {
   templates: Array<{ id: string; name: string; isDefault: boolean }>;
   defaultExportChannel: string;
   selectedTemplateId: string | undefined;
+  returnTo: string;
   fallbackAckRequired: boolean;
   canQueueExportWithAck: boolean;
   /** installationId of the Shopify installation — enables change preview when present */
@@ -39,6 +40,7 @@ export function ExportWithPreviewForm({
   templates,
   defaultExportChannel,
   selectedTemplateId,
+  returnTo,
   fallbackAckRequired,
   canQueueExportWithAck,
   shopifyInstallationId,
@@ -118,6 +120,7 @@ export function ExportWithPreviewForm({
       <form ref={formRef} onSubmit={handleSubmit} className="grid gap-3 md:grid-cols-4">
         <input type="hidden" name="role" value={actorRole} />
         <input type="hidden" name="productId" value={productId} />
+        {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-channel">
             Channel
