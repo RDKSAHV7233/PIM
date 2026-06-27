@@ -36,11 +36,13 @@ function run() {
   assert(
     pageSource.includes('const activeTab = normalizeDetailTab(query.tab);') &&
       pageSource.includes('const selectedChannel = normalizeChannel(query.channel);') &&
-      pageSource.includes('const selectedTemplateId = normalizeTemplateId(query.templateId);'),
-    "Product detail route must normalize tab, channel, and template state before building the page model.",
+      pageSource.includes('const selectedTemplateId = normalizeTemplateId(query.templateId);') &&
+      pageSource.includes('const statusAt = String(query.statusAt ?? "").trim();') &&
+      pageSource.includes('const showChannelDiagnostics = activeTab === "channels" && String(query.focus ?? "").trim() === "simulator";'),
+    "Product detail route must normalize tab, channel, template, status-refresh, and diagnostics focus state before building the page model.",
   );
   assert(
-    pageSource.includes('String(query.returnTo ?? "").trim().startsWith("/")') &&
+    pageSource.includes('return /^\\/(?!\\/)/.test(v) ? v : "";') &&
       pageSource.includes(': "";'),
     "Product detail route must only preserve returnTo values that resolve to safe in-app paths.",
   );
@@ -71,10 +73,16 @@ function run() {
     "Product detail route must preserve normalized channel, template, and return context while switching tabs.",
   );
   assert(
-    pageSource.includes('activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel') &&
+    pageSource.includes("const channelDiagnosticsHref = (channel: string): string => {") &&
+      pageSource.includes('params.set("focus", "simulator");') &&
+      pageSource.includes('const readinessChannelLinks = Object.fromEntries(') &&
+      pageSource.includes('selectedTemplateId={selectedTemplateId}') &&
+      pageSource.includes('channelLinks={readinessChannelLinks}') &&
+      pageSource.includes('refreshSignal={statusAt}') &&
+      pageSource.includes('activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} selectedTemplateId={selectedTemplateId} channelLinks={readinessChannelLinks} refreshSignal={statusAt} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel') &&
       pageSource.includes('{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }') &&
       pageSource.includes('{ title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }'),
-    "Product detail route must only surface the readiness summary bar on supported tabs and must pass the top-level publish/export summary cards into it.",
+    "Product detail route must build channel-specific diagnostics links and pass template-aware, action-refresh-aware inputs into the summary bar.",
   );
   assert(
     pageSource.includes('label: "Unavailable"') &&

@@ -9,6 +9,7 @@ const OVERVIEW_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products
 const CHANNELS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "channels-tab.tsx");
 const SIDE_RAIL = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-side-rail.tsx");
 const READINESS_BAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "product-readiness-summary-bar.tsx");
+const REFRESH_ON_INTERVAL = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "refresh-on-interval.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -22,6 +23,7 @@ function run() {
   const channelsSource = fs.readFileSync(CHANNELS_TAB, "utf8");
   const sideRailSource = fs.readFileSync(SIDE_RAIL, "utf8");
   const readinessBarSource = fs.readFileSync(READINESS_BAR, "utf8");
+  const refreshOnIntervalSource = fs.readFileSync(REFRESH_ON_INTERVAL, "utf8");
 
   assert(
     overviewSource.includes("<CardTitle>Product overview</CardTitle>"),
@@ -37,8 +39,12 @@ function run() {
       channelsSource.includes("Queue channel export") &&
       channelsSource.includes("Export confirmation") &&
       channelsSource.includes("Latest export result summary") &&
+      channelsSource.includes('name="channel" value={data.selectedChannel}') &&
+      channelsSource.includes('name="templateId" value={data.selectedTemplateId ?? ""}') &&
+      channelsSource.includes("<RefreshOnInterval enabled={data.activeTab === \"channels\" && hasInFlightExportJobs} intervalMs={15_000} />") &&
+      channelsSource.includes("Auto-refreshing every 15s while queued, processing, or retrying export jobs are still in flight.") &&
       !channelsSource.includes("Publish to a channel"),
-    "Product detail must use truthful queued-export language before diagnostics.",
+    "Product detail must use truthful queued-export language, keep recovery actions pinned to the active product/channel context, and visibly auto-refresh while export jobs remain in flight.",
   );
   assert(
     pageSource.includes(">Open publish & export</Link>") &&
@@ -56,13 +62,30 @@ function run() {
   );
   assert(
     readinessBarSource.includes("Top blockers for") &&
-      readinessBarSource.includes("Open the exact fix path before you queue an export or review publish readiness."),
-    "Product detail readiness header must expose direct blocker recovery links near the top of the page.",
+      readinessBarSource.includes("Open the exact fix path before you queue an export or review publish readiness.") &&
+      readinessBarSource.includes('if (selectedTemplateId) {') &&
+      readinessBarSource.includes("refreshSignal?: string;") &&
+      readinessBarSource.includes("}, [buildResults, productId, role, selectedTemplateId, refreshSignal]);") &&
+      readinessBarSource.includes('href={channelLinks?.[channel]}'),
+    "Product detail readiness header must expose direct blocker recovery links, keep the readiness fetch aligned to the selected template context, and rerun on explicit same-page action refresh signals.",
+  );
+  assert(
+    refreshOnIntervalSource.includes("enabled?: boolean;") &&
+      refreshOnIntervalSource.includes("if (!enabled) {") &&
+      refreshOnIntervalSource.includes('if (document.visibilityState !== "visible") {') &&
+      refreshOnIntervalSource.includes("}, [enabled, intervalMs, router]);"),
+    "Interval refresh utility must support explicit enablement and avoid background-tab refresh churn.",
   );
   assert(
     channelsSource.includes("Advanced channel diagnostics") &&
-      channelsSource.includes("View queued export attempts and recovery actions"),
-    "Technical channel diagnostics must be demoted behind collapsible queued-export disclosure controls.",
+      channelsSource.includes("View queued export attempts and recovery actions") &&
+      channelsSource.includes('id="channel-simulator-section"') &&
+      channelsSource.includes('open={data.showChannelDiagnostics}') &&
+      channelsSource.includes('<input type="hidden" name="tab" value="channels" />') &&
+      channelsSource.includes('<input type="hidden" name="focus" value="simulator" />') &&
+      channelsSource.includes('{data.showChannelDiagnostics ? <input type="hidden" name="focus" value="simulator" /> : null}') &&
+      channelsSource.includes('{data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}'),
+    "Technical channel diagnostics must stay collapsible, and both drilldowns and recovery actions must preserve diagnostics/return context.",
   );
   assert(
     sideRailSource.includes("<SideRailCard title=\"Next actions\">") &&
