@@ -17,6 +17,12 @@ import { SignupConversionSection } from "../plan/_components/signup-conversion";
 
 export const dynamic = "force-dynamic";
 
+const COMMERCIAL_ERROR_MESSAGES: Record<string, string> = {
+  invalid_input: "Invalid plan tier or tenant key. Check your selection and try again.",
+  action_failed: "The operation could not be completed. Please retry or contact support.",
+  missing_request_id: "No upgrade request ID was provided.",
+};
+
 interface CommercialPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
@@ -178,7 +184,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
       />
 
       {successMessage ? <InlineAlert tone="success" message={successMessage} /> : null}
-      {query.error ? <InlineAlert tone="error" title="Error" message={decodeURIComponent(query.error)} /> : null}
+      {query.error ? <InlineAlert tone="error" title="Error" message={COMMERCIAL_ERROR_MESSAGES[query.error] ?? "An error occurred. Please try again."} /> : null}
       {operatorRole !== "system_admin" ? (
         <InlineAlert tone="info" message={`Commercial Ops session is running as ${operatorRole}.`} />
       ) : null}
@@ -253,7 +259,6 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
           </div>
           <form action={changePlanTierAction} className="mt-4 flex items-center gap-3">
             <input type="hidden" name="tenantKey" value={currentUsage.profile.tenantKey} />
-            <input type="hidden" name="operatorId" value="web-admin" />
             <select
               name="planTier"
               defaultValue={currentUsage.planTier}
@@ -323,7 +328,6 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                     <td className="py-3">
                       <form action={changePlanTierAction} className="flex items-center gap-2">
                         <input type="hidden" name="tenantKey" value={tenant.tenantKey} />
-                        <input type="hidden" name="operatorId" value="web-admin" />
                         <select
                           name="planTier"
                           defaultValue={tenant.planTier ?? "STARTER"}
@@ -390,7 +394,6 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                         <form action={resolveUpgradeRequestAction}>
                           <input type="hidden" name="requestId" value={req.id} />
                           <input type="hidden" name="status" value="resolved" />
-                          <input type="hidden" name="operatorId" value="web-admin" />
                           <button type="submit" className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100">
                             Resolve
                           </button>
@@ -398,7 +401,6 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                         <form action={resolveUpgradeRequestAction}>
                           <input type="hidden" name="requestId" value={req.id} />
                           <input type="hidden" name="status" value="cancelled" />
-                          <input type="hidden" name="operatorId" value="web-admin" />
                           <button type="submit" className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
                             Cancel
                           </button>

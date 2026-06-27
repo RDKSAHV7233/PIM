@@ -17,10 +17,6 @@ import type {
 } from "@/lib/api";
 import { type ConnectorTaxonomyOption, describeReadinessCode, presentCompatibilityState, statusToneForPreflight } from "@/lib/channel-mappings";
 
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
-}
-
 type MappingFieldRow = {
   targetField: string;
   selectedSource: string;
@@ -334,7 +330,6 @@ export function MappingEditorCard({
       <CardTitle>Step 2: Map Required Fields</CardTitle>
       {canWrite ? (
         <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3" data-mapping-dirty-form="true" id="mapping-edit-form">
-          <RoleHiddenInput role={actorRole} />
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <StatusChip label={`${requiredTargetFields.length} required fields`} tone="info" />

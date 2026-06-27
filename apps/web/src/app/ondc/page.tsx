@@ -10,7 +10,6 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
-  AppRole,
   getCategoryTree,
   getOndcMappings,
   getOndcSimulation,
@@ -29,10 +28,6 @@ type SharedReadResult<T> = {
   state: SharedReadState;
   data: T | null;
 };
-
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
-}
 
 function isOndcApiUnavailable(error: unknown) {
   return error instanceof ApiHttpError && error.status !== 401 && error.status !== 403;
@@ -224,7 +219,6 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
       <Card>
         <CardTitle>Create ONDC Mapping</CardTitle>
         <form action={createOndcMappingAction} className="grid gap-3 md:grid-cols-2">
-          <RoleHiddenInput role={actorRole} />
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="ondc-mapping-name">
               Mapping Name
@@ -354,7 +348,6 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
       <Card>
         <CardTitle>Simulate ONDC Payload</CardTitle>
         <form action={runOndcSimulationAction} className="grid gap-3 md:grid-cols-2">
-          <RoleHiddenInput role={actorRole} />
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="ondc-sim-product-id">
               Product
