@@ -78,6 +78,12 @@ export async function validateWebhookTargetUrl(value: string): Promise<string> {
     throw new BadRequestException("Webhook target URL is not a valid URL.");
   }
 
+  // Skip HTTPS and SSRF checks in integration-test environments.
+  // PIM_UNSAFE_HTTP_WEBHOOK_TARGETS must never be set in production.
+  if (process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS === "true") {
+    return parsed.toString();
+  }
+
   if (parsed.protocol !== "https:") {
     throw new BadRequestException("Webhook target URL must use HTTPS.");
   }

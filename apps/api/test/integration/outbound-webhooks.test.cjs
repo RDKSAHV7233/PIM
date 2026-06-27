@@ -422,6 +422,9 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: "",
     QUEUE_BACKEND: "memory",
     QUEUE_WORKER_ENABLED: "true",
+    // Allow the local HTTP webhook listener used in this test.
+    // Never set this in production — it disables SSRF and HTTPS enforcement.
+    PIM_UNSAFE_HTTP_WEBHOOK_TARGETS: "true",
   };
 
   const prisma = createPrisma();
