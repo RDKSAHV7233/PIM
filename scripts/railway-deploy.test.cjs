@@ -106,6 +106,9 @@ function main() {
     serviceTargets: ["App Vexa", "svc_web"],
   });
 
+  // prepareRailwayDeployRoot copies from the source paths — create them first.
+  fs.mkdirSync(config.apiSourcePath, { recursive: true });
+  fs.mkdirSync(config.webSourcePath, { recursive: true });
   const deployRootInfo = prepareRailwayDeployRoot(config);
   try {
     assert.equal(path.relative(repoRoot, deployRootInfo.deployRoot), "");
@@ -130,6 +133,8 @@ function main() {
       serviceTargets: ["App Vexa", "svc_web"],
     });
   } finally {
+    fs.rmSync(config.apiSourcePath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    fs.rmSync(config.webSourcePath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     fs.rmSync(deployRootInfo.apiTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     fs.rmSync(deployRootInfo.webTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
