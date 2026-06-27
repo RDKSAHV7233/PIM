@@ -46,7 +46,7 @@ export function MfaEnrollPageClient({
         const response = await fetch("/api/auth/mfa/enroll", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enrollmentToken }),
+          body: JSON.stringify({}),
           signal: AbortSignal.timeout(15_000),
         });
         if (cancelled) return;
@@ -124,7 +124,7 @@ export function MfaEnrollPageClient({
       const response = await fetch("/api/auth/mfa/verify-enrollment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enrollmentToken, code: code.trim().replace(/\s/g, "") }),
+        body: JSON.stringify({ code: code.trim().replace(/\s/g, "") }),
         signal: AbortSignal.timeout(15_000),
       });
 

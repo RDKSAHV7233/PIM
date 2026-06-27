@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsInt, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class LockWorkspaceUserDto {
   @Transform(({ value }) => {
@@ -10,6 +10,7 @@ export class LockWorkspaceUserDto {
   })
   @IsOptional()
   @IsInt()
+  @IsIn([60, 240, 1440, 10080])
   durationMinutes?: number;
 
   @Transform(({ value }) => {

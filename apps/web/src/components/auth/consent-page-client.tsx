@@ -4,18 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { BrandLogo } from "@/components/ui/brand-logo";
-
-function readCookie(name: string): string {
-  const prefix = `${name}=`;
-  const parts = document.cookie.split(";");
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
-    }
-  }
-  return "";
-}
+import { readCsrfCookie } from "@/lib/csrf";
 
 export function ConsentPageClient() {
   const router = useRouter();
@@ -29,7 +18,7 @@ export function ConsentPageClient() {
     setMessage("");
 
     try {
-      const csrfToken = readCookie("pim_csrf_token");
+      const csrfToken = readCsrfCookie();
       const response = await fetch("/api/auth/consent", {
         method: "POST",
         headers: {

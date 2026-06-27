@@ -6,6 +6,76 @@ import type { ApiKeyCreateActionState } from "./actions";
 import { createApiAccessKeyAction } from "./actions";
 import type { ApiClientScope, AppRole } from "@/lib/api";
 
+const API_KEY_DISPLAY_SECONDS = 60;
+
+function ApiKeyRevealBanner({ createdKey, message }: { createdKey: string | null; message: string | null }) {
+  const [visibleKey, setVisibleKey] = useState(createdKey);
+  const [secondsLeft, setSecondsLeft] = useState(API_KEY_DISPLAY_SECONDS);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setVisibleKey(createdKey);
+    setSecondsLeft(API_KEY_DISPLAY_SECONDS);
+    setCopied(false);
+  }, [createdKey]);
+
+  useEffect(() => {
+    if (!visibleKey) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          setVisibleKey(null);
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [visibleKey]);
+
+  if (!visibleKey) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        API key has been hidden. It cannot be retrieved again.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+      <div className="flex items-center justify-between">
+        <span>{message}</span>
+        <span className="text-xs text-emerald-600">Hidden in {secondsLeft}s</span>
+      </div>
+      <textarea
+        readOnly
+        value={visibleKey}
+        rows={3}
+        className="w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs text-slate-900"
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(visibleKey).then(() => setCopied(true));
+          }}
+          className="rounded-md bg-emerald-700 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-800"
+        >
+          {copied ? "Copied!" : "Copy to clipboard"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setVisibleKey(null)}
+          className="rounded-md border border-emerald-300 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const INITIAL_STATE: ApiKeyCreateActionState = {
   status: "idle",
   message: null,
@@ -81,16 +151,8 @@ export function ApiKeyCreatePanel() {
         </p>
       </div>
 
-      {state.status === "success" && state.createdKey ? (
-        <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          <div>{state.message}</div>
-          <textarea
-            readOnly
-            value={state.createdKey}
-            rows={3}
-            className="w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs text-slate-900"
-          />
-        </div>
+      {state.status === "success" ? (
+        <ApiKeyRevealBanner createdKey={state.createdKey} message={state.message} />
       ) : null}
 
       {state.status === "error" && state.message ? (

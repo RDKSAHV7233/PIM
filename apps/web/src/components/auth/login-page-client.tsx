@@ -167,9 +167,8 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
           mfaPendingToken?: string;
           maskedEmail?: string;
         };
-        if (payload.error === "MFA_REQUIRED" && payload.mfaPendingToken) {
+        if (payload.error === "MFA_REQUIRED") {
           const mfaParams = new URLSearchParams({
-            token: payload.mfaPendingToken,
             email: payload.maskedEmail ?? "",
             workspace: normalizedWorkspaceSlug,
             lang: locale,
@@ -193,9 +192,8 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
           maskedEmail?: string;
           allowedMethods?: string[];
         };
-        if (payload.error === "MFA_ENROLLMENT_REQUIRED" && payload.enrollmentToken) {
+        if (payload.error === "MFA_ENROLLMENT_REQUIRED") {
           const enrollParams = new URLSearchParams({
-            token: payload.enrollmentToken,
             email: payload.maskedEmail ?? "",
             workspace: normalizedWorkspaceSlug,
             lang: locale,

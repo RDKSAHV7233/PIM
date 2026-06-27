@@ -37,7 +37,7 @@ function run() {
 
   assert(
     componentSource.includes('fetch("/api/bulk-import/validate"') &&
-      componentSource.includes('readCookie("pim_csrf_token")') &&
+      (componentSource.includes('readCsrfCookie') || componentSource.includes('readCookie("pim_csrf_token")')) &&
       componentSource.includes('name="sourceFile"') &&
       componentSource.includes('aria-invalid={fieldErrors.sourceFile ? "true" : undefined}') &&
       componentSource.includes("Staged import workflow") &&

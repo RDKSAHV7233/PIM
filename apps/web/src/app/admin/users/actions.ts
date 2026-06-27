@@ -133,6 +133,8 @@ export async function updateWorkspaceUserRoleAction(formData: FormData) {
   redirectWithStatus("role-updated");
 }
 
+const ALLOWED_LOCK_DURATIONS = [60, 240, 1440, 10080];
+
 export async function lockWorkspaceUserAction(formData: FormData) {
   const userId = String(formData.get("userId") ?? "").trim();
   const durationRaw = String(formData.get("durationMinutes") ?? "").trim();
@@ -141,6 +143,9 @@ export async function lockWorkspaceUserAction(formData: FormData) {
   try {
     if (!userId) {
       throw new Error("User ID is required.");
+    }
+    if (durationMinutes !== undefined && !ALLOWED_LOCK_DURATIONS.includes(durationMinutes)) {
+      throw new Error("Invalid lock duration.");
     }
     await lockWorkspaceUser(
       userId,

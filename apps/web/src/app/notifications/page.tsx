@@ -8,6 +8,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
+import { readCsrfCookie } from "@/lib/csrf";
 import { formatDateTime } from "@/lib/format";
 
 function eventSeverity(eventType: NotificationItem["eventType"]): "info" | "warning" | "blocker" {
@@ -70,14 +71,6 @@ function formatTimestamp(value: string) {
     return "";
   }
   return formatDateTime(date);
-}
-
-function readCookie(name: string): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : "";
 }
 
 type NotificationFeedState = "loading" | "available" | "restricted" | "unavailable";
@@ -171,7 +164,7 @@ export default function NotificationsPage() {
   const [feedState, setFeedState] = useState<NotificationFeedState>("loading");
   const [actionState, setActionState] = useState<NotificationActionState>("idle");
   const [actionNotice, setActionNotice] = useState<NotificationFailure | null>(null);
-  const csrfToken = useMemo(() => readCookie("pim_csrf_token"), []);
+  const csrfToken = useMemo(() => readCsrfCookie(), []);
 
   const redirectToLogin = useCallback((failure: { status: number; body?: unknown }) => {
     window.location.assign(buildLoginRedirect("/notifications", failure));

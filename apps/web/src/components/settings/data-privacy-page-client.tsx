@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import type { AppRole } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { readCsrfCookie } from "@/lib/csrf";
 
 type ExportFormat = "json" | "csv";
 
@@ -38,18 +39,6 @@ interface PrivacyStatusPayload {
     requestedAt: string;
     scheduledFor: string;
   } | null;
-}
-
-function readCookie(name: string): string {
-  const prefix = `${name}=`;
-  const parts = document.cookie.split(";");
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
-    }
-  }
-  return "";
 }
 
 interface DataPrivacyPageClientProps {
@@ -115,7 +104,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
     setExportMessage("");
 
     try {
-      const csrfToken = readCookie("pim_csrf_token");
+      const csrfToken = readCsrfCookie();
       const response = await fetch("/api/account/export", {
         method: "POST",
         headers: {
@@ -166,7 +155,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
     setDeleteMessage("");
 
     try {
-      const csrfToken = readCookie("pim_csrf_token");
+      const csrfToken = readCsrfCookie();
       const response = await fetch("/api/account", {
         method: "DELETE",
         headers: {

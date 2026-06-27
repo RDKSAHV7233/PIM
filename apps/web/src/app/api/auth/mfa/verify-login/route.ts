@@ -9,7 +9,7 @@ function useSecureCookies(): boolean {
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
-  const pendingToken = String(body?.pendingToken ?? "").trim();
+  const pendingToken = request.cookies.get("pim_mfa_pending_token")?.value ?? "";
   const code = String(body?.code ?? "").trim();
 
   let response: Response;
@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
           sameSite: "lax",
           path: "/",
           maxAge,
+        });
+        outgoing.cookies.set("pim_mfa_pending_token", "", {
+          httpOnly: true,
+          secure: secureCookies,
+          sameSite: "strict",
+          path: "/",
+          maxAge: 0,
         });
         return outgoing;
       }

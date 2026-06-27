@@ -8,6 +8,7 @@ import { AppDrawer } from "@/components/ui/app-drawer";
 import { Button } from "@/components/ui/button";
 import type { NotificationItem, NotificationListResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { readCsrfCookie } from "@/lib/csrf";
 import { formatDateTime } from "@/lib/format";
 
 const POLL_INTERVAL_MS = 30_000;
@@ -44,14 +45,6 @@ function severityClasses(severity: "info" | "warning" | "blocker", readAt: strin
     return "border-amber-200 bg-amber-50/70";
   }
   return "border-blue-200 bg-blue-50/60";
-}
-
-function readCookie(name: string): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : "";
 }
 
 function BellIcon({ className }: { className?: string }) {
@@ -115,7 +108,7 @@ export function NotificationCenter() {
   }, [loadNotifications]);
 
   const hasItems = items.length > 0;
-  const csrfToken = useMemo(() => readCookie("pim_csrf_token"), []);
+  const csrfToken = useMemo(() => readCsrfCookie(), []);
 
   async function markAllRead() {
     setSubmitting(true);

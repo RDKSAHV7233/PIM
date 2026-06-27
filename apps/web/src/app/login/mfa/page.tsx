@@ -17,14 +17,14 @@ function getString(value: string | string[] | undefined): string {
 
 export default async function MfaChallengePage({ searchParams }: MfaChallengePageProps) {
   const params = await searchParams;
-  const token = getString(params.token).trim();
+  const cookieStore = await cookies();
+  const token = cookieStore.get("pim_mfa_pending_token")?.value ?? "";
   if (!token) {
     redirect("/login");
   }
   const maskedEmail = getString(params.email).trim();
   const workspaceSlug = getString(params.workspace).trim().toLowerCase();
   const nextPath = sanitizeNextPath(getString(params.next));
-  const cookieStore = await cookies();
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);
 
   return (

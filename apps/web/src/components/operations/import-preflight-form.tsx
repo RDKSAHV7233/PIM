@@ -5,18 +5,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import type { BulkImportRun, Category } from "@/lib/api";
-
-function readCookie(name: string): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-  const prefix = `${name}=`;
-  return document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(prefix))
-    ?.slice(prefix.length) ?? "";
-}
+import { readCsrfCookie } from "@/lib/csrf";
 
 function detectSourceFormat(fileName: string): "csv" | "json" | null {
   const normalized = fileName.trim().toLowerCase();
@@ -197,7 +186,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         };
       }
 
-      const csrfToken = readCookie("pim_csrf_token");
+      const csrfToken = readCsrfCookie();
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Accept: "application/json",

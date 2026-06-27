@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import type { MfaStatus } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { csrfHeaders } from "@/lib/csrf";
 
 interface AccountSecurityClientProps {
   mfaStatus: MfaStatus | null;
@@ -87,19 +88,13 @@ export function AccountSecurityClient({
     try {
       const response = await fetch("/api/auth/mfa/request-enrollment-token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
       });
       if (!response.ok) {
         setSetupError("Unable to start MFA setup. Please try again.");
         return;
       }
-      const data = (await response.json()) as { enrollmentToken?: string };
-      if (!data.enrollmentToken) {
-        setSetupError("Unable to start MFA setup. Please try again.");
-        return;
-      }
-      const params = new URLSearchParams({ token: data.enrollmentToken });
-      window.location.assign(`/login/enroll?${params.toString()}`);
+      window.location.assign("/login/enroll");
     } catch {
       setSetupError("Network error. Check your connection and try again.");
     } finally {
@@ -123,7 +118,7 @@ export function AccountSecurityClient({
     try {
       const response = await fetch("/api/auth/password/change", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
         body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
       });
       if (response.ok) {

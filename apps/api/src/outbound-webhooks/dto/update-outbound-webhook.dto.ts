@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, IsUrl, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength } from "class-validator";
 
 export class UpdateOutboundWebhookDto {
   @IsOptional()
@@ -9,6 +9,7 @@ export class UpdateOutboundWebhookDto {
 
   @IsOptional()
   @IsUrl({ require_tld: false })
+  @Matches(/^https:\/\//, { message: "Webhook target URL must use HTTPS." })
   @MaxLength(500)
   targetUrl?: string;
 
