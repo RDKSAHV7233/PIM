@@ -6,12 +6,7 @@ const net = require("node:net");
 const path = require("node:path");
 
 const apiRoot = path.resolve(__dirname, "..");
-const candidates = [
-  path.join(apiRoot, "dist", "main.js"),
-  path.join(apiRoot, "dist-feature", "main.js"),
-];
-
-const entry = candidates.find((candidate) => existsSync(candidate));
+const entry = path.join(apiRoot, "dist", "main.js");
 const bootDebugEnabled =
   String(process.env.PLAYWRIGHT_BOOT_DEBUG ?? "").trim() === "1" ||
   String(process.env.API_BOOT_DEBUG ?? "").trim().toLowerCase() === "true";
@@ -24,12 +19,12 @@ function bootDebug(message, meta) {
   console.log(`[api-entry] ${message}${payload}`);
 }
 
-if (!entry) {
+if (!existsSync(entry)) {
   console.error(
     [
       "Unable to locate a built API entrypoint.",
       "Checked:",
-      ...candidates.map((candidate) => `- ${candidate}`),
+      `- ${entry}`,
       "Run `npm run build --workspace @pim1/api` before starting the API.",
     ].join("\n"),
   );

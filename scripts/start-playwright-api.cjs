@@ -8,7 +8,9 @@ const { PrismaClient } = require("@prisma/client");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
-const apiEntryPath = path.join(root, "apps", "api", "dist", "main.js");
+const apiStartScriptPath = path.join(root, "apps", "api", "scripts", "start-built-api.cjs");
+const apiBuildEntryPath = path.join(root, "apps", "api", "dist", "main.js");
+const prismaClientEntryPath = path.join(root, "node_modules", "@prisma", "client", "index.js");
 
 function resolveDatabaseUrl(fileEnv) {
   const localDatabaseUrl =
@@ -358,12 +360,61 @@ function createShopifyStubServer() {
   });
 }
 
+function playwrightSchemaLooksBootstrapped(databaseUrl) {
+  if (!/schema=playwright_e2e/i.test(databaseUrl)) {
+    return false;
+  }
+
+  let probeDatabaseUrl = databaseUrl;
+  try {
+    const parsed = new URL(databaseUrl);
+    parsed.searchParams.delete("schema");
+    parsed.searchParams.delete("connection_limit");
+    probeDatabaseUrl = parsed.toString();
+  } catch {
+    probeDatabaseUrl = databaseUrl
+      .replace(/([?&])schema=playwright_e2e(&?)/i, "$1")
+      .replace(/([?&])connection_limit=\d+(&?)/i, "$1")
+      .replace(/[?&]$/, "");
+  }
+
+  const probe = spawnSync(
+    "psql",
+    [
+      probeDatabaseUrl,
+      "-tAc",
+      "select count(*) from information_schema.tables where table_schema='playwright_e2e';",
+    ],
+    {
+      cwd: root,
+      shell: false,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (probe.status !== 0) {
+    return false;
+  }
+
+  const tableCount = Number.parseInt(String(probe.stdout || "").trim(), 10);
+  return Number.isFinite(tableCount) && tableCount > 0;
+}
+
 const fileEnv = loadEnvFile(envFile);
 const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 1);
 const usingPlaywrightFallbackDatabase = /schema=playwright_e2e/i.test(databaseUrl);
-const skipPrismaGenerate = String(process.env.PLAYWRIGHT_SKIP_PRISMA_GENERATE || "").trim() === "1";
-const skipApiBuild = String(process.env.PLAYWRIGHT_SKIP_API_BUILD || "").trim() === "1";
-const skipSchemaSync = String(process.env.PLAYWRIGHT_SKIP_SCHEMA_SYNC || "").trim() === "1";
+const hasBootstrappedPlaywrightSchema = playwrightSchemaLooksBootstrapped(databaseUrl);
+const skipPrismaGenerate =
+  String(process.env.PLAYWRIGHT_SKIP_PRISMA_GENERATE || "").trim() === "1" ||
+  (fs.existsSync(prismaClientEntryPath) && String(process.env.PLAYWRIGHT_FORCE_PRISMA_GENERATE || "").trim() !== "1");
+const hasBuiltApiEntry = fs.existsSync(apiBuildEntryPath);
+const skipApiBuild =
+  String(process.env.PLAYWRIGHT_SKIP_API_BUILD || "").trim() === "1" ||
+  (hasBuiltApiEntry && String(process.env.PLAYWRIGHT_FORCE_API_BUILD || "").trim() !== "1");
+const skipSchemaSync =
+  String(process.env.PLAYWRIGHT_SKIP_SCHEMA_SYNC || "").trim() === "1" ||
+  (hasBootstrappedPlaywrightSchema && String(process.env.PLAYWRIGHT_FORCE_SCHEMA_SYNC || "").trim() !== "1");
 const authMode = String(process.env.PLAYWRIGHT_AUTH_MODE || process.env.AUTH_MODE || "local").trim().toLowerCase() || "local";
 const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const identityDirectory =
@@ -490,7 +541,7 @@ if (workspaceDirectory !== undefined) {
 async function main() {
   await seedPlaywrightFixtures(databaseUrl);
 
-  const enableShopifyStub = String(process.env.PLAYWRIGHT_ENABLE_SHOPIFY_STUB || "").trim() === "1";
+  const enableShopifyStub = String(process.env.PLAYWRIGHT_ENABLE_SHOPIFY_STUB ?? "1").trim() !== "0";
   const shopifyStub = enableShopifyStub ? await createShopifyStubServer() : null;
 
   if (shopifyStub) {
@@ -499,7 +550,7 @@ async function main() {
     env.PIM_SHOPIFY_ADMIN_API_VERSION = env.PIM_SHOPIFY_ADMIN_API_VERSION || "2026-04";
   }
 
-  const child = spawn("node", [apiEntryPath], {
+  const child = spawn("node", [apiStartScriptPath], {
     cwd: root,
     shell: false,
     stdio: "inherit",

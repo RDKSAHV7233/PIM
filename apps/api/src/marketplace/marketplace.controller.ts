@@ -10,7 +10,7 @@ import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto"
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
-import { AppRole, Roles } from "../common/rbac/roles";
+import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
 import { ConnectorMappingService } from "./connector-mapping.service";
 import { BatchMarketplaceReadinessDto } from "./dto/batch-marketplace-readiness.dto";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
@@ -302,7 +302,7 @@ export class MarketplaceController {
 
   @Get("products/:id/simulate")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin")
+  @Roles(...APP_ROLES)
   simulateProductQuery(
     @Param("id") productId: string,
     @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL,
@@ -314,7 +314,7 @@ export class MarketplaceController {
 
   @Post("products/:id/simulate")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin")
+  @Roles(...APP_ROLES)
   simulateProductBody(@Param("id") productId: string, @Body() dto: SimulateMarketplaceDto) {
     return this.marketplaceService.simulateProduct(productId, dto.channel, dto.templateId, dto.installationId);
   }
@@ -322,7 +322,7 @@ export class MarketplaceController {
   @Post("readiness/batch")
   @HttpCode(200)
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin")
+  @Roles(...APP_ROLES)
   batchReadiness(@Body() dto: BatchMarketplaceReadinessDto) {
     return this.marketplaceService.getBatchReadiness(dto.productIds, dto.channels);
   }
