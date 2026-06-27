@@ -4548,16 +4548,7 @@
     "/api/v1/catalog/products": {
       "get": {
         "operationId": "CatalogController_listProducts",
-        "parameters": [
-          {
-            "name": "slim",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "Products fetched"

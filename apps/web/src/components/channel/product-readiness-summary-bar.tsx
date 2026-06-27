@@ -23,6 +23,9 @@ function relativeTime(from: Date | null): string {
 interface ProductReadinessSummaryBarProps {
   productId: string;
   role: AppRole;
+  selectedTemplateId?: string;
+  channelLinks?: Partial<Record<MarketplaceChannel, string>>;
+  refreshSignal?: string;
   summary: {
     currentChannelLabel: string;
     cards: Array<{
@@ -39,7 +42,14 @@ interface ProductReadinessSummaryBarProps {
   };
 }
 
-export function ProductReadinessSummaryBar({ productId, role, summary }: ProductReadinessSummaryBarProps) {
+export function ProductReadinessSummaryBar({
+  productId,
+  role,
+  selectedTemplateId,
+  channelLinks,
+  refreshSignal,
+  summary,
+}: ProductReadinessSummaryBarProps) {
   const buildResults = useCallback(
     (status: "loading" | "unknown"): Partial<Record<MarketplaceChannel, ChannelReadinessResult>> =>
       Object.fromEntries(
@@ -63,15 +73,17 @@ export function ProductReadinessSummaryBar({ productId, role, summary }: Product
 
     const settled = await Promise.allSettled(
       READINESS_CHANNELS.map(async (channel) => {
-        const response = await fetch(
-          `/api/marketplace/readiness?productId=${encodeURIComponent(productId)}&channel=${encodeURIComponent(
-            channel,
-          )}`,
-          {
-            method: "GET",
-            cache: "no-store",
-          },
-        );
+        const params = new URLSearchParams({
+          productId,
+          channel,
+        });
+        if (selectedTemplateId) {
+          params.set("templateId", selectedTemplateId);
+        }
+        const response = await fetch(`/api/marketplace/readiness?${params.toString()}`, {
+          method: "GET",
+          cache: "no-store",
+        });
         if (!response.ok) {
           throw new Error("readiness request failed");
         }
@@ -93,7 +105,7 @@ export function ProductReadinessSummaryBar({ productId, role, summary }: Product
     setLastCheckedAt(checkedAt);
     setLastCheckedLabel(relativeTime(checkedAt));
     setChecking(false);
-  }, [buildResults, productId, role]);
+  }, [buildResults, productId, role, selectedTemplateId, refreshSignal]);
 
   useEffect(() => {
     void runCheck();
@@ -129,15 +141,11 @@ export function ProductReadinessSummaryBar({ productId, role, summary }: Product
             status={item.status}
             errorCount={item.errorCount}
             warningCount={item.warningCount}
-            onClick={() => {
-              document
-                .getElementById("channel-simulator-section")
-                ?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
+            href={channelLinks?.[channel]}
           />
         );
       }),
-    [results],
+    [channelLinks, results],
   );
 
   return (

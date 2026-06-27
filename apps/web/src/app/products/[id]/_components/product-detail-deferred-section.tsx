@@ -44,6 +44,7 @@ interface ProductDetailDeferredSectionProps {
   authHeader: string | undefined;
   canWrite: boolean;
   activeTab: DetailTab;
+  showChannelDiagnostics: boolean;
   returnTo: string;
   tabHref: (tab: DetailTab) => string;
 }
@@ -62,6 +63,7 @@ export async function ProductDetailDeferredSection({
   authHeader,
   canWrite,
   activeTab,
+  showChannelDiagnostics,
   returnTo,
   tabHref,
 }: ProductDetailDeferredSectionProps) {
@@ -171,6 +173,7 @@ export async function ProductDetailDeferredSection({
     actorRole,
     canWrite,
     activeTab,
+    showChannelDiagnostics,
     selectedChannel,
     selectedTemplateId,
     returnTo,

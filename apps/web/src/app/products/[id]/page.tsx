@@ -19,6 +19,7 @@ import {
   getProductVariants,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { cn } from "@/lib/utils";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
@@ -37,7 +38,7 @@ import type { DetailTab } from "./_components/product-detail-types";
 import { StatusToastEffect } from "./_components/status-toast-effect";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 
-interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; returnTo?: string; updateStatus?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; planContact?: string; deleteStatus?: string; deleteError?: string; }>; }
+interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; focus?: string; returnTo?: string; updateStatus?: string; statusAt?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; planContact?: string; deleteStatus?: string; deleteError?: string; }>; }
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +50,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
+  const showChannelDiagnostics = activeTab === "channels" && String(query.focus ?? "").trim() === "simulator";
   const returnTo = ((): string => { const v = String(query.returnTo ?? "").trim(); return /^\/(?!\/)/.test(v) ? v : ""; })();
   const updateStatus = String(query.updateStatus ?? "").trim();
+  const statusAt = String(query.statusAt ?? "").trim();
   const conflictVersion = String(query.currentVersion ?? "").trim();
   const deleteStatus = String(query.deleteStatus ?? "").trim();
   const deleteError = String(query.deleteError ?? "").trim();
@@ -149,6 +152,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     if (returnTo) params.set("returnTo", returnTo);
     return `/products/${encodeURIComponent(id)}?${params.toString()}`;
   };
+  const channelDiagnosticsHref = (channel: string): string => {
+    const params = new URLSearchParams();
+    params.set("tab", "channels");
+    params.set("channel", channel);
+    params.set("focus", "simulator");
+    if (selectedTemplateId) params.set("templateId", selectedTemplateId);
+    if (returnTo) params.set("returnTo", returnTo);
+    return `/products/${encodeURIComponent(id)}?${params.toString()}#channel-simulator-section`;
+  };
+  const readinessChannelLinks = Object.fromEntries(
+    READINESS_CHANNELS.map((channel) => [channel, channelDiagnosticsHref(channel)]),
+  ) as Partial<Record<(typeof READINESS_CHANNELS)[number], string>>;
 
   const sellerSku = (() => {
     const attributes =
@@ -533,7 +548,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </Card>
       ) : null}
       {activeTab === "overview" ? <WorkflowStepper steps={workflowSteps} /> : null}
-      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
+      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} selectedTemplateId={selectedTemplateId} channelLinks={readinessChannelLinks} refreshSignal={statusAt} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
       <Suspense fallback={<ProductDetailDeferredLoading />}>
         <ProductDetailDeferredSection
           productId={id}
@@ -549,6 +564,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           authHeader={authHeader}
           canWrite={canWrite}
           activeTab={activeTab}
+          showChannelDiagnostics={showChannelDiagnostics}
           returnTo={returnTo}
           tabHref={tabHref}
         />

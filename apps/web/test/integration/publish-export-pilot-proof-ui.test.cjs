@@ -28,6 +28,37 @@ const DEFERRED_SECTION = path.join(
 );
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 const SUBMISSIONS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "submissions", "page.tsx");
+const EXPORT_WITH_PREVIEW_FORM = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "products",
+  "[id]",
+  "_components",
+  "export-with-preview-form.tsx",
+);
+const STATUS_TOAST_EFFECT = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "products",
+  "[id]",
+  "_components",
+  "status-toast-effect.tsx",
+);
+const REFRESH_ON_INTERVAL = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "components",
+  "ui",
+  "refresh-on-interval.tsx",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -44,6 +75,9 @@ function run() {
   const deferredSource = fs.readFileSync(DEFERRED_SECTION, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS, "utf8");
   const submissionsSource = fs.readFileSync(SUBMISSIONS_PAGE, "utf8");
+  const exportWithPreviewSource = fs.readFileSync(EXPORT_WITH_PREVIEW_FORM, "utf8");
+  const statusToastSource = fs.readFileSync(STATUS_TOAST_EFFECT, "utf8");
+  const refreshOnIntervalSource = fs.readFileSync(REFRESH_ON_INTERVAL, "utf8");
 
   assert(
     pageSource.includes("evaluateConnectorPublishReadiness(") &&
@@ -66,10 +100,12 @@ function run() {
   assert(
     channelsSource.includes("data.canWrite && data.publishableChannels.length > 0") &&
       channelsSource.includes('name="fallbackAcknowledged"') &&
+      channelsSource.includes('name="templateId" value={data.selectedTemplateId ?? ""}') &&
+      channelsSource.includes('name="returnTo" value={data.returnTo}') &&
       channelsSource.includes("disabled={!data.canQueueExportWithAck}") &&
       channelsSource.includes('idleLabel="Queue channel export"') &&
       !channelsSource.includes("Publish to a channel"),
-    "Channels tab must expose a write-role-gated queued-export action with fallback acknowledgment and honest copy.",
+    "Channels tab must expose a write-role-gated queued-export action with fallback acknowledgment, current mapping context, safe return context, and honest copy.",
   );
   assert(
     channelsSource.includes("Advanced channel diagnostics") &&
@@ -81,20 +117,41 @@ function run() {
   );
   assert(
     actionsSource.includes("export async function createExportJobAction") &&
+      actionsSource.includes('const returnToRaw = String(formData.get("returnTo") ?? "").trim();') &&
+      actionsSource.includes('const returnTo = /^\\/(?!\\/)/.test(returnToRaw) ? returnToRaw : undefined;') &&
+      actionsSource.includes('const statusAt = Date.now().toString();') &&
       actionsSource.includes("/marketplace/products/${productId}/export-jobs") &&
+      actionsSource.includes("templateId: templateId || undefined,") &&
+      actionsSource.includes('templateId: templateId || null,') &&
+      actionsSource.includes('returnTo: returnTo || null,') &&
+      actionsSource.includes('updateStatus: "export-queued",') &&
+      actionsSource.includes("statusAt,") &&
       actionsSource.includes("export async function processExportJobAction") &&
+      actionsSource.includes('updateStatus: "export-processed",') &&
       actionsSource.includes("/marketplace/export-jobs/${jobId}/process") &&
       actionsSource.includes("export async function requeueExportJobAction") &&
+      actionsSource.includes('updateStatus: "export-requeued",') &&
       actionsSource.includes("/marketplace/export-jobs/${jobId}/requeue"),
-    "Web server actions must use queued export, process, and requeue backend contracts.",
+    "Web server actions must use queued export, process, and requeue backend contracts while preserving current mapping/return context and emitting explicit same-page refresh/status stamps.",
+  );
+  assert(
+    exportWithPreviewSource.includes("returnTo: string;") &&
+      exportWithPreviewSource.includes('{returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}') &&
+      statusToastSource.includes('"statusAt",') &&
+      statusToastSource.includes('if (updateStatus === "export-processed") {') &&
+      statusToastSource.includes('if (updateStatus === "export-requeued") {') &&
+      refreshOnIntervalSource.includes('if (document.visibilityState !== "visible") {'),
+    "Preview export form, status-toast cleanup, and interval refresh utility must carry, strip, acknowledge, and efficiently refresh the one-shot return/refresh context used by queued export and recovery redirects.",
   );
   assert(
     channelsSource.includes("<CardTitle>Queued export attempts and recovery</CardTitle>") &&
       channelsSource.includes("translateExportStatus(job.status)") &&
+      channelsSource.includes("const hasInFlightExportJobs = data.exportJobs.some") &&
+      channelsSource.includes("Auto-refreshing every 15s while queued, processing, or retrying export jobs are still in flight.") &&
       channelsSource.includes("job.failureReason") &&
       channelsSource.includes('idleLabel="Process"') &&
       channelsSource.includes('idleLabel="Requeue"'),
-    "Channels tab must expose status, failure state, process, requeue recovery, and a latest export result summary for queued export attempts.",
+    "Channels tab must expose status, failure state, process, requeue recovery, a live in-flight refresh cue, and a latest export result summary for queued export attempts.",
   );
   assert(
     submissionsSource.includes("StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)}") &&

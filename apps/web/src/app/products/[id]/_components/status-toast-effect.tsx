@@ -7,6 +7,7 @@ import { toast } from "@/components/ui/toast";
 // once consumed so that a hard-refresh does not re-show stale messages.
 const EPHEMERAL_PARAMS = [
   "updateStatus",
+  "statusAt",
   "currentVersion",
   "deleteStatus",
   "deleteError",
@@ -44,6 +45,14 @@ export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
     }
     if (updateStatus === "export-queued") {
       toast.success("Export job queued successfully.");
+      return;
+    }
+    if (updateStatus === "export-processed") {
+      toast.success("Export job processing started.");
+      return;
+    }
+    if (updateStatus === "export-requeued") {
+      toast.success("Export job requeued.");
       return;
     }
     if (updateStatus === "error" || updateStatus === "conflict") {

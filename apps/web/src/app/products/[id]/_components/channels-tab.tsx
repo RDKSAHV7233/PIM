@@ -10,6 +10,7 @@ import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
 import { JsonPreview } from "@/components/ui/json-preview";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
@@ -108,6 +109,10 @@ function submissionStatusTone(status: string): "neutral" | "success" | "warning"
 
 export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
   const latestExportJob = data.exportJobs[0] ?? null;
+  const hasInFlightExportJobs = data.exportJobs.some((job) => {
+    const normalized = String(job.status ?? "").trim().toLowerCase();
+    return normalized === "queued" || normalized === "processing" || normalized === "retrying";
+  });
   const selectedChannelOption =
     data.channels.find((channel) => channel.channel === data.selectedChannel) ?? null;
   type TemplateRow = ProductDetailPageData["templates"][number];
@@ -187,6 +192,10 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             <form action={processExportJobAction}>
               <input type="hidden" name="jobId" value={job.id} />
               <input type="hidden" name="productId" value={data.productId} />
+              <input type="hidden" name="channel" value={data.selectedChannel} />
+              <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
+              {data.showChannelDiagnostics ? <input type="hidden" name="focus" value="simulator" /> : null}
+              {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
               <PendingSubmitButton
                 type="submit"
                 className="px-2.5 py-1.5 text-xs"
@@ -200,6 +209,10 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             <form action={requeueExportJobAction}>
               <input type="hidden" name="jobId" value={job.id} />
               <input type="hidden" name="productId" value={data.productId} />
+              <input type="hidden" name="channel" value={data.selectedChannel} />
+              <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
+              {data.showChannelDiagnostics ? <input type="hidden" name="focus" value="simulator" /> : null}
+              {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
               <PendingSubmitButton
                 type="submit"
                 variant="secondary"
@@ -217,6 +230,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
   return (
     <>
       <Card hidden={data.activeTab !== "channels"}>
+        <RefreshOnInterval enabled={data.activeTab === "channels" && hasInFlightExportJobs} intervalMs={15_000} />
         <CardTitle>Channel readiness and queued exports</CardTitle>
         <div className="space-y-4">
           <ReadinessScoreWidget readiness={data.readiness} />
@@ -292,6 +306,11 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                       ? `Latest failure: ${latestExportJob.failureReason}`
                       : "No failure recorded on the latest queued export."}
                   </p>
+                  {hasInFlightExportJobs ? (
+                    <p className="text-xs text-slate-500">
+                      Auto-refreshing every 15s while queued, processing, or retrying export jobs are still in flight.
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-2 text-slate-600">
@@ -305,6 +324,8 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
               <form action={createExportJobAction} className="space-y-3">
                 <input type="hidden" name="productId" value={data.productId} />
                 <input type="hidden" name="channel" value={data.defaultExportChannel} />
+                <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
+                {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
                 <select name="fallbackAcknowledged" defaultValue={data.fallbackAckRequired ? "false" : "true"} className="sr-only" aria-hidden="true">
                   <option value="true">Yes</option>
                   <option value="false">No</option>
@@ -331,6 +352,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 templates={data.templates}
                 defaultExportChannel={data.defaultExportChannel}
                 selectedTemplateId={data.selectedTemplateId}
+                returnTo={data.returnTo}
                 fallbackAckRequired={data.fallbackAckRequired}
                 canQueueExportWithAck={data.canQueueExportWithAck}
                 shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
@@ -343,12 +365,19 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
           ) : (
             <p className="text-sm text-slate-600">Your role cannot queue export jobs.</p>
           )}
-          <details className="rounded-lg border border-slate-200 bg-white">
+          <details
+            id="channel-simulator-section"
+            className="rounded-lg border border-slate-200 bg-white"
+            open={data.showChannelDiagnostics}
+          >
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
               Advanced channel diagnostics
             </summary>
             <div className="space-y-3 border-t border-slate-200 px-4 py-4">
               <form method="get" className="flex max-w-xl items-end gap-3">
+                <input type="hidden" name="tab" value="channels" />
+                <input type="hidden" name="focus" value="simulator" />
+                {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
                 <div className="flex-1">
                   <label className="mb-1 block text-xs uppercase text-slate-500" htmlFor="simulator-channel">
                     Channel

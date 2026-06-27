@@ -5,8 +5,8 @@ import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { ApiClientPolicy, ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
@@ -20,6 +20,7 @@ import { RequestChangesDto } from "./dto/request-changes.dto";
 import { AdvancedSearchProductsDto } from "./dto/advanced-search-products.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
+import { ListProductsQueryDto } from "./dto/list-products-query.dto";
 
 @Controller("catalog")
 @ApiClientPolicy("allowed_with_api_scope")
@@ -57,12 +58,11 @@ export class CatalogController {
   @ApiOperation({ summary: "List products" })
   @ApiResponse({ status: 200, description: "Products fetched" })
   listProducts(
-    @Query() pagination: CursorPaginationDto,
+    @Query() query: ListProductsQueryDto,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
-    @Query("slim") slim?: string,
   ) {
     // Full list payload remains available for legacy callers; prefer ?slim=true for list surfaces.
-    return this.catalogService.listProducts(pagination, { slim: slim === "true" }, this.resolveActor(request));
+    return this.catalogService.listProducts(query, { slim: query.slim === "true" }, this.resolveActor(request));
   }
 
   @Get("products/search")

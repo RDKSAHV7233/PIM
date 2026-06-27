@@ -720,6 +720,7 @@ export async function updateProductAction(formData: FormData) {
   const returnToRaw = String(formData.get("returnTo") ?? "").trim();
   const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : undefined;
   const currentTab = String(formData.get("currentTab") ?? "").trim() || undefined;
+  const statusAt = Date.now().toString();
 
   const taxCodes = parseTaxCodes(formData);
   const rawStatus = String(formData.get("status") ?? "draft");
@@ -746,6 +747,7 @@ export async function updateProductAction(formData: FormData) {
         tab: currentTab,
         returnTo,
         updateStatus: "updated",
+        statusAt,
       }),
     );
   } catch (error: unknown) {
@@ -1317,9 +1319,12 @@ export async function createExportJobAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "").trim();
   const channel = String(formData.get("channel") ?? "").trim();
   const templateId = String(formData.get("templateId") ?? "").trim();
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : undefined;
   const installationId = String(formData.get("installationId") ?? "").trim();
   const maxRetries = parseNumber(formData.get("maxRetries"));
   const fallbackAcknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
+  const statusAt = Date.now().toString();
   if (!productId || !channel) {
     throw new Error("Product and channel are required for export.");
   }
@@ -1349,7 +1354,11 @@ export async function createExportJobAction(formData: FormData) {
     replaceQueryParams(`/products/${encodeURIComponent(productId)}`, {
       tab: "channels",
       channel,
+      templateId: templateId || null,
+      returnTo: returnTo || null,
       updateStatus: "export-queued",
+      statusAt,
+      focus: "simulator",
     }),
   );
 }
@@ -1518,21 +1527,55 @@ export async function rollbackConnectorMappingVersionAction(formData: FormData) 
 export async function processExportJobAction(formData: FormData) {
   const jobId = String(formData.get("jobId") ?? "").trim();
   const productId = String(formData.get("productId") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
+  const templateId = String(formData.get("templateId") ?? "").trim();
+  const focus = String(formData.get("focus") ?? "").trim();
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : undefined;
+  const statusAt = Date.now().toString();
   if (!jobId || !productId) {
     throw new Error("Job id and product id are required.");
   }
   await postJsonForAction(formData, `/marketplace/export-jobs/${jobId}/process`, {});
   revalidatePath(`/products/${productId}`);
+  redirect(
+    replaceQueryParams(`/products/${encodeURIComponent(productId)}`, {
+      tab: "channels",
+      channel: channel || null,
+      templateId: templateId || null,
+      returnTo: returnTo || null,
+      focus: focus || null,
+      updateStatus: "export-processed",
+      statusAt,
+    }),
+  );
 }
 
 export async function requeueExportJobAction(formData: FormData) {
   const jobId = String(formData.get("jobId") ?? "").trim();
   const productId = String(formData.get("productId") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
+  const templateId = String(formData.get("templateId") ?? "").trim();
+  const focus = String(formData.get("focus") ?? "").trim();
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : undefined;
+  const statusAt = Date.now().toString();
   if (!jobId || !productId) {
     throw new Error("Job id and product id are required.");
   }
   await postJsonForAction(formData, `/marketplace/export-jobs/${jobId}/requeue`, {});
   revalidatePath(`/products/${productId}`);
+  redirect(
+    replaceQueryParams(`/products/${encodeURIComponent(productId)}`, {
+      tab: "channels",
+      channel: channel || null,
+      templateId: templateId || null,
+      returnTo: returnTo || null,
+      focus: focus || null,
+      updateStatus: "export-requeued",
+      statusAt,
+    }),
+  );
 }
 
 export async function retrySubmissionAction(formData: FormData) {

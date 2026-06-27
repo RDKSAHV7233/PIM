@@ -43,6 +43,7 @@ export type ProductDetailPageData = {
   actorRole: AppRole;
   canWrite: boolean;
   activeTab: DetailTab;
+  showChannelDiagnostics: boolean;
   selectedChannel: MarketplaceChannel;
   selectedTemplateId: string | undefined;
   returnTo: string;

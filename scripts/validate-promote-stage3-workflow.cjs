@@ -104,6 +104,9 @@ function main() {
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to production");
   requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to production");
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to production");
+  requireEnvVar(deployStep, "DATABASE_URL_POOLED", "Deploy to production");
+  requireEnvVar(deployStep, "DATABASE_URL_DIRECT", "Deploy to production");
+  requireEnvVar(deployStep, "DATABASE_URL", "Deploy to production");
   requireEnvVar(deployStep, "STAGING_BASE_URL", "Deploy to production");
   requireEnvVar(deployStep, "STAGING_WEB_URL", "Deploy to production");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to production");

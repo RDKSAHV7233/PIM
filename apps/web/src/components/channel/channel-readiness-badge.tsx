@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { memo } from "react";
 import type { Channel } from "@/lib/design-tokens";
 import { channelConfig } from "@/lib/design-tokens";
@@ -10,6 +11,7 @@ interface ChannelReadinessBadgeProps {
   status: ReadinessStatus;
   errorCount?: number;
   warningCount?: number;
+  href?: string;
   onClick?: () => void;
 }
 
@@ -58,10 +60,19 @@ export const ChannelReadinessBadge = memo(function ChannelReadinessBadge({
   status,
   errorCount = 0,
   warningCount = 0,
+  href,
   onClick,
 }: ChannelReadinessBadgeProps) {
   const className = `inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${badgeStyle(status)}`;
   const content = badgeContent(channel, status, errorCount, warningCount);
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
 
   if (onClick) {
     return (

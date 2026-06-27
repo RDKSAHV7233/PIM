@@ -94,6 +94,34 @@ function Setup-Environment {
     Write-Info ""
 }
 
+# Clear any stale repo-owned Node processes before Prisma generation.
+function Stop-RepoNodeProcesses {
+    $repoRoot = (Get-Location).Path
+    $nodeProcesses = @()
+
+    try {
+        $nodeProcesses = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+            Where-Object { $_.CommandLine -and $_.CommandLine -like "*$repoRoot*" }
+    } catch {
+        Write-Warning "Unable to inspect running node.exe processes: $($_.Exception.Message)"
+        return
+    }
+
+    if (-not $nodeProcesses) {
+        return
+    }
+
+    Write-Info "Stopping stale repo-owned Node processes before Prisma generation..."
+    foreach ($process in $nodeProcesses) {
+        try {
+            Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "Failed to stop node.exe PID $($process.ProcessId): $($_.Exception.Message)"
+        }
+    }
+    Start-Sleep -Seconds 2
+}
+
 # Start Docker services
 function Start-Docker {
     if ($SkipDocker) {
@@ -190,6 +218,7 @@ function Install-Dependencies {
 # Generate Prisma client
 function Generate-Prisma {
     Write-Info "Generating Prisma client..."
+    Stop-RepoNodeProcesses
     
     npm run prisma:generate
     if ($LASTEXITCODE -ne 0) {
@@ -280,7 +309,7 @@ function Start-DevServers {
     Write-Host "Access the application:" -ForegroundColor Green
     Write-Host "  Web UI:  http://localhost:3000" -ForegroundColor Cyan
     Write-Host "  API:     http://localhost:4000/api/v1" -ForegroundColor Cyan
-    Write-Host "  Docs:    http://localhost:4000/api/docs" -ForegroundColor Cyan
+    Write-Host "  Docs:    http://localhost:4000/api/v1/docs" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Default Credentials:" -ForegroundColor Green
     Write-Host "  Workspace: default" -ForegroundColor Cyan

@@ -1767,7 +1767,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/catalog/products?slim=",
+              "raw": "{{base_url}}/api/v1/catalog/products",
               "host": [
                 "{{base_url}}"
               ],
@@ -1776,14 +1776,6 @@
                 "v1",
                 "catalog",
                 "products"
-              ],
-              "query": [
-                {
-                  "key": "slim",
-                  "value": "",
-                  "description": "(required)",
-                  "disabled": false
-                }
               ]
             },
             "description": "List products"

@@ -75,7 +75,7 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
     optionalEnv("STAGING_WEB_URL", env),
     env,
   );
-  const environmentName = String(env.RAILWAY_ENVIRONMENT_NAME ?? "staging").trim() || "staging";
+  const environmentName = String(env.RAILWAY_ENVIRONMENT_ID ?? env.RAILWAY_ENVIRONMENT_NAME ?? "staging").trim() || "staging";
   const apiSourcePath = path.resolve(repoRoot, String(env.RAILWAY_API_SOURCE_PATH ?? ".tmp/railway-api-service").trim());
   const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".tmp/railway-web-service").trim());
   const railwayBin = String(env.RAILWAY_CLI_BIN ?? "railway").trim() || "railway";
@@ -117,7 +117,7 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
 }
 
 function buildRailwayExecutionEnv(env = process.env) {
-  const preferredToken = optionalEnv("RAILWAY_API_TOKEN", env) || optionalEnv("RAILWAY_TOKEN", env);
+  const preferredToken = optionalEnv("RAILWAY_TOKEN", env) || optionalEnv("RAILWAY_API_TOKEN", env);
   if (!preferredToken) {
     return { ...env };
   }
@@ -128,20 +128,37 @@ function buildRailwayExecutionEnv(env = process.env) {
 }
 
 function buildDeployCommands(config) {
-  const apiRelative = path.relative(config.repoRoot, config.apiSourcePath) || ".";
-  const webRelative = path.relative(config.repoRoot, config.webSourcePath) || ".";
   return [
     {
       label: "API",
-      pathArg: apiRelative,
+      cwd: config.apiSourcePath,
+      pathArg: "",
       serviceTargets: config.apiServiceTargets,
     },
     {
       label: "Web",
-      pathArg: webRelative,
+      cwd: config.webSourcePath,
+      pathArg: "",
       serviceTargets: config.webServiceTargets,
     },
   ];
+}
+
+function prepareRailwayDeployRoot(config) {
+  const deployRoot = config.repoRoot;
+  const apiTargetPath = path.join(deployRoot, "railway-api-service");
+  const webTargetPath = path.join(deployRoot, "railway-web-service");
+
+  fs.rmSync(apiTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  fs.rmSync(webTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  fs.cpSync(config.apiSourcePath, apiTargetPath, { recursive: true });
+  fs.cpSync(config.webSourcePath, webTargetPath, { recursive: true });
+
+  return {
+    deployRoot,
+    apiTargetPath,
+    webTargetPath,
+  };
 }
 
 function classifyDeployTargets(changedFiles) {
@@ -460,18 +477,25 @@ function emitActionableDeployHint(error, config) {
 }
 
 function buildDeployArgs(config, pathArg, serviceTarget) {
-  return [
+  const args = [
     "up",
-    pathArg,
     "--service",
     serviceTarget,
     "--project",
     config.projectId,
     "--environment",
     config.environmentName,
-    "--path-as-root",
-    "--ci",
+    "--detach",
+    "--json",
+    "--no-gitignore",
   ];
+
+  if (pathArg && pathArg !== ".") {
+    args.splice(1, 0, pathArg);
+    args.push("--path-as-root");
+  }
+
+  return args;
 }
 
 function runDeployCommandAcrossServiceTargets(command, options) {
@@ -600,6 +624,73 @@ function setWebServiceVariables(config, railwayEnv, webPackagePath) {
   }
 }
 
+function resolveApiDatabaseVariables(env = process.env) {
+  const pooledUrl = optionalEnv("DATABASE_URL_POOLED", env);
+  const directUrl = optionalEnv("DATABASE_URL_DIRECT", env);
+  const fallbackUrl = optionalEnv("DATABASE_URL", env);
+
+  const databaseUrlPooled = pooledUrl || fallbackUrl;
+  const databaseUrlDirect = directUrl || fallbackUrl;
+
+  const pairs = [];
+  if (databaseUrlPooled) {
+    pairs.push(["DATABASE_URL_POOLED", databaseUrlPooled]);
+  }
+  if (databaseUrlDirect) {
+    pairs.push(["DATABASE_URL_DIRECT", databaseUrlDirect]);
+  }
+  return pairs;
+}
+
+function setApiServiceDatabaseVariables(config, railwayEnv, env = process.env) {
+  const pairs = resolveApiDatabaseVariables(env);
+  if (pairs.length === 0) {
+    console.warn(
+      "[railway-deploy] No database connection variables found in the current environment — skipping API service variable sync.",
+    );
+    return;
+  }
+
+  const primaryTarget = config.apiServiceTargets[0];
+  const args = [
+    "variables",
+    "set",
+    ...pairs.flatMap(([key, value]) => [key, value]),
+    "--service",
+    primaryTarget,
+    "--environment",
+    config.environmentName,
+    "--project",
+    config.projectId,
+  ];
+
+  console.log(
+    `[railway-deploy] Setting API service database variables on '${primaryTarget}': ${pairs
+      .map(([key]) => key)
+      .join(" ")}`,
+  );
+  const result = childProcess.spawnSync(config.railwayBin, args, {
+    cwd: config.repoRoot,
+    env: railwayEnv,
+    encoding: "utf8",
+  });
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  if (result.error || result.status !== 0) {
+    console.warn(
+      `[railway-deploy] Warning: could not set API service database variables (exit ${result.status}). ` +
+        "The deploy will proceed, but the API service may fail to start without database credentials. " +
+        "Set them manually in the Railway dashboard if necessary.",
+    );
+  } else {
+    console.log("[railway-deploy] API service database variables synced successfully.");
+  }
+}
+
 function main(env = process.env) {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(env, repoRoot);
@@ -633,36 +724,52 @@ function main(env = process.env) {
     throw new Error(`Railway web source path not found: ${config.webSourcePath}`);
   }
 
-  // Sync API URL env vars to the Railway web service BEFORE deploying.
-  // Railway passes service-level env vars as Docker build args — without this,
-  // the Dockerfile ARG PIM_API_BASE_URL is empty and the container falls back to
-  // localhost:4000, causing AUTH_UPSTREAM_UNAVAILABLE in the post-deploy check.
-  if (deployPlan.deployWeb) {
-    setWebServiceVariables(config, railwayEnv, config.webSourcePath);
-  }
+  const deployRoot = prepareRailwayDeployRoot(config);
+  const deployConfig = {
+    ...config,
+    apiSourcePath: deployRoot.apiTargetPath,
+    webSourcePath: deployRoot.webTargetPath,
+  };
 
-  for (const command of buildDeployCommands(config)) {
-    if (command.label === "API" && !deployPlan.deployApi) {
-      console.log("[railway-deploy] Skipping API deploy because this push has no API-impacting changes.");
-      continue;
+  try {
+    // Sync API URL env vars to the Railway web service BEFORE deploying.
+    // Railway passes service-level env vars as Docker build args — without this,
+    // the Dockerfile ARG PIM_API_BASE_URL is empty and the container falls back to
+    // localhost:4000, causing AUTH_UPSTREAM_UNAVAILABLE in the post-deploy check.
+    if (deployPlan.deployWeb) {
+      setWebServiceVariables(deployConfig, railwayEnv, deployConfig.webSourcePath);
     }
-    if (command.label === "Web" && !deployPlan.deployWeb) {
-      console.log("[railway-deploy] Skipping Web deploy because this push has no web-impacting changes.");
-      continue;
+
+    setApiServiceDatabaseVariables(deployConfig, railwayEnv, env);
+
+    const deployCommands = buildDeployCommands(deployConfig);
+
+    for (const command of deployCommands) {
+      if (command.label === "API" && !deployPlan.deployApi) {
+        console.log("[railway-deploy] Skipping API deploy because this push has no API-impacting changes.");
+        continue;
+      }
+      if (command.label === "Web" && !deployPlan.deployWeb) {
+        console.log("[railway-deploy] Skipping Web deploy because this push has no web-impacting changes.");
+        continue;
+      }
+      console.log(`[railway-deploy] Deploying ${command.label} service...`);
+      runDeployCommandAcrossServiceTargets(
+        command,
+        {
+          cwd: command.cwd,
+          env: railwayEnv,
+          config: deployConfig,
+          railwayBin: config.railwayBin,
+          maxAttempts: config.deployRetries,
+          retryDelayMs: config.deployRetryDelayMs,
+          deployTimeoutMs: config.deployTimeoutMs,
+        },
+      );
     }
-    console.log(`[railway-deploy] Deploying ${command.label} service...`);
-    runDeployCommandAcrossServiceTargets(
-      command,
-      {
-        cwd: repoRoot,
-        env: railwayEnv,
-        config,
-        railwayBin: config.railwayBin,
-        maxAttempts: config.deployRetries,
-        retryDelayMs: config.deployRetryDelayMs,
-        deployTimeoutMs: config.deployTimeoutMs,
-      },
-    );
+  } finally {
+    fs.rmSync(deployRoot.apiTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    fs.rmSync(deployRoot.webTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 
@@ -691,7 +798,10 @@ module.exports = {
   isServiceNotFoundRailwayError,
   main,
   normalizeServiceTarget,
+  prepareRailwayDeployRoot,
+  resolveApiDatabaseVariables,
   resolveConfig,
   resolveServiceTargets,
   runDeployCommandWithRetry,
+  setApiServiceDatabaseVariables,
 };

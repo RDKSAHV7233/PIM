@@ -23,7 +23,7 @@ function ensureDir(dir) {
 }
 
 function removeDir(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
 function normalizeApiBaseUrl(value) {
@@ -67,6 +67,46 @@ function copyDir(source, target) {
   }
 }
 
+function collectFiles(rootDir, currentDir = rootDir) {
+  const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectFiles(rootDir, entryPath));
+      continue;
+    }
+    files.push(entryPath);
+  }
+
+  return files;
+}
+
+function writeSourceRefreshManifest(outputRoot) {
+  const manifestPath = path.join(outputRoot, ".source-refresh-manifest.json");
+  const files = collectFiles(outputRoot)
+    .filter((filePath) => path.basename(filePath) !== ".source-refresh-manifest.json")
+    .map((filePath) => ({
+      path: path.relative(outputRoot, filePath).replace(/\\/g, "/"),
+      data: fs.readFileSync(filePath).toString("base64"),
+    }));
+
+  fs.writeFileSync(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        files,
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  return manifestPath;
+}
+
 function main() {
   if (!fs.existsSync(sourceDir)) {
     throw new Error(`Web source directory not found: ${sourceDir}`);
@@ -86,16 +126,23 @@ function main() {
   fs.copyFileSync(rootPackageLockSource, path.join(outputDir, "package-lock.json"));
 
   const tsconfigPath = path.join(outputDir, "tsconfig.json");
+  const tsconfigBase = JSON.parse(fs.readFileSync(tsconfigBaseSource, "utf8"));
   const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8"));
-  tsconfig.extends = "./tsconfig.base.json";
+  tsconfig.compilerOptions = {
+    ...(tsconfigBase.compilerOptions ?? {}),
+    ...(tsconfig.compilerOptions ?? {}),
+  };
+  delete tsconfig.extends;
   fs.writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, "utf8");
 
   const runtimeDependencies = sourcePkgJson.dependencies ?? {};
   const devDependencies = sourcePkgJson.devDependencies ?? {};
+  const railwaySnapshotNonce = Date.now().toString(36);
   const allDeps = {
     ...devDependencies,
     ...runtimeDependencies,
   };
+  const dotenvVersion = runtimeDependencies.dotenv || devDependencies.dotenv || "^17.4.1";
   const normalizedBuildScript = String(sourcePkgJson.scripts?.build ?? "")
     .replace(/NODE_OPTIONS='--max-old-space-size=1024'\s*/g, "")
     .trim();
@@ -108,7 +155,11 @@ function main() {
         name: sourcePkgJson.name,
         private: true,
         version: sourcePkgJson.version,
-        dependencies: runtimeDependencies,
+        railwaySnapshotNonce,
+        dependencies: {
+          ...runtimeDependencies,
+          dotenv: dotenvVersion,
+        },
         devDependencies,
         scripts: {
           ...(sourcePkgJson.scripts ?? {}),
@@ -149,6 +200,7 @@ function main() {
     "RUN npm ci --include=dev",
     "",
     "COPY . .",
+    `RUN node -e "const fs=require('node:fs');const path=require('node:path');const manifest=JSON.parse(fs.readFileSync('.source-refresh-manifest.json','utf8'));for(const file of manifest.files){const target=path.join(process.cwd(),file.path);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,Buffer.from(file.data,'base64'));}fs.rmSync('.source-refresh-manifest.json');"`,
     "ARG PIM_API_BASE_URL",
     "ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}",
     "ARG NEXT_PUBLIC_API_URL",
@@ -224,6 +276,8 @@ function main() {
     fs.writeFileSync(path.join(appRailwayTomlDir, ".env.production"), envContents, "utf8");
   }
 
+  const sourceRefreshManifest = writeSourceRefreshManifest(outputDir);
+
   console.log(
     JSON.stringify(
       {
@@ -233,6 +287,8 @@ function main() {
         packageLock: path.relative(repoRoot, path.join(outputDir, "package-lock.json")),
         dockerfile: path.relative(repoRoot, dockerfilePath),
         railwayJson: path.relative(repoRoot, railwayJsonPath),
+        sourceRefreshManifest: path.relative(repoRoot, sourceRefreshManifest),
+        railwaySnapshotNonce,
         deps: Object.keys(allDeps),
         ...(envFile
           ? {

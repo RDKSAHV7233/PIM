@@ -91,6 +91,9 @@ jobs:
           RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_NAME: Production
           RAILWAY_DEPLOY_TARGETS: ${{ inputs.deploy_targets }}
+          DATABASE_URL_POOLED: ${{ secrets.STAGE3_DATABASE_URL }}
+          DATABASE_URL_DIRECT: ${{ secrets.STAGE3_DATABASE_URL_DIRECT }}
+          DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
           STAGING_BASE_URL: ${{ inputs.staging_url }}
           STAGING_WEB_URL: ${{ secrets.STAGE3_WEB_URL }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
