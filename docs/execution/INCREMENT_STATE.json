@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-06-12T20:10",
+    "lastUpdated": "2026-06-27T12:16",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -19,8 +19,8 @@
         {
           "storyId": "ST-UI-001",
           "title": "Products tab default landing and bookmarkable",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "db09908",
           "tests_passed": [
@@ -34,8 +34,8 @@
         {
           "storyId": "ST-UI-SELLER-CLARITY-001",
           "title": "Remove seller-facing UX ambiguity in approvals, internal surfaces, and mapping flow",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "62953eb",
           "tests_passed": [
@@ -1987,16 +1987,18 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "39df1ec",
+          "commit": "58dffaca",
           "scope": [
             "package.json",
             "package-lock.json",
             "playwright.config.cjs",
+            "apps/api/scripts/start-built-api.cjs",
             "scripts/start-playwright-api.cjs",
             "scripts/start-playwright-web.cjs",
             "apps/api/src/auth/auth.service.ts",
             "apps/web/src/lib/api.ts",
             "apps/web/src/app/actions.ts",
+            "apps/api/test/integration/playwright-api-startup-contract.test.cjs",
             "apps/web/test/integration/connector-access-delete-helper.test.cjs",
             "apps/web/test/e2e/helpers/global-setup.cjs",
             "apps/web/test/e2e/helpers/pim1.cjs",
@@ -2020,8 +2022,12 @@
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "npm run build --workspace @pim1/api",
-            "npx playwright test --config=playwright.config.cjs"
-          ]
+            "npx playwright test --config=playwright.config.cjs",
+            "node apps/api/test/integration/playwright-api-startup-contract.test.cjs"
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Playwright startup drifted from the deployed API artifact contract and could skip rebuilds based on a stale local dist-feature bundle.",
+          "regression_evidence": "Exact failing command: rg -n 'dist-feature|PLAYWRIGHT_FORCE_API_BUILD|PLAYWRIGHT_SKIP_API_BUILD|startCommand = \"node apps/api/dist/main.js\"' apps/api/scripts/start-built-api.cjs scripts/start-playwright-api.cjs apps/api/railway.toml .gitignore. Failing output snippet: start-built-api accepts dist-feature/main.js; start-playwright-api skips API rebuild when dist-feature exists; Railway deploy still starts apps/api/dist/main.js. Likely files responsible: apps/api/scripts/start-built-api.cjs, scripts/start-playwright-api.cjs, apps/api/railway.toml, .gitignore."
         }
       ]
     },
@@ -2396,13 +2402,16 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "8a9491d",
+          "commit": "58dffaca",
           "scope": [
             "apps/api/src/common/access-policy/**",
             "apps/api/src/common/rbac/**",
             "apps/api/src/catalog/**",
             "apps/api/src/taxonomy/**",
             "apps/api/src/marketplace/**",
+            "apps/api/src/queue/queue.service.ts",
+            "apps/api/src/connectors/meesho/meesho.connector.ts",
+            "apps/api/src/connectors/nykaa/nykaa.connector.ts",
             "apps/api/src/connector-installer/**",
             "apps/api/src/workspace-users/**",
             "apps/api/src/api-keys/**",
@@ -2444,9 +2453,13 @@
             "npm run gate:run:sprint",
             "node scripts/validate-deploy-staging-workflow.cjs",
             "node scripts/staging-postdeploy-check.test.cjs",
+            "PIM_RUNTIME_ACCESS_BOOT_MODE=built PIM_API_BOOT_TIMEOUT_MS=240000 API_BOOT_DEBUG=true node apps/api/test/integration/marketplace-readiness-runtime-access.test.cjs",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "git diff --check"
-          ]
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Marketplace readiness authorization moved to the full app-role set in controller source, but runtime access coverage did not yet prove viewer and reviewer behavior end to end.",
+          "regression_evidence": "Exact failing command: rg -n 'viewerDashboardReadinessDenied|reviewerDashboardReadinessDenied|/marketplace/readiness/batch|/marketplace/products/.*/simulate|@Roles\\(...APP_ROLES\\)' apps/api/test/integration/access-policy-remediation.test.cjs apps/api/src/marketplace/marketplace.controller.ts. Failing output snippet: dashboard readiness denies viewer/reviewer while marketplace readiness controller source grants APP_ROLES, and no runtime integration assertion covers viewer/reviewer access to marketplace simulation or batch readiness. Likely files responsible: apps/api/src/marketplace/marketplace.controller.ts and apps/api/test/integration/access-policy-remediation.test.cjs."
         }
       ]
     },
