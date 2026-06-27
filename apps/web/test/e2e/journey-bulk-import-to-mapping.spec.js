@@ -26,13 +26,14 @@ const {
 } = require("./helpers/vexa-pim.cjs");
 
 // Inline CSV — no external file dependency.
-// Three minimal rows: title, description, brand, hsnCode, gstRate, status.
+// Omit `status` column: setting status in bulk import is admin-only (RESTRICTED_IMPORT_FIELDS).
+// This journey runs as "editor", so the CSV must not include restricted fields.
 function buildCsvBuffer(categoryHint) {
   const rows = [
-    "title,description,brand,hsnCode,gstRate,status",
-    `E2E Journey Product A ${categoryHint},E2E bulk-import-to-mapping journey,Vexa QA,61091000,18,draft`,
-    `E2E Journey Product B ${categoryHint},E2E bulk-import-to-mapping journey,Vexa QA,61091000,18,draft`,
-    `E2E Journey Product C ${categoryHint},E2E bulk-import-to-mapping journey,Vexa QA,61091000,18,draft`,
+    "title,description,brand,hsnCode,gstRate",
+    `E2E Journey Product A ${categoryHint},E2E bulk-import-to-mapping journey,Vexa QA,61091000,18`,
+    `E2E Journey Product B ${categoryHint},E2E bulk-import-to-mapping journey,Vexa QA,61091000,18`,
+    `E2E Journey Product C ${categoryHint},E2E bulk-import-to-mapping journey,Vexa QA,61091000,18`,
   ];
   return Buffer.from(rows.join("\n"), "utf8");
 }
