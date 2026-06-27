@@ -124,6 +124,9 @@ function main() {
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
+  requireEnvVar(deployStep, "DATABASE_URL_POOLED", "Deploy to staging");
+  requireEnvVar(deployStep, "DATABASE_URL_DIRECT", "Deploy to staging");
+  requireEnvVar(deployStep, "DATABASE_URL", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to staging");

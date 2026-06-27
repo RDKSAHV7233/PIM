@@ -1679,7 +1679,16 @@ export class MarketplaceService implements OnModuleInit {
     channel: MarketplaceChannel,
     simulation: Awaited<ReturnType<MarketplaceService["buildSimulationFromProduct"]>>,
   ): MarketplaceReadinessSummary {
-    const channelErrorCount = simulation.channelIssues.filter((issue) => issue.severity === "error").length;
+    const missingFieldKeys = new Set(
+      simulation.missingFields.map((fieldPath) => String(fieldPath ?? "").trim().toLowerCase()),
+    );
+    const channelErrorCount = simulation.channelIssues.filter((issue) => {
+      if (issue.severity !== "error") {
+        return false;
+      }
+      const fieldPath = String(issue.fieldPath ?? "").trim().toLowerCase();
+      return !(issue.code === "CHANNEL_REQUIRED_FIELD" && missingFieldKeys.has(fieldPath));
+    }).length;
     const channelWarningCount = simulation.channelIssues.filter((issue) => issue.severity === "warning").length;
     const errorCount =
       simulation.missingFields.length + simulation.complianceSummary.errorCount + channelErrorCount;

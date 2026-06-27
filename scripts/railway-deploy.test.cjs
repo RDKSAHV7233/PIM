@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const {
@@ -11,6 +12,8 @@ const {
   findOverlappingServiceTargets,
   isRetryableRailwayDeployError,
   normalizeServiceTarget,
+  prepareRailwayDeployRoot,
+  resolveApiDatabaseVariables,
   resolveConfig,
 } = require("./railway-deploy.cjs");
 
@@ -58,12 +61,24 @@ function main() {
       OTHER_ENV: "preserved",
     }),
     {
-      RAILWAY_TOKEN: "workspace_token",
+      RAILWAY_TOKEN: "project_token",
       RAILWAY_API_TOKEN: "workspace_token",
       OTHER_ENV: "preserved",
     },
-    "Railway CLI should prefer the workspace token when both token types are present.",
+    "Railway CLI should prefer the project token when both token types are present.",
   );
+
+  const environmentIdConfig = resolveConfig(
+    {
+      RAILWAY_TOKEN: "token_env_id",
+      RAILWAY_PROJECT_ID: "proj_env_id",
+      RAILWAY_ENVIRONMENT_ID: "8d8ba5bc-f90a-463d-bcb6-e90703d2874c",
+      RAILWAY_API_SERVICE_ID: "svc_api_env_id",
+      RAILWAY_WEB_SERVICE_ID: "svc_web_env_id",
+    },
+    repoRoot,
+  );
+  assert.equal(environmentIdConfig.environmentName, "8d8ba5bc-f90a-463d-bcb6-e90703d2874c");
   assert.deepEqual(
     buildRailwayExecutionEnv({
       RAILWAY_TOKEN: "project_token",
@@ -80,14 +95,44 @@ function main() {
   assert.equal(commands.length, 2, "Expected API and Web deploy commands");
   assert.deepEqual(commands[0], {
     label: "API",
-    pathArg: path.join(".tmp", "railway-api-service"),
+    cwd: path.join(repoRoot, ".tmp", "railway-api-service"),
+    pathArg: "",
     serviceTargets: ["Vexa API", "svc_api"],
   });
   assert.deepEqual(commands[1], {
     label: "Web",
-    pathArg: path.join(".tmp", "railway-web-service"),
+    cwd: path.join(repoRoot, ".tmp", "railway-web-service"),
+    pathArg: "",
     serviceTargets: ["App Vexa", "svc_web"],
   });
+
+  const deployRootInfo = prepareRailwayDeployRoot(config);
+  try {
+    assert.equal(path.relative(repoRoot, deployRootInfo.deployRoot), "");
+    assert.equal(path.relative(repoRoot, deployRootInfo.apiTargetPath), "railway-api-service");
+    assert.equal(path.relative(repoRoot, deployRootInfo.webTargetPath), "railway-web-service");
+    const stagedConfig = {
+      ...config,
+      apiSourcePath: deployRootInfo.apiTargetPath,
+      webSourcePath: deployRootInfo.webTargetPath,
+    };
+    const stagedCommands = buildDeployCommands(stagedConfig);
+    assert.deepEqual(stagedCommands[0], {
+      label: "API",
+      cwd: deployRootInfo.apiTargetPath,
+      pathArg: "",
+      serviceTargets: ["Vexa API", "svc_api"],
+    });
+    assert.deepEqual(stagedCommands[1], {
+      label: "Web",
+      cwd: deployRootInfo.webTargetPath,
+      pathArg: "",
+      serviceTargets: ["App Vexa", "svc_web"],
+    });
+  } finally {
+    fs.rmSync(deployRootInfo.apiTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    fs.rmSync(deployRootInfo.webTargetPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
 
   assert.equal(
     isRetryableRailwayDeployError({
@@ -162,6 +207,24 @@ function main() {
   );
   assert.deepEqual(nameFallbackConfig.apiServiceTargets, ["API"]);
   assert.deepEqual(nameFallbackConfig.webServiceTargets, ["PIM1"]);
+
+  assert.deepEqual(
+    resolveApiDatabaseVariables({
+      DATABASE_URL_DIRECT: "postgresql://direct:pass@localhost:5432/db",
+      DATABASE_URL_POOLED: "postgresql://pool:pass@localhost:5432/db",
+    }),
+    [
+      ["DATABASE_URL_POOLED", "postgresql://pool:pass@localhost:5432/db"],
+      ["DATABASE_URL_DIRECT", "postgresql://direct:pass@localhost:5432/db"],
+    ],
+  );
+  assert.deepEqual(
+    resolveApiDatabaseVariables({ DATABASE_URL: "postgresql://fallback:pass@localhost:5432/db" }),
+    [
+      ["DATABASE_URL_POOLED", "postgresql://fallback:pass@localhost:5432/db"],
+      ["DATABASE_URL_DIRECT", "postgresql://fallback:pass@localhost:5432/db"],
+    ],
+  );
 
   assert.deepEqual(
     classifyDeployTargets([

@@ -4,10 +4,10 @@ import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AppRole } from "../common/rbac/roles";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { CatalogService } from "./catalog.service";
+import { ListProductsQueryDto } from "./dto/list-products-query.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
@@ -31,10 +31,10 @@ export class ProductsController {
   @ApiOperation({ summary: "List products" })
   @ApiResponse({ status: 200, description: "Products fetched" })
   listProducts(
-    @Query() pagination: CursorPaginationDto,
+    @Query() query: ListProductsQueryDto,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.catalogService.listProducts(pagination, undefined, this.resolveActor(request));
+    return this.catalogService.listProducts(query, { slim: query.slim === "true" }, this.resolveActor(request));
   }
 
   @Post()
