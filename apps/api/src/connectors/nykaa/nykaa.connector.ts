@@ -17,7 +17,7 @@
 // before enabling this connector for production sellers (gate ST-NYKAA-001).
 
 import { Injectable } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
+import type * as ExcelJsModule from 'exceljs';
 import {
   ConnectorCap,
   ConnectorContext,
@@ -54,6 +54,15 @@ const NYKAA_ERROR_MAP: Record<string, { fieldPath: string; sellerMessage: string
   CATEGORY_MISMATCH:         { fieldPath: 'category',          severity: 'warning', sellerMessage: 'Product category does not map to a known Nykaa template. Verify the downloaded template matches your category.' },
   TEMPLATE_MAY_BE_STALE:     { fieldPath: '',                  severity: 'warning', sellerMessage: 'The Nykaa category template may be outdated. Re-download from seller.nykaa.com before uploading.' },
 };
+
+let excelJsModule: typeof ExcelJsModule | null = null;
+
+function loadExcelJs(): typeof ExcelJsModule {
+  if (!excelJsModule) {
+    excelJsModule = require('exceljs') as typeof ExcelJsModule;
+  }
+  return excelJsModule;
+}
 
 // ─── helper: read attribute string ────────────────────────────────────────────
 
@@ -295,7 +304,7 @@ export class NykaaConnector implements ConnectorInterface {
     const categorySlug = String(products[0]?.productType ?? '').trim().toLowerCase();
     const template = getNykaaCategoryTemplate(categorySlug);
 
-    const workbook = new ExcelJS.Workbook();
+    const workbook = new (loadExcelJs().Workbook)();
     workbook.creator = 'Vexa PIM';
     workbook.created = new Date();
 

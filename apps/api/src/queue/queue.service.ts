@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
-import { Job, Queue as BullQueue, Worker } from "bullmq";
-import { RedisClientType, createClient } from "redis";
+import type { Job as BullJob, Queue as BullQueue, Worker } from "bullmq";
+import type { RedisClientType } from "redis";
 import { QueueName } from "./queue.constants";
 
 type QueueHandler<T = unknown> = (payload: T) => Promise<void> | void;
@@ -126,6 +126,9 @@ const DEFAULT_QUEUE_BACKEND: QueueBackend = "memory";
 const DEFAULT_QUEUE_WORKER_ENABLED = true;
 const DEFAULT_REDIS_URL = "redis://localhost:6379";
 
+let bullmqModule: typeof import("bullmq") | null = null;
+let redisModule: typeof import("redis") | null = null;
+
 function resolveQueueBackend(): QueueBackend {
   const raw = String(process.env.QUEUE_BACKEND ?? DEFAULT_QUEUE_BACKEND).trim().toLowerCase();
   return raw === "bullmq" ? "bullmq" : "memory";
@@ -154,6 +157,24 @@ function buildBullConnectionOptions(redisUrlInput: string): BullConnectionOption
   };
 }
 
+function loadBullmq(): typeof import("bullmq") {
+  if (!bullmqModule) {
+    // Lazy-load BullMQ so the in-memory backend doesn't pay BullMQ's startup cost.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    bullmqModule = require("bullmq") as typeof import("bullmq");
+  }
+  return bullmqModule;
+}
+
+function loadRedis(): typeof import("redis") {
+  if (!redisModule) {
+    // Lazy-load Redis for the same reason; memory mode should not initialize it.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    redisModule = require("redis") as typeof import("redis");
+  }
+  return redisModule;
+}
+
 const SCHEDULED_SYNC_QUEUE_ID = "connector-sync-schedule";
 
 @Injectable()
@@ -170,7 +191,7 @@ export class QueueService implements OnModuleDestroy {
       : null;
   private readonly metadataRedis: RedisClientType | null =
     this.backend === "bullmq"
-      ? createClient({ url: String(process.env.REDIS_URL ?? DEFAULT_REDIS_URL).trim() || DEFAULT_REDIS_URL })
+      ? loadRedis().createClient({ url: String(process.env.REDIS_URL ?? DEFAULT_REDIS_URL).trim() || DEFAULT_REDIS_URL })
       : null;
   private metadataRedisReady: Promise<void> | null = null;
 
@@ -189,9 +210,10 @@ export class QueueService implements OnModuleDestroy {
   processScheduledSync(handler: QueueHandler<unknown>): void {
     this.scheduledSyncHandler = handler;
     if (this.backend === "bullmq" && this.workerEnabled && this.bullConnection && !this.scheduledSyncWorker) {
+      const { Worker } = loadBullmq();
       this.scheduledSyncWorker = new Worker(
         SCHEDULED_SYNC_QUEUE_ID,
-        async (job: Job<unknown>) => { await handler(job.data); },
+        async (job: BullJob<unknown>) => { await handler(job.data); },
         { connection: this.bullConnection, concurrency: 1 },
       );
       this.scheduledSyncWorker.waitUntilReady().catch(() => undefined);
@@ -203,13 +225,14 @@ export class QueueService implements OnModuleDestroy {
       return;
     }
     if (!this.scheduledSyncQueue) {
-      this.scheduledSyncQueue = new BullQueue(SCHEDULED_SYNC_QUEUE_ID, { connection: this.bullConnection });
+      const { Queue, Worker } = loadBullmq();
+      this.scheduledSyncQueue = new Queue(SCHEDULED_SYNC_QUEUE_ID, { connection: this.bullConnection });
       await this.scheduledSyncQueue.waitUntilReady();
       if (this.workerEnabled && !this.scheduledSyncWorker && this.scheduledSyncHandler) {
         const h = this.scheduledSyncHandler;
         this.scheduledSyncWorker = new Worker(
           SCHEDULED_SYNC_QUEUE_ID,
-          async (job: Job<unknown>) => { await h(job.data); },
+          async (job: BullJob<unknown>) => { await h(job.data); },
           { connection: this.bullConnection, concurrency: 1 },
         );
         await this.scheduledSyncWorker.waitUntilReady().catch(() => undefined);
@@ -576,7 +599,7 @@ export class QueueService implements OnModuleDestroy {
       return 0;
     }
     const failedJobs = await lane.queue.getFailed(0, limit - 1);
-    await Promise.all(failedJobs.map((job: Job) => job.retry()));
+    await Promise.all(failedJobs.map((job: BullJob<unknown>) => job.retry()));
     return failedJobs.length;
   }
 
@@ -605,7 +628,7 @@ export class QueueService implements OnModuleDestroy {
     }
     const resolvedLimit = Math.max(1, Math.min(100, Number.isFinite(limit) ? Math.trunc(limit) : 20));
     const failedJobs = await lane.queue.getFailed(0, resolvedLimit - 1);
-    return failedJobs.map((job: Job): QueueFailedJobSummary => ({
+    return failedJobs.map((job: BullJob<unknown>): QueueFailedJobSummary => ({
       id: String(job.id ?? ""),
       name: String(job.name ?? ""),
       failedReason: this.truncateDiagnostic(job.failedReason),
@@ -651,7 +674,8 @@ export class QueueService implements OnModuleDestroy {
     }
     const policy = this.resolvePolicy(registration.options, laneKey);
     const queueId = this.buildBullQueueId(queueName, laneKey);
-    const queue = new BullQueue(queueId, {
+    const { Queue, Worker } = loadBullmq();
+    const queue = new Queue(queueId, {
       connection: this.bullConnection,
       defaultJobOptions: {
         removeOnComplete: 1000,
@@ -674,7 +698,7 @@ export class QueueService implements OnModuleDestroy {
     if (this.workerEnabled) {
       created.worker = new Worker(
         queueId,
-        async (job: Job<unknown>) => {
+        async (job: BullJob<unknown>) => {
           created.active += 1;
           try {
             await registration.handler(job.data);

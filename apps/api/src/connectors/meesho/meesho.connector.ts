@@ -5,7 +5,7 @@
 // Category is derived from product.productType (Flipkart pattern).
 
 import { Injectable } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
+import type * as ExcelJsModule from 'exceljs';
 import {
   ConnectorInterface,
   ConnectorCap,
@@ -51,6 +51,15 @@ const MEESHO_ERROR_MAP: Record<
   FABRIC_INVALID:            { fieldPath: 'attributes.fabric', severity: 'warning', sellerMessage: "Fabric value is not in Meesho's accepted fabric list for this category." },
   GST_RATE_INVALID:          { fieldPath: 'gstRate',           severity: 'error',   sellerMessage: 'GST rate must be one of: 0, 5, 12, 18, 28.' },
 };
+
+let excelJsModule: typeof ExcelJsModule | null = null;
+
+function loadExcelJs(): typeof ExcelJsModule {
+  if (!excelJsModule) {
+    excelJsModule = require('exceljs') as typeof ExcelJsModule;
+  }
+  return excelJsModule;
+}
 
 // ─── Supplier Panel feedback codes ────────────────────────────────────────────
 // The following codes are emitted only by Meesho Supplier Panel during upload review
@@ -352,7 +361,7 @@ export class MeeshoConnector implements ConnectorInterface {
     const categorySlug = String(products[0]?.productType ?? '').trim().toLowerCase();
     const template = getMeeshoCategoryTemplate(categorySlug);
 
-    const workbook = new ExcelJS.Workbook();
+    const workbook = new (loadExcelJs().Workbook)();
     workbook.creator = 'Vexa PIM';
     workbook.created = new Date();
 
