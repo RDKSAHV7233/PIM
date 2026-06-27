@@ -9,7 +9,6 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
-  type AppRole,
   type AttributeDefinition,
   getCategoryTree,
   getCategoryAttributes,
@@ -55,10 +54,6 @@ function asAllowedValues(definition: AttributeDefinition): string[] {
       .filter((item) => item.length > 0);
   }
   return [];
-}
-
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
 }
 
 function isCatalogAttributesApiUnavailable(error: unknown): boolean {
@@ -277,7 +272,6 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
           <Card>
             <CardTitle>Add Attribute Definition</CardTitle>
             <form action={createAttributeDefinitionAction} className="mt-3 grid gap-3 md:grid-cols-2">
-              <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="categoryId" value={selectedCategoryId} />
               <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="attribute-name">

@@ -13,7 +13,6 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
-  type AppRole,
   type CatalogStatus,
   type IssueInboxFieldFamily,
   type IssueInboxSeverity,
@@ -139,10 +138,6 @@ function issueFamily(issue: { fieldPath: string | null; sellerMessage: string })
     return "Pricing";
   }
   return "Core content";
-}
-
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
 }
 
 function isIssueInboxApiUnavailable(error: unknown): boolean {
@@ -631,7 +626,6 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
           <Card aria-live="polite" aria-atomic="true">
             <CardTitle>Open Issues</CardTitle>
             <form action={resolveIssueInboxWarningsAction} className="space-y-3">
-              <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="returnTo" value={returnTo} />
               <DataGrid
                 columns={issueColumns}

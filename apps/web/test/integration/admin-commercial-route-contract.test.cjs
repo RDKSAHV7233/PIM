@@ -57,6 +57,16 @@ function run() {
     "Commercial ops page must wire plan-tier mutation and upgrade-request resolution server actions.",
   );
 
+  assert(
+    !page.includes("decodeURIComponent(query.error)"),
+    "Commercial ops page must not render URL query params as HTML — reflected XSS. Use COMMERCIAL_ERROR_MESSAGES static map.",
+  );
+
+  assert(
+    !page.includes('name="operatorId"'),
+    "Commercial ops page must not expose a hidden operatorId input — audit identity must come from the verified JWT in the server action.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -68,6 +78,8 @@ function run() {
           "admin_commercial_route_does_not_leak_raw_error_messages",
           "admin_commercial_route_surfaces_signup_funnel_health_alerts",
           "admin_commercial_route_wires_plan_and_upgrade_server_actions",
+          "admin_commercial_route_no_reflected_xss_via_query_error",
+          "admin_commercial_route_no_hidden_operatorId_input",
         ],
         checkedAt: new Date().toISOString(),
       },

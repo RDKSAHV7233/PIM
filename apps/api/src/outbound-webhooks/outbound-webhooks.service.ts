@@ -137,7 +137,7 @@ export class OutboundWebhooksService {
   ): Promise<OutboundWebhookEndpointRecord> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
     const name = String(dto.name ?? "").trim();
-    const targetUrl = this.normalizeTargetUrl(dto.targetUrl);
+    const targetUrl = await this.normalizeTargetUrl(dto.targetUrl);
     const signingSecret = String(dto.signingSecret ?? "").trim();
     if (!name) {
       throw new BadRequestException("Webhook name is required.");
@@ -209,7 +209,7 @@ export class OutboundWebhooksService {
       metadata.name = data.name;
     }
     if (dto.targetUrl !== undefined) {
-      data.targetUrl = this.normalizeTargetUrl(dto.targetUrl);
+      data.targetUrl = await this.normalizeTargetUrl(dto.targetUrl);
       metadata.targetUrl = data.targetUrl;
     }
     if (dto.isActive !== undefined) {
@@ -665,16 +665,9 @@ export class OutboundWebhooksService {
     return delivery;
   }
 
-  private normalizeTargetUrl(value: string): string {
-    const normalized = String(value ?? "").trim();
-    if (!normalized) {
-      throw new BadRequestException("Webhook target URL is required.");
-    }
-    const parsed = new URL(normalized);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new BadRequestException("Webhook target URL must use http or https.");
-    }
-    return parsed.toString();
+  private async normalizeTargetUrl(value: string): Promise<string> {
+    const { validateWebhookTargetUrl } = await import("../common/security/url-safety");
+    return validateWebhookTargetUrl(value);
   }
 
   private encryptSecret(secret: string): { cipher: string; keyVersion: string } {

@@ -37,7 +37,7 @@ export function MfaChallengePageClient({
       const response = await fetch("/api/auth/mfa/verify-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pendingToken, code: code.trim().replace(/\s/g, "") }),
+        body: JSON.stringify({ code: code.trim().replace(/\s/g, "") }),
         signal: AbortSignal.timeout(15_000),
       });
 

@@ -19,7 +19,7 @@ export default async function LockedPage({ searchParams }: LockedPageProps) {
   const params = await searchParams;
   const workspaceSlug = getString(params.workspace).trim().toLowerCase();
   const email = getString(params.email).trim();
-  const maskedEmail = getString(params.maskedEmail).trim() || "yo***@example.com";
+  const maskedEmail = getString(params.maskedEmail).trim();
   const unlockAtIso = getString(params.unlockAt).trim();
   const cookieStore = await cookies();
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);

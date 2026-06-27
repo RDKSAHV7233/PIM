@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
-import { getServerSession } from "@/lib/server-session";
+import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 import {
   setTenantPlanTier,
   updateUpgradeRequestStatus,
@@ -16,15 +16,16 @@ async function requireCommercialOpsAdmin(): Promise<void> {
   }
 }
 
-function resolveOperatorId(formData: FormData): string {
-  return String(formData.get("operatorId") ?? "admin").trim() || "admin";
+async function resolveOperatorId(): Promise<string> {
+  const claims = await getServerSessionClaims();
+  return claims?.sub || "web-admin";
 }
 
 export async function changePlanTierAction(formData: FormData) {
   await requireCommercialOpsAdmin();
   const tenantKey = String(formData.get("tenantKey") ?? "").trim();
   const planTier = String(formData.get("planTier") ?? "").trim().toUpperCase();
-  const operatorId = resolveOperatorId(formData);
+  const operatorId = await resolveOperatorId();
 
   if (!tenantKey || !["STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"].includes(planTier)) {
     redirect("/admin/commercial?error=invalid_input");
@@ -45,7 +46,7 @@ export async function resolveUpgradeRequestAction(formData: FormData) {
   await requireCommercialOpsAdmin();
   const requestId = String(formData.get("requestId") ?? "").trim();
   const status = String(formData.get("status") ?? "resolved").trim();
-  const operatorId = resolveOperatorId(formData);
+  const operatorId = await resolveOperatorId();
 
   if (!requestId) {
     redirect("/admin/commercial?error=missing_request_id");

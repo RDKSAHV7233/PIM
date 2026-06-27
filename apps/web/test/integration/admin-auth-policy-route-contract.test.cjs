@@ -6,6 +6,7 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "page.tsx");
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "actions.ts");
+const ENTERPRISE_FORM = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "_components", "auth-policy-enterprise-form.tsx");
 const ADMIN_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "page.tsx");
 const WORKSPACE_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "workspace", "page.tsx");
 const SIDEBAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "app-sidebar.tsx");
@@ -60,21 +61,35 @@ function run() {
     page.includes("runtimeApplied.sessionTimeout") &&
       page.includes("runtimeApplied.mfaEnrollment") &&
       page.includes("runtimeApplied.externalIdentity") &&
-      page.includes("Session timeout takes effect now.") &&
       (page.includes("persisted and audited for follow-on enforcement") || page.includes('href="/admin/oidc"') || page.includes('href="/admin/auth-policy/oidc"')),
     "Admin auth policy page must keep runtime truth honest by separating active session-timeout enforcement from stored-only MFA and OIDC intent.",
   );
 
+  const enterpriseForm = read(ENTERPRISE_FORM);
+
   assert(
     page.includes('label={policy.isPersisted ? "persisted" : "not configured"}') &&
-      page.includes("form action={updateTenantAuthPolicyAction}") &&
-      page.includes('name="externalIdentityMode"') &&
-      page.includes('name="mfaRequired"') &&
-      page.includes('name="mfaGracePeriodDays"') &&
-      page.includes('name="sessionTimeoutMinutes"') &&
-      page.includes('name="allowedAuthMethods"') &&
+      page.includes("AuthPolicyEnterpriseForm") &&
+      page.includes("action={updateTenantAuthPolicyAction}") &&
       page.includes('href="/admin/audit"'),
-    "Admin auth policy page must expose not-configured policy truth, the tenant auth policy form, the supported fields, and the audit follow-up path.",
+    "Admin auth policy page must expose not-configured policy truth, delegate to the enterprise form component, and the audit follow-up path.",
+  );
+
+  assert(
+    enterpriseForm.includes('"use client"') &&
+      enterpriseForm.includes('name="externalIdentityMode"') &&
+      enterpriseForm.includes('name="mfaRequired"') &&
+      enterpriseForm.includes('name="mfaGracePeriodDays"') &&
+      enterpriseForm.includes('name="sessionTimeoutMinutes"') &&
+      enterpriseForm.includes('name="allowedAuthMethods"') &&
+      enterpriseForm.includes("Session timeout takes effect now."),
+    "Enterprise auth policy form must be a client component with all policy fields.",
+  );
+
+  assert(
+    enterpriseForm.includes("window.confirm") &&
+      enterpriseForm.includes("disable MFA"),
+    "Enterprise auth policy form must show a confirmation dialog when disabling MFA for the workspace.",
   );
 
   assert(
@@ -101,7 +116,9 @@ function run() {
           "admin_auth_policy_route_explains_admin_only_boundary",
           "admin_auth_policy_route_surfaces_inline_status_feedback",
           "admin_auth_policy_route_keeps_runtime_truth_honest",
-          "admin_auth_policy_route_exposes_form_and_audit_followup",
+          "admin_auth_policy_route_delegates_to_enterprise_form",
+          "enterprise_form_is_client_component_with_all_fields",
+          "enterprise_form_mfa_disable_confirmation_dialog",
           "admin_auth_policy_server_action_is_admin_only",
           "admin_auth_policy_navigation_links_are_present",
         ],

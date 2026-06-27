@@ -3374,10 +3374,24 @@ export class MarketplaceService implements OnModuleInit {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const { cronExpression, scope, status } = data;
 
-    // Validate cron expression — basic 5-field check
-    const fields = cronExpression.trim().split(/\s+/);
-    if (fields.length < 5 || fields.length > 6) {
-      throw new BadRequestException("cronExpression must be a valid 5 or 6-field cron expression.");
+    const CRON_FIELD_RANGES: Array<[number, number]> = [[0,59],[0,23],[1,31],[1,12],[0,7]];
+    const cronFields = cronExpression.trim().split(/\s+/);
+    const checkFields = cronFields.length === 6 ? cronFields.slice(1) : cronFields;
+    if (cronFields.length < 5 || cronFields.length > 6 || !checkFields.every((f, i) => {
+      if (f === "*") return true;
+      for (const part of f.split(",")) {
+        const sm = part.match(/^(.+)\/(\d+)$/);
+        const base = sm ? sm[1] : part;
+        if (sm && (!Number.isInteger(Number(sm[2])) || Number(sm[2]) < 1)) return false;
+        if (base === "*") continue;
+        const rm = base.match(/^(\d+)-(\d+)$/);
+        if (rm) { const [lo,hi] = [Number(rm[1]),Number(rm[2])]; if (lo < CRON_FIELD_RANGES[i][0] || hi > CRON_FIELD_RANGES[i][1] || lo > hi) return false; continue; }
+        const n = Number(base);
+        if (!Number.isInteger(n) || n < CRON_FIELD_RANGES[i][0] || n > CRON_FIELD_RANGES[i][1]) return false;
+      }
+      return true;
+    })) {
+      throw new BadRequestException("cronExpression must be a valid 5 or 6-field cron expression with values in range.");
     }
 
     const rows = await tenantRaw<Array<{ id: string }>>(

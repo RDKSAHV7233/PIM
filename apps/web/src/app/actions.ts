@@ -21,7 +21,7 @@ import {
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import {
   IN_DEVELOPMENT_CHANNEL_NOTICE,
   isChannelInDevelopment,
@@ -868,7 +868,7 @@ export async function purgeProductAction(formData: FormData) {
     throw new Error("Confirm permanent delete before proceeding.");
   }
 
-  const actorRole = await getServerActorRole();
+  const { actorRole } = await getServerSession();
   if (actorRole !== "admin") {
     throw new Error("Admin role is required for permanent delete.");
   }
@@ -2016,8 +2016,7 @@ export async function retryConnectorRecoveryGroupAction(
   installationId: string,
   errorFamily: string,
 ): Promise<{ queued: number }> {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (actorRole !== "admin") {
     throw new Error("Forbidden: admin role required.");
   }
@@ -2041,8 +2040,7 @@ export async function retryConnectorRecoveryGroupAction(
 export async function importShopifyConfigAction(
   installationId: string,
 ): Promise<{ metafields: number; collections: number; taxonomy: number; fetchedAt: string }> {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (actorRole !== "admin") {
     throw new Error("Forbidden: admin role required.");
   }
@@ -2163,8 +2161,7 @@ export async function confirmCatalogLinksAction(
   links: Array<{ productId: string; shopifyGid: string; matchedBy: string }>,
 ): Promise<{ confirmed: number }> {
   "use server";
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (actorRole !== "admin") {
     throw new Error("Forbidden: admin role required.");
   }

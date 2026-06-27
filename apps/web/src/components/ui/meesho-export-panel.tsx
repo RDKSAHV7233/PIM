@@ -12,19 +12,12 @@
 //   4. Post-download guide shows the 4-step Supplier Panel upload walkthrough
 
 import { useState, useCallback } from "react";
+import { readCsrfCookie } from "@/lib/csrf";
 
 interface MeeshoExportPanelProps {
   installationId: string;
   /** Product IDs to export. If empty, exports all products attached to this connector. */
   productIds: string[];
-}
-
-function readCsrfToken(): string {
-  if (typeof document === "undefined") return "";
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith("pim_csrf_token="));
-  return match ? match.split("=")[1] ?? "" : "";
 }
 
 export function MeeshoExportPanel({ installationId, productIds }: MeeshoExportPanelProps) {
@@ -36,7 +29,7 @@ export function MeeshoExportPanel({ installationId, productIds }: MeeshoExportPa
     setStatus("loading");
     setErrorMessage("");
     try {
-      const csrf = readCsrfToken();
+      const csrf = readCsrfCookie();
       const response = await fetch(
         `/api/marketplace/connectors/${encodeURIComponent(installationId)}/export`,
         {

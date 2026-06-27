@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as Record<string, unknown>;
-  const enrollmentToken = String(body?.enrollmentToken ?? "").trim();
+  const enrollmentToken = request.cookies.get("pim_mfa_enrollment_token")?.value ?? "";
 
   let response: Response;
   try {

@@ -2,18 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-function readCookie(name: string): string {
-  const prefix = `${name}=`;
-  const parts = document.cookie.split(";");
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
-    }
-  }
-  return "";
-}
+import { csrfHeaders } from "@/lib/csrf";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -22,11 +11,10 @@ export function LogoutButton() {
   async function onLogout() {
     setSubmitting(true);
     try {
-      const csrfToken = readCookie("pim_csrf_token");
       await fetch("/api/auth/logout", {
         method: "POST",
         headers: {
-          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+          ...csrfHeaders(),
         },
         signal: AbortSignal.timeout(10_000),
       });

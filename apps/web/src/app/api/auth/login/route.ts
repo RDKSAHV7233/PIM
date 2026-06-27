@@ -109,6 +109,49 @@ export async function POST(request: NextRequest) {
   }
 
   const contentType = response.headers.get("content-type") ?? "application/json";
+  const secureCookiesFallback = useSecureCookies();
+  const MFA_TOKEN_MAX_AGE = 300;
+
+  if (response.status === 401 || response.status === 403) {
+    try {
+      const parsed = JSON.parse(rawBody) as Record<string, unknown>;
+
+      if (parsed.error === "MFA_REQUIRED" && typeof parsed.mfaPendingToken === "string") {
+        const outgoing = NextResponse.json(
+          { error: "MFA_REQUIRED", maskedEmail: parsed.maskedEmail ?? null },
+          { status: 401 },
+        );
+        outgoing.cookies.set("pim_mfa_pending_token", parsed.mfaPendingToken, {
+          httpOnly: true,
+          secure: secureCookiesFallback,
+          sameSite: "strict",
+          path: "/",
+          maxAge: MFA_TOKEN_MAX_AGE,
+        });
+        if (retryAfter) outgoing.headers.set("X-RateLimit-Retry-After", retryAfter);
+        return outgoing;
+      }
+
+      if (parsed.error === "MFA_ENROLLMENT_REQUIRED" && typeof parsed.enrollmentToken === "string") {
+        const outgoing = NextResponse.json(
+          { error: "MFA_ENROLLMENT_REQUIRED", maskedEmail: parsed.maskedEmail ?? null },
+          { status: 403 },
+        );
+        outgoing.cookies.set("pim_mfa_enrollment_token", parsed.enrollmentToken, {
+          httpOnly: true,
+          secure: secureCookiesFallback,
+          sameSite: "strict",
+          path: "/",
+          maxAge: MFA_TOKEN_MAX_AGE,
+        });
+        if (retryAfter) outgoing.headers.set("X-RateLimit-Retry-After", retryAfter);
+        return outgoing;
+      }
+    } catch {
+      // Not JSON or unexpected shape — fall through to raw response
+    }
+  }
+
   const outgoing = new NextResponse(rawBody, {
     status: response.status,
     headers: {

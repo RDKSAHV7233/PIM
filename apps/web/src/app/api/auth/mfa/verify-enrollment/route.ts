@@ -3,7 +3,7 @@ import { getApiBaseUrl } from "@/lib/api-base-url";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
-  const enrollmentToken = String(body?.enrollmentToken ?? "").trim();
+  const enrollmentToken = request.cookies.get("pim_mfa_enrollment_token")?.value ?? "";
   const code = String(body?.code ?? "").trim();
 
   let response: Response;
@@ -23,8 +23,16 @@ export async function POST(request: NextRequest) {
   }
 
   const rawBody = await response.text();
-  return new NextResponse(rawBody, {
+  const outgoing = new NextResponse(rawBody, {
     status: response.status,
     headers: { "Content-Type": response.headers.get("content-type") ?? "application/json" },
   });
+  if (response.ok) {
+    outgoing.cookies.set("pim_mfa_enrollment_token", "", {
+      httpOnly: true,
+      path: "/",
+      maxAge: 0,
+    });
+  }
+  return outgoing;
 }

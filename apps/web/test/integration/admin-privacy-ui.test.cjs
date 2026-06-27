@@ -30,7 +30,7 @@ function run() {
     "Privacy page must surface suspended commercial state with a dedicated banner.",
   );
   assert(
-    source.includes("Manage the signed-in account&apos;s privacy status and deletion workflow.") &&
+    (source.includes("Manage the signed-in account&apos;s privacy status and deletion workflow.") || source.includes("Manage the signed-in account's privacy status and deletion workflow.")) &&
       source.includes("This page applies only to your signed-in account.") &&
       source.includes("Current account privacy status") &&
       source.includes("Delete this account"),
