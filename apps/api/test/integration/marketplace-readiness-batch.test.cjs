@@ -6,6 +6,8 @@ const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_START_SCRIPT = path.join(REPO_ROOT, "apps", "api", "scripts", "start-built-api.cjs");
+const API_SOURCE_ENTRY = path.join(REPO_ROOT, "apps", "api", "src", "main.ts");
+const API_TS_NODE_PROJECT = path.join(REPO_ROOT, "apps", "api", "tsconfig.json");
 const DEFAULT_BOOT_TIMEOUT_MS = REPO_ROOT.startsWith("/mnt/") ? 600_000 : 60_000;
 
 function getAuthPassword() {
@@ -19,6 +21,30 @@ function getBootTimeoutMs() {
   }
   const parsed = Number.parseInt(String(raw), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BOOT_TIMEOUT_MS;
+}
+
+function resolveApiBootCommand() {
+  const mode = String(process.env.PIM_RUNTIME_ACCESS_BOOT_MODE || "source").trim().toLowerCase();
+  if (mode === "built") {
+    return {
+      requiredPath: API_START_SCRIPT,
+      command: "node",
+      args: [API_START_SCRIPT],
+      extraEnv: {},
+    };
+  }
+  return {
+    requiredPath: API_SOURCE_ENTRY,
+    command: "node",
+    args: ["-r", "ts-node/register/transpile-only", API_SOURCE_ENTRY],
+    extraEnv: {
+      TS_NODE_PROJECT: API_TS_NODE_PROJECT,
+      TS_NODE_COMPILER_OPTIONS: JSON.stringify({
+        module: "CommonJS",
+        moduleResolution: "Node",
+      }),
+    },
+  };
 }
 
 function readEnvFile(filePath) {
@@ -153,8 +179,9 @@ function expectedErrorCountFromSimulation(simulation) {
 
 async function run() {
   prepareEnv();
-  if (!fs.existsSync(API_START_SCRIPT)) {
-    throw new Error(`API start script not found at ${API_START_SCRIPT}.`);
+  const bootCommand = resolveApiBootCommand();
+  if (!fs.existsSync(bootCommand.requiredPath)) {
+    throw new Error(`API boot entry not found at ${bootCommand.requiredPath}.`);
   }
 
   const runId = Date.now().toString();
@@ -177,11 +204,12 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Readiness Batch" },
     }),
+    ...bootCommand.extraEnv,
   };
 
   const stdoutBuffer = [];
   const stderrBuffer = [];
-  const apiProcess = spawn("node", [API_START_SCRIPT], {
+  const apiProcess = spawn(bootCommand.command, bootCommand.args, {
     cwd: REPO_ROOT,
     env,
     stdio: ["ignore", "pipe", "pipe"],
