@@ -61,4 +61,19 @@ describe("validateWebhookTargetUrl", () => {
   it("blocks 0.0.0.0", async () => {
     await expect(validateWebhookTargetUrl("https://0.0.0.0/hook")).rejects.toThrow("private or reserved IP");
   });
+
+  it("allows HTTP and loopback when PIM_UNSAFE_HTTP_WEBHOOK_TARGETS is true", async () => {
+    const old = process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS;
+    process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS = "true";
+    try {
+      const result = await validateWebhookTargetUrl("http://127.0.0.1:9999/hook");
+      expect(result).toBe("http://127.0.0.1:9999/hook");
+    } finally {
+      if (old === undefined) {
+        delete process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS;
+      } else {
+        process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS = old;
+      }
+    }
+  });
 });
