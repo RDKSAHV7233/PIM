@@ -102,7 +102,7 @@ export class BulkImportStorageService implements OnModuleInit {
       return false;
     }
     const accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim().toLowerCase();
-    return !accountId || accountId === "local-dev";
+    return !accountId || accountId.startsWith("local-");
   }
 
   private shouldUsePathStyle(endpointInput: string): boolean {
