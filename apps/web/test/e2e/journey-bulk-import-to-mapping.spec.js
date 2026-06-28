@@ -223,13 +223,10 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
 
     await page.goto(`/products/${productId}?tab=quality`, { waitUntil: "domcontentloaded" });
 
-    // Quality tab always renders a "Compliance Validation" card with either
-    // a "Run validation" form or an EmptyState ("No issues found").
-    // Class names are Tailwind-only; match by role/text instead.
+    // Quality tab always renders a "Compliance Validation" CardTitle (<h2>).
+    // That heading is unconditional regardless of product status or role.
     await expect(
-      page.getByRole("heading", { name: /compliance validation|submit for review|no issues found/i }).first()
-        .or(page.locator('form#product-validate-form').first())
-        .or(page.getByText(/no issues found|run validation/i).first()),
+      page.getByRole("heading", { name: /compliance validation/i }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
