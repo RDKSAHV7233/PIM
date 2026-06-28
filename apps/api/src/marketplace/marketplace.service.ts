@@ -1900,9 +1900,15 @@ export class MarketplaceService implements OnModuleInit {
             };
           }
         }
-      } catch {
+      } catch (err) {
         // ConnectorMappingVersion lookup failed — fall through to system pack.
         // Never let a bridge failure block an existing channelMappingTemplate user.
+        this.logger.warn("ConnectorMappingVersion bridge lookup failed — falling back to system pack", {
+          channel,
+          categoryId,
+          installationId,
+          err: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
