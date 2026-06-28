@@ -282,3 +282,167 @@ describe("MarketplaceService.triggerConnectorExport", () => {
     );
   });
 });
+
+describe("MarketplaceService.getBatchReadiness", () => {
+  function mockResolvedMapping() {
+    return {
+      channel: "amazon",
+      displayName: "Amazon",
+      requiredFields: ["title"],
+      fieldMap: { title: "item_name" },
+      templateId: null,
+      templateName: null,
+      source: "system_pack",
+    };
+  }
+
+  it("returns one readiness summary per requested product and requested channel only", async () => {
+    const svc = makeService();
+    const svcInternal = svc as unknown as Record<string, jest.Mock>;
+
+    jest.spyOn(svcInternal, "getProductsForSimulation").mockResolvedValue([
+      { id: "prod-1", categoryId: "cat-1", validationIssues: [] },
+      { id: "prod-2", categoryId: "cat-2", validationIssues: [] },
+    ]);
+    jest.spyOn(svcInternal, "getEffectiveMappingCached").mockResolvedValue(mockResolvedMapping());
+    jest.spyOn(svcInternal, "buildSimulationFromProduct").mockImplementation(async (_product, channel) => ({
+      missingFields: channel === "amazon" ? ["title", "brand"] : ["attributes.mainImageUrl"],
+      channelIssues: [
+        {
+          severity: "error",
+          code: "CHANNEL_REQUIRED_FIELD",
+          fieldPath: channel === "amazon" ? "title" : "attributes.mainImageUrl",
+          sellerMessage: "Required field missing",
+          message: "Required field missing",
+        },
+      ],
+      complianceSummary: { errorCount: 1, warningCount: 0 },
+    }));
+
+    const result = await svc.getBatchReadiness(["prod-1", "prod-2"], ["amazon", "shopify"]);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.productId)).toEqual(["prod-1", "prod-2"]);
+    expect(result.items[0]?.readiness.map((entry) => entry.channel)).toEqual(["amazon", "shopify"]);
+    expect(result.items[1]?.readiness.map((entry) => entry.channel)).toEqual(["amazon", "shopify"]);
+    expect(result.items[0]?.readiness[0]).toMatchObject({
+      channel: "amazon",
+      status: "errors",
+      errorCount: 3,
+      warningCount: 0,
+    });
+    expect(result.items[0]?.readiness[1]).toMatchObject({
+      channel: "shopify",
+      status: "errors",
+      errorCount: 2,
+      warningCount: 0,
+    });
+  });
+
+  it("dedupes required field channel errors and refreshes counts after simulation changes", async () => {
+    const svc = makeService();
+    const svcInternal = svc as unknown as Record<string, jest.Mock>;
+
+    jest.spyOn(svcInternal, "getProductsForSimulation").mockResolvedValue([
+      { id: "prod-1", categoryId: "cat-1", validationIssues: [] },
+    ]);
+    jest.spyOn(svcInternal, "getEffectiveMappingCached").mockResolvedValue(mockResolvedMapping());
+
+    const buildSimulationFromProduct = jest.spyOn(svcInternal, "buildSimulationFromProduct");
+    buildSimulationFromProduct
+      .mockResolvedValueOnce({
+        missingFields: ["title", "brand"],
+        channelIssues: [
+          {
+            severity: "error",
+            code: "CHANNEL_REQUIRED_FIELD",
+            fieldPath: "title",
+            sellerMessage: "Title is required",
+            message: "Title is required",
+          },
+          {
+            severity: "error",
+            code: "CHANNEL_REQUIRED_FIELD",
+            fieldPath: "brand",
+            sellerMessage: "Brand is required",
+            message: "Brand is required",
+          },
+          {
+            severity: "error",
+            code: "CHANNEL_IMAGE",
+            fieldPath: "attributes.mainImageUrl",
+            sellerMessage: "Main image missing",
+            message: "Main image missing",
+          },
+          {
+            severity: "warning",
+            code: "CHANNEL_COPY",
+            fieldPath: "description",
+            sellerMessage: "Description should be longer",
+            message: "Description should be longer",
+          },
+        ],
+        complianceSummary: { errorCount: 1, warningCount: 2 },
+      })
+      .mockResolvedValueOnce({
+        missingFields: [],
+        channelIssues: [
+          {
+            severity: "warning",
+            code: "CHANNEL_COPY",
+            fieldPath: "description",
+            sellerMessage: "Description should be longer",
+            message: "Description should be longer",
+          },
+        ],
+        complianceSummary: { errorCount: 0, warningCount: 1 },
+      });
+
+    const initial = await svc.getBatchReadiness(["prod-1"], ["amazon"]);
+    const refreshed = await svc.getBatchReadiness(["prod-1"], ["amazon"]);
+
+    expect(initial.items[0]?.readiness[0]).toMatchObject({
+      channel: "amazon",
+      status: "errors",
+      errorCount: 4,
+      warningCount: 3,
+    });
+    expect(refreshed.items[0]?.readiness[0]).toMatchObject({
+      channel: "amazon",
+      status: "warnings",
+      errorCount: 0,
+      warningCount: 2,
+    });
+    expect(refreshed.items[0]?.readiness[0]?.errorCount).toBeLessThan(initial.items[0]?.readiness[0]?.errorCount ?? 0);
+  });
+
+  it("returns unknown readiness for requested products that are no longer found", async () => {
+    const svc = makeService();
+    const svcInternal = svc as unknown as Record<string, jest.Mock>;
+
+    jest.spyOn(svcInternal, "getProductsForSimulation").mockResolvedValue([
+      { id: "prod-1", categoryId: "cat-1", validationIssues: [] },
+    ]);
+    jest.spyOn(svcInternal, "getEffectiveMappingCached").mockResolvedValue(mockResolvedMapping());
+    jest.spyOn(svcInternal, "buildSimulationFromProduct").mockResolvedValue({
+      missingFields: [],
+      channelIssues: [],
+      complianceSummary: { errorCount: 0, warningCount: 0 },
+    });
+
+    const result = await svc.getBatchReadiness(["prod-1", "prod-missing"], ["flipkart"]);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items[1]).toEqual({
+      productId: "prod-missing",
+      readiness: [
+        {
+          channel: "flipkart",
+          status: "unknown",
+          errorCount: 0,
+          warningCount: 0,
+        },
+      ],
+    });
+  });
+});
