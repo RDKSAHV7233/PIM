@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { MulterModule } from "@nestjs/platform-express";
 import { AccessPolicyModule } from "../common/access-policy/access-policy.module";
 import { ComplianceModule } from "../compliance/compliance.module";
+import { MetricsModule } from "../metrics/metrics.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { BulkImportController } from "./bulk-import.controller";
 import { BulkImportService } from "./bulk-import.service";
@@ -11,6 +12,7 @@ import { BulkImportStorageService } from "./bulk-import-storage.service";
 @Module({
   imports: [
     ComplianceModule,
+    MetricsModule,
     NotificationsModule,
     AccessPolicyModule,
     // Enforce a module-level Multer size cap so the upload is rejected in the middleware
