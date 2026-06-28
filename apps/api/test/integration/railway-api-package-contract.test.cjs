@@ -27,8 +27,8 @@ function main() {
   // not via startCommand. PR #80 removed preDeployCommand; startCommand boots directly.
   assert.match(
     railwayToml,
-    /startCommand = "node dist\/main\.js"/,
-    "API package must start from the packaged dist output",
+    /startCommand = "node --max-old-space-size=400 dist\/main\.js"/,
+    "API package must start from the packaged dist output with heap cap to prevent OOM on Railway Hobby",
   );
   assert.match(railwayToml, /healthcheckPath = "\/api\/v1\/health"/, "API package must expose the staging health path");
   assert.equal(packageJson.scripts.prebuild, "prisma generate --schema prisma/schema.prisma");

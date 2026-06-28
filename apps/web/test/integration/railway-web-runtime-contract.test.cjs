@@ -72,6 +72,14 @@ function main() {
     "Prepared Railway web package must use npm ci, include the lockfile, and restore a clean base64 source manifest before the Docker build runs.",
   );
   assert(
+    dockerfile.includes("FROM node:20-alpine AS deps") &&
+      dockerfile.includes("RUN npm ci --omit=dev") &&
+      dockerfile.includes("ENV NODE_OPTIONS=--max-old-space-size=3072") &&
+      dockerfile.includes("COPY --from=deps /app/node_modules ./node_modules") &&
+      !runnerStage.includes("COPY --from=build /app ./"),
+    "Runner stage must use production-only deps from deps stage and not copy full devDependency node_modules.",
+  );
+  assert(
     dockerfile.includes("ARG PIM_API_BASE_URL") &&
       dockerfile.includes("ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}") &&
       dockerfile.includes("ARG NEXT_PUBLIC_API_URL") &&
