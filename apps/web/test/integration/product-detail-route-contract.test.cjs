@@ -93,10 +93,12 @@ function run() {
   );
   assert(
     pageSource.includes("returnTo ? <Link href={returnTo}") &&
-      pageSource.includes('{canWrite ? <button type="submit" form="product-edit-form"') &&
-      pageSource.includes('{canWrite ? <button type="submit" form="product-validate-form"') &&
+      pageSource.includes('const showSaveAction = canWrite && (activeTab === "content" || activeTab === "attributes");') &&
+      pageSource.includes('const showValidateAction = canWrite && activeTab === "quality";') &&
+      pageSource.includes('{showSaveAction ? <button type="submit" form="product-edit-form"') &&
+      pageSource.includes('{showValidateAction ? <button type="submit" form="product-validate-form"') &&
       pageSource.includes('{canWrite ? <Link href={tabHref(\"channels\")}'),
-    "Product detail header actions must preserve the inbox return path and hide write actions for read-only roles.",
+    "Product detail header actions must preserve the inbox return path and only expose save and validation controls on tabs that mount their backing workflows.",
   );
 
   console.log(

@@ -85,6 +85,8 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
           {data.canWrite ? (
             <form id="product-validate-form" action={validateProductAction}>
               <input type="hidden" name="productId" value={data.productId} />
+              <input type="hidden" name="currentTab" value="quality" />
+              <input type="hidden" name="returnTo" value={data.returnTo} />
               <Button type="submit">Run validation</Button>
             </form>
           ) : (
