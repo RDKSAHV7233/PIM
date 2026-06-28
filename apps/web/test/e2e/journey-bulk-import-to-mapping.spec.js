@@ -115,27 +115,24 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
     const startBtn = page.getByRole("button", { name: /start validated import/i });
     await expect(startBtn).toBeEnabled({ timeout: 5_000 });
     await startBtn.click();
-    await page.waitForLoadState("domcontentloaded");
 
-    // ── Poll for job completion ───────────────────────────────────
-    // The imports page re-renders with the new job in its table.
-    // For queued jobs a "Process" button appears; click it if present.
+    // After form submission the server action redirects to /operations/imports?bulkJobId=XXX.
+    // Wizard-created jobs have a runId so they are excluded from the plain jobs list table
+    // (listJobs() filters runId=null). Poll the API directly instead of the UI table.
+    await page.waitForURL(/operations\/imports/, { timeout: 30_000 });
+    const redirectedUrl = page.url();
+    const bulkJobId = new URL(redirectedUrl).searchParams.get("bulkJobId") ?? "";
+
     let jobDone = false;
+    const TERMINAL = new Set(["completed", "dead_letter", "failed"]);
     for (let attempt = 0; attempt < 15 && !jobDone; attempt++) {
-      await page.goto("/operations/imports", { waitUntil: "domcontentloaded" });
-
-      // Click "Process" if the job is still queued
-      const processBtn = page.getByRole("button", { name: /^process$/i }).first();
-      if (await processBtn.isVisible({ timeout: 1_500 }).catch(() => false)) {
-        await processBtn.click();
-        await page.waitForLoadState("domcontentloaded");
-      }
-
-      // Check for a terminal status row
-      const doneRow = page.getByRole("row").filter({ hasText: /complete|success|partial/i });
-      if (await doneRow.count() > 0) {
-        jobDone = true;
-      } else {
+      try {
+        const job = await apiRequest("GET", `/bulk-import/jobs/${encodeURIComponent(bulkJobId)}`, adminToken, undefined, DEFAULT_API_URL);
+        if (job && TERMINAL.has(String(job.status ?? "").toLowerCase())) {
+          jobDone = true;
+        }
+      } catch { /* retry */ }
+      if (!jobDone) {
         await page.waitForTimeout(4_000);
       }
     }
