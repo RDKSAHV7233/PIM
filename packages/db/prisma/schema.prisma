@@ -347,6 +347,8 @@ model ValidationIssue {
   // Composite indexes for the issue inbox query (filter: tenantKey + status, order: severity, createdAt, id)
   @@index([tenantKey, status, productId])
   @@index([tenantKey, severity, status])
+  // Optimised for product-list issue count: WHERE tenantKey = ? AND productId IN (?) AND status = ?
+  @@index([tenantKey, productId, status])
 }
 
 model ChannelMappingTemplate {
