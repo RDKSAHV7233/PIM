@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApiHttpError, getMarketplaceSimulation, MarketplaceChannel } from "@/lib/api";
-import { READINESS_CHANNELS, summarizeSimulation } from "@/lib/channel-readiness";
+import { ApiHttpError, getMarketplaceSimulation, type MarketplaceChannel, type MarketplaceSimulation } from "@/lib/api";
+import { READINESS_CHANNELS, type ChannelReadinessResult } from "@/lib/channel-readiness";
 import { isMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerActorRole } from "@/lib/server-session";
 import { resolveBearerToken } from "../../_auth";
+
+function summarizeSimulation(channel: MarketplaceChannel, simulation: MarketplaceSimulation): ChannelReadinessResult {
+  const missingFieldKeys = new Set(
+    simulation.missingFields.map((fieldPath) => String(fieldPath ?? "").trim().toLowerCase()),
+  );
+  const channelErrorCount = simulation.channelIssues.filter((issue) => {
+    if (issue.severity !== "error") {
+      return false;
+    }
+    const fieldPath = String(issue.fieldPath ?? "").trim().toLowerCase();
+    return !(issue.code === "CHANNEL_REQUIRED_FIELD" && missingFieldKeys.has(fieldPath));
+  }).length;
+  const channelWarningCount = simulation.channelIssues.filter((issue) => issue.severity === "warning").length;
+  const errorCount = simulation.missingFields.length + simulation.complianceSummary.errorCount + channelErrorCount;
+  const warningCount = simulation.complianceSummary.warningCount + channelWarningCount;
+  const status = errorCount > 0 ? "errors" : warningCount > 0 ? "warnings" : ("ready" as const);
+  return { channel, status, errorCount, warningCount };
+}
 
 function parseChannel(value: string | null): MarketplaceChannel | null {
   if (!isMarketplaceChannel(value)) {

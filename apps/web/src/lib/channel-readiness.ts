@@ -1,4 +1,4 @@
-import type { MarketplaceChannel, MarketplaceSimulation } from "@/lib/api";
+import type { MarketplaceChannel } from "@/lib/api";
 import {
   mapConnectorSlugToMarketplaceChannel,
   MARKETPLACE_CHANNELS,
@@ -83,31 +83,3 @@ export function aggregateReadinessStatus(results: Array<ChannelReadinessResult |
   return "ready";
 }
 
-export function summarizeSimulation(
-  channel: MarketplaceChannel,
-  simulation: MarketplaceSimulation,
-): ChannelReadinessResult {
-  const missingFieldKeys = new Set(
-    simulation.missingFields.map((fieldPath) => String(fieldPath ?? "").trim().toLowerCase()),
-  );
-  const channelErrorCount = simulation.channelIssues.filter((issue) => {
-    if (issue.severity !== "error") {
-      return false;
-    }
-    const fieldPath = String(issue.fieldPath ?? "").trim().toLowerCase();
-    return !(issue.code === "CHANNEL_REQUIRED_FIELD" && missingFieldKeys.has(fieldPath));
-  }).length;
-  const channelWarningCount = simulation.channelIssues.filter((issue) => issue.severity === "warning").length;
-  const errorCount = simulation.missingFields.length + simulation.complianceSummary.errorCount + channelErrorCount;
-  const warningCount = simulation.complianceSummary.warningCount + channelWarningCount;
-
-  const status: ReadinessStatus =
-    errorCount > 0 ? "errors" : warningCount > 0 ? "warnings" : "ready";
-
-  return {
-    channel,
-    status,
-    errorCount,
-    warningCount,
-  };
-}

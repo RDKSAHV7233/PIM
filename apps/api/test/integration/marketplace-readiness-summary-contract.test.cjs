@@ -5,7 +5,19 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const MARKETPLACE_SERVICE = path.join(REPO_ROOT, "apps", "api", "src", "marketplace", "marketplace.service.ts");
-const WEB_READINESS = path.join(REPO_ROOT, "apps", "web", "src", "lib", "channel-readiness.ts");
+// Single-channel GET proxy route — the only remaining home of the summarization logic on the web side.
+// The shared channel-readiness.ts export was removed; this is where the private copy lives now.
+const WEB_READINESS_ROUTE = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "api",
+  "marketplace",
+  "readiness",
+  "route.ts",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -35,7 +47,9 @@ function assertDedupedReadinessSummary(source, label) {
 
 function run() {
   assertDedupedReadinessSummary(read(MARKETPLACE_SERVICE), "Marketplace service readiness summary");
-  assertDedupedReadinessSummary(read(WEB_READINESS), "Web readiness summary");
+  // The web-side summarization logic lives in the single-channel GET proxy route (not channel-readiness.ts).
+  // It must stay algorithmically identical to the API's summarizeReadiness() to avoid divergence.
+  assertDedupedReadinessSummary(read(WEB_READINESS_ROUTE), "Web single-channel readiness route");
 
   console.log(
     JSON.stringify(
@@ -43,7 +57,7 @@ function run() {
         status: "ok",
         validated: [
           "marketplace_service_dedupes_required_field_channel_errors",
-          "web_readiness_dedupes_required_field_channel_errors",
+          "web_single_channel_route_dedupes_required_field_channel_errors",
         ],
         checkedAt: new Date().toISOString(),
       },
