@@ -20,6 +20,11 @@ export function ProductDetailStatusAlerts({
           Product updated successfully.
         </div>
       )}
+      {updateStatus === "validated" && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          Validation finished. Review any updated blockers before publishing.
+        </div>
+      )}
       {updateStatus === "conflict" && (
         <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
           {translateError("VERSION_CONFLICT").title}. {translateError("VERSION_CONFLICT").description}
@@ -29,6 +34,11 @@ export function ProductDetailStatusAlerts({
       {updateStatus === "error" && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           Product update failed. Retry after reloading current data.
+        </div>
+      )}
+      {updateStatus === "validate-error" && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Product validation failed. Retry after reloading current data.
         </div>
       )}
       {deleteStatus === "deleted" && (

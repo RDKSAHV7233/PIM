@@ -821,8 +821,34 @@ export async function validateProductAction(formData: FormData) {
   if (!productId) {
     throw new Error("Product id is required.");
   }
-  await postJsonForAction(formData, `/compliance/products/${productId}/validate`, {});
-  revalidatePath(`/products/${productId}`);
+  const basePath = `/products/${encodeURIComponent(productId)}`;
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : undefined;
+  const currentTab = String(formData.get("currentTab") ?? "").trim() || "quality";
+  const statusAt = Date.now().toString();
+
+  try {
+    await postJsonForAction(formData, `/compliance/products/${productId}/validate`, {});
+    revalidatePath(`/products/${productId}`);
+    redirect(
+      appendQueryParams(basePath, {
+        tab: currentTab,
+        returnTo,
+        updateStatus: "validated",
+        statusAt,
+      }),
+    );
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    redirect(
+      appendQueryParams(basePath, {
+        tab: currentTab,
+        returnTo,
+        updateStatus: "validate-error",
+        statusAt,
+      }),
+    );
+  }
 }
 
 export async function deleteProductAction(formData: FormData) {

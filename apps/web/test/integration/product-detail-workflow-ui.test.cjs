@@ -7,7 +7,10 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
 const OVERVIEW_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "overview-tab.tsx");
 const CHANNELS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "channels-tab.tsx");
+const QUALITY_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "quality-tab.tsx");
 const SIDE_RAIL = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-side-rail.tsx");
+const STATUS_ALERTS = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-status-alerts.tsx");
+const STATUS_TOAST = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "status-toast-effect.tsx");
 const READINESS_BAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "product-readiness-summary-bar.tsx");
 const REFRESH_ON_INTERVAL = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "refresh-on-interval.tsx");
 
@@ -21,7 +24,10 @@ function run() {
   const pageSource = fs.readFileSync(PRODUCT_PAGE, "utf8");
   const overviewSource = fs.readFileSync(OVERVIEW_TAB, "utf8");
   const channelsSource = fs.readFileSync(CHANNELS_TAB, "utf8");
+  const qualitySource = fs.readFileSync(QUALITY_TAB, "utf8");
   const sideRailSource = fs.readFileSync(SIDE_RAIL, "utf8");
+  const statusAlertsSource = fs.readFileSync(STATUS_ALERTS, "utf8");
+  const statusToastSource = fs.readFileSync(STATUS_TOAST, "utf8");
   const readinessBarSource = fs.readFileSync(READINESS_BAR, "utf8");
   const refreshOnIntervalSource = fs.readFileSync(REFRESH_ON_INTERVAL, "utf8");
 
@@ -50,6 +56,12 @@ function run() {
     pageSource.includes(">Open publish & export</Link>") &&
       !pageSource.includes(">Submit</Link>"),
     "Product detail header must use publish/export terminology instead of generic submit wording.",
+  );
+  assert(
+    pageSource.includes('const showSaveAction = canWrite && (activeTab === "content" || activeTab === "attributes");') &&
+      pageSource.includes('const showValidateAction = canWrite && activeTab === "quality";') &&
+      pageSource.includes(">Run validation</button>"),
+    "Product detail header must only expose save on edit tabs and must keep validation scoped to the quality workflow.",
   );
   assert(
     pageSource.includes('title: "Product readiness"') &&
@@ -86,6 +98,18 @@ function run() {
       channelsSource.includes('{data.showChannelDiagnostics ? <input type="hidden" name="focus" value="simulator" /> : null}') &&
       channelsSource.includes('{data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}'),
     "Technical channel diagnostics must stay collapsible, and both drilldowns and recovery actions must preserve diagnostics/return context.",
+  );
+  assert(
+    qualitySource.includes('<input type="hidden" name="currentTab" value="quality" />') &&
+      qualitySource.includes('<input type="hidden" name="returnTo" value={data.returnTo} />') &&
+      statusAlertsSource.includes('updateStatus === "validated"') &&
+      statusAlertsSource.includes("Validation finished. Review any updated blockers before publishing.") &&
+      statusAlertsSource.includes('updateStatus === "validate-error"') &&
+      statusToastSource.includes('if (updateStatus === "validated") {') &&
+      statusToastSource.includes('toast.success("Validation complete")') &&
+      statusToastSource.includes('if (updateStatus === "validate-error") {') &&
+      statusToastSource.includes('toast.error("Validation failed")'),
+    "Product detail validation must preserve product context and give explicit success and failure feedback after the action completes.",
   );
   assert(
     sideRailSource.includes("<SideRailCard title=\"Next actions\">") &&

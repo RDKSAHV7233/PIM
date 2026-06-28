@@ -106,8 +106,8 @@
         {
           "storyId": "ST-UI-PRODUCT-DETAIL-004",
           "title": "Simplify product detail into a merchandiser-first workflow",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "2ac55f3",
           "tests_passed": [
@@ -118,8 +118,8 @@
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Product detail still degrades to false healthy summary states when supporting reads fail, so channel truth can show Ready, Missing, or Not queued even when the backing connector or export read is unavailable.",
-          "regression_evidence": "Exact failing command: rg -n 'evaluateConnectorPublishReadiness\\(|\\.catch\\(\\(\\) => null\\)|label: \"Ready\"|label: \"Missing\"|label: \"Not queued\"' apps/web/src/app/products/[id]/page.tsx. Failing output snippet: readiness/export/media fetches are caught to null/[] and the summary builders still default to Ready, Missing, and Not queued branches. Likely file responsible: apps/web/src/app/products/[id]/page.tsx."
+          "reopened_reason": "Product detail header still exposes a Save action on the Quality tab even though the edit form is only mounted in the content workflow, so the merchandiser-facing action model is no longer truthful.",
+          "regression_evidence": "Exact failing command: node -e \"const fs=require('fs'); const page=fs.readFileSync('apps/web/src/app/products/[id]/page.tsx','utf8'); const deferred=fs.readFileSync('apps/web/src/app/products/[id]/_components/product-detail-deferred-section.tsx','utf8'); const content=fs.readFileSync('apps/web/src/app/products/[id]/_components/content-tab.tsx','utf8'); if(page.includes('form=\\\"product-edit-form\\\"') && deferred.includes('activeTab === \\\"quality\\\" && <QualityTab data={pageData} />') && content.includes('id=\\\"product-edit-form\\\"')) { console.error('FAIL: header exposes Save outside tabs where the edit form is mounted. Likely files: apps/web/src/app/products/[id]/page.tsx, apps/web/src/app/products/[id]/_components/product-detail-deferred-section.tsx, apps/web/src/app/products/[id]/_components/content-tab.tsx'); process.exit(1); } console.log('PASS');\". Failing output snippet: FAIL: header exposes Save outside tabs where the edit form is mounted. Likely files: apps/web/src/app/products/[id]/page.tsx, apps/web/src/app/products/[id]/_components/product-detail-deferred-section.tsx, apps/web/src/app/products/[id]/_components/content-tab.tsx."
         },
         {
           "storyId": "ST-UI-AUTH-SHELL-005",
