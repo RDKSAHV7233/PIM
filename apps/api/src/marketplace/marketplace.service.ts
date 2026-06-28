@@ -118,6 +118,7 @@ type MarketplaceReadinessSummary = {
   status: MarketplaceReadinessStatus;
   errorCount: number;
   warningCount: number;
+  evalFailed?: true;
 };
 
 type SubmissionFilters = {
@@ -230,6 +231,30 @@ const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
       gstRate: "gst",
       "attributes.color": "color",
       "attributes.material": "fabric",
+    },
+  },
+  myntra: {
+    channel: "myntra",
+    displayName: "Myntra",
+    requiredFields: [
+      "title",
+      "brand",
+      "description",
+      "hsnCode",
+      "gstRate",
+      "attributes.color",
+      "attributes.size",
+    ],
+    fieldMap: {
+      title: "product_name",
+      brand: "brand",
+      description: "product_description",
+      hsnCode: "hsn_code",
+      gstRate: "gst_rate",
+      "attributes.color": "color",
+      "attributes.size": "size",
+      "attributes.material": "fabric_composition",
+      "attributes.mainImageUrl": "images.0",
     },
   },
   shopify: {
@@ -1601,14 +1626,20 @@ export class MarketplaceService implements OnModuleInit {
                 mappingCache,
               );
               return this.summarizeReadiness(channel, simulation);
-            } catch {
+            } catch (err) {
+              this.logger.warn("Channel readiness evaluation failed", {
+                productId: product.id,
+                channel,
+                err: err instanceof Error ? err.message : String(err),
+              });
               return {
                 channel,
                 status: "unknown" as const,
                 errorCount: 0,
                 warningCount: 0,
-                };
-              }
+                evalFailed: true as const,
+              };
+            }
           }),
           channelTaskConcurrency,
         );
@@ -1900,9 +1931,15 @@ export class MarketplaceService implements OnModuleInit {
             };
           }
         }
-      } catch {
+      } catch (err) {
         // ConnectorMappingVersion lookup failed — fall through to system pack.
         // Never let a bridge failure block an existing channelMappingTemplate user.
+        this.logger.warn("ConnectorMappingVersion bridge lookup failed — falling back to system pack", {
+          channel,
+          categoryId,
+          installationId,
+          err: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 

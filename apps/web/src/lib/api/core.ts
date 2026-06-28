@@ -765,7 +765,7 @@ export interface MarketplaceSimulation {
   };
   validationSource?: "local_rules" | "amazon_sp_api";
   validationWarnings?: string[];
-  mappingSource: "system_pack" | "saved_template";
+  mappingSource: "system_pack" | "saved_template" | "connector_mapping_version";
   templateId: string | null;
   templateName: string | null;
   mappedPayload: Record<string, unknown>;
@@ -1008,7 +1008,7 @@ export interface ConnectorPayloadPreviewResponse {
   channel: MarketplaceChannel;
   templateId: string | null;
   templateName: string | null;
-  mappingSource: "system_pack" | "saved_template";
+  mappingSource: "system_pack" | "saved_template" | "connector_mapping_version";
   exportReady: boolean;
   validationSource: "local_rules" | "amazon_sp_api";
   missingFields: string[];

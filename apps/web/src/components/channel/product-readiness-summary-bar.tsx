@@ -6,7 +6,11 @@ import { ChannelReadinessBadge } from "@/components/channel/channel-readiness-ba
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { AppRole, MarketplaceChannel } from "@/lib/api";
-import { READINESS_CHANNELS, type ChannelReadinessResult } from "@/lib/channel-readiness";
+import {
+  READINESS_CHANNELS,
+  type ChannelReadinessResult,
+  type ProductReadinessBatchResponse,
+} from "@/lib/channel-readiness";
 
 function relativeTime(from: Date | null): string {
   if (!from) {
@@ -71,41 +75,37 @@ export function ProductReadinessSummaryBar({
     setChecking(true);
     setResults(buildResults("loading"));
 
-    const settled = await Promise.allSettled(
-      READINESS_CHANNELS.map(async (channel) => {
-        const params = new URLSearchParams({
-          productId,
-          channel,
-        });
-        if (selectedTemplateId) {
-          params.set("templateId", selectedTemplateId);
-        }
-        const response = await fetch(`/api/marketplace/readiness?${params.toString()}`, {
-          method: "GET",
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("readiness request failed");
-        }
-        return (await response.json()) as ChannelReadinessResult;
-      }),
-    );
-
     const next = buildResults("unknown");
 
-    READINESS_CHANNELS.forEach((channel, index) => {
-      const item = settled[index];
-      if (item.status === "fulfilled") {
-        next[channel] = item.value;
+    try {
+      const response = await fetch("/api/marketplace/readiness/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds: [productId], channels: [...READINESS_CHANNELS] }),
+        cache: "no-store",
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as ProductReadinessBatchResponse;
+        const item = data.items?.[0];
+        if (item) {
+          for (const result of item.readiness) {
+            if ((READINESS_CHANNELS as string[]).includes(result.channel)) {
+              next[result.channel] = result;
+            }
+          }
+        }
       }
-    });
+    } catch {
+      // Network failure — leave all channels at "unknown"
+    }
 
     setResults(next);
     const checkedAt = new Date();
     setLastCheckedAt(checkedAt);
     setLastCheckedLabel(relativeTime(checkedAt));
     setChecking(false);
-  }, [buildResults, productId, role, selectedTemplateId, refreshSignal]);
+  }, [buildResults, productId, selectedTemplateId, refreshSignal]);
 
   useEffect(() => {
     void runCheck();
