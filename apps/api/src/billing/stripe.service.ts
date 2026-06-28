@@ -6,7 +6,7 @@ import { PrismaService } from "../prisma/prisma.service";
 
 type StripeClient = InstanceType<typeof Stripe>;
 
-const STRIPE_API_VERSION = "2026-05-27.dahlia" as const;
+const STRIPE_API_VERSION = Stripe.API_VERSION;
 const PLAN_TIER_TO_PRICE_ID_ENV: Record<string, string> = {
   STARTER: "STRIPE_PRICE_ID_STARTER",
   GROWTH: "STRIPE_PRICE_ID_GROWTH",
