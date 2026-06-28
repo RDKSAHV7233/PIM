@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const ACCESS_COOKIE = "pim_access_token";
 const REFRESH_COOKIE = "pim_refresh_token";
 const CSRF_COOKIE = "pim_csrf_token";
-const REFRESH_THRESHOLD_SECONDS = 10 * 60;
+const REFRESH_THRESHOLD_SECONDS = 90;
 
 function useSecureCookies(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();

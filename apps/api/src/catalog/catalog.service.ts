@@ -1689,16 +1689,15 @@ export class CatalogService {
     }
 
     const categoryIds = Array.from(new Set(products.map((product) => product.categoryId)));
-    // Cache key: sorted categoryIds joined so order-independent calls share the same entry.
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
-    const sortedIds = [...categoryIds].sort().join(",");
-    const cacheKey = `completeness:required:${tenantKey}:${sortedIds}`;
-    const requiredAttributes = await this.cache.getOrSet(
+    // Cache all required attributes for the tenant in one entry so paginated product lists
+    // (each with a unique category set) all share the same cache hit. Filter in memory below.
+    const cacheKey = `completeness:required:${tenantKey}`;
+    const allRequiredAttributes = await this.cache.getOrSet(
       cacheKey,
       COMPLETENESS_CACHE_TTL_SECONDS,
       () => this.prisma.tenant().attributeDefinition.findMany({
         where: {
-          categoryId: { in: categoryIds },
           appliesTo: AppliesTo.product,
           required: true,
         },
@@ -1708,6 +1707,8 @@ export class CatalogService {
         },
       }),
     );
+    const categoryIdSet = new Set(categoryIds);
+    const requiredAttributes = allRequiredAttributes.filter((a) => categoryIdSet.has(a.categoryId));
 
     const requiredByCategory = new Map<string, string[]>();
     for (const attribute of requiredAttributes) {

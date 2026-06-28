@@ -296,19 +296,19 @@ export default async function DashboardPage() {
 
   try {
     const [healthResult, usageResult, operationsSummaryResult, productsResult, signupTrendsResult, pricingCoverageResult] = await Promise.all([
-      loadSharedRead(getDashboardHealth({ role: actorRole, authHeader })),
+      loadSharedRead(getDashboardHealth({ role: actorRole, authHeader, revalidateSeconds: 60 })),
       canViewBillingUsage
         ? loadSharedRead(getBillingUsage({ role: actorRole, authHeader }))
         : Promise.resolve({ state: "restricted" } as const),
       canViewOperationsSummary
-        ? loadSharedRead(getDashboardOperationsSummary({ role: actorRole, authHeader }))
+        ? loadSharedRead(getDashboardOperationsSummary({ role: actorRole, authHeader, revalidateSeconds: 60 }))
         : Promise.resolve({ state: "restricted" } as const),
       loadSharedRead(getProductList({ slim: true }, { role: actorRole, authHeader })),
       canViewSignupAnalytics
-        ? loadSharedRead(getKpiTrends({ days: 30 }, { role: actorRole, authHeader }))
+        ? loadSharedRead(getKpiTrends({ days: 30 }, { role: actorRole, authHeader, revalidateSeconds: 60 }))
         : Promise.resolve({ state: "restricted" } as const),
       canViewBillingUsage
-        ? loadSharedRead(getPricingCoverage({ role: actorRole, authHeader }))
+        ? loadSharedRead(getPricingCoverage({ role: actorRole, authHeader, revalidateSeconds: 60 }))
         : Promise.resolve({ state: "restricted" } as const),
     ]);
 

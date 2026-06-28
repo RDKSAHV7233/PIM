@@ -76,16 +76,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   let installedConnectorsUnavailable = false;
   let exportJobsUnavailable = false;
   let mediaAssetsUnavailable = false;
-  let readinessUnavailable = false;
+  let effectiveReadinessUnavailable = false;
+
+  // Start product-independent background promises immediately so they run during
+  // the sequential product + channel/connector fetches below.
   const variantsPromise = getProductVariants(id, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getProductVariants>>);
-  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => {
-    channelsUnavailable = true;
-    return [] as Awaited<ReturnType<typeof getMarketplaceChannels>>;
-  });
-  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader }).catch(() => {
-    installedConnectorsUnavailable = true;
-    return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
-  });
   const exportJobsPromise = getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => {
     exportJobsUnavailable = true;
     return [] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>;
@@ -97,26 +92,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     notFound();
   }
 
-  const readinessPromise = evaluateConnectorPublishReadiness(
-    mapMarketplaceChannelToConnectorSlug(selectedChannel),
-    { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
-    { role: actorRole, authHeader },
-  ).catch(() => {
-    readinessUnavailable = true;
-    return null;
-  });
-  const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader }).catch(() => {
-    mediaAssetsUnavailable = true;
-    return [] as Awaited<ReturnType<typeof getMediaAssets>>;
-  });
-
-  const [variants, channels, installedConnectors, exportJobs, readiness, mediaAssets] = await Promise.all([
-    variantsPromise,
-    channelsPromise,
-    installedConnectorsPromise,
-    exportJobsPromise,
-    readinessPromise,
-    mediaAssetsPromise,
+  // Resolve tenant-stable data (channels + connectors) before the main batch so we can
+  // compute the effective channel once and make a single readiness call.
+  const [channels, installedConnectors] = await Promise.all([
+    getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => {
+      channelsUnavailable = true;
+      return [] as Awaited<ReturnType<typeof getMarketplaceChannels>>;
+    }),
+    getInstalledConnectors({ role: actorRole, authHeader }).catch(() => {
+      installedConnectorsUnavailable = true;
+      return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
+    }),
   ]);
 
   const publishCapableSlugs = new Set(
@@ -133,18 +119,29 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   )?.channel;
   const effectiveSelectedChannel =
     !query.channel && firstPublishableChannel ? firstPublishableChannel : selectedChannel;
-  let effectiveReadinessUnavailable = readinessUnavailable || channelsUnavailable;
-  const effectiveReadiness =
-    effectiveSelectedChannel !== selectedChannel
-      ? await evaluateConnectorPublishReadiness(
-          mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
-          { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
-          { role: actorRole, authHeader },
-        ).catch(() => {
-          effectiveReadinessUnavailable = true;
-          return null;
-        })
-      : readiness;
+
+  effectiveReadinessUnavailable = channelsUnavailable;
+
+  const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader }).catch(() => {
+    mediaAssetsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getMediaAssets>>;
+  });
+
+  const [variants, exportJobs, readiness, mediaAssets] = await Promise.all([
+    variantsPromise,
+    exportJobsPromise,
+    evaluateConnectorPublishReadiness(
+      mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
+      { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
+      { role: actorRole, authHeader },
+    ).catch(() => {
+      effectiveReadinessUnavailable = true;
+      return null;
+    }),
+    mediaAssetsPromise,
+  ]);
+
+  const effectiveReadiness = readiness;
 
   const tabHref = (tab: DetailTab): string => {
     const params = new URLSearchParams();
