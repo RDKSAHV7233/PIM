@@ -118,6 +118,7 @@ type MarketplaceReadinessSummary = {
   status: MarketplaceReadinessStatus;
   errorCount: number;
   warningCount: number;
+  evalFailed?: true;
 };
 
 type SubmissionFilters = {
@@ -1625,14 +1626,20 @@ export class MarketplaceService implements OnModuleInit {
                 mappingCache,
               );
               return this.summarizeReadiness(channel, simulation);
-            } catch {
+            } catch (err) {
+              this.logger.warn("Channel readiness evaluation failed", {
+                productId: product.id,
+                channel,
+                err: err instanceof Error ? err.message : String(err),
+              });
               return {
                 channel,
                 status: "unknown" as const,
                 errorCount: 0,
                 warningCount: 0,
-                };
-              }
+                evalFailed: true as const,
+              };
+            }
           }),
           channelTaskConcurrency,
         );

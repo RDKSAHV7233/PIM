@@ -37,6 +37,7 @@ export interface ChannelReadinessResult {
   status: ReadinessStatus;
   errorCount: number;
   warningCount: number;
+  evalFailed?: boolean;
 }
 
 export interface ProductReadinessBatchItem {
