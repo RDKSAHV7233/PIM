@@ -106,14 +106,13 @@
         {
           "storyId": "ST-UI-PRODUCT-DETAIL-004",
           "title": "Simplify product detail into a merchandiser-first workflow",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "2ac55f3",
+          "commit": "d24deb65",
           "tests_passed": [
             "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
             "node apps/web/test/integration/product-detail-route-contract.test.cjs",
-            "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
