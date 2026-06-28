@@ -3,7 +3,7 @@ buildCommand = "npm ci --workspace @pim1/web && cd apps/web && NODE_OPTIONS=\"--
 
 [deploy]
 startCommand = "cd apps/web && ../../node_modules/.bin/next start -p ${PORT:-3000}"
-healthcheckPath = "/"
+healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

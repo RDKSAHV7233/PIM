@@ -3,7 +3,7 @@ buildCommand = "npm ci --workspace @pim1/api --workspace @pim1/db && npm run pri
 
 [deploy]
 preDeployCommand = ["node scripts/prisma-migrate-deploy.cjs"]
-startCommand = "node apps/api/dist/main.js"
+startCommand = "node --max-old-space-size=400 apps/api/dist/main.js"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

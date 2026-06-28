@@ -102,7 +102,9 @@ function main() {
     'buildCommand = "npm install && npm run build"',
     "",
     "[deploy]",
-    'startCommand = "node dist/main.js"',
+    // Cap heap to 400 MB — stays within Railway Hobby's billing model and
+    // prevents Node from attempting to allocate beyond available container memory.
+    'startCommand = "node --max-old-space-size=400 dist/main.js"',
     'healthcheckPath = "/api/v1/health"',
     "healthcheckTimeout = 300",
     'restartPolicyType = "ON_FAILURE"',

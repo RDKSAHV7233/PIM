@@ -192,7 +192,17 @@ function main() {
   const appRailwayTomlDir = path.join(outputDir, "apps", "web");
   ensureDir(appRailwayTomlDir);
   fs.writeFileSync(path.join(appRailwayTomlDir, "railway.toml"), railwayTomlContents, "utf8");
+  const sourceRefreshRestoreCmd = `RUN node -e "const fs=require('node:fs');const path=require('node:path');const manifest=JSON.parse(fs.readFileSync('.source-refresh-manifest.json','utf8'));for(const file of manifest.files){const target=path.join(process.cwd(),file.path);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,Buffer.from(file.data,'base64'));}fs.rmSync('.source-refresh-manifest.json');"`;
   const dockerfileContents = [
+    // Stage 1: production-only dependencies (~60 MB vs ~600 MB with devDependencies).
+    // This stage is referenced by the runner so devDependencies never reach the image.
+    "FROM node:20-alpine AS deps",
+    "WORKDIR /app",
+    "",
+    "COPY package.json package-lock.json .npmrc ./",
+    "RUN npm ci --omit=dev",
+    "",
+    // Stage 2: full build with devDependencies
     "FROM node:20-alpine AS build",
     "WORKDIR /app",
     "",
@@ -200,15 +210,18 @@ function main() {
     "RUN npm ci --include=dev",
     "",
     "COPY . .",
-    `RUN node -e "const fs=require('node:fs');const path=require('node:path');const manifest=JSON.parse(fs.readFileSync('.source-refresh-manifest.json','utf8'));for(const file of manifest.files){const target=path.join(process.cwd(),file.path);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,Buffer.from(file.data,'base64'));}fs.rmSync('.source-refresh-manifest.json');"`,
+    sourceRefreshRestoreCmd,
     "ARG PIM_API_BASE_URL",
     "ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}",
     "ARG NEXT_PUBLIC_API_URL",
     "ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}",
     "ARG PIM_API_BASE_URL_FALLBACK",
     "ENV PIM_API_BASE_URL_FALLBACK=${PIM_API_BASE_URL_FALLBACK}",
+    // Cap build-time heap — prevents OOM on Railway build nodes under memory pressure
+    "ENV NODE_OPTIONS=--max-old-space-size=3072",
     "RUN npm run build",
     "",
+    // Stage 3: lean production runner — only artifacts needed at runtime
     "FROM node:20-alpine AS runner",
     "WORKDIR /app",
     "",
@@ -221,7 +234,18 @@ function main() {
     "ENV PIM_API_BASE_URL_FALLBACK=${PIM_API_BASE_URL_FALLBACK}",
     "ENV PORT=3000",
     "",
-    "COPY --from=build /app ./",
+    // Production node_modules only — TypeScript, Tailwind, and other devDeps excluded
+    "COPY --from=deps /app/node_modules ./node_modules",
+    // Next.js compiled output and static assets
+    "COPY --from=build /app/.next ./.next",
+    "COPY --from=build /app/public ./public",
+    // Package manifest and PORT-aware runtime launcher
+    "COPY --from=build /app/package.json ./",
+    "COPY --from=build /app/scripts ./scripts",
+    // Next.js server config (converted from .ts by prepare script)
+    "COPY --from=build /app/next.config.js ./",
+    // Runtime environment variables (API upstream URL)
+    "COPY --from=build /app/.env.production ./.env.production",
     "",
     "EXPOSE 3000",
     "",
@@ -263,18 +287,19 @@ function main() {
   }
 
   const apiBaseUrl = resolveApiBaseUrl(process.env);
-  let envFile = null;
-  if (apiBaseUrl) {
-    const envContents = [
-      `PIM_API_BASE_URL=${apiBaseUrl}`,
-      `NEXT_PUBLIC_API_URL=${apiBaseUrl}`,
-      `PIM_API_BASE_URL_FALLBACK=${apiBaseUrl}`,
-      "",
-    ].join("\n");
-    envFile = path.join(outputDir, ".env.production");
-    fs.writeFileSync(envFile, envContents, "utf8");
-    fs.writeFileSync(path.join(appRailwayTomlDir, ".env.production"), envContents, "utf8");
-  }
+  const envContents = apiBaseUrl
+    ? [
+        `PIM_API_BASE_URL=${apiBaseUrl}`,
+        `NEXT_PUBLIC_API_URL=${apiBaseUrl}`,
+        `PIM_API_BASE_URL_FALLBACK=${apiBaseUrl}`,
+        "",
+      ].join("\n")
+    : "";
+  // Always write .env.production so the Dockerfile COPY is unconditional,
+  // even when no API URL is configured (e.g. local dry-run without STAGING_BASE_URL).
+  const envFile = path.join(outputDir, ".env.production");
+  fs.writeFileSync(envFile, envContents, "utf8");
+  fs.writeFileSync(path.join(appRailwayTomlDir, ".env.production"), envContents, "utf8");
 
   const sourceRefreshManifest = writeSourceRefreshManifest(outputDir);
 
@@ -290,12 +315,8 @@ function main() {
         sourceRefreshManifest: path.relative(repoRoot, sourceRefreshManifest),
         railwaySnapshotNonce,
         deps: Object.keys(allDeps),
-        ...(envFile
-          ? {
-              envFile: path.relative(repoRoot, envFile),
-              apiBaseUrl,
-            }
-          : {}),
+        envFile: path.relative(repoRoot, envFile),
+        ...(apiBaseUrl ? { apiBaseUrl } : {}),
       },
       null,
       2,
