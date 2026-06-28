@@ -119,7 +119,9 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
     // After form submission the server action redirects to /operations/imports?bulkJobId=XXX.
     // Wizard-created jobs have a runId so they are excluded from the plain jobs list table
     // (listJobs() filters runId=null). Poll the API directly instead of the UI table.
-    await page.waitForURL(/operations\/imports/, { timeout: 30_000 });
+    // We start from /operations/imports so waitForURL must check for bulkJobId= specifically
+    // (not just the path) or it resolves immediately on the existing URL.
+    await page.waitForURL(/bulkJobId=/, { timeout: 30_000 });
     const redirectedUrl = page.url();
     const bulkJobId = new URL(redirectedUrl).searchParams.get("bulkJobId") ?? "";
 
@@ -221,11 +223,13 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
 
     await page.goto(`/products/${productId}?tab=quality`, { waitUntil: "domcontentloaded" });
 
-    // KPI card, score, issue badge, or completeness check — any renders → not blank
+    // Quality tab always renders a "Compliance Validation" card with either
+    // a "Run validation" form or an EmptyState ("No issues found").
+    // Class names are Tailwind-only; match by role/text instead.
     await expect(
-      page.locator(
-        '[class*="kpi"], [class*="score"], [class*="issue"], [class*="check"], [class*="completeness"], [class*="badge"]',
-      ).first(),
+      page.getByRole("heading", { name: /compliance validation|submit for review|no issues found/i }).first()
+        .or(page.locator('form#product-validate-form').first())
+        .or(page.getByText(/no issues found|run validation/i).first()),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -252,8 +256,9 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
 
     // Either the edit form + scoped products table OR the plan-upgrade wall.
     // Both are valid for this environment — we just assert the page rendered meaningful content.
+    // Card renders as <section>; the non-gated path also has <table> and <form>.
     await expect(
-      page.locator('[class*="card"], table, [class*="grid"], form').first(),
+      page.locator('section, table, form').first(),
     ).toBeVisible({ timeout: 10_000 });
   });
 
