@@ -153,6 +153,10 @@ jobs:
         run: npm run test:e2e:smoke -- --project=chromium
         timeout-minutes: 12
 
+      - name: E2E - Full UX journey (import → catalog → quality → bulk edit → mapping)
+        run: npx playwright test journey-bulk-import-to-mapping --project=chromium
+        timeout-minutes: 12
+
       - name: E2E - Shopify connector journey
         run: |
           npx playwright test \

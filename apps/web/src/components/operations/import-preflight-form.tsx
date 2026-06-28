@@ -224,6 +224,14 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       }
       const runId = uploadPayload.id;
 
+      // Validate the run to transition it from "uploaded" → "preflight_ready".
+      // Without this the server action rejects it when "Start validated import" is submitted.
+      await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+
       // Merge preflight summary into the staged run shape
       const mergedRun: BulkImportRun = {
         ...(uploadPayload as BulkImportRun),

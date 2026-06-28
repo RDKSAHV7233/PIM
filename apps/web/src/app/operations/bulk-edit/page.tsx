@@ -162,8 +162,13 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   const bulkEditUpdatesText = bulkEditMode === "advanced" ? advancedBulkEditUpdatesText : structuredUpdatesText;
 
   try {
-    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
-    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    let planTier = "TRIAL";
+    try {
+      const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+      planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    } catch {
+      // Billing API unavailable — default to TRIAL so the page still renders
+    }
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (
         <div className="space-y-5">
