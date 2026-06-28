@@ -21,6 +21,14 @@ function makeService(options?: { importRowLimit?: number }) {
   };
   const complianceService = {};
   const notificationsService = {};
+  const metricsService = {
+    emit: jest.fn().mockResolvedValue(undefined),
+  };
+  const logger = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
   const accessPolicy = {
     assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
     assertBulkImportAccess: jest.fn().mockResolvedValue(undefined),
@@ -34,6 +42,8 @@ function makeService(options?: { importRowLimit?: number }) {
     notificationsService as never,
     accessPolicy as never,
     planUsageService as never,
+    metricsService as never,
+    logger as never,
   );
 }
 
@@ -162,6 +172,8 @@ describe("BulkImportService.validateImport", () => {
         {} as never,
         { assertBulkImportAccess: jest.fn() } as never,
         { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+        { emit: jest.fn().mockResolvedValue(undefined) } as never,
+        { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       );
       const result = await svc.validateImport({
         fileName: "products.csv",
