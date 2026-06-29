@@ -22,6 +22,8 @@ interface ConnectorAccountQuickViewProps {
   contextTitle?: string | null;
   contextSummary?: string | null;
   contextNote?: string | null;
+  contextActionHref?: string | null;
+  contextActionLabel?: string | null;
 }
 
 export function ConnectorAccountQuickView({
@@ -41,6 +43,8 @@ export function ConnectorAccountQuickView({
   contextTitle,
   contextSummary,
   contextNote,
+  contextActionHref,
+  contextActionLabel,
 }: ConnectorAccountQuickViewProps) {
   const [open, setOpen] = useState(false);
 
@@ -102,6 +106,15 @@ export function ConnectorAccountQuickView({
               ) : null}
               {contextSummary ? <p className="mt-2 text-sm text-slate-700">{contextSummary}</p> : null}
               {contextNote ? <p className="mt-1 text-xs text-slate-500">{contextNote}</p> : null}
+              {contextActionHref && contextActionLabel ? (
+                <Link
+                  href={contextActionHref}
+                  className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                  onClick={() => setOpen(false)}
+                >
+                  {contextActionLabel}
+                </Link>
+              ) : null}
             </div>
           ) : null}
 
