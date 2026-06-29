@@ -1141,7 +1141,16 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <p className="mt-2 text-sm text-slate-700">
                           {installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "No sync recorded yet"}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">{formatRelativeTime(installation.lastSyncAt)}</p>
+                        {installation.lastSyncAt ? (
+                          <p className="mt-1 text-xs text-slate-500">{formatRelativeTime(installation.lastSyncAt)}</p>
+                        ) : (
+                          <Link
+                            href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
+                            className="mt-2 inline-flex items-center text-xs font-medium text-blue-700 hover:underline"
+                          >
+                            Set up first sync →
+                          </Link>
+                        )}
                       </div>
                     </div>
 
@@ -1183,11 +1192,16 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           <div className="rounded-xl border border-blue-100 bg-white/80 p-3">
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publication targets</p>
                             <p className="mt-2 text-sm text-slate-700">{shopifyContext.publicationTargetSummary}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {shopifyContext.publicationTargetCount > 0
-                                ? "Selected targets will be used during Shopify publish."
-                                : "Open connector details to select the publication targets Vexa should publish to."}
-                            </p>
+                            {shopifyContext.publicationTargetCount > 0 ? (
+                              <p className="mt-1 text-xs text-slate-500">Selected targets will be used during Shopify publish.</p>
+                            ) : (
+                              <Link
+                                href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=credentials`}
+                                className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                              >
+                                Set publication targets →
+                              </Link>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1218,7 +1232,17 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           shopifyContext
                             ? shopifyContext.publicationTargetCount > 0
                               ? `Publication targets: ${shopifyContext.publicationTargetSummary}`
-                              : "Open connector details to select the publication targets Vexa should publish to."
+                              : "No publication targets selected."
+                            : null
+                        }
+                        contextActionHref={
+                          shopifyContext && shopifyContext.publicationTargetCount === 0
+                            ? `/channels/connectors/${encodeURIComponent(installation.id)}?tab=credentials`
+                            : null
+                        }
+                        contextActionLabel={
+                          shopifyContext && shopifyContext.publicationTargetCount === 0
+                            ? "Set publication targets →"
                             : null
                         }
                       />
