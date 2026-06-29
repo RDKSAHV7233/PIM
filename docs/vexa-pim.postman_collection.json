@@ -3850,6 +3850,39 @@
           }
         },
         {
+          "name": "Get a single installed connector by installation ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/installed/:id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "installed",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": "Get a single installed connector by installation ID"
+          }
+        },
+        {
           "name": "List installation-scoped connector health truth",
           "request": {
             "method": "GET",

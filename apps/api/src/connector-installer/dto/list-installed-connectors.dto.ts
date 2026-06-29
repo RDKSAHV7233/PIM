@@ -13,4 +13,9 @@ export class ListInstalledConnectorsDto {
   @IsString()
   @MaxLength(500)
   cursor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  slug?: string;
 }

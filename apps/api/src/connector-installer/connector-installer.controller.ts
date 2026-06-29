@@ -76,6 +76,16 @@ export class ConnectorInstallerController {
     return this.connectorInstallerService.listInstalled(query, undefined, this.resolveActor(request));
   }
 
+  @Get("installed/:id")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher")
+  @Header("Cache-Control", "private, max-age=30, stale-while-revalidate=60")
+  @ApiOperation({ summary: "Get a single installed connector by installation ID" })
+  @ApiResponse({ status: 200, description: "Installed connector fetched" })
+  @ApiResponse({ status: 404, description: "Connector installation not found" })
+  getInstalledById(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
+    return this.connectorInstallerService.getInstalledById(installationId, this.resolveActor(request));
+  }
+
   @Get("installations/health")
   @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher")
   @ApiOperation({ summary: "List installation-scoped connector health truth" })
