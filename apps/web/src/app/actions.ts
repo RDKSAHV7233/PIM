@@ -27,6 +27,7 @@ import {
   isChannelInDevelopment,
   isMarketplaceChannel,
 } from "@/lib/marketplace-channels";
+import { canManageConnectors } from "@/lib/role-capabilities";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -1177,6 +1178,10 @@ export async function installConnectorAction(formData: FormData) {
 }
 
 export async function configureAmazonAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const marketplaceId = String(formData.get("marketplaceId") ?? "").trim();
   const defaultProductType = String(formData.get("defaultProductType") ?? "").trim().toUpperCase();
@@ -1201,6 +1206,10 @@ export async function configureAmazonAction(formData: FormData) {
 }
 
 export async function reconnectConnectorAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   if (!installationId) {
     throw new Error("Connector installation id is required.");
@@ -1213,6 +1222,10 @@ export async function reconnectConnectorAction(formData: FormData) {
 }
 
 export async function updateConnectorPublicationTargetsAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const returnTo = String(formData.get("returnTo") ?? "").trim()
     || `/channels/connectors/${encodeURIComponent(installationId)}`;
@@ -2136,6 +2149,10 @@ export async function importShopifyConfigAction(
 // ─── Sprint G: Generic connector sync + schedule actions ────────────────────
 
 export async function queueConnectorDeltaSyncAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const returnTo =
     String(formData.get("returnTo") ?? "").trim() ||
@@ -2154,6 +2171,10 @@ export async function queueConnectorDeltaSyncAction(formData: FormData) {
 }
 
 export async function upsertConnectorSyncScheduleAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const cronExpression = String(formData.get("cronExpression") ?? "").trim();
   const scope = String(formData.get("scope") ?? "approved_only").trim();
@@ -2181,6 +2202,10 @@ export async function upsertConnectorSyncScheduleAction(formData: FormData) {
 }
 
 export async function deleteConnectorSyncScheduleAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const returnTo =
     String(formData.get("returnTo") ?? "").trim() ||
@@ -2200,6 +2225,10 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
 
 export async function triggerBulkPublishAction(formData: FormData) {
   "use server";
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const productIdsRaw = String(formData.get("productIds") ?? "").trim();
   const returnTo =
