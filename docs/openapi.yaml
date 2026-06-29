@@ -929,6 +929,22 @@ paths:
           description: Installed connectors fetched
       summary: List installed connectors
       tags: *a13
+  /api/v1/connectors/installed/{id}:
+    get:
+      operationId: ConnectorInstallerController_getInstalledById
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Installed connector fetched
+        "404":
+          description: Connector installation not found
+      summary: Get a single installed connector by installation ID
+      tags: *a13
   /api/v1/connectors/installations/health:
     get:
       operationId: ConnectorInstallerController_getInstallationHealth
