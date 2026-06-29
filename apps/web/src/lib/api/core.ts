@@ -765,7 +765,7 @@ export interface MarketplaceSimulation {
   };
   validationSource?: "local_rules" | "amazon_sp_api";
   validationWarnings?: string[];
-  mappingSource: "system_pack" | "saved_template" | "connector_mapping_version";
+  mappingSource: "system_pack" | "saved_template";
   templateId: string | null;
   templateName: string | null;
   mappedPayload: Record<string, unknown>;
@@ -1008,7 +1008,7 @@ export interface ConnectorPayloadPreviewResponse {
   channel: MarketplaceChannel;
   templateId: string | null;
   templateName: string | null;
-  mappingSource: "system_pack" | "saved_template" | "connector_mapping_version";
+  mappingSource: "system_pack" | "saved_template";
   exportReady: boolean;
   validationSource: "local_rules" | "amazon_sp_api";
   missingFields: string[];
@@ -1114,6 +1114,7 @@ export interface BulkImportRow {
 export interface BulkImportJob {
   id: string;
   categoryId: string;
+  runId?: string | null;
   sourceFormat: "csv" | "json";
   sourceName: string | null;
   mapping: Record<string, string>;
@@ -1147,6 +1148,7 @@ export interface BulkImportValidationIssue {
   code: string;
   message: string;
   fieldPath?: string | null;
+  remediation?: string | null;
 }
 
 export interface BulkImportValidationSummary {
@@ -1164,7 +1166,12 @@ export interface BulkImportValidationSummary {
   mapping: Record<string, string>;
   unmappedFields: string[];
   unusedHeaders: string[];
+  issues: BulkImportValidationIssue[];
   sampleIssues: BulkImportValidationIssue[];
+  failureCode?: string;
+  failureClass?: "source_data" | "mapping" | "policy" | "storage" | "platform" | "unknown";
+  failureMessage?: string;
+  correlationId?: string;
   repairSummary: {
     acceptedRows: number;
     failedRows: number;
@@ -1238,14 +1245,28 @@ export interface BulkImportRun {
   warningCount: number | null;
   estimatedBatchCount: number | null;
   effectiveMode: "standard" | "large" | null;
+  primaryJobId?: string | null;
+  jobCount?: number;
+  progress?: {
+    processedRows: number;
+    pendingRows: number;
+    percent: number;
+    needsAttentionRows: number;
+  };
   preflightSummary: {
+    chunkSize?: number;
     mapping?: Record<string, string>;
     unmappedFields?: string[];
     unusedHeaders?: string[];
+    issues?: BulkImportValidationIssue[];
     sampleIssues?: BulkImportValidationIssue[];
     canImport?: boolean;
     skuCodeSummary?: { duplicateCount: number; collisionCount: number } | null;
     mvpCeilingExceeded?: boolean;
+    failureCode?: string;
+    failureClass?: "source_data" | "mapping" | "policy" | "storage" | "platform" | "unknown";
+    failureMessage?: string;
+    correlationId?: string;
   } | null;
   maxRetries: number;
   category?: { id: string; path: string };
