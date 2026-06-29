@@ -106,6 +106,7 @@ export class BulkImportStorageService {
   private isLocalFallbackAccountId(accountId: string): boolean {
     return (
       LOCAL_FALLBACK_ACCOUNT_IDS.has(accountId) ||
+      accountId.startsWith("local-") ||
       accountId.includes("replace") ||
       accountId.includes("placeholder")
     );
