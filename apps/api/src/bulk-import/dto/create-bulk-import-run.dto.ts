@@ -16,6 +16,13 @@ export class CreateBulkImportRunDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(500)
+  chunkSize?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @Max(10)
   maxRetries?: number;
 }

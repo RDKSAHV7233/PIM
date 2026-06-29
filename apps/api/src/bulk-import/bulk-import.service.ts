@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus, TaxCodeKey } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
+import { getCorrelationContext } from "../common/logging/correlation-context";
+import { LoggerService } from "../common/logging/logger.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -15,9 +17,64 @@ import {
 } from "../common/pagination/cursor-pagination";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { MetricsService } from "../metrics/metrics.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
+
+export type BulkImportFailureClass = "source_data" | "mapping" | "policy" | "storage" | "platform" | "unknown";
+
+export type BulkImportValidationIssue = {
+  rowNumber: number;
+  severity: "blocking" | "warning";
+  code: string;
+  message: string;
+  fieldPath?: string | null;
+  remediation?: string | null;
+};
+
+export type BulkImportPreparedSourceRows = {
+  headers: string[];
+  rows: Record<string, unknown>[];
+};
+
+export type BulkImportPreflightSummary = {
+  sourceFormat: "csv" | "json";
+  sourceName: string | null;
+  categoryId: string;
+  categoryPath: string;
+  totalRows: number;
+  blockingIssueCount: number;
+  warningCount: number;
+  acceptedRows: number;
+  failedRows: number;
+  deadLetterRows: number;
+  canImport: boolean;
+  mapping: Record<string, string>;
+  unmappedFields: string[];
+  unusedHeaders: string[];
+  issues: BulkImportValidationIssue[];
+  sampleIssues: BulkImportValidationIssue[];
+  failureCode?: string;
+  failureClass?: BulkImportFailureClass;
+  failureMessage?: string;
+  correlationId?: string;
+  repairSummary: {
+    acceptedRows: number;
+    failedRows: number;
+    deadLetterRows: number;
+  };
+};
+
+export type BulkImportValidationFailureResponse = {
+  message: string;
+  issues: BulkImportValidationIssue[];
+  sampleIssues: BulkImportValidationIssue[];
+  canImport: false;
+  failureCode?: string;
+  failureClass?: BulkImportFailureClass;
+  correlationId?: string;
+};
 
 type TaxCodeEntry = {
   regimeKey: string;
@@ -30,8 +87,6 @@ type CanonicalRowPayload = {
   title?: string;
   description?: string;
   brand?: string;
-  skuCode?: string;
-  sellingPrice?: number;
   hsnCode?: string;
   gstRate?: number;
   status?: string;
@@ -51,8 +106,6 @@ const CANONICAL_FIELDS = [
   "title",
   "description",
   "brand",
-  "skuCode",
-  "sellingPrice",
   "hsnCode",
   "gstRate",
   "status",
@@ -63,8 +116,6 @@ const DEFAULT_MAPPING: Record<(typeof CANONICAL_FIELDS)[number], string> = {
   title: "title",
   description: "description",
   brand: "brand",
-  skuCode: "skuCode",
-  sellingPrice: "sellingPrice",
   hsnCode: "hsnCode",
   gstRate: "gstRate",
   status: "status",
@@ -75,8 +126,6 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
   title: ["name", "product_name", "item_name", "title"],
   description: ["description", "product_description", "details"],
   brand: ["brand", "brand_name", "maker"],
-  skuCode: ["sku", "sku_code", "skucode", "item_sku", "variant_sku"],
-  sellingPrice: ["selling_price", "price", "unit_price", "sale_price"],
   hsnCode: ["hsn", "hsn_code", "hsncode", "tax_code"],
   gstRate: ["gst", "gst_rate", "tax_rate", "gstrate"],
   status: ["status", "state"],
@@ -146,6 +195,142 @@ type BulkImportTemplateRow = BulkImportTemplateLike & {
 /** Single source of truth for the WORKFLOW_ENTRY_INVALID error code. */
 const WORKFLOW_ENTRY_INVALID_CODE = "WORKFLOW_ENTRY_INVALID" as const;
 
+const SOURCE_DATA_FAILURE_CODES = new Set([
+  "NO_ROWS",
+  "ROW_LIMIT_EXCEEDED",
+  "TITLE_REQUIRED",
+  "GST_RATE_INVALID",
+  "HSN_CODE_RECOMMENDED",
+  "BRAND_RECOMMENDED",
+  "ATTRIBUTES_INVALID",
+  "WORKFLOW_ENTRY_INVALID",
+  "INVALID_JSON_SOURCE",
+  "INVALID_CSV_SOURCE",
+  "SKU_DUPLICATE_IN_JOB",
+  "SKU_ALREADY_EXISTS",
+  "RUN_VALIDATION_INVALID",
+  "DIRECT_VALIDATION_INVALID",
+]);
+const MAPPING_FAILURE_CODES = new Set(["UNMAPPED_FIELDS", "MAPPING_COVERAGE_INSUFFICIENT", "FIELD_ALIGNMENT_FAILED"]);
+const POLICY_FAILURE_CODES = new Set([
+  "ACCESS_POLICY_DENIED",
+  "CATEGORY_SCOPE_DENIED",
+  "FIELD_WRITE_RESTRICTED",
+  "RUN_VALIDATION_FORBIDDEN",
+  "DIRECT_VALIDATION_FORBIDDEN",
+]);
+const STORAGE_FAILURE_CODES = new Set([
+  "STAGED_SOURCE_UNAVAILABLE",
+  "STAGED_SOURCE_READ_FAILED",
+  "RUN_VALIDATION_STORAGE_FAILED",
+]);
+const PLATFORM_FAILURE_CODES = new Set([
+  "RUN_VALIDATION_FAILED",
+  "DIRECT_VALIDATION_FAILED",
+  "SERVICE_UNAVAILABLE",
+]);
+
+export function resolveBulkImportIssueRemediation(code: string, fieldPath?: string | null): string | null {
+  switch (String(code ?? "").trim().toUpperCase()) {
+    case "NO_ROWS":
+      return "Add at least one import row to the source file and validate again.";
+    case "ROW_LIMIT_EXCEEDED":
+      return "Split the file into smaller batches within the tenant row limit, then re-run validation.";
+    case "UNMAPPED_FIELDS":
+      return "Rename the source columns to the canonical field names or update the mapping before import.";
+    case "TITLE_REQUIRED":
+      return "Populate the title field for every affected row before importing.";
+    case "BRAND_RECOMMENDED":
+      return "Add a brand value to improve marketplace readiness for the affected rows.";
+    case "GST_RATE_INVALID":
+      return "Use a non-negative numeric GST rate for the affected rows.";
+    case "HSN_CODE_RECOMMENDED":
+      return "Provide an HSN code so downstream tax and marketplace exports stay complete.";
+    case "WORKFLOW_ENTRY_INVALID":
+      return "Set status to draft or leave it blank so imported rows enter the workflow correctly.";
+    case "ATTRIBUTES_INVALID":
+      return "Convert attributes into a JSON object with key/value pairs before importing.";
+    case "INVALID_JSON_SOURCE":
+      return "Upload valid JSON containing an array of row objects and validate again.";
+    case "INVALID_CSV_SOURCE":
+      return "Upload a CSV file with a header row and at least one data row, then validate again.";
+    case "SKU_DUPLICATE_IN_JOB":
+      return "Deduplicate skuCode values inside the file before importing.";
+    case "SKU_ALREADY_EXISTS":
+      return "Change the skuCode or update the existing catalog record instead of importing a duplicate.";
+    case "ACCESS_POLICY_DENIED":
+    case "CATEGORY_SCOPE_DENIED":
+    case "FIELD_WRITE_RESTRICTED":
+      return "Use an account with the required import scope or request access to the target category and fields.";
+    case "RUN_VALIDATION_STORAGE_FAILED":
+    case "STAGED_SOURCE_READ_FAILED":
+    case "STAGED_SOURCE_UNAVAILABLE":
+      return "Re-upload the source file. If the problem persists, check staged-file storage health.";
+    case "RUN_VALIDATION_FAILED":
+    case "DIRECT_VALIDATION_FAILED":
+      return "Retry validation. If the same error repeats, share the correlation ID with support.";
+    default:
+      return fieldPath ? `Review ${fieldPath} and correct the source data before retrying.` : null;
+  }
+}
+
+export function enrichBulkImportValidationIssue(issue: BulkImportValidationIssue): BulkImportValidationIssue {
+  return {
+    ...issue,
+    fieldPath: issue.fieldPath ?? null,
+    remediation: issue.remediation ?? resolveBulkImportIssueRemediation(issue.code, issue.fieldPath ?? null),
+  };
+}
+
+export function inferBulkImportFailureClass(input: {
+  code?: string | null;
+  message?: string | null;
+  issues?: BulkImportValidationIssue[] | null;
+}): BulkImportFailureClass {
+  const code = String(input.code ?? "").trim().toUpperCase();
+  const message = String(input.message ?? "").trim();
+
+  if (POLICY_FAILURE_CODES.has(code) || /access[_ ]policy|scope denied|forbidden/i.test(message)) {
+    return "policy";
+  }
+  if (
+    STORAGE_FAILURE_CODES.has(code) ||
+    /staged import file|staged source|read from storage|storage is not configured|s3\/r2/i.test(message)
+  ) {
+    return "storage";
+  }
+  if (SOURCE_DATA_FAILURE_CODES.has(code)) {
+    return "source_data";
+  }
+  if (MAPPING_FAILURE_CODES.has(code)) {
+    return "mapping";
+  }
+  if (PLATFORM_FAILURE_CODES.has(code) || /unexpected error|internal server error|service unavailable|runtime/i.test(message)) {
+    return "platform";
+  }
+
+  const issues = Array.isArray(input.issues) ? input.issues.map(enrichBulkImportValidationIssue) : [];
+  const issueCodes = issues.map((issue) => String(issue.code ?? "").trim().toUpperCase());
+  if (issueCodes.some((issueCode) => MAPPING_FAILURE_CODES.has(issueCode))) {
+    return "mapping";
+  }
+  if (issueCodes.some((issueCode) => SOURCE_DATA_FAILURE_CODES.has(issueCode))) {
+    return "source_data";
+  }
+  if (issueCodes.some((issueCode) => POLICY_FAILURE_CODES.has(issueCode))) {
+    return "policy";
+  }
+  return "unknown";
+}
+
+type BulkImportValidationFailureDetails = {
+  code?: string;
+  message: string;
+  issues: BulkImportValidationIssue[];
+  failureClass: BulkImportFailureClass;
+  correlationId?: string;
+};
+
 @Injectable()
 export class BulkImportService {
   constructor(
@@ -154,6 +339,8 @@ export class BulkImportService {
     private readonly notificationsService: NotificationsService,
     private readonly accessPolicy: AccessPolicyService,
     private readonly planUsageService: PlanUsageService,
+    private readonly metricsService: MetricsService,
+    private readonly logger: LoggerService,
   ) {}
 
   suggestMapping(headers: string[]) {
@@ -164,11 +351,130 @@ export class BulkImportService {
     return this.parseCsvLine(line);
   }
 
+  parseCsvForImport(content: string): BulkImportPreparedSourceRows {
+    return this.parseCsv(content);
+  }
+
   normalizeCanonicalPayloadForImport(
     input: Record<string, unknown>,
     mapping: Record<string, string>,
   ): CanonicalRowPayload {
     return this.normalizeCanonicalPayload(input, mapping);
+  }
+
+  inferHeadersForImportRows(rows: Record<string, unknown>[]) {
+    return this.inferHeadersFromRows(rows);
+  }
+
+  validateCanonicalRowForImport(row: CanonicalRowPayload): BulkImportValidationIssue[] {
+    return this.validateCanonicalRow(row);
+  }
+
+  buildPreflightSummaryFromSourceRows(input: {
+    sourceFormat: "csv" | "json";
+    sourceName?: string | null;
+    categoryId: string;
+    categoryPath: string;
+    sourceRows: BulkImportPreparedSourceRows;
+    mapping?: Record<string, string>;
+    importRowLimit: number;
+  }): BulkImportPreflightSummary {
+    const suggestion = this.suggestMappingFromHeaders(input.sourceRows.headers, input.mapping);
+    const normalizedRows = input.sourceRows.rows.map((row) => this.normalizeCanonicalPayload(row, suggestion.mapping));
+
+    const issues: BulkImportValidationIssue[] = [];
+    let blockingIssueCount = 0;
+    let warningCount = 0;
+    let acceptedRows = 0;
+    let failedRows = 0;
+
+    if (normalizedRows.length === 0) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "NO_ROWS",
+        message: "No import rows detected.",
+        fieldPath: null,
+      });
+      blockingIssueCount += 1;
+    }
+
+    if (normalizedRows.length > input.importRowLimit) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "ROW_LIMIT_EXCEEDED",
+        message: `Maximum ${input.importRowLimit.toLocaleString("en-US")} rows per job.`,
+        fieldPath: null,
+      });
+      blockingIssueCount += 1;
+    }
+
+    if (suggestion.unmappedFields.length > 0) {
+      warningCount += suggestion.unmappedFields.length;
+      issues.push({
+        rowNumber: 0,
+        severity: "warning",
+        code: "UNMAPPED_FIELDS",
+        message: `Unmapped source fields detected: ${suggestion.unmappedFields.join(", ")}`,
+        fieldPath: null,
+      });
+    }
+
+    for (const [index, row] of normalizedRows.entries()) {
+      const rowIssues = this.validateCanonicalRow(row);
+      const hasBlocking = rowIssues.some((issue) => issue.severity === "blocking");
+      if (hasBlocking) {
+        failedRows += 1;
+      } else {
+        acceptedRows += 1;
+      }
+      for (const issue of rowIssues) {
+        if (issue.severity === "blocking") {
+          blockingIssueCount += 1;
+        } else {
+          warningCount += 1;
+        }
+        if (issues.length < 12) {
+          issues.push({
+            rowNumber: index + 1,
+            severity: issue.severity,
+            code: issue.code,
+            message: issue.message,
+            fieldPath: issue.fieldPath ?? null,
+          });
+        }
+      }
+    }
+
+    const normalizedIssues = issues.map((issue) => enrichBulkImportValidationIssue(issue));
+    const correlationId = this.getCorrelationId();
+
+    return {
+      sourceFormat: input.sourceFormat,
+      sourceName: input.sourceName?.trim() || null,
+      categoryId: input.categoryId,
+      categoryPath: input.categoryPath,
+      totalRows: normalizedRows.length,
+      blockingIssueCount,
+      warningCount,
+      acceptedRows,
+      failedRows,
+      deadLetterRows: 0,
+      canImport: blockingIssueCount === 0 && normalizedRows.length > 0,
+      mapping: suggestion.mapping,
+      unmappedFields: suggestion.unmappedFields,
+      unusedHeaders: suggestion.unusedHeaders,
+      issues: normalizedIssues,
+      sampleIssues: normalizedIssues,
+      failureClass: blockingIssueCount > 0 ? inferBulkImportFailureClass({ issues: normalizedIssues }) : undefined,
+      correlationId,
+      repairSummary: {
+        acceptedRows,
+        failedRows,
+        deadLetterRows: 0,
+      },
+    };
   }
 
   async processSystemManagedRow(jobId: string, rowId: string) {
@@ -375,97 +681,69 @@ export class BulkImportService {
   }
 
   async validateJobInput(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
-    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
-    const category = await this.requireCategory(dto.categoryId);
-    const importRowLimit = await this.resolveImportRowLimit(actor);
+    const correlationId = this.getCorrelationId();
+    const tenantKey = this.resolveRequestTenantKey(actor?.tenantId ?? undefined);
 
-    const sourceRows = this.resolveImportSourceRows(dto);
-    const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
-    const normalizedRows = sourceRows.rows.map((row) => this.normalizeCanonicalPayload(row, suggestion.mapping));
-    const sourceBytes = this.estimateSourceBytes(dto, normalizedRows);
-    this.assertSourceSize(sourceBytes);
+    try {
+      await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
+      const category = await this.requireCategory(dto.categoryId);
+      const importRowLimit = await this.resolveImportRowLimit(actor);
 
-    const sampleIssues: Array<{ rowNumber: number; severity: "blocking" | "warning"; code: string; message: string }> = [];
-    let blockingIssueCount = 0;
-    let warningCount = 0;
-    let acceptedRows = 0;
+      const sourceRows = this.resolveImportSourceRows(dto);
+      const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
+      const normalizedRows = sourceRows.rows.map((row) => this.normalizeCanonicalPayload(row, suggestion.mapping));
+      const sourceBytes = this.estimateSourceBytes(dto, normalizedRows);
+      this.assertSourceSize(sourceBytes);
 
-    if (normalizedRows.length === 0) {
-      sampleIssues.push({
-        rowNumber: 0,
-        severity: "blocking",
-        code: "NO_ROWS",
-        message: "No import rows detected.",
+      const summary = this.buildPreflightSummaryFromSourceRows({
+        sourceFormat: dto.sourceFormat,
+        sourceName: dto.sourceName,
+        categoryId: dto.categoryId,
+        categoryPath: category.path,
+        sourceRows,
+        mapping: dto.mapping,
+        importRowLimit,
       });
-      blockingIssueCount += 1;
-    }
 
-    if (normalizedRows.length > importRowLimit) {
-      sampleIssues.push({
-        rowNumber: 0,
-        severity: "blocking",
-        code: "ROW_LIMIT_EXCEEDED",
-        message: `Maximum ${importRowLimit.toLocaleString("en-US")} rows per job.`,
+      await this.emitValidationMetrics({
+        tenantKey,
+        path: "direct",
+        sourceFormat: summary.sourceFormat,
+        blocked: !summary.canImport,
+        failureCode: summary.failureCode,
+        failureClass: summary.failureClass,
       });
-      blockingIssueCount += 1;
-    }
 
-    if (suggestion.unmappedFields.length > 0) {
-      warningCount += suggestion.unmappedFields.length;
-      sampleIssues.push({
-        rowNumber: 0,
-        severity: "warning",
-        code: "UNMAPPED_FIELDS",
-        message: `Unmapped source fields detected: ${suggestion.unmappedFields.join(", ")}`,
+      return {
+        ...summary,
+        correlationId,
+      };
+    } catch (error: unknown) {
+      const failure = this.describeValidationFailure(error, correlationId);
+      const isBlocked =
+        error instanceof BadRequestException || error instanceof ForbiddenException || error instanceof NotFoundException;
+
+      await this.emitValidationMetrics({
+        tenantKey,
+        path: "direct",
+        sourceFormat: dto.sourceFormat,
+        blocked: isBlocked,
+        failed: !isBlocked,
+        failureCode: failure.code,
+        failureClass: failure.failureClass,
       });
-    }
 
-    for (const [index, row] of normalizedRows.entries()) {
-      const rowIssues = this.validateCanonicalRow(row);
-      if (rowIssues.length === 0) {
-        acceptedRows += 1;
-        continue;
+      if (!isBlocked) {
+        this.logger.error("Bulk import direct validation failed unexpectedly.", {
+          correlationId,
+          failureCode: failure.code,
+          failureClass: failure.failureClass,
+          sourceFormat: dto.sourceFormat,
+        });
       }
-      for (const issue of rowIssues) {
-        if (issue.severity === "blocking") {
-          blockingIssueCount += 1;
-        } else {
-          warningCount += 1;
-        }
-        if (sampleIssues.length < 12) {
-          sampleIssues.push({
-            rowNumber: index + 1,
-            severity: issue.severity,
-            code: issue.code,
-            message: issue.message,
-          });
-        }
-      }
-    }
 
-    const failedRows = normalizedRows.length - acceptedRows;
-    return {
-      sourceFormat: dto.sourceFormat,
-      sourceName: dto.sourceName?.trim() || null,
-      categoryId: dto.categoryId,
-      categoryPath: category.path,
-      totalRows: normalizedRows.length,
-      blockingIssueCount,
-      warningCount,
-      acceptedRows,
-      failedRows,
-      deadLetterRows: 0,
-      canImport: blockingIssueCount === 0 && normalizedRows.length > 0,
-      mapping: suggestion.mapping,
-      unmappedFields: suggestion.unmappedFields,
-      unusedHeaders: suggestion.unusedHeaders,
-      sampleIssues,
-      repairSummary: {
-        acceptedRows,
-        failedRows,
-        deadLetterRows: 0,
-      },
-    };
+      this.throwValidationFailure(error, failure);
+    }
   }
 
   async createJob(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
@@ -977,18 +1255,6 @@ export class BulkImportService {
         },
       });
 
-      const skuCode = (payload.skuCode ?? "").trim();
-      if (skuCode) {
-        await this.prisma.tenant().variant.create({
-          data: {
-            productId: product.id,
-            skuCode,
-            sellingPrice: payload.sellingPrice ?? null,
-            status: RecordStatus.draft,
-          },
-        });
-      }
-
       // Write international tax codes if the row included any.
       // Uses a single TaxRegime lookup per row — regimes are a tiny seeded table (5 rows).
       // Silently skips any entry whose regimeKey is not in the DB (e.g. seed not yet run).
@@ -1243,12 +1509,20 @@ export class BulkImportService {
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
     if (lines.length < 2) {
-      throw new BadRequestException("CSV must include header and at least one data row.");
+      throw new BadRequestException({
+        code: "INVALID_CSV_SOURCE",
+        message: "CSV must include header and at least one data row.",
+        issues: [this.buildBlockingIssue("CSV must include header and at least one data row.", "INVALID_CSV_SOURCE")],
+      });
     }
 
     const headers = this.parseCsvLine(lines[0]).map((header) => header.trim());
     if (headers.some((header) => !header)) {
-      throw new BadRequestException("CSV header contains empty column names.");
+      throw new BadRequestException({
+        code: "INVALID_CSV_SOURCE",
+        message: "CSV header contains empty column names.",
+        issues: [this.buildBlockingIssue("CSV header contains empty column names.", "INVALID_CSV_SOURCE")],
+      });
     }
 
     const rows: Record<string, unknown>[] = [];
@@ -1271,7 +1545,11 @@ export class BulkImportService {
     try {
       buffer = Buffer.from(contentBase64, "base64");
     } catch {
-      throw new BadRequestException(`Invalid ${format} fileContentBase64 payload.`);
+      throw new BadRequestException({
+        code: "INVALID_CSV_SOURCE",
+        message: `Invalid ${format} fileContentBase64 payload.`,
+        issues: [this.buildBlockingIssue(`Invalid ${format} fileContentBase64 payload.`, "INVALID_CSV_SOURCE")],
+      });
     }
     this.assertSourceSize(buffer.length);
     const raw = buffer.toString("utf8");
@@ -1293,8 +1571,6 @@ export class BulkImportService {
     const title = this.pickMappedValue(input, mapping.title);
     const description = this.pickMappedValue(input, mapping.description);
     const brand = this.pickMappedValue(input, mapping.brand);
-    const skuCodeRaw = this.pickMappedValue(input, mapping.skuCode);
-    const sellingPriceRaw = this.pickMappedValue(input, mapping.sellingPrice);
     const hsnCode = this.pickMappedValue(input, mapping.hsnCode);
     const gstRateRaw = this.pickMappedValue(input, mapping.gstRate);
     const status = this.pickMappedValue(input, mapping.status);
@@ -1305,8 +1581,6 @@ export class BulkImportService {
       title: this.asTrimmedString(title),
       description: this.asTrimmedString(description),
       brand: this.asTrimmedString(brand),
-      skuCode: this.asTrimmedString(skuCodeRaw),
-      sellingPrice: this.asOptionalNumber(sellingPriceRaw),
       hsnCode: this.asTrimmedString(hsnCode),
       gstRate: this.asOptionalNumber(gstRateRaw),
       status: this.asTrimmedString(status),
@@ -1445,10 +1719,7 @@ export class BulkImportService {
     return values.map((value) => value.trim());
   }
 
-  private pickMappedValue(row: Record<string, unknown>, key: string | undefined) {
-    if (!key) {
-      return undefined;
-    }
+  private pickMappedValue(row: Record<string, unknown>, key: string) {
     if (key in row) {
       return row[key];
     }
@@ -1497,61 +1768,305 @@ export class BulkImportService {
     return RecordStatus.draft;
   }
 
-  private validateCanonicalRow(row: CanonicalRowPayload) {
-    const issues: Array<{ severity: "blocking" | "warning"; code: string; message: string }> = [];
+  private validateCanonicalRow(row: CanonicalRowPayload): BulkImportValidationIssue[] {
+    const issues: BulkImportValidationIssue[] = [];
     if (!this.asTrimmedString(row.title)) {
       issues.push({
+        rowNumber: 0,
         severity: "blocking",
         code: "TITLE_REQUIRED",
         message: "Title is required.",
+        fieldPath: "title",
       });
     }
     if (!this.asTrimmedString(row.brand)) {
       issues.push({
+        rowNumber: 0,
         severity: "warning",
         code: "BRAND_RECOMMENDED",
         message: "Brand is recommended for marketplace readiness.",
-      });
-    }
-    if (row.sellingPrice !== undefined && Number.isFinite(row.sellingPrice) && row.sellingPrice < 0) {
-      issues.push({
-        severity: "warning",
-        code: "NEGATIVE_PRICE",
-        message: "Selling price is negative.",
+        fieldPath: "brand",
       });
     }
     if (row.gstRate !== undefined && (!Number.isFinite(row.gstRate) || row.gstRate < 0)) {
       issues.push({
+        rowNumber: 0,
         severity: "blocking",
         code: "GST_RATE_INVALID",
         message: "GST rate must be a non-negative number.",
+        fieldPath: "gstRate",
       });
     }
     if (row.hsnCode !== undefined && String(row.hsnCode).trim().length === 0) {
       issues.push({
+        rowNumber: 0,
         severity: "warning",
         code: "HSN_CODE_RECOMMENDED",
         message: "HSN code is recommended for downstream exports.",
+        fieldPath: "hsnCode",
       });
     }
     if (row.status !== undefined) {
       const normalizedStatus = this.normalizeRecordStatus(row.status);
       if (normalizedStatus !== RecordStatus.draft) {
         issues.push({
+          rowNumber: 0,
           severity: "blocking",
           code: WORKFLOW_ENTRY_INVALID_CODE,
           message: "Imported rows must enter workflow in draft status.",
+          fieldPath: "status",
         });
       }
     }
     if (row.attributes !== undefined && (Array.isArray(row.attributes) || typeof row.attributes !== "object")) {
       issues.push({
+        rowNumber: 0,
         severity: "blocking",
         code: "ATTRIBUTES_INVALID",
         message: "Attributes must be a JSON object.",
+        fieldPath: "attributes",
       });
     }
     return issues;
+  }
+
+  private getCorrelationId() {
+    return getCorrelationContext()?.correlationId ?? undefined;
+  }
+
+  private describeValidationFailure(
+    error: unknown,
+    correlationId?: string,
+  ): BulkImportValidationFailureDetails {
+    const fallbackMessage = "The import file could not be validated.";
+
+    if (error instanceof BadRequestException || error instanceof ForbiddenException || error instanceof NotFoundException) {
+      const response = error.getResponse();
+      const parsed = this.parseValidationFailureResponse(response, fallbackMessage);
+      const code = parsed.code ?? this.defaultValidationFailureCode(error);
+      const issues =
+        parsed.issues.length > 0
+          ? parsed.issues.map((issue) => enrichBulkImportValidationIssue(issue))
+          : [this.buildBlockingIssue(parsed.message, code)];
+      return {
+        code,
+        message: parsed.message,
+        issues,
+        failureClass: inferBulkImportFailureClass({ code, message: parsed.message, issues }),
+        correlationId,
+      };
+    }
+
+    if (error instanceof Error) {
+      const message = this.sanitizeUnexpectedValidationMessage(error.message);
+      const code = "DIRECT_VALIDATION_FAILED";
+      const issues = [this.buildBlockingIssue(message, code)];
+      return {
+        code,
+        message,
+        issues,
+        failureClass: inferBulkImportFailureClass({ code, message, issues }),
+        correlationId,
+      };
+    }
+
+    const code = "DIRECT_VALIDATION_FAILED";
+    const issues = [this.buildBlockingIssue(fallbackMessage, code)];
+    return {
+      code,
+      message: fallbackMessage,
+      issues,
+      failureClass: inferBulkImportFailureClass({ code, message: fallbackMessage, issues }),
+      correlationId,
+    };
+  }
+
+  private parseValidationFailureResponse(response: string | object, fallbackMessage: string) {
+    if (typeof response === "string") {
+      return {
+        code: undefined,
+        message: response || fallbackMessage,
+        issues: response ? [this.buildBlockingIssue(response)] : [],
+      };
+    }
+
+    if (!response || typeof response !== "object") {
+      return { code: undefined, message: fallbackMessage, issues: [] as BulkImportValidationIssue[] };
+    }
+
+    const record = response as Record<string, unknown>;
+    const messageValue = record.message;
+    const issuesValue = record.issues;
+    const code =
+      typeof record.code === "string" && record.code.trim().length > 0
+        ? record.code.trim()
+        : typeof record.error === "string" && record.error.trim().length > 0
+          ? record.error.trim()
+          : undefined;
+    const issues = this.normalizeValidationFailureIssues(issuesValue);
+
+    if (typeof messageValue === "string" && messageValue.trim()) {
+      return { code, message: messageValue.trim(), issues };
+    }
+
+    if (Array.isArray(messageValue)) {
+      const messages = messageValue
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim());
+      return {
+        code,
+        message: messages[0] ?? fallbackMessage,
+        issues: issues.length > 0 ? issues : messages.map((message) => this.buildBlockingIssue(message, code)),
+      };
+    }
+
+    const reason = typeof record.reason === "string" && record.reason.trim().length > 0 ? record.reason.trim() : "";
+    if (reason) {
+      return {
+        code,
+        message: reason,
+        issues: issues.length > 0 ? issues : [this.buildBlockingIssue(reason, code)],
+      };
+    }
+
+    return {
+      code,
+      message: fallbackMessage,
+      issues,
+    };
+  }
+
+  private normalizeValidationFailureIssues(value: unknown): BulkImportValidationIssue[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const issues: BulkImportValidationIssue[] = [];
+    for (const entry of value) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const record = entry as Record<string, unknown>;
+      const message = typeof record.message === "string" ? record.message.trim() : "";
+      if (!message) {
+        continue;
+      }
+      issues.push(
+        enrichBulkImportValidationIssue({
+          rowNumber: typeof record.rowNumber === "number" && Number.isFinite(record.rowNumber) ? record.rowNumber : 0,
+          severity: record.severity === "warning" ? "warning" : "blocking",
+          code:
+            typeof record.code === "string" && record.code.trim().length > 0
+              ? record.code.trim()
+              : "DIRECT_VALIDATION_FAILED",
+          message,
+          fieldPath: typeof record.fieldPath === "string" && record.fieldPath.trim().length > 0 ? record.fieldPath.trim() : null,
+          remediation:
+            typeof record.remediation === "string" && record.remediation.trim().length > 0
+              ? record.remediation.trim()
+              : null,
+        }),
+      );
+    }
+    return issues;
+  }
+
+  private defaultValidationFailureCode(error: BadRequestException | ForbiddenException | NotFoundException) {
+    if (error instanceof ForbiddenException) {
+      return "DIRECT_VALIDATION_FORBIDDEN";
+    }
+    if (error instanceof NotFoundException) {
+      return "DIRECT_VALIDATION_NOT_FOUND";
+    }
+    return "DIRECT_VALIDATION_INVALID";
+  }
+
+  private sanitizeUnexpectedValidationMessage(message: string) {
+    const normalized = String(message ?? "").trim();
+    if (!normalized || /^internal server error$/i.test(normalized)) {
+      return "The import file could not be validated because the server returned an unexpected error.";
+    }
+    if (/ENOENT|no such file or directory/i.test(normalized)) {
+      return "The import file is no longer available. Upload the source file again and retry validation.";
+    }
+    return normalized;
+  }
+
+  private buildBlockingIssue(message: string, code = "DIRECT_VALIDATION_FAILED"): BulkImportValidationIssue {
+    return enrichBulkImportValidationIssue({
+      rowNumber: 0,
+      severity: "blocking",
+      code,
+      message,
+      fieldPath: null,
+    });
+  }
+
+  private throwValidationFailure(error: unknown, failure: BulkImportValidationFailureDetails): never {
+    const payload: BulkImportValidationFailureResponse = {
+      message: failure.message,
+      issues: failure.issues,
+      sampleIssues: failure.issues,
+      canImport: false,
+      failureCode: failure.code,
+      failureClass: failure.failureClass,
+      correlationId: failure.correlationId,
+    };
+
+    if (error instanceof BadRequestException) {
+      throw new BadRequestException(payload);
+    }
+    if (error instanceof ForbiddenException) {
+      throw new ForbiddenException(payload);
+    }
+    if (error instanceof NotFoundException) {
+      throw new NotFoundException(payload);
+    }
+    throw new InternalServerErrorException(payload);
+  }
+
+  private async emitValidationMetrics(input: {
+    tenantKey: string;
+    path: "direct" | "staged";
+    sourceFormat: "csv" | "json";
+    blocked?: boolean;
+    failed?: boolean;
+    failureCode?: string;
+    failureClass?: BulkImportFailureClass;
+  }) {
+    const tags = {
+      path: input.path,
+      sourceFormat: input.sourceFormat,
+      ...(input.failureCode ? { failureCode: input.failureCode } : {}),
+      ...(input.failureClass ? { failureClass: input.failureClass } : {}),
+    };
+
+    await this.metricsService.emit({
+      tenantKey: input.tenantKey,
+      metricKey: "bulk_import.validation.total",
+      metricValue: 1,
+      unit: "count",
+      tags,
+    });
+
+    if (input.blocked) {
+      await this.metricsService.emit({
+        tenantKey: input.tenantKey,
+        metricKey: "bulk_import.validation.blocked",
+        metricValue: 1,
+        unit: "count",
+        tags,
+      });
+    }
+
+    if (input.failed) {
+      await this.metricsService.emit({
+        tenantKey: input.tenantKey,
+        metricKey: "bulk_import.validation.failed",
+        metricValue: 1,
+        unit: "count",
+        tags,
+      });
+    }
   }
 
   private assertDraftWorkflowEntry(status: RecordStatus) {

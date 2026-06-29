@@ -33,12 +33,16 @@ test("editor can validate and start a 30000-row large import", async ({ page }) 
   await uploadForm.locator('button[type="button"]', { hasText: "Validate import file" }).click();
   await expect(page.getByText("Preflight passed")).toBeVisible({ timeout: 120000 });
   await expect(page.getByText("Large import mode")).toBeVisible({ timeout: 10000 });
-  await expect(uploadForm.getByRole("button", { name: "Start large import" })).toBeEnabled({ timeout: 120000 });
+  await expect(uploadForm.getByRole("button", { name: "Start validated import" })).toBeEnabled({ timeout: 120000 });
 
-  await uploadForm.getByRole("button", { name: "Start large import" }).click();
+  await uploadForm.getByRole("button", { name: "Start validated import" }).click();
   await expect(page).toHaveURL(/bulkRunId=/, { timeout: 120000 });
   const bulkRunId = new URL(page.url()).searchParams.get("bulkRunId");
   expect(bulkRunId).toBeTruthy();
+  await expect.poll(async () => {
+    const run = await apiRequest("GET", `/bulk-import/runs/${bulkRunId}`, editorToken);
+    return String(run.status ?? "").toLowerCase();
+  }, { timeout: 30000 }).not.toBe("preflight_ready");
 });
 
 test("standard import (under 10k rows) uses standard mode button", async ({ page }) => {

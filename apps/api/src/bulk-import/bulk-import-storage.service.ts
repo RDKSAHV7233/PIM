@@ -1,12 +1,21 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import path from "node:path";
 import { createReadStream } from "node:fs";
 import { promises as fs } from "node:fs";
 import { Readable } from "node:stream";
 
+const LOCAL_FALLBACK_ACCOUNT_IDS = new Set([
+  "local-dev",
+  "replace-me",
+  "changeme",
+  "change_me",
+  "todo",
+  "fixme",
+]);
+
 @Injectable()
-export class BulkImportStorageService implements OnModuleInit {
+export class BulkImportStorageService {
   private readonly logger = new Logger(BulkImportStorageService.name);
   private readonly bucketName = String(process.env.R2_BUCKET_NAME ?? "").trim();
   private readonly endpoint =
@@ -24,17 +33,6 @@ export class BulkImportStorageService implements OnModuleInit {
           secretAccessKey: String(process.env.R2_SECRET_ACCESS_KEY ?? "").trim(),
         },
       });
-
-  onModuleInit() {
-    if (this.useLocalFallback) {
-      this.logger.log("Bulk import storage: using local filesystem fallback");
-    } else if (!this.bucketName) {
-      this.logger.warn(
-        "R2_BUCKET_NAME is not configured — bulk import file staging will fail. " +
-        "Set R2_BUCKET_NAME, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY environment variables.",
-      );
-    }
-  }
 
   async storeStagedCsv(input: {
     tenantKey: string;
@@ -102,7 +100,16 @@ export class BulkImportStorageService implements OnModuleInit {
       return false;
     }
     const accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim().toLowerCase();
-    return !accountId || accountId.startsWith("local-");
+    return !accountId || this.isLocalFallbackAccountId(accountId);
+  }
+
+  private isLocalFallbackAccountId(accountId: string): boolean {
+    return (
+      LOCAL_FALLBACK_ACCOUNT_IDS.has(accountId) ||
+      accountId.startsWith("local-") ||
+      accountId.includes("replace") ||
+      accountId.includes("placeholder")
+    );
   }
 
   private shouldUsePathStyle(endpointInput: string): boolean {
