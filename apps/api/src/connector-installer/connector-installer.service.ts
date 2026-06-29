@@ -437,6 +437,8 @@ export class ConnectorInstallerService {
     const limit = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_LIMIT, 1), MAX_PAGE_LIMIT);
     const cursor = decodeCursor(query.cursor);
     const stubSlugs = resolveStubConnectorSlugs();
+    // DTO slug filter takes precedence over the internal slugFilter argument.
+    const resolvedSlugFilter = query.slug?.trim() || slugFilter;
 
     const params: unknown[] = [tenantKey];
     let cursorWhere = "";
@@ -452,8 +454,8 @@ export class ConnectorInstallerService {
     }
 
     let slugWhere = "";
-    if (slugFilter) {
-      params.push(slugFilter);
+    if (resolvedSlugFilter) {
+      params.push(resolvedSlugFilter);
       slugWhere = ` AND cd.slug = $${params.length}`;
     }
 
@@ -549,6 +551,92 @@ export class ConnectorInstallerService {
           ? encodeCursor({ installedAt: last.installedAt, id: last.id })
           : null,
     };
+  }
+
+  async getInstalledById(
+    installationId: string,
+    actor: ConnectorActor,
+  ): Promise<ConnectorInstallationRecord> {
+    const tenantKey = this.getTenantKey();
+    const stubSlugs = resolveStubConnectorSlugs();
+
+    const params: unknown[] = [tenantKey, installationId];
+    let hiddenStubWhere = "";
+    if (stubSlugs.length > 0) {
+      const placeholders = stubSlugs.map((slug) => {
+        params.push(slug);
+        return `$${params.length}`;
+      });
+      hiddenStubWhere = ` AND cd.slug NOT IN (${placeholders.join(", ")})`;
+    }
+
+    // RLS-BYPASS: manual tenant filter
+    const rows = await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(tenantKey), `
+      SELECT
+        ci.id,
+        ci.tenant_key AS "tenantKey",
+        ci.connector_id AS "connectorId",
+        cd.slug,
+        cd.display_name AS "displayName",
+        ci.account_alias AS "accountAlias",
+        ci.external_account_ref AS "externalAccountRef",
+        ci.status,
+        cd.capabilities,
+        ci.metadata,
+        ci.installed_at AS "installedAt",
+        ci.installed_by AS "installedBy",
+        ci.last_sync_at AS "lastSyncAt",
+        ci.created_at AS "createdAt",
+        ci.updated_at AS "updatedAt"
+      FROM connector_installations ci
+      JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ci.tenant_key = $1
+        AND ci.id = $2
+        ${hiddenStubWhere}
+      LIMIT 1
+      `,
+      params,
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const slug = String(row.slug);
+    const accountAlias = String(row.accountAlias);
+    const launchPolicy = resolveConnectorLaunchPolicy(slug, parseCapabilities(row.capabilities));
+    const item: ConnectorInstallationRecord = {
+      id: String(row.id),
+      tenantKey: String(row.tenantKey),
+      connectorId: String(row.connectorId),
+      slug,
+      displayName: String(row.displayName),
+      accountAlias,
+      externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
+      status: String(row.status) as ConnectorInstallationRecord["status"],
+      capabilities: launchPolicy.surfacedCapabilities,
+      implementationStatus: this.resolveImplementationStatus(slug),
+      launchStage: launchPolicy.launchStage,
+      launchNote: launchPolicy.launchNote,
+      metadata: parseMetadata(row.metadata),
+      installedAt: String(row.installedAt),
+      installedBy: String(row.installedBy),
+      lastSyncAt: row.lastSyncAt ? String(row.lastSyncAt) : null,
+      createdAt: String(row.createdAt),
+      updatedAt: String(row.updatedAt),
+      actions: await this.connectorPermissionService.buildInstallationActions(actor, slug, accountAlias),
+    };
+
+    const [filtered] = await this.accessPolicy.filterConnectorInstallations(
+      { actorId: actor.actorId, actorRole: actor.actorRole, tenantId: tenantKey },
+      [item],
+      "manage_connector",
+    );
+    if (!filtered) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+    return filtered;
   }
 
   async uninstall(installationId: string, actor: ConnectorActor) {
