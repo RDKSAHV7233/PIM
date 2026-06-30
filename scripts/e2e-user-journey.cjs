@@ -1983,7 +1983,7 @@ function buildChecks() {
     const result = await api("POST", `/admin/workspace/users/${encodeUser(ctx.workspaceUserId)}/lock`, {
       token: ctx.adminToken,
       json: {
-        durationMinutes: 1,
+        durationMinutes: 60,
         reason: "E2E lock test",
       },
     });
