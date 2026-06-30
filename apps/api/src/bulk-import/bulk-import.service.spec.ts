@@ -253,6 +253,151 @@ describe("BulkImportService.validateImport", () => {
   });
 });
 
+describe("BulkImportService.processJob — terminal status guard", () => {
+  function makeProcessService(jobStub: Record<string, unknown>) {
+    const enrichedJob = { ...jobStub, category: { id: "cat1", path: "/cat1" }, rows: [] };
+    const updateMock = jest.fn();
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportJob: { update: updateMock, findUnique: jest.fn().mockResolvedValue(enrichedJob) },
+        bulkImportRow: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
+        category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1" }) },
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      assertBulkImportAccess: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_actor: unknown, job: unknown) => job),
+    };
+    const svc = new BulkImportService(
+      prisma as never, {} as never, {} as never, accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+    );
+    return { svc, updateMock };
+  }
+
+  it("skips processing for completed jobs", async () => {
+    const { svc, updateMock } = makeProcessService({ id: "j1", status: "completed", categoryId: "cat1" });
+    await svc.processJob("j1", undefined, { actorId: "u1", actorRole: "admin" as never });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("skips processing for failed jobs", async () => {
+    const { svc, updateMock } = makeProcessService({ id: "j2", status: "failed", categoryId: "cat1" });
+    await svc.processJob("j2", undefined, { actorId: "u1", actorRole: "admin" as never });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("skips processing for dead_letter jobs", async () => {
+    const { svc, updateMock } = makeProcessService({ id: "j3", status: "dead_letter", categoryId: "cat1" });
+    await svc.processJob("j3", undefined, { actorId: "u1", actorRole: "admin" as never });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("BulkImportService.processRow — idempotency and concurrency", () => {
+  function makeRowProcessService(options: {
+    rows: Array<Record<string, unknown>>;
+    productFindResult?: Record<string, unknown> | null;
+    claimCount?: number;
+  }) {
+    const productCreateMock = jest.fn().mockResolvedValue({ id: "new-product" });
+    const productFindUniqueMock = jest.fn().mockResolvedValue(options.productFindResult ?? null);
+    const jobFindUniqueMock = jest.fn().mockResolvedValue({
+      id: "job1", status: "queued", categoryId: "cat1", maxRetries: 3, chunkSize: 100,
+      category: { id: "cat1", path: "/cat1" }, rows: [],
+    });
+    const rowUpdateMock = jest.fn().mockResolvedValue({});
+    const rowUpdateManyMock = jest.fn().mockResolvedValue({ count: options.claimCount ?? 1 });
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportJob: { update: jest.fn().mockResolvedValue({}), findUnique: jobFindUniqueMock },
+        bulkImportRow: { findMany: jest.fn().mockResolvedValue(options.rows), update: rowUpdateMock, updateMany: rowUpdateManyMock, groupBy: jest.fn().mockResolvedValue([]) },
+        product: { create: productCreateMock, findUnique: productFindUniqueMock },
+        productTaxCode: { createMany: jest.fn() },
+        taxRegime: { findMany: jest.fn().mockResolvedValue([]) },
+        category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1" }) },
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
+    };
+    const svc = new BulkImportService(
+      prisma as never, { validateAndPersistProduct: jest.fn().mockResolvedValue(undefined) } as never,
+      {} as never, accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+    );
+    return { svc, productCreateMock, rowUpdateMock, rowUpdateManyMock, productFindUniqueMock };
+  }
+
+  it("reuses existing product when row already has a productId (idempotent retry)", async () => {
+    const { svc, productCreateMock, rowUpdateMock } = makeRowProcessService({
+      rows: [{ id: "row1", payload: { title: "Test" }, retryCount: 0, productId: "existing-product", rowNumber: 1, status: "retrying" }],
+      productFindResult: { id: "existing-product" },
+    });
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+    expect(productCreateMock).not.toHaveBeenCalled();
+    const successUpdate = rowUpdateMock.mock.calls.find(
+      (call: unknown[]) => (call[0] as { data?: { status?: string } })?.data?.status === "success"
+    );
+    expect(successUpdate).toBeDefined();
+    expect((successUpdate![0] as { data: { productId: string } }).data.productId).toBe("existing-product");
+  });
+
+  it("creates new product when row.productId points to a deleted product", async () => {
+    const { svc, productCreateMock } = makeRowProcessService({
+      rows: [{ id: "row2", payload: { title: "Test" }, retryCount: 0, productId: "deleted-product", rowNumber: 1, status: "retrying" }],
+      productFindResult: null,
+    });
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+    expect(productCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips row when optimistic claim returns count=0 (concurrent worker already claimed)", async () => {
+    const { svc, productCreateMock, rowUpdateMock } = makeRowProcessService({
+      rows: [{ id: "row3", payload: { title: "Test" }, retryCount: 0, productId: null, rowNumber: 1, status: "queued" }],
+      claimCount: 0,
+    });
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+    expect(productCreateMock).not.toHaveBeenCalled();
+    const successUpdates = rowUpdateMock.mock.calls.filter(
+      (call: unknown[]) => (call[0] as { data?: { status?: string } })?.data?.status === "success"
+    );
+    expect(successUpdates).toHaveLength(0);
+  });
+
+  it("productId reuse is tenant-safe: cross-tenant ID returns null and creates new product", async () => {
+    const { svc, productFindUniqueMock } = makeRowProcessService({
+      rows: [{ id: "row4", payload: { title: "Test" }, retryCount: 0, productId: "cross-tenant-product", rowNumber: 1, status: "retrying" }],
+      productFindResult: null,
+    });
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+    expect(productFindUniqueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "cross-tenant-product" } }),
+    );
+  });
+
+  it("persists productId to row immediately after product creation (crash recovery)", async () => {
+    const { svc, rowUpdateMock } = makeRowProcessService({
+      rows: [{ id: "row5", payload: { title: "Test" }, retryCount: 0, productId: null, rowNumber: 1, status: "queued" }],
+    });
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+    const productIdUpdate = rowUpdateMock.mock.calls.find(
+      (call: unknown[]) => {
+        const data = (call[0] as { data?: Record<string, unknown> })?.data;
+        return data?.productId && !data?.status;
+      }
+    );
+    expect(productIdUpdate).toBeDefined();
+    expect((productIdUpdate![0] as { data: { productId: string } }).data.productId).toBe("new-product");
+  });
+});
+
 describe("BulkImportService.suggestMapping", () => {
   it("returns a mapping object for standard headers", () => {
     const svc = makeService();

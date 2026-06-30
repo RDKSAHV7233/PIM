@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createBulkImportJobAction, processBulkImportJobAction } from "@/app/actions";
+import { createBulkImportJobAction, processBulkImportJobAction, requeueBulkImportDlqAction } from "@/app/actions";
 import { ImportPreflightForm } from "@/components/operations/import-preflight-form";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { ImportProgress } from "@/components/ui/import-progress";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import type { BulkImportRun, BulkImportRunRow } from "@/lib/api/core";
@@ -308,29 +309,44 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       {
         key: "actions",
         header: "Actions",
-        render: (job) => (
-          <div className="flex flex-wrap gap-2">
-            {canWrite && String(job.status).toLowerCase() === "queued" ? (
-              <form action={processBulkImportJobAction}>
-                <input type="hidden" name="jobId" value={job.id} />
-                <input type="hidden" name="chunkSize" value={job.chunkSize} />
-                <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
-                <PendingSubmitButton
-                  type="submit"
-                  variant="secondary"
-                  idleLabel="Start import"
-                  pendingLabel="Starting import..."
-                />
-              </form>
-            ) : null}
-            <Link
-              href={buildImportsHref(job.id)}
-              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
-            >
-              View rows
-            </Link>
-          </div>
-        ),
+        render: (job) => {
+          const status = String(job.status).toLowerCase();
+          return (
+            <div className="flex flex-wrap gap-2">
+              {canWrite && status === "queued" ? (
+                <form action={processBulkImportJobAction}>
+                  <input type="hidden" name="jobId" value={job.id} />
+                  <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                  <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
+                  <PendingSubmitButton type="submit" variant="secondary" idleLabel="Start import" pendingLabel="Starting import..." />
+                </form>
+              ) : null}
+              {canWrite && status === "retrying" ? (
+                <form action={processBulkImportJobAction}>
+                  <input type="hidden" name="jobId" value={job.id} />
+                  <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                  <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
+                  <PendingSubmitButton type="submit" variant="secondary" idleLabel="Resume import" pendingLabel="Resuming..." />
+                </form>
+              ) : null}
+              {canWrite && status === "dead_letter" ? (
+                <form action={requeueBulkImportDlqAction}>
+                  <input type="hidden" name="jobId" value={job.id} />
+                  <PendingSubmitButton type="submit" variant="secondary" idleLabel="Requeue rows" pendingLabel="Requeuing..." />
+                </form>
+              ) : null}
+              {status === "processing" ? (
+                <span className="inline-flex items-center rounded-md bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">In progress</span>
+              ) : null}
+              <Link
+                href={buildImportsHref(job.id)}
+                className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+              >
+                {status === "completed" ? "View result" : "View rows"}
+              </Link>
+            </div>
+          );
+        },
       },
     ];
     const selectedRowColumns: Column<(typeof selectedRows)[number]>[] = [
@@ -646,6 +662,9 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                   <li>Successful rows already in catalog: {selectedSuccessfulRows.length}</li>
                 </ul>
               </div>
+              {selectedJob && !["completed", "dead_letter", "failed"].includes(String(selectedJob.status).toLowerCase()) && (
+                <ImportProgress initialJob={selectedJob} role={actorRole} />
+              )}
               <div className="grid gap-3 md:grid-cols-4">
                 <KpiCard label="Rows processed" value={selectedJob ? `${selectedJob.processedRows}/${selectedJob.totalRows}` : selectedRows.length} />
                 <KpiCard label="Successful rows" value={selectedJob?.successRows ?? selectedSuccessfulRows.length} tone={(selectedJob?.successRows ?? selectedSuccessfulRows.length) > 0 ? "success" : "default"} />
@@ -667,7 +686,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                   Download error report
                 </Link>
                 <Link
-                  href="/catalog/products"
+                  href={`/catalog/products${selectedJob?.categoryId ? `?categoryId=${encodeURIComponent(selectedJob.categoryId)}` : ""}`}
                   className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Open catalog

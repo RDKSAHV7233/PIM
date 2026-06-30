@@ -957,7 +957,12 @@ export class BulkImportService {
   async processJob(jobId: string, chunkSize?: number, actor?: PolicyActor) {
     const job = await this.requireJob(jobId);
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
-    if (job.status === BulkImportJobStatus.completed) {
+    const terminalStatuses: string[] = [
+      BulkImportJobStatus.completed,
+      BulkImportJobStatus.failed,
+      BulkImportJobStatus.dead_letter,
+    ];
+    if (terminalStatuses.includes(job.status)) {
       return this.getJob(job.id);
     }
 
@@ -1225,13 +1230,21 @@ export class BulkImportService {
       productId: string | null;
     },
   ) {
-    await this.prisma.tenant().bulkImportRow.update({
-      where: { id: row.id },
+    // Optimistic claim: only take the row if it's still in a processable state.
+    // If another worker already claimed it, updateMany returns count=0 and we skip.
+    const claimed = await this.prisma.tenant().bulkImportRow.updateMany({
+      where: {
+        id: row.id,
+        status: { in: [BulkImportRowStatus.queued, BulkImportRowStatus.retrying] },
+      },
       data: {
         status: BulkImportRowStatus.processing,
         lastAttemptAt: new Date(),
       },
     });
+    if (claimed.count === 0) {
+      return;
+    }
 
     try {
       const payload = this.asRowPayload(row.payload);
@@ -1242,7 +1255,11 @@ export class BulkImportService {
       const rowStatus = this.normalizeRecordStatus(payload.status);
       this.assertDraftWorkflowEntry(rowStatus);
 
-      const product = await this.prisma.tenant().product.create({
+      // Idempotency: reuse the product from a prior attempt if it still exists.
+      const existingProduct = row.productId
+        ? await this.prisma.tenant().product.findUnique({ where: { id: row.productId }, select: { id: true } })
+        : null;
+      const product = existingProduct ?? await this.prisma.tenant().product.create({
         data: {
           title,
           description: (payload.description ?? "").trim(),
@@ -1254,6 +1271,15 @@ export class BulkImportService {
           status: RecordStatus.draft,
         },
       });
+
+      // Persist productId immediately so a crash after this point won't orphan the product.
+      // On retry the idempotency check above will find it.
+      if (!existingProduct) {
+        await this.prisma.tenant().bulkImportRow.update({
+          where: { id: row.id },
+          data: { productId: product.id },
+        });
+      }
 
       // Write international tax codes if the row included any.
       // Uses a single TaxRegime lookup per row — regimes are a tiny seeded table (5 rows).

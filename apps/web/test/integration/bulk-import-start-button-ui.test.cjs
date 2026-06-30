@@ -18,45 +18,55 @@ function assert(condition, message) {
 try {
   const page = read("apps/web/src/app/operations/imports/page.tsx");
 
+  // --- Import assertions ---
   assert(
-    page.includes('import { createBulkImportJobAction, processBulkImportJobAction } from "@/app/actions";'),
+    page.includes("processBulkImportJobAction"),
     "imports page must import processBulkImportJobAction",
   );
   assert(
-    page.includes('canWrite && String(job.status).toLowerCase() === "queued"'),
-    "imports page must gate Start import to writable queued jobs",
+    page.includes("requeueBulkImportDlqAction"),
+    "imports page must import requeueBulkImportDlqAction for dead-letter requeue",
+  );
+
+  // --- Per-status button assertions ---
+  assert(
+    page.includes('status === "queued"') && page.includes('idleLabel="Start import"'),
+    "queued jobs must show 'Start import' button",
   );
   assert(
-    page.includes('import { PendingSubmitButton } from "@/components/ui/pending-submit-button";'),
-    "imports page must import PendingSubmitButton for action feedback",
+    page.includes('status === "retrying"') && page.includes('idleLabel="Resume import"'),
+    "retrying jobs must show 'Resume import' button",
   );
   assert(
-    page.includes('<form action={processBulkImportJobAction}>'),
-    "imports page must render a Start import form wired to processBulkImportJobAction",
+    page.includes('status === "dead_letter"') && page.includes('idleLabel="Requeue rows"'),
+    "dead_letter jobs must show 'Requeue rows' button (not Resume)",
   );
   assert(
-    page.includes('<input type="hidden" name="jobId" value={job.id} />'),
-    "Start import form must submit the bulk import job id",
+    page.includes('status === "processing"') && page.includes("In progress"),
+    "processing jobs must show 'In progress' badge (no action button)",
   );
   assert(
-    page.includes('<input type="hidden" name="chunkSize" value={job.chunkSize} />'),
-    "Start import form must submit the current chunk size",
+    page.includes('status === "completed" ? "View result" : "View rows"'),
+    "completed jobs show 'View result'; all others show 'View rows'",
   );
+
+  // --- Resume import must appear exactly once (only for retrying) ---
+  const resumeMatches = page.match(/Resume import/g);
   assert(
-    page.includes('<input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />'),
-    "Start import form must submit a returnTo path so the imports page visibly refreshes after processing starts",
+    resumeMatches && resumeMatches.length === 1,
+    `'Resume import' must appear exactly once in the page (for retrying status), found ${resumeMatches ? resumeMatches.length : 0}`,
   );
+
+  // --- requeueBulkImportDlqAction is wired to the dead_letter form ---
   assert(
-    page.includes('idleLabel="Start import"'),
-    "imports page must expose Start import button text through PendingSubmitButton",
+    page.includes("requeueBulkImportDlqAction"),
+    "dead_letter form must be wired to requeueBulkImportDlqAction",
   );
+
+  // --- failed status has no action button (only View rows link) ---
   assert(
-    page.includes('pendingLabel="Starting import..."'),
-    "Start import button must show a pending label while the action runs",
-  );
-  assert(
-    page.includes("View rows"),
-    "imports page must retain the View rows action",
+    !page.includes('status === "failed"'),
+    "failed jobs must NOT have a dedicated action button (only the generic View rows link)",
   );
 
   console.log(
@@ -64,12 +74,15 @@ try {
       {
         status: "ok",
         validated: [
-          "imports_page_imports_process_action",
-          "queued_jobs_render_start_import_button",
-          "start_import_submits_job_id_and_chunk_size",
-          "start_import_submits_return_path",
-          "start_import_uses_pending_button_feedback",
-          "view_rows_action_retained",
+          "imports_process_action_imported",
+          "requeue_dlq_action_imported",
+          "queued_shows_start_import",
+          "retrying_shows_resume_import",
+          "dead_letter_shows_requeue_rows",
+          "processing_shows_in_progress_badge",
+          "completed_shows_view_result",
+          "resume_import_appears_exactly_once",
+          "failed_has_no_action_button",
         ],
       },
       null,

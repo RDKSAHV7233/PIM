@@ -75,6 +75,24 @@ describe("BulkImportRunService.enqueueProcessJob", () => {
     expect(enqueueMock).not.toHaveBeenCalled();
   });
 
+  it("does NOT enqueue when the job is failed — terminal guard", async () => {
+    const { service, enqueueMock } = createService({ id: "job_f", status: BulkImportJobStatus.failed });
+    await service.enqueueProcessJob("job_f", undefined, { actorId: "user_1", actorRole: "admin" as never });
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enqueue when the job is dead_letter — terminal guard", async () => {
+    const { service, enqueueMock } = createService({ id: "job_d", status: BulkImportJobStatus.dead_letter });
+    await service.enqueueProcessJob("job_d", undefined, { actorId: "user_1", actorRole: "admin" as never });
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enqueue when the job is already processing — double-click guard", async () => {
+    const { service, enqueueMock } = createService({ id: "job_p", status: BulkImportJobStatus.processing });
+    await service.enqueueProcessJob("job_p", undefined, { actorId: "user_1", actorRole: "admin" as never });
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
   it("propagates NotFoundException from getJob without calling enqueue", async () => {
     const { service, enqueueMock, bulkImportService } = createService();
     (bulkImportService.getJob as jest.Mock).mockRejectedValue(new NotFoundException("not found"));
