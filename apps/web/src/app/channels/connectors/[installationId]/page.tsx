@@ -692,12 +692,17 @@ export default async function ChannelConnectorDetailPage({
         throw err;
       }),
       getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader }).catch((err) => {
-        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
-          return [] as Awaited<ReturnType<typeof getSubmissions>>;
+        if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
+          throw err;
         }
-        throw err;
+        return [] as Awaited<ReturnType<typeof getSubmissions>>;
       }),
-      getAllProductsSlim({ role: actorRole, authHeader }),
+      getAllProductsSlim({ role: actorRole, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
+          throw err;
+        }
+        return [] as Awaited<ReturnType<typeof getAllProductsSlim>>;
+      }),
       shopifyPublicationStatePromise,
     ]);
     const submissions = toItems(submissionsRaw);

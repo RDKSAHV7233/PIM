@@ -1,10 +1,22 @@
 import { Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { Type } from "class-transformer";
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { MarketplaceService } from "./marketplace.service";
+
+class ListSubmissionsQueryDto {
+  @IsOptional() @IsString() productId?: string;
+  @IsOptional() @IsString() connectorSlug?: string;
+  @IsOptional() @IsString() installationId?: string;
+  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString() minAttempt?: string;
+  @IsOptional() @IsIn(["cursor"]) pagination?: "cursor";
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
+  @IsOptional() @IsString() @MaxLength(500) cursor?: string;
+}
 
 @DisallowApiClient()
 @AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
@@ -17,23 +29,16 @@ export class SubmissionsController {
   @Get()
   @ApiOperation({ summary: "List submissions" })
   @ApiResponse({ status: 200, description: "Submissions fetched" })
-  listSubmissions(
-    @Query("productId") productId?: string,
-    @Query("connectorSlug") connectorSlug?: string,
-    @Query("installationId") installationId?: string,
-    @Query("status") status?: string,
-    @Query("minAttempt") minAttempt?: string,
-    @Query() pagination?: CursorPaginationDto,
-  ) {
+  listSubmissions(@Query() query: ListSubmissionsQueryDto) {
     return this.marketplaceService.listSubmissions(
       {
-        productId,
-        connectorSlug,
-        installationId,
-        status,
-        minAttempt: minAttempt ? Number(minAttempt) : undefined,
+        productId: query.productId,
+        connectorSlug: query.connectorSlug,
+        installationId: query.installationId,
+        status: query.status,
+        minAttempt: query.minAttempt ? Number(query.minAttempt) : undefined,
       },
-      pagination,
+      { pagination: query.pagination, limit: query.limit, cursor: query.cursor },
     );
   }
 
