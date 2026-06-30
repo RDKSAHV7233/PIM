@@ -1,6 +1,9 @@
 import { BadRequestException, Body, Controller, Get, Header, Param, Post, Query, Req, Res, UseInterceptors, UploadedFile } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
+import { Type } from "class-transformer";
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
@@ -16,6 +19,14 @@ import { ProcessBulkImportJobDto } from "./dto/process-bulk-import-job.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
 import { RequeueDlqDto } from "./dto/requeue-dlq.dto";
 import { SuggestMappingDto } from "./dto/suggest-mapping.dto";
+
+class ListBulkImportTemplatesQueryDto {
+  @ApiProperty() @IsOptional() @IsString() tenantKey?: string;
+  @ApiProperty() @IsOptional() @IsString() categoryId?: string;
+  @IsOptional() @IsIn(["cursor"]) pagination?: "cursor";
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
+  @IsOptional() @IsString() @MaxLength(500) cursor?: string;
+}
 
 @DisallowApiClient()
 @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
@@ -84,12 +95,10 @@ export class BulkImportController {
   @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
   @ApiClientScopes("bulk_import.read")
   listTemplates(
-    @Query("tenantKey") tenantKey?: string,
-    @Query("categoryId") categoryId?: string,
-    @Query() pagination?: CursorPaginationDto,
+    @Query() query: ListBulkImportTemplatesQueryDto,
     @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.bulkImportService.listTemplates(tenantKey, categoryId, pagination, {
+    return this.bulkImportService.listTemplates(query.tenantKey, query.categoryId, query, {
       actorId: request?.pimUserId,
       actorRole: request?.pimRole,
       tenantId: request?.pimTenant,

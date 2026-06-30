@@ -94,6 +94,8 @@ export function NotificationCenter() {
       const payload = (await response.json()) as NotificationListResponse;
       setItems(Array.isArray(payload.items) ? payload.items : []);
       setUnreadCount(Number(payload.unreadCount ?? 0));
+    } catch {
+      // Network failures during polling are non-fatal — the next tick will retry.
     } finally {
       setLoading(false);
     }
