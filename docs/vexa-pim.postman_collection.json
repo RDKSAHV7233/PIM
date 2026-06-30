@@ -6457,7 +6457,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/submissions?productId=&connectorSlug=&installationId=&status=&minAttempt=",
+              "raw": "{{base_url}}/api/v1/submissions?productId=&connectorSlug=&installationId=&status=&minAttempt=&pagination=&limit=&cursor=",
               "host": [
                 "{{base_url}}"
               ],
@@ -6493,6 +6493,24 @@
                 },
                 {
                   "key": "minAttempt",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "pagination",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "cursor",
                   "value": "",
                   "description": "(required)",
                   "disabled": false
@@ -6948,7 +6966,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/bulk-import/templates?tenantKey=&categoryId=",
+              "raw": "{{base_url}}/api/v1/bulk-import/templates",
               "host": [
                 "{{base_url}}"
               ],
@@ -6962,14 +6980,14 @@
                 {
                   "key": "tenantKey",
                   "value": "",
-                  "description": "(required)",
-                  "disabled": false
+                  "description": "(optional)",
+                  "disabled": true
                 },
                 {
                   "key": "categoryId",
                   "value": "",
-                  "description": "(required)",
-                  "disabled": false
+                  "description": "(optional)",
+                  "disabled": true
                 }
               ]
             },
