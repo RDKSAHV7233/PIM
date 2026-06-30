@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { MarketplaceService } from "./marketplace.service";
@@ -23,7 +23,9 @@ export class SubmissionsController {
     @Query("installationId") installationId?: string,
     @Query("status") status?: string,
     @Query("minAttempt") minAttempt?: string,
-    @Query() pagination?: CursorPaginationDto,
+    @Query("pagination") pagination?: string,
+    @Query("limit") limit?: string,
+    @Query("cursor") cursor?: string,
   ) {
     return this.marketplaceService.listSubmissions(
       {
@@ -33,7 +35,11 @@ export class SubmissionsController {
         status,
         minAttempt: minAttempt ? Number(minAttempt) : undefined,
       },
-      pagination,
+      {
+        pagination: pagination === "cursor" ? "cursor" : undefined,
+        limit: limit ? Number(limit) : undefined,
+        cursor,
+      },
     );
   }
 

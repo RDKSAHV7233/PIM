@@ -6457,7 +6457,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/submissions?productId=&connectorSlug=&installationId=&status=&minAttempt=",
+              "raw": "{{base_url}}/api/v1/submissions?productId=&connectorSlug=&installationId=&status=&minAttempt=&pagination=&limit=&cursor=",
               "host": [
                 "{{base_url}}"
               ],
@@ -6493,6 +6493,24 @@
                 },
                 {
                   "key": "minAttempt",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "pagination",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "cursor",
                   "value": "",
                   "description": "(required)",
                   "disabled": false

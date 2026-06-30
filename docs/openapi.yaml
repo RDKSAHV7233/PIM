@@ -2027,6 +2027,21 @@ paths:
           in: query
           schema:
             type: string
+        - name: pagination
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: limit
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: cursor
+          required: true
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Submissions fetched
