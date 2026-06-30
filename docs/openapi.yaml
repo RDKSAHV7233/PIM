@@ -2324,12 +2324,12 @@ paths:
       operationId: BulkImportController_listTemplates
       parameters:
         - name: tenantKey
-          required: false
+          required: true
           in: query
           schema:
             type: string
         - name: categoryId
-          required: false
+          required: true
           in: query
           schema:
             type: string

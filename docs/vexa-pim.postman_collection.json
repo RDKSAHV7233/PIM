@@ -6966,7 +6966,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/bulk-import/templates",
+              "raw": "{{base_url}}/api/v1/bulk-import/templates?tenantKey=&categoryId=",
               "host": [
                 "{{base_url}}"
               ],
@@ -6980,14 +6980,14 @@
                 {
                   "key": "tenantKey",
                   "value": "",
-                  "description": "(optional)",
-                  "disabled": true
+                  "description": "(required)",
+                  "disabled": false
                 },
                 {
                   "key": "categoryId",
                   "value": "",
-                  "description": "(optional)",
-                  "disabled": true
+                  "description": "(required)",
+                  "disabled": false
                 }
               ]
             },
