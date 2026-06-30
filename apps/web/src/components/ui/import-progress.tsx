@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { postJson } from "@/lib/api";
 import type { AppRole, BulkImportJob } from "@/lib/api";
@@ -80,6 +81,19 @@ export function ImportProgress({ initialJob, role }: ImportProgressProps) {
         ~{throughput.toFixed(1)} rows/sec |{" "}
         {etaSeconds === null ? "estimating..." : etaSeconds <= 3 ? "almost done" : `~${etaSeconds}s remaining`}
       </p>
+      {TERMINAL_STATUSES.has(job.status) && job.status === "completed" && (
+        <Link
+          href={`/catalog/products?categoryId=${encodeURIComponent(job.categoryId)}`}
+          className="inline-flex items-center rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          View imported products
+        </Link>
+      )}
+      {TERMINAL_STATUSES.has(job.status) && job.status !== "completed" && (
+        <p className="text-xs font-medium text-amber-700">
+          Import finished with issues. Check the error report for details.
+        </p>
+      )}
     </div>
   );
 }

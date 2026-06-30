@@ -90,4 +90,15 @@ export class AdvancedSearchProductsDto {
   @IsOptional()
   @IsIn(["asc", "desc"])
   sortDir?: "asc" | "desc";
+
+  /**
+   * Offset-based pagination: number of rows to skip. Range: 0–100 000.
+   * When provided, cursor is ignored and a totalCount is returned.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  offset?: number;
 }

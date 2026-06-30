@@ -115,6 +115,9 @@ interface ProductsTabProps {
   initialView?: ProductFilter;
   initialSearch?: string;
   initialCreate?: boolean;
+  totalCount?: number | null;
+  currentPage?: number;
+  pageSize?: number;
 }
 
 function formatUpdatedAt(value: string): string {
@@ -249,6 +252,9 @@ export function ProductsTab({
   initialView = "all",
   initialSearch = "",
   initialCreate = false,
+  totalCount,
+  currentPage = 1,
+  pageSize = 50,
 }: ProductsTabProps) {
   const canWrite = canEditWorkspace(role);
   const { skuUsagePercent } = usePlanUsage(role);
@@ -287,6 +293,7 @@ export function ProductsTab({
     if (facets.categoryId) params.set("categoryId", facets.categoryId); else params.delete("categoryId");
     if (facets.brand) params.set("brand", facets.brand); else params.delete("brand");
     if (facets.status) params.set("status", facets.status); else params.delete("status");
+    params.delete("page");
     const query = params.toString();
     const next = query ? `${pathname}?${query}` : pathname;
     if (`${window.location.pathname}${window.location.search}` !== next) {
@@ -443,6 +450,7 @@ export function ProductsTab({
     } else {
       params.set("hideTestData", "false");
     }
+    params.delete("page");
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
   }
@@ -459,6 +467,19 @@ export function ProductsTab({
     }
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function navigatePage(page: number) {
+    const params =
+      typeof window === "undefined"
+        ? new URLSearchParams(searchParams.toString())
+        : new URLSearchParams(window.location.search);
+    if (page > 1) {
+      params.set("page", String(page));
+    } else {
+      params.delete("page");
+    }
+    router.push(`${pathname}?${params.toString()}`);
   }
 
   function handleDeleteClick(event: React.MouseEvent<HTMLButtonElement>, productId: string, productTitle: string) {
@@ -878,6 +899,58 @@ export function ProductsTab({
           />
         )}
       </section>
+      {(() => {
+        const totalProducts = totalCount ?? stats?.products ?? 0;
+        const totalPages = totalProducts > 0 ? Math.ceil(totalProducts / pageSize) : 0;
+        if (totalPages <= 1) return null;
+        const pages: (number | "...")[] = [];
+        pages.push(1);
+        if (currentPage > 3) pages.push("...");
+        for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+          pages.push(i);
+        }
+        if (currentPage < totalPages - 2) pages.push("...");
+        if (totalPages > 1) pages.push(totalPages);
+        return (
+          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => navigatePage(currentPage - 1)}
+              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <div className="flex items-center gap-1">
+              {pages.map((p, i) =>
+                p === "..." ? (
+                  <span key={`ellipsis-${i}`} className="px-2 text-sm text-slate-400">...</span>
+                ) : p === currentPage ? (
+                  <span key={p} className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-900 text-sm font-medium text-white">
+                    {p}
+                  </span>
+                ) : (
+                  <button key={p} type="button" onClick={() => navigatePage(p)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                    {p}
+                  </button>
+                ),
+              )}
+              {totalPages > 0 && (
+                <span className="ml-2 text-xs text-slate-400">of {totalPages}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => navigatePage(currentPage + 1)}
+              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        );
+      })()}
       <ConfirmDialog
         open={pendingArchive !== null}
         title="Archive product"

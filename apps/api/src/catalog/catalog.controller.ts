@@ -101,6 +101,7 @@ export class CatalogController {
         limit: dto.limit,
         sort: dto.sort,
         sortDir: dto.sortDir,
+        offset: dto.offset,
       },
       this.resolveActor(request),
     );

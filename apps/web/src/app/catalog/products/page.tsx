@@ -6,10 +6,7 @@ import {
   ApiHttpError,
   getCategoryTree,
   getInstalledConnectors,
-  getProductListPage,
   getStats,
-  type ApiRequestOptions,
-  type CatalogStats,
   type ProductListItem,
 } from "@/lib/api";
 import { getAdvancedSearchProducts } from "@/lib/api/catalog";
@@ -31,9 +28,9 @@ interface CatalogProductsPageProps {
     hideTestData?: string;
     search?: string;
     view?: string;
-    page?: string;
     limit?: string;
     create?: string;
+    page?: string;
     // Sprint 1: faceted search params
     categoryId?: string;
     brand?: string;
@@ -70,80 +67,6 @@ function resolvePositiveInteger(value: string | undefined, fallback: number, max
     return fallback;
   }
   return Math.min(max, parsed);
-}
-
-type FilteredProductWindow = {
-  items: ProductListItem[];
-  firstProduct: ProductListItem | null;
-  totals: {
-    products: number;
-    variants: number;
-  } | null;
-};
-
-async function loadVisibleProducts(
-  page: number,
-  limit: number,
-  hideTestData: boolean,
-  options: ApiRequestOptions,
-): Promise<FilteredProductWindow> {
-  const visibleProducts: ProductListItem[] = [];
-  const requestedOffset = (page - 1) * limit;
-  const requestLimit = Math.min(Math.max(limit, 50), 200);
-  let filteredOffset = 0;
-  let firstProduct: ProductListItem | null = null;
-  let cursor: string | undefined;
-  const totals = hideTestData
-    ? {
-        products: 0,
-        variants: 0,
-      }
-    : null;
-
-  while (true) {
-    const response = await getProductListPage(
-      {
-        slim: true,
-        limit: requestLimit,
-        ...(cursor ? { cursor } : {}),
-      },
-      options,
-    );
-    const filteredBatch = filterTestData(response.items, hideTestData);
-
-    if (!firstProduct && filteredBatch.length > 0) {
-      firstProduct = filteredBatch[0];
-    }
-
-    if (totals) {
-      totals.products += filteredBatch.length;
-      totals.variants += filteredBatch.reduce((sum, product) => sum + (product.variantCount ?? 0), 0);
-    }
-
-    if (visibleProducts.length < limit && filteredOffset + filteredBatch.length > requestedOffset) {
-      const startIndex = Math.max(0, requestedOffset - filteredOffset);
-      const remaining = limit - visibleProducts.length;
-      visibleProducts.push(...filteredBatch.slice(startIndex, startIndex + remaining));
-    }
-
-    filteredOffset += filteredBatch.length;
-
-    if (!response.nextCursor) {
-      break;
-    }
-
-    if (!hideTestData && visibleProducts.length >= limit && filteredOffset >= requestedOffset + limit) {
-      break;
-    }
-
-    cursor = response.nextCursor;
-  }
-
-  return {
-    items: visibleProducts,
-    firstProduct,
-    totals,
-  };
 }
 
 function isCatalogProductsApiUnavailable(error: unknown): boolean {
@@ -195,31 +118,28 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const initialView = resolveProductView(query.view);
   const initialSearch = resolveProductSearch(query.search);
   const initialCreate = query.create === "1";
-  const page = resolvePositiveInteger(query.page, 1, 10_000);
   const limit = resolvePositiveInteger(query.limit, 50, 200);
+  const currentPage = Math.max(1, resolvePositiveInteger(query.page, 1, 10000));
+  const offset = (currentPage - 1) * limit;
   // Sprint 1: faceted search
   const categoryId = query.categoryId?.trim() || undefined;
   const brand = query.brand?.trim() || undefined;
   const facetStatus = query.status?.trim() || undefined;
-  const hasFacets = Boolean(categoryId || brand || facetStatus);
   const { authHeader, actorRole } = await getServerSession();
 
   try {
     const [statsResult, categoriesResult, productWindowResult, installedConnectorsResult] = await Promise.all([
       loadSharedRead(getStats({ role: actorRole, authHeader })),
       loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 })),
-      // Sprint 1: use advanced-search endpoint when any facet is active
       loadSharedRead(
-        hasFacets
-          ? getAdvancedSearchProducts(
-              { q: initialSearch || undefined, categoryId, brand, status: facetStatus, limit },
-              { role: actorRole, authHeader },
-            ).then((res) => ({
-              items: res.items as ProductListItem[],
-              firstProduct: res.items[0] as ProductListItem | null,
-              totals: null,
-            }))
-          : loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
+        getAdvancedSearchProducts(
+          { q: initialSearch || undefined, categoryId, brand, status: facetStatus, offset, limit },
+          { role: actorRole, authHeader },
+        ).then((res) => ({
+          items: res.items as ProductListItem[],
+          firstProduct: (res.items[0] as ProductListItem) ?? null,
+          totalCount: res.totalCount,
+        })),
       ),
       loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader })),
     ]);
@@ -231,7 +151,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
         : {
             items: [],
             firstProduct: null,
-            totals: null,
+            totalCount: null as number | null,
           };
     const filteredCategories = filterTestData(categories, hideTestData);
     const filteredStats =
@@ -243,8 +163,6 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
                 categoriesResult.state === "available"
                   ? filteredCategories.length
                   : statsResult.value.categories,
-              products: productWindow.totals?.products ?? statsResult.value.products,
-              variants: productWindow.totals?.variants ?? statsResult.value.variants,
             }
           : statsResult.value
         : null;
@@ -291,6 +209,9 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           initialView={initialView}
           initialSearch={initialSearch}
           initialCreate={initialCreate}
+          totalCount={productWindow.totalCount}
+          currentPage={currentPage}
+          pageSize={limit}
         />
       </div>
     );
