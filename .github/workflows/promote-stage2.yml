@@ -28,6 +28,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate Stage 2 deploy contract
+        shell: bash
+        env:
+          APP_ENV: staging
+          STAGING_BASE_URL: ${{ inputs.staging_url }}
+          STAGING_WEB_URL: ${{ secrets.STAGE2_WEB_URL }}
+          STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED: "true"
+        run: |
+          node scripts/validate-staging-deploy-config.cjs
+
       - name: Health probe
         shell: bash
         env:

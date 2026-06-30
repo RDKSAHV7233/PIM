@@ -133,8 +133,12 @@ jobs:
         run: |
           node scripts/check-pr-scope.test.cjs
           node scripts/railway-deploy.test.cjs
+          node scripts/validate-deploy-stage1-workflow.cjs
           node scripts/validate-deploy-staging-workflow.cjs
+          node scripts/validate-e2e-staging-workflow.cjs
+          node scripts/validate-promote-stage2-workflow.cjs
           node scripts/validate-promote-stage3-workflow.cjs
+          node scripts/validate-daily-rollout-evidence-workflow.cjs
           node scripts/validate-staging-deploy-config.test.cjs
           node scripts/migrate-legacy-auth-password-hashes.test.cjs
           node apps/api/test/integration/railway-api-package-contract.test.cjs
