@@ -227,7 +227,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const runs = normalizeCollection<BulkImportRun>(
       runsResult.status === "fulfilled" ? runsResult.value : [],
     );
-    const largeRuns = runs.filter((run) => run.effectiveMode === "large");
+    const largeRuns = runs;
     const filteredByData = filterTestData(jobs, hideTestData);
     const visibleJobs =
       selectedStatus.length > 0
@@ -275,6 +275,13 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       accumulator[key] = (accumulator[key] ?? 0) + 1;
       return accumulator;
     }, {});
+    for (const run of runs) {
+      const raw = String(run.status ?? "").toLowerCase();
+      const key = raw === "repair_required" ? "dead_letter"
+        : raw === "processing" ? "retrying"
+        : raw || "unknown";
+      statusCounts[key] = (statusCounts[key] ?? 0) + 1;
+    }
 
     const hideToggleHref = hideTestData
       ? "/operations/imports?hideTestData=false"
@@ -413,7 +420,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Total Jobs" value={filteredByData.length} />
+          <KpiCard label="Total Jobs" value={filteredByData.length + runs.length} />
           <KpiCard
             label="Needs Attention"
             value={(statusCounts.dead_letter ?? 0) + (statusCounts.failed ?? 0)}
@@ -519,7 +526,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
 
         {largeRuns.length > 0 ? (
           <Card aria-live="polite" aria-atomic="true">
-            <CardTitle>Large Import Runs</CardTitle>
+            <CardTitle>Import Runs</CardTitle>
             <DataGrid
               className="mt-3"
               columns={[
@@ -558,7 +565,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
 
         {selectedBulkRunId && selectedRun ? (
           <Card aria-live="polite" aria-atomic="true">
-            <CardTitle>Large Import Run ({selectedBulkRunId})</CardTitle>
+            <CardTitle>Import Run ({selectedBulkRunId})</CardTitle>
             <div className="mt-3 space-y-4">
               <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
                 Large file mode enabled. Vexa will process this file in safe background batches.
