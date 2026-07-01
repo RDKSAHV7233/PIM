@@ -34,6 +34,8 @@ module.exports = {
     "**/pricing/pricing.service.spec.ts",
     "**/prisma/extensions/tenant-scope.spec.ts",
     "**/bulk-edit/bulk-edit.service.spec.ts",
+    "**/queue/queue.service.spec.ts",
+    "**/connector-framework/connector.registry.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
