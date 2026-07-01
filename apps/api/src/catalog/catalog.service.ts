@@ -548,6 +548,7 @@ export class CatalogService {
       limit?: number;
       sort?: "updatedAt" | "createdAt" | "title";
       sortDir?: "asc" | "desc";
+      offset?: number;
     },
     actor?: ActorContext,
   ) {
@@ -565,8 +566,9 @@ export class CatalogService {
     const pageLimit = Math.max(1, Math.min(100, Number.isFinite(params.limit) ? Number(params.limit) : 20));
     const sort = params.sort ?? "updatedAt";
     const sortDir: "asc" | "desc" = params.sortDir ?? "desc";
-    const token = params.cursor ? decodeCursorToken(params.cursor) : null;
-    if (params.cursor && !token) {
+    const useOffset = typeof params.offset === "number" && params.offset >= 0;
+    const token = !useOffset && params.cursor ? decodeCursorToken(params.cursor) : null;
+    if (!useOffset && params.cursor && !token) {
       throw new BadRequestException("Invalid cursor token.");
     }
 
@@ -617,7 +619,7 @@ export class CatalogService {
         return {
           items: [],
           limit: pageLimit,
-          total: null as null,
+          totalCount: null as null,
           nextCursor: null as null,
           filters: { channelSlug: params.channelSlug },
         };
@@ -644,7 +646,7 @@ export class CatalogService {
         return {
           items: [],
           limit: pageLimit,
-          total: null as null,
+          totalCount: null as null,
           nextCursor: null as null,
           filters: { channelSlug: params.channelSlug },
         };
@@ -688,27 +690,38 @@ export class CatalogService {
       sort === "title"     ? [{ title: sortDir }, { id: sortDir }] :
                              [{ updatedAt: sortDir }, { id: sortDir }];
 
-    const products = await this.prisma.tenant().product.findMany({
-      where: fullWhere,
-      select: {
-        id: true,
-        title: true,
-        brand: true,
-        description: true,
-        categoryId: true,
-        hsnCode: true,
-        gstRate: true,
-        attributes: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-        category: { select: { name: true, path: true } },
-        variants: { select: { skuCode: true } },
-        _count: { select: { variants: true } },
-      },
-      orderBy,
-      take: pageLimit + 1,
-    });
+    const productSelect = {
+      id: true,
+      title: true,
+      brand: true,
+      description: true,
+      categoryId: true,
+      hsnCode: true,
+      gstRate: true,
+      attributes: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      category: { select: { name: true, path: true } },
+      variants: { select: { skuCode: true } },
+      _count: { select: { variants: true } },
+    } as const;
+
+    let totalCount: number | null = null;
+
+    const [products, countResult] = await Promise.all([
+      this.prisma.tenant().product.findMany({
+        where: fullWhere,
+        select: productSelect,
+        orderBy,
+        take: pageLimit + 1,
+        ...(useOffset ? { skip: params.offset } : {}),
+      }),
+      useOffset
+        ? this.prisma.tenant().product.count({ where: fullWhere })
+        : Promise.resolve(null),
+    ]);
+    totalCount = countResult;
 
     const hasNext = products.length > pageLimit;
     const page = hasNext ? products.slice(0, pageLimit) : products;
@@ -717,10 +730,10 @@ export class CatalogService {
     const items = this.accessPolicy.applyReadResponsePolicy(
       policyActor,
       "catalog_products_redacted",
-      scored.map((p) => ({
+      scored.map((p: any) => ({
         ...p,
         variantCount: p._count.variants,
-        skuCodes: p.variants.map((v) => v.skuCode),
+        skuCodes: p.variants.map((v: any) => v.skuCode),
       })),
     );
 
@@ -737,7 +750,7 @@ export class CatalogService {
     return {
       items,
       limit: pageLimit,
-      total: null as null,
+      totalCount,
       nextCursor,
       filters: {
         q: q || undefined,

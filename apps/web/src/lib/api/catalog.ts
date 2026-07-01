@@ -243,11 +243,13 @@ export interface AdvancedSearchQuery {
   limit?: number;
   sort?: string;
   sortDir?: "asc" | "desc";
+  offset?: number;
 }
 
 export interface AdvancedSearchPage {
   items: ProductListItem[];
   nextCursor: string | null;
+  totalCount: number | null;
   limit: number;
 }
 
@@ -322,6 +324,7 @@ export async function getAdvancedSearchProducts(
   if (query.channelSlug) params.set("channelSlug", query.channelSlug);
   if (query.cursor) params.set("cursor", query.cursor);
   if (typeof query.limit === "number") params.set("limit", String(query.limit));
+  if (typeof query.offset === "number") params.set("offset", String(query.offset));
   if (query.sort) params.set("sort", query.sort);
   if (query.sortDir) params.set("sortDir", query.sortDir);
   const qs = params.size > 0 ? `?${params.toString()}` : "";
@@ -331,7 +334,7 @@ export async function getAdvancedSearchProducts(
     options,
   );
   if (Array.isArray(response)) {
-    return { items: response, nextCursor: null, limit: query.limit ?? response.length };
+    return { items: response, nextCursor: null, totalCount: null, limit: query.limit ?? response.length };
   }
   return response;
 }

@@ -109,7 +109,13 @@ export class BulkImportRunService implements OnModuleInit {
     // Validates existence + access + returns current job state in one call.
     const job = await this.bulkImportService.getJob(jobId, actor);
 
-    if (job.status === BulkImportJobStatus.completed) {
+    const skipStatuses: string[] = [
+      BulkImportJobStatus.completed,
+      BulkImportJobStatus.failed,
+      BulkImportJobStatus.dead_letter,
+      BulkImportJobStatus.processing,
+    ];
+    if (skipStatuses.includes(job.status)) {
       return job;
     }
 
