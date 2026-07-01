@@ -4,10 +4,12 @@ import { updateTenantAuthPolicyAction } from "@/app/admin/auth-policy/actions";
 import { ApiHttpError, getBillingPlanProfile, getTenantAuthPolicy } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { formatDateTime } from "@/lib/format";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import { AuthPolicyEnterpriseForm } from "./_components/auth-policy-enterprise-form";
 
 export const dynamic = "force-dynamic";
@@ -148,9 +150,21 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/auth-policy", 401));
   }
-  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (!isSystemAdmin) {
-    redirect("/admin");
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Auth Policy"
+          description="Tenant authentication policy overview."
+          breadcrumb={
+            <>
+              Dashboard / Admin / <span className="font-semibold text-slate-700">Auth Policy</span>
+            </>
+          }
+        />
+        <SystemAdminRequiredCard surfaceLabel="Auth policy" />
+      </div>
+    );
   }
   if (actorRole !== "admin") {
     return (

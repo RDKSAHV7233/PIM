@@ -11,6 +11,7 @@ import { DataGrid } from "@/components/ui/data-grid";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import {
   ApiHttpError,
   getBillingPlanProfile,
@@ -18,6 +19,7 @@ import {
   getOutboundWebhookEndpoints,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { WEBHOOK_EVENT_LABELS as EVENT_LABELS } from "@/lib/constants/webhook-events";
@@ -65,8 +67,23 @@ function resolveWebhookFieldErrors(message: string) {
 export default async function WebhookAdminPage({ searchParams }: WebhookAdminPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
-  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (role !== "admin" || !isSystemAdmin) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Outbound Webhooks"
+          description="Send Vexa notification events to tenant-managed HTTP endpoints."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Outbound Webhooks</span>
+            </>
+          }
+        />
+        <SystemAdminRequiredCard surfaceLabel="Outbound webhooks" />
+      </div>
+    );
+  }
+  if (role !== "admin") {
     redirect("/admin");
   }
   const status = String(query.status ?? "").trim();
