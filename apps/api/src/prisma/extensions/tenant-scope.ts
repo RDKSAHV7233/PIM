@@ -3,7 +3,9 @@ import { applyProductSoftDeleteScope } from "../../common/prisma-soft-delete.mid
 
 const TENANT_FIELD = "tenantKey";
 
-const TENANT_SCOPED_MODELS = new Set<string>([
+// Exported so tenant-scope.spec.ts can assert this set stays in sync with
+// every `tenantKey` field declared in schema.prisma (see SEC-001 remediation).
+export const TENANT_SCOPED_MODELS = new Set<string>([
   "AuthIdentity",
   "Category",
   "Product",
@@ -31,7 +33,6 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "TenantPlanProfile",
   "ConnectorPermission",
   "AccessScopeAssignment",
-  "OndcMapping",
   "PlanUsage",
   "UserNotification",
   "AccountConsentEvent",
@@ -50,6 +51,27 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "ConnectorSyncSchedule",
   "ConnectorProductLink",
   "TenantCommercialRequest",
+  // CTO review remediation (SEC-001) — these models were tenantKey-scoped in
+  // schema.prisma but relied entirely on manual per-service filtering with no
+  // extension-level safety net. See schema-drift.spec.ts for the CI guard
+  // that keeps this set in sync with schema.prisma going forward.
+  "ApiAccessKey",
+  "OutboundWebhookEndpoint",
+  "ProductPrice",
+  "OidcConfig",
+  "TenantAuthPolicy",
+  // Found by the tenant-scope.spec.ts drift guard when it was first added —
+  // these had a tenantKey column but were never in this set at all.
+  "UserMfaBackupCode",
+  "WorkspaceDirectory",
+  "ConnectorProductSyncState",
+  "OutboundWebhookDelivery",
+  "Market",
+  "Currency",
+  "PriceList",
+  "ProductTranslation",
+  "CategoryTranslation",
+  "ProductTaxCode",
 ]);
 
 const FILTER_WHERE_OPERATIONS = new Set<string>([
