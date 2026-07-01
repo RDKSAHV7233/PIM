@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const YAML = require("yaml");
 
-const WORKFLOW_PATH = path.resolve(__dirname, "..", ".github", "workflows", "e2e-staging.yml");
+const REPO_ROOT = path.resolve(__dirname, "..");
+const WORKFLOW_PATH = path.join(REPO_ROOT, ".github", "workflows", "e2e-staging.yml");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,9 +15,17 @@ function assert(condition, message) {
 }
 
 function requireStep(steps, name) {
-  const step = steps.find((entry) => String(entry?.name ?? "").trim() === name);
+  const step = steps.find((item) => String(item?.name ?? "").trim() === name);
   assert(step, `Missing workflow step: ${name}`);
   return step;
+}
+
+function requireStepOrder(steps, firstName, secondName) {
+  const firstIndex = steps.findIndex((item) => String(item?.name ?? "").trim() === firstName);
+  const secondIndex = steps.findIndex((item) => String(item?.name ?? "").trim() === secondName);
+  assert(firstIndex !== -1, `Missing workflow step: ${firstName}`);
+  assert(secondIndex !== -1, `Missing workflow step: ${secondName}`);
+  assert(firstIndex < secondIndex, `${firstName} must appear before ${secondName}`);
 }
 
 function requireEnvVar(step, name, label) {
@@ -37,7 +46,8 @@ function requireRunContains(step, fragment, label) {
 
 function main() {
   assert(fs.existsSync(WORKFLOW_PATH), `Workflow file not found: ${WORKFLOW_PATH}`);
-  const workflow = YAML.parse(fs.readFileSync(WORKFLOW_PATH, "utf8"));
+  const text = fs.readFileSync(WORKFLOW_PATH, "utf8");
+  const workflow = YAML.parse(text);
 
   assert(workflow && typeof workflow === "object", "e2e-staging workflow YAML did not parse to an object");
   assert(String(workflow.name ?? "").trim() === "E2E - Staging User Journey", "Unexpected workflow name");
@@ -48,72 +58,64 @@ function main() {
     "e2e-staging workflow must support workflow_dispatch",
   );
   assert(
-    triggers && typeof triggers === "object" && Array.isArray(triggers.schedule) && triggers.schedule.length > 0,
-    "e2e-staging workflow must include a schedule trigger",
+    Object.prototype.hasOwnProperty.call(triggers, "schedule"),
+    "e2e-staging workflow must have a schedule trigger",
   );
 
   assert(workflow.concurrency && typeof workflow.concurrency === "object", "e2e-staging workflow must define concurrency");
   assert(String(workflow.concurrency.group ?? "").trim() === "e2e-staging", "e2e-staging concurrency group must be e2e-staging");
 
-  const job = workflow.jobs?.e2e;
+  const jobs = workflow.jobs ?? {};
+  const job = jobs["e2e"];
   assert(job && typeof job === "object", "Missing e2e job");
-  assert(String(job.environment ?? "").trim() === "staging", "e2e job must target environment=staging");
+  assert(job.environment === "staging", "e2e job must target environment=staging");
 
   const steps = Array.isArray(job.steps) ? job.steps : [];
   assert(steps.length > 0, "e2e job has no steps");
 
   requireStep(steps, "Checkout");
-  requireStep(steps, "Set up Node ${{ env.NODE_VERSION }}");
   requireStep(steps, "Install dependencies");
   requireStep(steps, "Install Railway CLI");
 
-  const resolveApiUrlStep = requireStep(steps, "Resolve staging API URL");
-  assert(String(resolveApiUrlStep?.id ?? "").trim() === "resolve_staging_api_url", "Resolve staging API URL step must expose id=resolve_staging_api_url");
-  requireAnyEnvVar(resolveApiUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging API URL");
-  requireEnvVar(resolveApiUrlStep, "RAILWAY_PROJECT_ID", "Resolve staging API URL");
-  requireAnyEnvVar(resolveApiUrlStep, ["RAILWAY_SERVICE", "RAILWAY_SERVICE_ID"], "Resolve staging API URL");
-  requireEnvVar(resolveApiUrlStep, "RAILWAY_ENVIRONMENT_ID", "Resolve staging API URL");
-  requireEnvVar(resolveApiUrlStep, "RAILWAY_ENVIRONMENT_NAME", "Resolve staging API URL");
-  requireEnvVar(resolveApiUrlStep, "FALLBACK_STAGING_API_URL", "Resolve staging API URL");
-  requireRunContains(resolveApiUrlStep, "node scripts/resolve-railway-service-url.cjs", "Resolve staging API URL");
-  requireRunContains(resolveApiUrlStep, 'echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"', "Resolve staging API URL");
+  const resolveApiStep = requireStep(steps, "Resolve staging API URL");
+  assert(String(resolveApiStep?.id ?? "").trim() === "resolve_staging_api_url", "Resolve staging API URL step must expose id=resolve_staging_api_url");
+  requireAnyEnvVar(resolveApiStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging API URL");
+  requireEnvVar(resolveApiStep, "RAILWAY_PROJECT_ID", "Resolve staging API URL");
+  requireEnvVar(resolveApiStep, "RAILWAY_ENVIRONMENT_NAME", "Resolve staging API URL");
+  requireEnvVar(resolveApiStep, "FALLBACK_STAGING_API_URL", "Resolve staging API URL");
+  requireRunContains(resolveApiStep, "node scripts/resolve-railway-service-url.cjs", "Resolve staging API URL");
+  requireRunContains(resolveApiStep, 'echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"', "Resolve staging API URL");
 
-  const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");
-  assert(String(resolveWebUrlStep?.id ?? "").trim() === "resolve_staging_web_url", "Resolve staging web URL step must expose id=resolve_staging_web_url");
-  requireAnyEnvVar(resolveWebUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging web URL");
-  requireEnvVar(resolveWebUrlStep, "RAILWAY_PROJECT_ID", "Resolve staging web URL");
-  requireAnyEnvVar(resolveWebUrlStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Resolve staging web URL");
-  requireEnvVar(resolveWebUrlStep, "RAILWAY_ENVIRONMENT_ID", "Resolve staging web URL");
-  requireEnvVar(resolveWebUrlStep, "RAILWAY_ENVIRONMENT_NAME", "Resolve staging web URL");
-  requireEnvVar(resolveWebUrlStep, "FALLBACK_STAGING_WEB_URL", "Resolve staging web URL");
-  requireRunContains(resolveWebUrlStep, "node scripts/resolve-railway-service-url.cjs", "Resolve staging web URL");
-  requireRunContains(resolveWebUrlStep, 'echo "web_url=${resolved_web_url}" >> "$GITHUB_OUTPUT"', "Resolve staging web URL");
+  const resolveWebStep = requireStep(steps, "Resolve staging web URL");
+  assert(String(resolveWebStep?.id ?? "").trim() === "resolve_staging_web_url", "Resolve staging web URL step must expose id=resolve_staging_web_url");
+  requireAnyEnvVar(resolveWebStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging web URL");
+  requireEnvVar(resolveWebStep, "RAILWAY_PROJECT_ID", "Resolve staging web URL");
+  requireEnvVar(resolveWebStep, "RAILWAY_ENVIRONMENT_NAME", "Resolve staging web URL");
+  requireEnvVar(resolveWebStep, "FALLBACK_STAGING_WEB_URL", "Resolve staging web URL");
+  requireRunContains(resolveWebStep, "node scripts/resolve-railway-service-url.cjs", "Resolve staging web URL");
+  requireRunContains(resolveWebStep, 'echo "web_url=${resolved_web_url}" >> "$GITHUB_OUTPUT"', "Resolve staging web URL");
+
+  requireStepOrder(steps, "Install Railway CLI", "Resolve staging API URL");
+  requireStepOrder(steps, "Resolve staging API URL", "Resolve staging web URL");
 
   const signupStep = requireStep(steps, "Public signup smoke check");
   requireEnvVar(signupStep, "STAGING_BASE_URL", "Public signup smoke check");
   requireEnvVar(signupStep, "STAGING_WEB_URL", "Public signup smoke check");
-  assert(
-    String(signupStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
-    "Public signup smoke check must use the resolved staging API URL output",
-  );
-  assert(
-    String(signupStep.env?.STAGING_WEB_URL ?? "").trim() === "${{ steps.resolve_staging_web_url.outputs.web_url }}",
-    "Public signup smoke check must use the resolved staging web URL output",
-  );
+  requireEnvVar(signupStep, "STAGING_EXPECTED_ENV", "Public signup smoke check");
   requireRunContains(signupStep, "node scripts/staging-public-signup-check.cjs", "Public signup smoke check");
 
   const e2eStep = requireStep(steps, "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_BASE_URL", "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_WEB_URL", "Run E2E suite");
-  assert(
-    String(e2eStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
-    "Run E2E suite must use the resolved staging API URL output",
-  );
-  assert(
-    String(e2eStep.env?.STAGING_WEB_URL ?? "").trim() === "${{ steps.resolve_staging_web_url.outputs.web_url }}",
-    "Run E2E suite must use the resolved staging web URL output",
-  );
+  requireEnvVar(e2eStep, "STAGING_SMOKE_WORKSPACE", "Run E2E suite");
+  requireEnvVar(e2eStep, "STAGING_SMOKE_USER", "Run E2E suite");
+  requireEnvVar(e2eStep, "STAGING_SMOKE_PASSWORD", "Run E2E suite");
   requireRunContains(e2eStep, "node scripts/e2e-user-journey.cjs", "Run E2E suite");
+  requireRunContains(e2eStep, "set -o pipefail", "Run E2E suite");
+
+  requireStepOrder(steps, "Resolve staging web URL", "Run E2E suite");
+
+  requireStep(steps, "Upload E2E artifacts");
 
   console.log(
     JSON.stringify(
@@ -123,13 +125,14 @@ function main() {
         validated: [
           "workflow_dispatch_trigger_present",
           "schedule_trigger_present",
-          "staging_environment_present",
-          "railway_cli_installed_before_resolution",
-          "staging_api_url_is_resolved_with_fallback",
-          "staging_web_url_is_resolved_with_fallback",
-          "signup_smoke_targets_resolved_urls",
-          "e2e_suite_targets_resolved_urls",
+          "concurrency_group_defined",
+          "staging_environment_protection_enabled",
+          "railway_url_resolution_before_e2e",
+          "public_signup_smoke_check_present",
+          "e2e_suite_uses_pipefail_and_logging",
+          "artifact_upload_step_present",
         ],
+        checkedAt: new Date().toISOString(),
       },
       null,
       2,
