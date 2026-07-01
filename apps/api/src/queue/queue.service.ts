@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import type { Job as BullJob, Queue as BullQueue, Worker } from "bullmq";
 import type { RedisClientType } from "redis";
 import { QueueName } from "./queue.constants";
@@ -178,7 +178,7 @@ function loadRedis(): typeof import("redis") {
 const SCHEDULED_SYNC_QUEUE_ID = "connector-sync-schedule";
 
 @Injectable()
-export class QueueService implements OnModuleDestroy {
+export class QueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
   private readonly backend = resolveQueueBackend();
   private readonly workerEnabled = resolveBooleanEnv("QUEUE_WORKER_ENABLED",
@@ -250,6 +250,37 @@ export class QueueService implements OnModuleDestroy {
         removeOnComplete: 50,
         removeOnFail: 50,
       });
+    }
+  }
+
+  /**
+   * CTO review remediation (CODE-002): env-validation.ts already refuses to boot
+   * staging/production without QUEUE_BACKEND=bullmq, but that only checks the env
+   * var is *set* — it never confirms Redis is actually reachable. Every other
+   * BullMQ connection failure in this file is caught and merely logged
+   * (`.catch(() => undefined)`), so a misconfigured/unreachable Redis in
+   * production previously degraded silently instead of failing the boot.
+   * This check runs once at module init and crashes startup in staging/
+   * production if Redis can't be reached, matching the fail-fast posture
+   * env-validation.ts already established for every other required dependency.
+   */
+  async onModuleInit(): Promise<void> {
+    if (this.backend !== "bullmq") {
+      return;
+    }
+    const appEnv = String(process.env.APP_ENV ?? "development").trim().toLowerCase();
+    try {
+      await this.ensureMetadataRedis();
+    } catch (error: unknown) {
+      const message = this.toErrorMessage(error);
+      if (appEnv === "staging" || appEnv === "production") {
+        throw new Error(
+          `QueueService: QUEUE_BACKEND=bullmq but Redis is unreachable at startup (${message}). ` +
+            "Refusing to boot in staging/production with a broken queue backend — jobs would silently " +
+            "never run. Fix REDIS_URL or Redis connectivity and restart.",
+        );
+      }
+      this.logger.warn(`QueueService: Redis unreachable at startup (${message}). Continuing in ${appEnv} mode.`);
     }
   }
 
