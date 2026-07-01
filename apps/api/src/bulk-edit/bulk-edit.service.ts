@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, RecordStatus } from "@prisma/client";
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { BulkEditOperationStatus, Prisma, RecordStatus } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import {
@@ -9,7 +9,11 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { getTenantKeyFromContext, runWithTenantContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+import { QUEUE_NAMES } from "../queue/queue.constants";
+import { QueueService } from "../queue/queue.service";
 import { BulkEditScopeDto } from "./dto/bulk-edit-scope.dto";
 
 const RECORD_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
@@ -72,13 +76,40 @@ type NormalizedUpdates = {
   gstRate?: number | null;
 };
 
+type BulkEditApplyJobPayload = {
+  operationId: string;
+  tenantKey: string;
+  actor: PolicyActor;
+};
+
+// CTO review remediation (CODE-004): apply() used to load up to 10,000
+// products and process them inline with Promise.allSettled in the HTTP
+// request handler — synchronous, capped, and not resumable. apply() now
+// only creates the operation and enqueues one job; APPLY_BATCH_SIZE bounds
+// how many products the queue handler loads per DB round trip while it
+// works through however many products actually matched (uncapped).
+const APPLY_BATCH_SIZE = 500;
+
 @Injectable()
-export class BulkEditService {
+export class BulkEditService implements OnModuleInit {
+  private readonly logger = new Logger(BulkEditService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly queueService: QueueService,
   ) {}
+
+  onModuleInit(): void {
+    this.queueService.processWithBackpressure<BulkEditApplyJobPayload>(
+      QUEUE_NAMES.BULK_EDIT,
+      { laneResolver: (payload) => payload.tenantKey },
+      async (payload) => {
+        await runWithTenantContext(payload.tenantKey, () => this.processApplyJob(payload));
+      },
+    );
+  }
 
   async preview(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>, actor?: PolicyActor) {
     const normalizedScope = this.normalizeScope(scope);
@@ -115,6 +146,11 @@ export class BulkEditService {
     };
   }
 
+  /**
+   * Validates the request, creates the operation record, and enqueues one
+   * job — the request handler no longer waits for the actual product
+   * updates. See processApplyJob() for the queued work.
+   */
   async apply(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>, actor?: PolicyActor) {
     const normalizedScope = this.normalizeScope(scope);
     this.ensureNonEmptyScope(normalizedScope);
@@ -130,96 +166,197 @@ export class BulkEditService {
       this.buildWhere(normalizedScope),
       await this.accessPolicy.buildProductScopeWhere(actor ?? {}, "edit"),
     );
-    const updateData = this.toUpdateData(normalizedUpdates);
 
-    const products = await this.prisma.tenant().product.findMany({
-      where,
-      orderBy: [{ updatedAt: "desc" }],
-      select: this.productSelect,
-      take: 10_000, // defensive cap — prevents full-table scan for category-scoped edits
-    });
+    const requestedCount = await this.prisma.tenant().product.count({ where });
 
     const operation = await this.prisma.tenant().bulkEditOperation.create({
       data: {
-        status: "processing",
+        status: requestedCount > 0 ? BulkEditOperationStatus.queued : BulkEditOperationStatus.completed,
         scope: normalizedScope as Prisma.JsonObject,
         updates: normalizedUpdates as Prisma.JsonObject,
-        requestedCount: products.length,
+        requestedCount,
       },
     });
 
-    // Parallel product updates — each product is independent (distinct productId).
-    // With the compliance cache warm after the first product (same categoryId across
-    // all products in a bulk edit), per-product DB cost is ~3 writes.
-    // Promise.allSettled so one product failure doesn't abort the rest.
-    const outcomes = await Promise.allSettled(
-      products.map(async (product) => {
-        const before = this.toSnapshot(product);
-        try {
-          await this.accessPolicy.assertRequestedProductScopeAllowed(
-            actor ?? {},
-            "edit",
-            {
-              resource: "BulkEditOperation",
-              resourceId: product.id,
-              categoryId: product.categoryId,
-              brand: normalizedUpdates.brand ?? product.brand,
-            },
-          );
-          if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
-            throw new BadRequestException(
-              `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
-            );
-          }
-          const updated = await this.prisma.tenant().product.update({
-            where: { id: product.id },
-            data: updateData,
-            select: this.productSelect,
-          });
+    if (requestedCount === 0) {
+      return operation;
+    }
 
-          await this.complianceService.validateAndPersistProduct(updated.id);
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    await this.queueService.enqueue<BulkEditApplyJobPayload>(QUEUE_NAMES.BULK_EDIT, {
+      operationId: operation.id,
+      tenantKey,
+      actor: actor ?? {},
+    });
 
-          await this.prisma.tenant().bulkEditOperationItem.create({
-            data: {
-              operationId: operation.id,
-              productId: updated.id,
-              status: "success",
-              before: before as Prisma.JsonObject,
-              after: this.toSnapshot(updated) as Prisma.JsonObject,
-            },
-          });
-          return "success" as const;
-        } catch (error: unknown) {
-          await this.prisma.tenant().bulkEditOperationItem.create({
-            data: {
-              operationId: operation.id,
-              productId: product.id,
-              status: "failed",
-              before: before as Prisma.JsonObject,
-              errorMessage: this.extractErrorMessage(error),
-            },
-          });
-          return "failed" as const;
-        }
-      }),
+    return operation;
+  }
+
+  /**
+   * Queue handler for a single bulk-edit operation. Idempotent and
+   * resumable: on redelivery (worker crash, transient DB error mid-run) it
+   * skips products already recorded in BulkEditOperationItem for this
+   * operation and continues from where it left off, instead of re-applying
+   * updates or double-counting results.
+   */
+  private async processApplyJob(payload: BulkEditApplyJobPayload): Promise<void> {
+    const operation = await this.prisma.tenant().bulkEditOperation.findUnique({
+      where: { id: payload.operationId },
+    });
+    if (!operation) {
+      this.logger.warn(`Bulk edit operation ${payload.operationId} not found — skipping.`);
+      return;
+    }
+    if (operation.status !== BulkEditOperationStatus.queued && operation.status !== BulkEditOperationStatus.processing) {
+      // Already terminal (completed/completed_with_errors/failed) — redelivery no-op.
+      return;
+    }
+    if (operation.status === BulkEditOperationStatus.queued) {
+      await this.prisma.tenant().bulkEditOperation.update({
+        where: { id: operation.id },
+        data: { status: BulkEditOperationStatus.processing },
+      });
+    }
+
+    const scope = operation.scope as {
+      categoryId?: string;
+      status?: RecordStatus;
+      brandContains?: string;
+      productIds?: string[];
+    };
+    const normalizedUpdates = operation.updates as NormalizedUpdates;
+    const where = mergeWhere(
+      this.buildWhere(scope),
+      await this.accessPolicy.buildProductScopeWhere(payload.actor, "edit"),
+    );
+    const updateData = this.toUpdateData(normalizedUpdates);
+
+    const alreadyProcessedIds = new Set(
+      (
+        await this.prisma.tenant().bulkEditOperationItem.findMany({
+          where: { operationId: operation.id },
+          select: { productId: true },
+        })
+      )
+        .map((item) => item.productId)
+        .filter((id): id is string => Boolean(id)),
     );
 
-    const appliedCount = outcomes.filter(
-      (r) => r.status === "fulfilled" && r.value === "success",
-    ).length;
-    const failedCount = outcomes.filter(
-      (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value === "failed"),
-    ).length;
+    let cursor: string | undefined;
+    for (;;) {
+      const batch = await this.prisma.tenant().product.findMany({
+        where,
+        // Stable id-ascending cursor — updatedAt (used by preview()'s sample
+        // ordering) would shift under us as each batch's writes touch it,
+        // corrupting cursor pagination mid-run.
+        orderBy: [{ id: "asc" }],
+        take: APPLY_BATCH_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: this.productSelect,
+      });
+      if (batch.length === 0) {
+        break;
+      }
+      cursor = batch[batch.length - 1]!.id;
 
-    const status = failedCount > 0 && appliedCount === 0 ? "failed" : "completed";
+      for (const product of batch) {
+        if (alreadyProcessedIds.has(product.id)) {
+          continue;
+        }
+        await this.applyToProduct(operation.id, product, updateData, normalizedUpdates, payload.actor);
+      }
 
-    return this.prisma.tenant().bulkEditOperation.update({
-      where: { id: operation.id },
-      data: {
-        status,
-        appliedCount,
-        failedCount,
-      },
+      if (batch.length < APPLY_BATCH_SIZE) {
+        break;
+      }
+    }
+
+    await this.finalizeOperation(operation.id);
+  }
+
+  private async applyToProduct(
+    operationId: string,
+    product: ProductSnapshot,
+    updateData: Prisma.ProductUpdateInput,
+    normalizedUpdates: NormalizedUpdates,
+    actor: PolicyActor,
+  ): Promise<void> {
+    const before = this.toSnapshot(product);
+    try {
+      await this.accessPolicy.assertRequestedProductScopeAllowed(actor, "edit", {
+        resource: "BulkEditOperation",
+        resourceId: product.id,
+        categoryId: product.categoryId,
+        brand: normalizedUpdates.brand ?? product.brand,
+      });
+      if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
+        throw new BadRequestException(
+          `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
+        );
+      }
+      const updated = await this.prisma.tenant().product.update({
+        where: { id: product.id },
+        data: updateData,
+        select: this.productSelect,
+      });
+
+      await this.complianceService.validateAndPersistProduct(updated.id);
+
+      await this.prisma.tenant().bulkEditOperationItem.create({
+        data: {
+          operationId,
+          productId: updated.id,
+          status: "success",
+          before: before as Prisma.JsonObject,
+          after: this.toSnapshot(updated) as Prisma.JsonObject,
+        },
+      });
+    } catch (error: unknown) {
+      await this.prisma.tenant().bulkEditOperationItem.create({
+        data: {
+          operationId,
+          productId: product.id,
+          status: "failed",
+          before: before as Prisma.JsonObject,
+          errorMessage: this.extractErrorMessage(error),
+        },
+      });
+    }
+  }
+
+  /**
+   * Recomputes appliedCount/failedCount from BulkEditOperationItem via
+   * groupBy (same pattern as bulk-import's refreshJobCounters) instead of
+   * accumulating in-memory counters — safe across resumed/redelivered runs
+   * where a prior partial attempt already wrote some items.
+   */
+  private async finalizeOperation(operationId: string): Promise<void> {
+    const statusGroups = await this.prisma.tenant().bulkEditOperationItem.groupBy({
+      by: ["status"],
+      where: { operationId },
+      _count: { status: true },
+    });
+
+    let appliedCount = 0;
+    let failedCount = 0;
+    for (const group of statusGroups) {
+      if (group.status === "success") {
+        appliedCount = group._count.status;
+      } else if (group.status === "failed") {
+        failedCount = group._count.status;
+      }
+    }
+
+    const status =
+      failedCount > 0 && appliedCount === 0
+        ? BulkEditOperationStatus.failed
+        : failedCount > 0
+          ? BulkEditOperationStatus.completed_with_errors
+          : BulkEditOperationStatus.completed;
+
+    await this.prisma.tenant().bulkEditOperation.update({
+      where: { id: operationId },
+      data: { status, appliedCount, failedCount },
     });
   }
 
