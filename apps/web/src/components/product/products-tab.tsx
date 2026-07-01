@@ -529,7 +529,7 @@ export function ProductsTab({
   const emptyCatalogDescription =
     !canEditWorkspace(role)
       ? "No products are available yet. Ask an editor or admin to import or create catalog data."
-      : "Import your existing catalog from Excel, or create your first product manually.";
+      : "Import your existing catalog from a CSV or JSON file, or create your first product manually.";
   const hasUnavailableSharedRead =
     productFeedState === "unavailable" ||
     categoryFeedState === "unavailable" ||
@@ -864,7 +864,7 @@ export function ProductsTab({
             icon="BOX"
             title="Your catalog is empty"
             description={emptyCatalogDescription}
-            action={{ label: "Import from Excel", href: "/operations/imports" }}
+            action={{ label: "Import CSV or JSON", href: "/operations/imports" }}
             secondaryAction={{
               label: "Create product manually",
               onClick: () => setShowCreateProduct(true),
