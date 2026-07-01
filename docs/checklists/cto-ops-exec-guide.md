@@ -30,20 +30,43 @@ Prisma `P1001` (connection refused) since 2026-05-25. Railway proxy URL changed;
 4. Copy **Internal URL** (e.g., `postgresql://user:pass@internal-db.railway.internal:5432/pim`)
 5. Ops: **Share with CTO immediately** — do NOT share in chat, use 1:1 secure channel
 
-**B. Update GitHub Actions secrets** (5 min, CTO)
+**B. Update GitHub Actions staging environment config** (5-10 min, CTO)
 1. Go to [GitHub repo](https://github.com/Vexapim/PIM) → Settings → Secrets and variables → Actions
 2. Click **Environment: staging**
-3. Update these 4 secrets:
+3. Verify **deployment protection rules** first:
+   - `Required reviewers` should be disabled if merged PRs are expected to deploy staging automatically.
+   - If approvals are intentionally required, the team should treat staging deploys as manual-gated, not fully automatic.
+4. Update these baseline secrets:
    - `STAGING_DATABASE_URL` = Railway internal URL from step A
    - `STAGING_DATABASE_URL_DIRECT` = Same URL (used for migrations)
-   - `STAGING_BASE_URL` = Railway web service public URL (e.g., `https://pim-web-staging.up.railway.app`) — find in Railway dashboard, `web` service
-   - `STAGING_WEB_URL` = Same as `STAGING_BASE_URL`
-4. ✅ Save each
+   - `STAGING_BASE_URL` = Railway API service public root URL (not `/api/v1`)
+   - `STAGING_WEB_URL` = Railway web service public root URL
+5. Verify the full staging workflow secret contract also exists:
+   - Railway deploy/auth:
+     - `RAILWAY_TOKEN` or `RAILWAY_API_TOKEN`
+     - `RAILWAY_PROJECT_ID`
+     - `RAILWAY_ENVIRONMENT_ID`
+     - `RAILWAY_API_SERVICE` or `RAILWAY_API_SERVICE_ID`
+     - `RAILWAY_WEB_SERVICE` or `RAILWAY_WEB_SERVICE_ID`
+   - Post-deploy and nightly smoke:
+     - `STAGING_SMOKE_WORKSPACE`
+     - `STAGING_SMOKE_USER`
+     - `STAGING_SMOKE_PASSWORD`
+     - `STAGING_SMOKE_TENANT_ID`
+     - `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED`
+   - Optional connector E2E coverage:
+     - `STAGING_AMAZON_SELLER_ID`
+     - `STAGING_AMAZON_CLIENT_ID`
+     - `STAGING_AMAZON_CLIENT_SECRET`
+     - `STAGING_AMAZON_REFRESH_TOKEN`
+6. ✅ Save each
 
-**C. Trigger staging deploy** (5 min, CTO)
+**C. Verify the automatic lane or trigger manually** (5 min, CTO)
 1. Go to GitHub → Actions tab → `deploy-staging.yml`
-2. Click "Run workflow" → branch: `main` → target: `staging` → **Run**
-3. Watch the run in real-time
+2. If a PR was just merged to `main`, confirm a new run started automatically.
+3. If no run started, re-check the `staging` environment protection rules and required secrets above.
+4. If needed, click "Run workflow" → branch: `main` → **Run**
+5. Watch the run in real-time
    - Expected: compile → migrations → app starts
    - If P1001: secret is still wrong, fix immediately
 
@@ -56,6 +79,7 @@ curl -s https://pim-web-staging.up.railway.app/health | jq .
 
 **Decision gate**: ITEM #1 PASSED ✅ only if:
 - [ ] Deploy workflow shows green
+- [ ] A merge to `main` starts `deploy-staging.yml` automatically when staging approvals are not required
 - [ ] No Prisma P1001 in logs
 - [ ] `/health` endpoint responds with 200
 
@@ -126,7 +150,15 @@ Once both items pass:
 **Action**: Secret is incorrect.
 1. Verify Railway internal URL was copied fully (no truncation)
 2. Test locally: `psql <URL>` to confirm connectivity
-3. Re-check 4 secrets in GitHub Actions environment match exactly
+3. Re-check baseline staging secrets in GitHub Actions environment match exactly
+
+### PR merged but no staging deploy started
+**Action**: GitHub environment configuration is blocking the automatic lane.
+1. Open GitHub → Settings → Environments → `staging`
+2. Check whether `Required reviewers` is enabled
+3. If automatic post-merge deploys are intended, disable required reviewers for staging
+4. Re-check that `deploy-staging.yml` is still triggered on `push` to `main`
+5. Confirm all required staging secrets exist; GitHub can suppress or fail runs when environment-scoped secrets are missing
 
 ### E2E smoke tests fail/timeout
 **Action**: Staging app may be unhealthy.

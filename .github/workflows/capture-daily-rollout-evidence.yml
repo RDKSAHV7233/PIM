@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
       - name: Record daily rollout gate artifact
         shell: bash
         env:
@@ -42,10 +45,33 @@ jobs:
             --tenantId "${STAGING_SMOKE_TENANT_ID}" \
             --runUrl "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+      - name: Resolve staging API URL
+        id: resolve_staging_api_url
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_ENVIRONMENT_NAME: Staging
+          FALLBACK_STAGING_API_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: |
+          resolved_api_url="$(node scripts/resolve-railway-service-url.cjs 2>/dev/null || true)"
+          if [ -z "${resolved_api_url}" ]; then
+            resolved_api_url="${FALLBACK_STAGING_API_URL}"
+          fi
+          if [ -z "${resolved_api_url}" ]; then
+            echo "Could not resolve staging API URL from Railway and no STAGING_BASE_URL secret fallback is configured."
+            exit 1
+          fi
+          echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"
+
       - name: Capture daily rollout snapshot
         shell: bash
         env:
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_BASE_URL: ${{ steps.resolve_staging_api_url.outputs.api_url }}
           STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
           STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
           STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}

@@ -16,12 +16,31 @@
 2. Note the current DATABASE service connection string (internal URL, not public):
    - Go to the database service → Connect tab → Internal URL
 3. Open GitHub repo → Settings → Secrets and variables → Actions → `staging` environment
-4. Update the following secrets:
+4. Verify the `staging` GitHub environment is not approval-gated if merged PRs are expected to deploy automatically:
+   - GitHub → Settings → Environments → `staging`
+   - `Required reviewers` should be disabled for fully automatic post-merge deploys
+5. Update the following baseline secrets:
    - `STAGING_DATABASE_URL` → Railway internal DB URL for staging
    - `STAGING_DATABASE_URL_DIRECT` → Same URL (used for migrations)
-   - `STAGING_BASE_URL` → Current Railway web service URL (e.g. `https://pim-web-staging.up.railway.app`)
-   - `STAGING_WEB_URL` → Same as STAGING_BASE_URL
-5. Trigger a manual deploy: GitHub Actions → `deploy-staging.yml` → Run workflow → staging
+   - `STAGING_BASE_URL` → Current Railway API service root URL
+   - `STAGING_WEB_URL` → Current Railway web service root URL
+6. Verify the rest of the staging workflow secret contract exists:
+   - `RAILWAY_TOKEN` or `RAILWAY_API_TOKEN`
+   - `RAILWAY_PROJECT_ID`
+   - `RAILWAY_ENVIRONMENT_ID`
+   - `RAILWAY_API_SERVICE` or `RAILWAY_API_SERVICE_ID`
+   - `RAILWAY_WEB_SERVICE` or `RAILWAY_WEB_SERVICE_ID`
+   - `STAGING_SMOKE_WORKSPACE`
+   - `STAGING_SMOKE_USER`
+   - `STAGING_SMOKE_PASSWORD`
+   - `STAGING_SMOKE_TENANT_ID`
+   - `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED`
+   - Optional connector E2E secrets:
+     - `STAGING_AMAZON_SELLER_ID`
+     - `STAGING_AMAZON_CLIENT_ID`
+     - `STAGING_AMAZON_CLIENT_SECRET`
+     - `STAGING_AMAZON_REFRESH_TOKEN`
+7. Trigger a manual deploy: GitHub Actions → `deploy-staging.yml` → Run workflow → staging
 
 **Verify**: Deploy completes without Prisma P1001. Web service responds at the new URL.
 

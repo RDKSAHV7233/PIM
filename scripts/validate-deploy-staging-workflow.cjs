@@ -61,6 +61,13 @@ function main() {
     triggers && typeof triggers === "object" && Object.prototype.hasOwnProperty.call(triggers, "workflow_dispatch"),
     "deploy-staging workflow must support workflow_dispatch for manual staging evidence runs",
   );
+  const pushTrigger = triggers.push ?? {};
+  assert(pushTrigger && typeof pushTrigger === "object", "deploy-staging workflow must support push-triggered auto deploys");
+  const pushBranches = Array.isArray(pushTrigger.branches) ? pushTrigger.branches : [];
+  assert(pushBranches.includes("main"), "deploy-staging push trigger must include main");
+  const pathsIgnore = Array.isArray(pushTrigger["paths-ignore"]) ? pushTrigger["paths-ignore"] : [];
+  assert(pathsIgnore.includes("docs/execution/gates/**"), "deploy-staging push trigger must ignore docs/execution/gates/**");
+  assert(pathsIgnore.includes("docs/execution/rollout/**"), "deploy-staging push trigger must ignore docs/execution/rollout/**");
 
   const jobs = workflow.jobs ?? {};
   const job = jobs["deploy-staging"];
@@ -115,7 +122,23 @@ function main() {
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
   requireStep(steps, "Install Railway CLI");
-  requireStepOrder(steps, "Install Railway CLI", "Deploy to staging");
+  requireStepOrder(steps, "Install Railway CLI", "Resolve staging API URL");
+  requireStepOrder(steps, "Resolve staging API URL", "Deploy to staging");
+
+  const resolveApiUrlStep = requireStep(steps, "Resolve staging API URL");
+  assert(String(resolveApiUrlStep?.id ?? "").trim() === "resolve_staging_api_url", "Resolve staging API URL step must expose id=resolve_staging_api_url");
+  requireAnyEnvVar(resolveApiUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging API URL");
+  requireEnvVar(resolveApiUrlStep, "RAILWAY_PROJECT_ID", "Resolve staging API URL");
+  requireAnyEnvVar(resolveApiUrlStep, ["RAILWAY_SERVICE", "RAILWAY_SERVICE_ID"], "Resolve staging API URL");
+  requireEnvVar(resolveApiUrlStep, "RAILWAY_ENVIRONMENT_NAME", "Resolve staging API URL");
+  requireEnvVar(resolveApiUrlStep, "FALLBACK_STAGING_API_URL", "Resolve staging API URL");
+  requireRunContains(resolveApiUrlStep, "node scripts/resolve-railway-service-url.cjs", "Resolve staging API URL");
+  requireRunContains(
+    resolveApiUrlStep,
+    "Could not resolve staging API URL from Railway and no STAGING_BASE_URL secret fallback is configured.",
+    "Resolve staging API URL",
+  );
+  requireRunContains(resolveApiUrlStep, 'echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"', "Resolve staging API URL");
 
   const deployStep = requireStep(steps, "Deploy to staging");
   assert(Number.parseInt(String(deployStep["timeout-minutes"] ?? ""), 10) <= 45, "Deploy to staging must cap runtime at 45 minutes or less");
@@ -127,11 +150,16 @@ function main() {
   requireEnvVar(deployStep, "DATABASE_URL_POOLED", "Deploy to staging");
   requireEnvVar(deployStep, "DATABASE_URL_DIRECT", "Deploy to staging");
   requireEnvVar(deployStep, "DATABASE_URL", "Deploy to staging");
+  requireEnvVar(deployStep, "STAGING_BASE_URL", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to staging");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to staging");
   assert(!String(deployStep.run ?? "").includes("eval"), "Deploy to staging must not use eval");
+  assert(
+    String(deployStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Deploy to staging must use the resolved staging API URL output.",
+  );
   const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");
   assert(String(resolveWebUrlStep?.id ?? "").trim() === "resolve_staging_web_url", "Resolve staging web URL step must expose id=resolve_staging_web_url");
   requireAnyEnvVar(resolveWebUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging web URL");
@@ -151,12 +179,20 @@ function main() {
 
   const smokeStep = requireStep(steps, "Staging smoke test");
   requireEnvVar(smokeStep, "STAGING_BASE_URL", "Staging smoke test");
+  assert(
+    String(smokeStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Staging smoke test must use the resolved staging API URL output.",
+  );
   requireRunContains(smokeStep, "/api/v1/health", "Staging smoke test");
   requireRunMatches(smokeStep, /status.{0,8}ok/i, "Staging smoke test", 'health status ok assertion');
   requireRunMatches(smokeStep, /env.{0,12}staging/i, "Staging smoke test", 'health env staging assertion');
 
   const postDeployStep = requireStep(steps, "Staging post-deploy verification (auth + trust boundary)");
   requireEnvVar(postDeployStep, "STAGING_BASE_URL", "Post-deploy verification");
+  assert(
+    String(postDeployStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Post-deploy verification must use the resolved staging API URL output.",
+  );
   requireEnvVar(postDeployStep, "STAGING_WEB_URL", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_SMOKE_WORKSPACE", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_SMOKE_USER", "Post-deploy verification");
@@ -171,6 +207,10 @@ function main() {
 
   const publicSignupStep = requireStep(steps, "Public signup smoke check");
   requireEnvVar(publicSignupStep, "STAGING_BASE_URL", "Public signup smoke check");
+  assert(
+    String(publicSignupStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Public signup smoke check must use the resolved staging API URL output.",
+  );
   requireEnvVar(publicSignupStep, "STAGING_WEB_URL", "Public signup smoke check");
   requireEnvVar(publicSignupStep, "STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED", "Public signup smoke check");
   requireEnvVar(publicSignupStep, "STAGING_EXPECTED_ENV", "Public signup smoke check");
@@ -180,6 +220,10 @@ function main() {
 
   const e2eSmokeStep = requireStep(steps, "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_BASE_URL", "E2E smoke - post-deploy verification");
+  assert(
+    String(e2eSmokeStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "E2E smoke must use the resolved staging API URL output.",
+  );
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_WORKSPACE", "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_USER", "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_PASSWORD", "E2E smoke - post-deploy verification");
@@ -202,6 +246,10 @@ function main() {
 
   const snapshotStep = requireStep(steps, "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_BASE_URL", "Capture controlled rollout snapshot");
+  assert(
+    String(snapshotStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Controlled rollout snapshot must use the resolved staging API URL output.",
+  );
   requireEnvVar(snapshotStep, "STAGING_SMOKE_TENANT_ID", "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_SMOKE_WORKSPACE", "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_SMOKE_USER", "Capture controlled rollout snapshot");
@@ -233,6 +281,7 @@ function main() {
         workflow: ".github/workflows/deploy-staging.yml",
         validated: [
           "workflow_dispatch_trigger_present",
+          "push_to_main_autodeploy_trigger_present",
           "deploy_job_serialized_with_environment_protection",
           "migration_step_has_database_secret_guard",
           "legacy_auth_hash_backfill_runs_before_builds",

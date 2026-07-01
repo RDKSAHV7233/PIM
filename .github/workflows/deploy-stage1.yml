@@ -31,6 +31,16 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Validate Stage 1 deploy contract
+        shell: bash
+        env:
+          APP_ENV: staging
+          STAGING_BASE_URL: ${{ inputs.staging_url }}
+          STAGING_WEB_URL: ${{ secrets.STAGE1_WEB_URL }}
+          STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED: "false"
+        run: |
+          node scripts/validate-staging-deploy-config.cjs
+
       - name: Apply migrations
         shell: bash
         env:
