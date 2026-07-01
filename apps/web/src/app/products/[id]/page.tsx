@@ -143,6 +143,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const effectiveReadiness = readiness;
 
+  // CTO review remediation (CODE-005): name every section whose upstream
+  // fetch failed so ProductDetailStatusAlerts can warn the user instead of
+  // silently rendering the []/null fallback as if there's simply nothing there.
+  const degradedSections = [
+    channelsUnavailable ? "Channels" : null,
+    installedConnectorsUnavailable ? "Installed connectors" : null,
+    exportJobsUnavailable ? "Export history" : null,
+    mediaAssetsUnavailable ? "Media" : null,
+    effectiveReadinessUnavailable ? "Publish readiness" : null,
+  ].filter((label): label is string => label !== null);
+
   const tabHref = (tab: DetailTab): string => {
     const params = new URLSearchParams();
     params.set("tab", tab);
@@ -526,7 +537,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       />
       <nav aria-label="Product detail tabs" className="overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} data-product-tab-link="true" aria-current={activeTab === tab.key ? "page" : undefined} className={`inline-flex w-full justify-center rounded-md px-3 py-2 text-sm font-medium transition sm:w-auto ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
       <StatusToastEffect updateStatus={updateStatus} />
-      <ProductDetailStatusAlerts updateStatus={updateStatus} conflictVersion={conflictVersion} deleteStatus={deleteStatus} deleteError={deleteError} />
+      <ProductDetailStatusAlerts
+        updateStatus={updateStatus}
+        conflictVersion={conflictVersion}
+        deleteStatus={deleteStatus}
+        deleteError={deleteError}
+        degradedSections={degradedSections}
+      />
       {activeTab === "overview" && nextAction ? (
         <Card className={nextAction.tone}>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
