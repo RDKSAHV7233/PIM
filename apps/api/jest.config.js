@@ -33,6 +33,7 @@ module.exports = {
     "**/workspace-users/workspace-users.service.spec.ts",
     "**/pricing/pricing.service.spec.ts",
     "**/prisma/extensions/tenant-scope.spec.ts",
+    "**/bulk-edit/bulk-edit.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

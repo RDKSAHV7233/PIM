@@ -1328,7 +1328,7 @@ export interface BulkEditOperationItem {
 
 export interface BulkEditOperation {
   id: string;
-  status: "processing" | "completed" | "failed";
+  status: "queued" | "processing" | "completed" | "completed_with_errors" | "failed";
   scope: BulkEditScope;
   updates: BulkEditUpdates;
   requestedCount: number;

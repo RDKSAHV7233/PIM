@@ -19,7 +19,7 @@ import {
   getProducts,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
+import { extractErrorCode, translateError, translateBulkEditStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -245,7 +245,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     let parsedUpdates: Record<string, unknown> = {};
     const operationColumns: Column<(typeof operations)[number]>[] = [
       { key: "operation", header: "Operation", render: (operation) => <span className="font-mono text-xs">{operation.id}</span> },
-      { key: "status", header: "Status", render: (operation) => translateJobStatus(operation.status) },
+      { key: "status", header: "Status", render: (operation) => translateBulkEditStatus(operation.status) },
       { key: "requested", header: "Requested", render: (operation) => operation.requestedCount },
       { key: "applied", header: "Applied", render: (operation) => operation.appliedCount },
       { key: "failed", header: "Failed", render: (operation) => operation.failedCount },

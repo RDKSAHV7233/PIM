@@ -74,8 +74,10 @@ enum BulkImportRowStatus {
 }
 
 enum BulkEditOperationStatus {
+  queued
   processing
   completed
+  completed_with_errors
   failed
 }
 
@@ -507,7 +509,7 @@ model BulkImportRun {
 model BulkEditOperation {
   id             String                  @id @default(cuid())
   tenantKey      String                  @default("default")
-  status         BulkEditOperationStatus @default(processing)
+  status         BulkEditOperationStatus @default(queued)
   scope          Json
   updates        Json
   requestedCount Int                     @default(0)

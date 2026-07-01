@@ -850,6 +850,22 @@ export function translateJobStatus(status: string): string {
   return map[status] ?? status;
 }
 
+// CTO review remediation (CODE-004): bulk-edit previously used the shared
+// translateJobStatus() above, which is phrased for imports ("Importing",
+// "Import complete") — wrong copy for a bulk-edit operation in progress.
+// Also needs its own "completed_with_errors" label now that apply() is
+// queued and can finish partially failed.
+export function translateBulkEditStatus(status: string): string {
+  const map: Record<string, string> = {
+    queued: "Waiting to start",
+    processing: "Applying changes",
+    completed: "Completed",
+    completed_with_errors: "Completed with errors",
+    failed: "Failed",
+  };
+  return map[status] ?? status;
+}
+
 export function translateExportStatus(status: string): string {
   const map: Record<string, string> = {
     queued: "Queued for export",
