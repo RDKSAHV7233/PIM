@@ -974,23 +974,29 @@ export class BulkImportService {
       },
     });
 
-    const rows = await this.prisma.tenant().bulkImportRow.findMany({
-      where: {
-        jobId: job.id,
-        status: {
-          in: [BulkImportRowStatus.queued, BulkImportRowStatus.retrying],
+    // Process all remaining rows in chunks until none are left.
+    // Each iteration fetches the next batch of queued/retrying rows,
+    // processes them in parallel, then checks for more.
+    let processed = true;
+    while (processed) {
+      const rows = await this.prisma.tenant().bulkImportRow.findMany({
+        where: {
+          jobId: job.id,
+          status: {
+            in: [BulkImportRowStatus.queued, BulkImportRowStatus.retrying],
+          },
         },
-      },
-      orderBy: [{ rowNumber: "asc" }],
-      take: effectiveChunk,
-    });
+        orderBy: [{ rowNumber: "asc" }],
+        take: effectiveChunk,
+      });
 
-    // Parallel row processing: each row is independent (distinct productId, distinct
-    // bulkImportRow.id).  With the compliance cache warm after the first row
-    // (all rows in a job share the same categoryId), per-row DB cost is ~4 writes.
-    // Promise.allSettled so one bad row doesn't abort the rest of the chunk.
-    // The existing effectiveChunk cap (max 500) provides the concurrency ceiling.
-    await Promise.allSettled(rows.map((row) => this.processRow(job, row)));
+      if (rows.length === 0) {
+        processed = false;
+        break;
+      }
+
+      await Promise.allSettled(rows.map((row) => this.processRow(job, row)));
+    }
 
     await this.refreshJobCounters(job.id);
     return this.getJob(job.id, actor);
