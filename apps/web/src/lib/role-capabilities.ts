@@ -31,3 +31,12 @@ export function canViewConnectors(role: AppRole): boolean {
 export function isReadOnlyRole(role: AppRole): boolean {
   return !canEditWorkspace(role);
 }
+
+// System-admin-gated pages (API keys, users, webhooks, audit, commercial ops,
+// OIDC/SSO, auth policy) require a boundary role on top of the workspace
+// `role`. This is orthogonal to the can<Action>() checks above, which only
+// look at `role` — see apps/web/src/lib/server-session.ts for where
+// adminBoundaryRoles comes from.
+export function isSystemAdminBoundary(adminBoundaryRoles: readonly string[]): boolean {
+  return adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminUsersPageContent } from "./_components/admin-users-page-content";
 import {
@@ -12,6 +13,9 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
+import { PageHeader } from "@/components/ui/page-header";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +47,23 @@ function isAuthPolicyApiUnavailable(error: unknown): boolean {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
-  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (actorRole !== "admin" || !isSystemAdmin) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Users"
+          description="Workspace member roster, roles, and access."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Users</span>
+            </>
+          }
+        />
+        <SystemAdminRequiredCard surfaceLabel="User management" />
+      </div>
+    );
+  }
+  if (actorRole !== "admin") {
     redirect("/admin");
   }
   const claims = await getServerSessionClaims();

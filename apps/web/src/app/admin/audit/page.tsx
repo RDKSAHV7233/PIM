@@ -11,7 +11,9 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getAuditEvents, type AuditEntityType, type AuditEventRecord } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { formatDateTime } from "@/lib/format";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 
 export const dynamic = "force-dynamic";
 
@@ -159,8 +161,23 @@ function summarizeFilterScope(input: {
 export default async function AdminAuditPage({ searchParams }: AdminAuditPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
-  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (actorRole !== "admin" || !isSystemAdmin) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Audit Logs"
+          description="Explore governance events by actor, action, entity type, and time range."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Audit Logs</span>
+            </>
+          }
+        />
+        <SystemAdminRequiredCard surfaceLabel="Audit logs" />
+      </div>
+    );
+  }
+  if (actorRole !== "admin") {
     redirect("/admin");
   }
 

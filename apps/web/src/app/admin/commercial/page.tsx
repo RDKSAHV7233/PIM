@@ -5,7 +5,9 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { ApiHttpError, getBillingUsage, getKpiTrends } from "@/lib/api";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import {
   getCommercialOverview,
   listUpgradeRequests,
@@ -42,10 +44,6 @@ function formatStatus(status: string | null) {
   if (s === "cancelled") return "Cancelled";
   if (s === "suspended") return "Suspended";
   return "Trial";
-}
-
-function hasCommercialOpsAccess(adminBoundaryRoles: readonly string[]): boolean {
-  return adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
 }
 
 function resolveOperatorRole(adminBoundaryRoles: readonly string[]): string {
@@ -107,7 +105,19 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/commercial", 401));
   }
-  if (actorRole !== "admin" || !hasCommercialOpsAccess(adminBoundaryRoles)) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Commercial Ops"
+          description="Tenant plan management and upgrade request processing."
+          breadcrumb={<><Link href="/dashboard" className="underline">Dashboard</Link> / <Link href="/admin" className="underline">Admin</Link> / <span className="font-semibold text-slate-700">Commercial</span></>}
+        />
+        <SystemAdminRequiredCard surfaceLabel="Commercial ops" />
+      </div>
+    );
+  }
+  if (actorRole !== "admin") {
     redirect("/admin");
   }
   if (!isOpsTokenConfigured()) {

@@ -6,11 +6,13 @@ import { ApiHttpError, getApiAccessKeys, getBillingPlanProfile, type ApiAccessKe
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { API_SCOPE_LEGEND } from "@/lib/constants/api-scopes";
 import { getServerSession } from "@/lib/server-session";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -52,8 +54,23 @@ function formatScopes(scopes: ApiAccessKey["scopes"]) {
 export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
-  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (role !== "admin" || !isSystemAdmin) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="API Keys"
+          description="Tenant-scoped machine credentials for integrations using the public API."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">API Keys</span>
+            </>
+          }
+        />
+        <SystemAdminRequiredCard surfaceLabel="API Keys" />
+      </div>
+    );
+  }
+  if (role !== "admin") {
     redirect("/admin");
   }
   const status = String(query.status ?? "").trim();

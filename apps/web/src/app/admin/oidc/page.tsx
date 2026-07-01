@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { ApiHttpError, getOidcConfig } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { formatDateTime } from "@/lib/format";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
+import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import { deleteOidcConfigAction, saveOidcConfigAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -29,8 +31,23 @@ export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/oidc", 401));
   }
-  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (actorRole !== "admin" || !isSystemAdmin) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="OIDC / SSO Configuration"
+          description="Connect your workspace to an external identity provider using OpenID Connect."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">OIDC / SSO</span>
+            </>
+          }
+        />
+        <SystemAdminRequiredCard surfaceLabel="OIDC / SSO configuration" />
+      </div>
+    );
+  }
+  if (actorRole !== "admin") {
     redirect("/admin");
   }
   const status = String(query.status ?? "").trim();
