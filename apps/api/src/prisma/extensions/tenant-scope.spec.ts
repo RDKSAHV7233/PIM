@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { TENANT_SCOPED_MODELS } from "./tenant-scope";
+import { INTENTIONALLY_UNSCOPED_MODELS, TENANT_SCOPED_MODELS } from "./tenant-scope";
 
 // CTO review remediation (SEC-001): the tenant-scope Prisma extension only
 // protects models explicitly listed in TENANT_SCOPED_MODELS. That list is
@@ -34,8 +34,10 @@ describe("tenant-scope extension coverage", () => {
     expect(tenantKeyedModels.length).toBeGreaterThan(40);
   });
 
-  it("includes every tenantKey-scoped schema.prisma model in TENANT_SCOPED_MODELS", () => {
-    const missing = tenantKeyedModels.filter((model) => !TENANT_SCOPED_MODELS.has(model));
+  it("includes every tenantKey-scoped schema.prisma model in TENANT_SCOPED_MODELS or the documented exclusion list", () => {
+    const missing = tenantKeyedModels.filter(
+      (model) => !TENANT_SCOPED_MODELS.has(model) && !(model in INTENTIONALLY_UNSCOPED_MODELS),
+    );
     expect(missing).toEqual([]);
   });
 
@@ -43,5 +45,16 @@ describe("tenant-scope extension coverage", () => {
     const tenantKeyedSet = new Set(tenantKeyedModels);
     const stale = Array.from(TENANT_SCOPED_MODELS).filter((model) => !tenantKeyedSet.has(model));
     expect(stale).toEqual([]);
+  });
+
+  it("does not list a model in both TENANT_SCOPED_MODELS and the intentional-exclusion list", () => {
+    const overlap = Object.keys(INTENTIONALLY_UNSCOPED_MODELS).filter((model) => TENANT_SCOPED_MODELS.has(model));
+    expect(overlap).toEqual([]);
+  });
+
+  it("does not list a stale intentional-exclusion entry that no longer has a tenantKey field", () => {
+    const tenantKeyedSet = new Set(tenantKeyedModels);
+    const staleExclusions = Object.keys(INTENTIONALLY_UNSCOPED_MODELS).filter((model) => !tenantKeyedSet.has(model));
+    expect(staleExclusions).toEqual([]);
   });
 });

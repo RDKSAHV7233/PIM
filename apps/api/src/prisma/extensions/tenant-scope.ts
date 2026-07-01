@@ -63,7 +63,6 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   // Found by the tenant-scope.spec.ts drift guard when it was first added —
   // these had a tenantKey column but were never in this set at all.
   "UserMfaBackupCode",
-  "WorkspaceDirectory",
   "ConnectorProductSyncState",
   "OutboundWebhookDelivery",
   "Market",
@@ -73,6 +72,30 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   "CategoryTranslation",
   "ProductTaxCode",
 ]);
+
+/**
+ * Models with a `tenantKey` column that are DELIBERATELY excluded from
+ * TENANT_SCOPED_MODELS, with the reason each is excluded. The drift-guard
+ * test (tenant-scope.spec.ts) treats these as satisfied rather than missing.
+ *
+ * Add a model here ONLY when you've confirmed every call site that needs
+ * cross-tenant access already goes through prismaDirect (bypassing this
+ * extension entirely) or an explicit non-default tenant() call — see
+ * WorkspaceDirectory below for the incident that established this rule.
+ */
+export const INTENTIONALLY_UNSCOPED_MODELS: Record<string, string> = {
+  // WorkspaceDirectory maps workspaceSlug -> tenantKey and must be queryable
+  // BEFORE a tenant is known (that's the whole point of a directory table).
+  // TenantDirectoryService.resolveWorkspaceSlug()/resolveTenantAlias() query
+  // it via `prisma.tenant(DEFAULT_TENANT_KEY).workspaceDirectory...` — adding
+  // this model to TENANT_SCOPED_MODELS made the extension silently restamp
+  // every lookup to tenantKey="default", breaking login for every non-default
+  // tenant (surfaced as WORKSPACE_NOT_FOUND in CI). Writes to this table
+  // (TenantDirectoryService.provisionWorkspace) already bypass the extension
+  // via PrismaDirectService for the same cross-tenant reason.
+  WorkspaceDirectory:
+    "cross-tenant directory table, queried via prisma.tenant(DEFAULT_TENANT_KEY) by design — see TenantDirectoryService",
+};
 
 const FILTER_WHERE_OPERATIONS = new Set<string>([
   "count",
