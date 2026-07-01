@@ -33,6 +33,8 @@ module.exports = {
     "**/workspace-users/workspace-users.service.spec.ts",
     "**/pricing/pricing.service.spec.ts",
     "**/prisma/extensions/tenant-scope.spec.ts",
+    "**/queue/queue.service.spec.ts",
+    "**/connector-framework/connector.registry.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

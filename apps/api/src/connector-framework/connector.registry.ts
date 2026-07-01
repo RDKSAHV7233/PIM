@@ -45,7 +45,23 @@ export class ConnectorRegistry implements OnModuleInit {
     this.connectors.set(connector.slug, connector);
   }
 
+  /**
+   * CTO review remediation (CODE-003): falling back to a reduced connector set
+   * used to be silent in every environment — a production deployment could
+   * boot showing fewer channels than promised with only a log line to notice.
+   * Staging/production now refuse to boot on fallback instead; development
+   * keeps the previous lenient behavior so local work isn't blocked by an
+   * empty/unseeded local connector-definition table.
+   */
   private registerSafeFallbackSet(reason: string) {
+    const appEnv = String(process.env.APP_ENV ?? "development").trim().toLowerCase();
+    if (appEnv === "staging" || appEnv === "production") {
+      throw new Error(
+        `ConnectorRegistry: connector definitions fell back to the safe set (reason: ${reason}). ` +
+          "Refusing to boot in staging/production with a degraded connector catalogue — sellers would " +
+          "see fewer channels than expected. Fix the connector-definition data/DB connectivity and restart.",
+      );
+    }
     this.connectors.clear();
     const safeFallbackSlugs = resolveSafeConnectorFallbackSlugs();
     for (const slug of safeFallbackSlugs) {
