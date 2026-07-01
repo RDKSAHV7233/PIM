@@ -110,9 +110,10 @@ export class ConnectorSubmissionStorageService {
   }
 
   private shouldUseLocalFallback(accountId: string, explicitEndpoint: string): boolean {
+    if (String(process.env.STORAGE_BACKEND ?? "").trim().toLowerCase() === "local") {
+      return true;
+    }
     if (explicitEndpoint) return false;
-    const env = String(process.env.APP_ENV ?? "").trim().toLowerCase();
-    if (env === "staging" || env === "production") return false;
     return !accountId || accountId.toLowerCase() === "local-dev";
   }
 

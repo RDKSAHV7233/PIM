@@ -113,14 +113,11 @@ export class MediaStorageService {
   }
 
   private shouldUseLocalFallback(): boolean {
-    const env = String(process.env.APP_ENV ?? "").trim().toLowerCase();
+    if (String(process.env.STORAGE_BACKEND ?? "").trim().toLowerCase() === "local") {
+      return true;
+    }
     const explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
     if (explicitEndpoint) return false;
-    if (env === "production") return false;
-    if (env === "staging") {
-      const localOverride = String(process.env.MEDIA_LOCAL_FALLBACK ?? "").trim().toLowerCase();
-      return localOverride === "true" || localOverride === "1";
-    }
     const accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim().toLowerCase();
     return !accountId || accountId === "local-dev";
   }

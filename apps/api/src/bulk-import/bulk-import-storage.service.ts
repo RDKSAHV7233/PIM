@@ -91,12 +91,11 @@ export class BulkImportStorageService {
   }
 
   private shouldUseLocalFallback(): boolean {
-    const env = String(process.env.APP_ENV ?? "").trim().toLowerCase();
+    if (String(process.env.STORAGE_BACKEND ?? "").trim().toLowerCase() === "local") {
+      return true;
+    }
     const explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
     if (explicitEndpoint) {
-      return false;
-    }
-    if (env === "staging" || env === "production") {
       return false;
     }
     const accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim().toLowerCase();
