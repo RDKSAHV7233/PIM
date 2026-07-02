@@ -657,6 +657,49 @@ export class BulkImportRunService implements OnModuleInit {
     return this.getRun(runId, actor);
   }
 
+  async retryStuckRows(runId: string, actor?: PolicyActor) {
+    const run = await this.getRun(runId, actor);
+
+    const stuckJobs = await this.prisma.tenant().bulkImportJob.findMany({
+      where: {
+        runId,
+        status: {
+          in: [BulkImportJobStatus.retrying, BulkImportJobStatus.queued, BulkImportJobStatus.processing],
+        },
+      },
+      select: { id: true, chunkSize: true },
+    });
+
+    if (stuckJobs.length === 0) {
+      const jobsWithPendingRows = await this.prisma.tenant().bulkImportJob.findMany({
+        where: { runId },
+        select: { id: true, chunkSize: true },
+      });
+      for (const job of jobsWithPendingRows) {
+        const pendingCount = await this.prisma.tenant().bulkImportRow.count({
+          where: {
+            jobId: job.id,
+            status: { in: [BulkImportRowStatus.queued, BulkImportRowStatus.retrying] },
+          },
+        });
+        if (pendingCount > 0) {
+          stuckJobs.push(job);
+        }
+      }
+    }
+
+    if (stuckJobs.length === 0) {
+      return this.getRun(runId, actor);
+    }
+
+    for (const job of stuckJobs) {
+      await this.bulkImportService.processJob(job.id, job.chunkSize, actor);
+    }
+
+    await this.refreshRunCounters(runId);
+    return this.getRun(runId, actor);
+  }
+
   async listRunRows(runId: string, status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
     const run = await this.getRun(runId, actor);
 
