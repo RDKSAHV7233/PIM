@@ -210,6 +210,30 @@ export function validateEnv(): ValidatedEnv {
     ) {
       issues.push("QUEUE_WORKER_ENABLED: staging/production must use QUEUE_WORKER_ENABLED=true");
     }
+    const redisDisabledRaw = (key: string) =>
+      String(envInput[key] ?? "false").trim().toLowerCase() === "true";
+    if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && redisDisabledRaw("PIM_AUTH_REDIS_DISABLED")) {
+      issues.push(
+        "PIM_AUTH_REDIS_DISABLED: must not be true in staging/production — " +
+          "in-memory lockout/rate-limit state is per-instance and resets on restart",
+      );
+    }
+    if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && redisDisabledRaw("JWT_BLOCKLIST_REDIS_DISABLED")) {
+      issues.push(
+        "JWT_BLOCKLIST_REDIS_DISABLED: must not be true in staging/production — " +
+          "in-memory JWT blocklist is per-instance; logout only revokes on the handling instance",
+      );
+    }
+    if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && redisDisabledRaw("CACHE_REDIS_DISABLED")) {
+      warnings.push(
+        "CACHE_REDIS_DISABLED: Redis cache is disabled — per-instance memory cache reduces performance under horizontal scaling",
+      );
+    }
+    if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && redisDisabledRaw("DASHBOARD_CACHE_REDIS_DISABLED")) {
+      warnings.push(
+        "DASHBOARD_CACHE_REDIS_DISABLED: Redis dashboard cache is disabled — dashboard queries will hit the database on every request",
+      );
+    }
     if (
       data.APP_ENV === "staging" &&
       (!String(data.AUTH_EMAIL_PROVIDER ?? "").trim() || data.AUTH_EMAIL_PROVIDER === "file")
