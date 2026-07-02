@@ -4418,6 +4418,29 @@
         ]
       }
     },
+    "/api/v1/bulk-import/runs/{id}/retry-stuck": {
+      "post": {
+        "operationId": "BulkImportController_retryStuckRows",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
     "/api/v1/bulk-import/runs/{id}/rows": {
       "get": {
         "operationId": "BulkImportController_listRunRows",

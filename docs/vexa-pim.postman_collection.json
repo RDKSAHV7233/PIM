@@ -7601,6 +7601,40 @@
           }
         },
         {
+          "name": "BulkImportController_retryStuckRows",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bulk-import/runs/:id/retry-stuck",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bulk-import",
+                "runs",
+                ":id",
+                "retry-stuck"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "List import run rows",
           "request": {
             "method": "GET",
