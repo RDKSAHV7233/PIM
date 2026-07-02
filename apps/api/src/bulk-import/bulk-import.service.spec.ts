@@ -1,4 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
+import { BulkImportRowStatus } from "@prisma/client";
+import { BulkImportRunService } from "./bulk-import-run.service";
 import { BulkImportService } from "./bulk-import.service";
 
 const MB = 1024 * 1024;
@@ -533,5 +535,172 @@ describe("BulkImportService — international tax code collection", () => {
     expect(mappedSources).toContain("ae_hs_code");
     expect(mappedSources).toContain("us_tax_category");
     expect(mappedSources).toContain("au_commodity_code");
+  });
+});
+
+describe("Bulk import error report CSV", () => {
+  function makeAccessPolicy() {
+    return {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      assertBulkImportAccess: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_actor: unknown, payload: unknown) => payload),
+    };
+  }
+
+  it("exports visible legacy job problem rows with repair context", async () => {
+    const findRows = jest.fn().mockResolvedValue([
+      {
+        jobId: "job_1",
+        runId: null,
+        rowNumber: 4,
+        status: BulkImportRowStatus.failed,
+        retryCount: 0,
+        errorMessage: "INVALID_HSN: HSN codes must be 4, 6, or 8 digits.",
+        payload: {
+          skuCode: "SKU-004",
+          title: "Broken row",
+          hsnCode: "12",
+        },
+      },
+    ]);
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportJob: {
+          findUnique: jest.fn().mockResolvedValue({ id: "job_1", categoryId: "cat_1" }),
+        },
+        bulkImportRow: {
+          findMany: findRows,
+        },
+      }),
+    };
+    const accessPolicy = makeAccessPolicy();
+    const service = new BulkImportService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+    );
+
+    const csv = await service.buildErrorReportCsv("job_1", { actorId: "admin", actorRole: "admin" as never });
+
+    expect(findRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          jobId: "job_1",
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              status: expect.objectContaining({
+                in: expect.arrayContaining([
+                  BulkImportRowStatus.failed,
+                  BulkImportRowStatus.retrying,
+                  BulkImportRowStatus.dead_letter,
+                ]),
+              }),
+            }),
+            { errorMessage: { not: null } },
+          ]),
+        }),
+      }),
+    );
+    expect(csv).toContain('"runId","jobId","rowNumber","skuCode","status","errorCode","errorMessage","attemptCount","originalData"');
+    expect(csv).toContain('"job_1"');
+    expect(csv).toContain('"4"');
+    expect(csv).toContain('"SKU-004"');
+    expect(csv).toContain('"INVALID_HSN"');
+    expect(csv).toContain('"INVALID_HSN: HSN codes must be 4, 6, or 8 digits."');
+    expect(csv).toContain("Broken row");
+    expect(accessPolicy.assertCategoryAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: "admin" }),
+      "import",
+      "cat_1",
+      "BulkImportJob",
+      "job_1",
+    );
+  });
+
+  it("exports run-centric problem rows with original row data", async () => {
+    const findRows = jest.fn().mockResolvedValue([
+      {
+        jobId: "job_2",
+        runId: "run_1",
+        rowNumber: 6,
+        rowNumberGlobal: 106,
+        status: BulkImportRowStatus.dead_letter,
+        retryCount: 3,
+        errorMessage: "REQUIRED_FIELD: Title is required.",
+        payload: {
+          title: "",
+          attributes: { sku: "SKU-106" },
+        },
+        productId: null,
+      },
+    ]);
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportRun: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "run_1",
+            categoryId: "cat_1",
+            category: { id: "cat_1", path: "/cat_1" },
+          }),
+        },
+        bulkImportRow: {
+          findMany: findRows,
+        },
+      }),
+    };
+    const accessPolicy = makeAccessPolicy();
+    const service = new BulkImportRunService(
+      prisma as never,
+      accessPolicy as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const csv = await service.buildRunErrorReportCsv("run_1", {
+      actorId: "admin",
+      actorRole: "admin" as never,
+    });
+
+    expect(findRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          runId: "run_1",
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              status: expect.objectContaining({
+                in: expect.arrayContaining([
+                  BulkImportRowStatus.failed,
+                  BulkImportRowStatus.retrying,
+                  BulkImportRowStatus.dead_letter,
+                ]),
+              }),
+            }),
+            { errorMessage: { not: null } },
+          ]),
+        }),
+        take: 10_000,
+      }),
+    );
+    expect(csv).toContain('"runId","jobId","rowNumber","skuCode","status","errorCode","errorMessage","attemptCount","originalData"');
+    expect(csv).toContain('"run_1"');
+    expect(csv).toContain('"job_2"');
+    expect(csv).toContain('"106"');
+    expect(csv).toContain('"SKU-106"');
+    expect(csv).toContain('"REQUIRED_FIELD"');
+    expect(csv).toContain('"3"');
+    expect(csv).toContain("SKU-106");
+    expect(accessPolicy.assertCategoryAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: "admin" }),
+      "import",
+      "cat_1",
+      "BulkImportRun",
+      "run_1",
+    );
   });
 });

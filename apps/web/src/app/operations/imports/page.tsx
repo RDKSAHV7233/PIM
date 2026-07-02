@@ -137,6 +137,11 @@ function resolveHideTestData(value: string | undefined): boolean {
   return true;
 }
 
+function isBulkImportProblemRow(row: { status?: string | null; errorMessage?: string | null }): boolean {
+  const status = String(row.status ?? "").trim().toLowerCase();
+  return Boolean(row.errorMessage) || status === "failed" || status === "retrying" || status === "dead_letter";
+}
+
 function importWorkflowSteps(input: {
   selectedBulkJobId: string;
   selectedJobStatus: string | null;
@@ -243,9 +248,10 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       accumulator[key] = (accumulator[key] ?? 0) + 1;
       return accumulator;
     }, {});
+    const selectedProblemRows = selectedRows.filter(isBulkImportProblemRow);
     const selectedRowsNeedingRepair = selectedRows.filter((row) => row.status !== "success");
     const selectedSuccessfulRows = selectedRows.filter((row) => row.status === "success");
-    const selectedAttentionRows = (selectedRowCounts.failed ?? 0) + (selectedRowCounts.dead_letter ?? 0);
+    const selectedAttentionRows = selectedProblemRows.length;
     const operatorWorkflowSteps = importWorkflowSteps({
       selectedBulkJobId,
       selectedJobStatus: selectedJob?.status ?? null,
@@ -265,6 +271,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       accumulator[key] = (accumulator[key] ?? 0) + 1;
       return accumulator;
     }, {});
+    const selectedRunProblemRows = selectedRunRows.filter(isBulkImportProblemRow);
     const selectedRunRowsNeedingRepair = selectedRunRows.filter((row) => row.status !== "success");
     const selectedRunSuccessfulRows = selectedRunRows.filter((row) => row.status === "success");
     const selectedRunProcessedRows =
@@ -582,20 +589,40 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 <KpiCard label="Warnings" value={selectedRun.warningCount ?? 0} tone={(selectedRun.warningCount ?? 0) > 0 ? "warning" : "default"} />
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  href={`/api/bulk-import/runs/${encodeURIComponent(selectedBulkRunId)}/error-report`}
-                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Download combined error report
-                </Link>
-                <Link
-                  href="/operations/repair"
-                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Open repair console
-                </Link>
-              </div>
+              {selectedRunProblemRows.length > 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <p className="font-semibold">{selectedRunProblemRows.length} rows need repair</p>
+                  <p className="mt-1">
+                    Some rows could not be imported. Successful rows are already available in the catalog.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/api/bulk-import/runs/${encodeURIComponent(selectedBulkRunId)}/error-report?download=failed-rows`}
+                      className="rounded-md bg-amber-900 px-3 py-2 text-sm font-medium text-white hover:bg-amber-800"
+                    >
+                      Download failed rows CSV
+                    </Link>
+                    <Link
+                      href={`/api/bulk-import/runs/${encodeURIComponent(selectedBulkRunId)}/error-report?download=error-report`}
+                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Download combined error report
+                    </Link>
+                    <Link
+                      href="/operations/imports"
+                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Reupload corrected file
+                    </Link>
+                    <Link
+                      href="/operations/repair"
+                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Open repair console
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
 
               {selectedRunRows.length === 0 ? (
                 <p className="text-sm text-slate-600">
@@ -685,20 +712,49 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 </div>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  href={`/api/bulk-import/jobs/${encodeURIComponent(selectedBulkJobId)}/error-report`}
-                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Download error report
-                </Link>
-                <Link
-                  href={`/catalog/products${selectedJob?.categoryId ? `?categoryId=${encodeURIComponent(selectedJob.categoryId)}` : ""}`}
-                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Open catalog
-                </Link>
-              </div>
+              {selectedProblemRows.length > 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <p className="font-semibold">{selectedProblemRows.length} rows need repair</p>
+                  <p className="mt-1">
+                    Some rows could not be imported. Successful rows are already available in the catalog.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/api/bulk-import/jobs/${encodeURIComponent(selectedBulkJobId)}/error-report?download=failed-rows`}
+                      className="rounded-md bg-amber-900 px-3 py-2 text-sm font-medium text-white hover:bg-amber-800"
+                    >
+                      Download failed rows CSV
+                    </Link>
+                    <Link
+                      href={`/api/bulk-import/jobs/${encodeURIComponent(selectedBulkJobId)}/error-report?download=error-report`}
+                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Download error report
+                    </Link>
+                    <Link
+                      href="/operations/imports"
+                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Reupload corrected file
+                    </Link>
+                    <Link
+                      href={`/catalog/products${selectedJob?.categoryId ? `?categoryId=${encodeURIComponent(selectedJob.categoryId)}` : ""}`}
+                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Open catalog
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/catalog/products${selectedJob?.categoryId ? `?categoryId=${encodeURIComponent(selectedJob.categoryId)}` : ""}`}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Open catalog
+                  </Link>
+                </div>
+              )}
 
               {selectedRows.length === 0 ? (
                 <p className="text-sm text-slate-600">No row-level result data is available for this import job yet.</p>

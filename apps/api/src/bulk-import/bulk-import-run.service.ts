@@ -715,27 +715,43 @@ export class BulkImportRunService implements OnModuleInit {
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         runId,
-        status: {
-          in: [BulkImportRowStatus.failed, BulkImportRowStatus.dead_letter],
-        },
+        OR: [
+          {
+            status: {
+              in: [
+                BulkImportRowStatus.retrying,
+                BulkImportRowStatus.failed,
+                BulkImportRowStatus.dead_letter,
+              ],
+            },
+          },
+          { errorMessage: { not: null } },
+        ],
       },
       orderBy: [{ rowNumberGlobal: "asc" }, { rowNumber: "asc" }],
+      take: 10_000,
     });
 
     const lines: string[] = [
-      ["rowNumber", "rowNumberGlobal", "status", "retryCount", "errorMessage", "productId"].map(this.toCsvCell).join(","),
+      ["runId", "jobId", "rowNumber", "skuCode", "status", "errorCode", "errorMessage", "attemptCount", "originalData"]
+        .map((value) => this.toCsvCell(value))
+        .join(","),
     ];
 
     for (const row of rows) {
       const visibleRow = this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, row) as typeof row;
+      const originalData = this.asRowPayload(visibleRow.payload);
       lines.push(
         [
-          String(visibleRow.rowNumber),
-          String(visibleRow.rowNumberGlobal ?? ""),
+          visibleRow.runId ?? "",
+          visibleRow.jobId,
+          String(visibleRow.rowNumberGlobal ?? visibleRow.rowNumber),
+          this.extractSkuCode(originalData),
           String(visibleRow.status),
-          String(visibleRow.retryCount),
+          this.extractErrorCode(visibleRow.errorMessage),
           visibleRow.errorMessage ?? "",
-          visibleRow.productId ?? "",
+          String(visibleRow.retryCount),
+          JSON.stringify(originalData),
         ]
           .map(this.toCsvCell)
           .join(","),
@@ -1023,6 +1039,42 @@ export class BulkImportRunService implements OnModuleInit {
     }
     values.push(current);
     return values.map((value) => value.trim());
+  }
+
+  private asRowPayload(value: Prisma.JsonValue): Record<string, unknown> {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return {};
+  }
+
+  private extractSkuCode(payload: Record<string, unknown>) {
+    const candidates = [
+      payload.skuCode,
+      payload.sku,
+      payload.sku_code,
+      payload.SKU,
+      payload.productSku,
+      payload.product_sku,
+      payload.attributes && typeof payload.attributes === "object" && !Array.isArray(payload.attributes)
+        ? (payload.attributes as Record<string, unknown>).sku
+        : undefined,
+    ];
+    for (const candidate of candidates) {
+      if (candidate === null || candidate === undefined) {
+        continue;
+      }
+      const value = String(candidate).trim();
+      if (value) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  private extractErrorCode(message: string | null | undefined) {
+    const match = String(message ?? "").match(/^([A-Z][A-Z0-9_]+):/);
+    return match?.[1] ?? "";
   }
 
   private toCsvCell(value: string): string {

@@ -1077,17 +1077,24 @@ export class BulkImportService {
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId,
-        status: {
-          in: [
-            BulkImportRowStatus.retrying,
-            BulkImportRowStatus.failed,
-            BulkImportRowStatus.dead_letter,
-          ],
-        },
+        OR: [
+          {
+            status: {
+              in: [
+                BulkImportRowStatus.retrying,
+                BulkImportRowStatus.failed,
+                BulkImportRowStatus.dead_letter,
+              ],
+            },
+          },
+          { errorMessage: { not: null } },
+        ],
       },
       orderBy: [{ rowNumber: "asc" }],
       take: 10_000, // defensive cap — error-report CSV is bounded by job size
       select: {
+        jobId: true,
+        runId: true,
         rowNumber: true,
         status: true,
         retryCount: true,
@@ -1096,17 +1103,22 @@ export class BulkImportService {
       },
     });
 
-    const header = ["row_number", "status", "retry_count", "error_message", "payload_json"];
+    const header = ["runId", "jobId", "rowNumber", "skuCode", "status", "errorCode", "errorMessage", "attemptCount", "originalData"];
     const lines = [header.map((value) => this.toCsvCell(value)).join(",")];
     for (const row of rows) {
       const visibleRow = this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, row) as typeof row;
+      const originalData = this.asRowPayload(visibleRow.payload);
       lines.push(
         [
+          visibleRow.runId ?? "",
+          visibleRow.jobId,
           String(visibleRow.rowNumber),
+          this.extractSkuCode(originalData),
           visibleRow.status,
-          String(visibleRow.retryCount),
+          this.extractErrorCode(visibleRow.errorMessage),
           visibleRow.errorMessage ?? "",
-          JSON.stringify(this.asRowPayload(visibleRow.payload)),
+          String(visibleRow.retryCount),
+          JSON.stringify(originalData),
         ]
           .map((value) => this.toCsvCell(value))
           .join(","),
@@ -2118,6 +2130,32 @@ export class BulkImportService {
       return value as CanonicalRowPayload;
     }
     return {};
+  }
+
+  private extractSkuCode(payload: Record<string, unknown>) {
+    const candidates = [
+      payload.skuCode,
+      payload.sku,
+      payload.sku_code,
+      payload.SKU,
+      payload.productSku,
+      payload.product_sku,
+      payload.attributes && typeof payload.attributes === "object" && !Array.isArray(payload.attributes)
+        ? (payload.attributes as Record<string, unknown>).sku
+        : undefined,
+    ];
+    for (const candidate of candidates) {
+      const value = this.asTrimmedString(candidate);
+      if (value) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  private extractErrorCode(message: string | null | undefined) {
+    const match = String(message ?? "").match(/^([A-Z][A-Z0-9_]+):/);
+    return match?.[1] ?? "";
   }
 
   private asTrimmedString(value: unknown) {
