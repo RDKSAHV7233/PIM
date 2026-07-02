@@ -1,5 +1,6 @@
 import { Controller, Get, Header, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { IsOptional, IsString, MaxLength } from "class-validator";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -8,6 +9,13 @@ import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-ac
 import { AppRole, Roles } from "../common/rbac/roles";
 import { AuditService } from "./audit.service";
 import { ListAuditEventsDto } from "./dto/list-audit-events.dto";
+
+class ListAuditLogsDto extends CursorPaginationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  actorId?: string;
+}
 
 @DisallowApiClient()
 @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
@@ -40,9 +48,9 @@ export class AuditController {
   @Get("logs")
   @ReadAccessPolicy("audit_logs_governance_redacted")
   @Roles("admin")
-  listLogs(@Query("limit") limit?: string, @Query("actorId") actorId?: string, @Query() pagination?: CursorPaginationDto) {
-    const parsedLimit = limit ? Number(limit) : 50;
-    return this.auditService.list(parsedLimit, actorId, pagination);
+  listLogs(@Query() query: ListAuditLogsDto) {
+    const parsedLimit = query.limit ? Number(query.limit) : 50;
+    return this.auditService.list(parsedLimit, query.actorId, query);
   }
 
   @Get("events")
