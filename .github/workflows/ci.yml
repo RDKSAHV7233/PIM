@@ -102,11 +102,13 @@ jobs:
 
       - name: Unit tests
         env:
-          # Raise Node heap ceiling from ~2GB default to 4GB. One of the larger
-          # Jest workers (bulk-import.service.spec.ts) reproducibly hits the
-          # default limit and crashes on GitHub Actions Linux runners.
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: npm run test:unit --workspace @pim1/api
+          # Pre-existing memory leak in bulk-import.service.spec.ts crashes the
+          # Jest worker on GitHub Actions runners. Raise heap ceiling from ~2GB
+          # to 8GB (runners have 16GB RAM) AND force worker restart between
+          # suites so retained memory from earlier suites is reclaimed before
+          # this spec loads.
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run test:unit --workspace @pim1/api -- --workerIdleMemoryLimit=1500MB
 
       - name: Tenant isolation concurrency integration test
         run: npm run test:integration:rls-isolation
