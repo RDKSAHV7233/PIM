@@ -101,6 +101,11 @@ jobs:
         run: npm run build --workspace @pim1/api
 
       - name: Unit tests
+        env:
+          # Raise Node heap ceiling from ~2GB default to 4GB. One of the larger
+          # Jest workers (bulk-import.service.spec.ts) reproducibly hits the
+          # default limit and crashes on GitHub Actions Linux runners.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run test:unit --workspace @pim1/api
 
       - name: Tenant isolation concurrency integration test
