@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
+import { IsOptional, IsString, MaxLength } from "class-validator";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
@@ -19,6 +20,18 @@ type AuthenticatedRequest = {
   pimTenant?: string;
   pimEffectiveRoles?: string[];
 };
+
+class ListMediaAssetsQueryDto extends CursorPaginationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  productId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  variantId?: string;
+}
 
 @Controller("media")
 @DisallowApiClient()
@@ -49,12 +62,10 @@ export class MediaController {
   @ReadAccessPolicy("media_assets_scoped")
   @ApiClientScopes("media.read")
   listAssets(
-    @Query("productId") productId?: string,
-    @Query("variantId") variantId?: string,
-    @Query() pagination?: CursorPaginationDto,
+    @Query() query: ListMediaAssetsQueryDto,
     @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
-    return this.mediaService.listAssets(productId, variantId, pagination, this.resolveActor(request ?? {}));
+    return this.mediaService.listAssets(query.productId, query.variantId, query, this.resolveActor(request ?? {}));
   }
 
   @Get("assets/:id")

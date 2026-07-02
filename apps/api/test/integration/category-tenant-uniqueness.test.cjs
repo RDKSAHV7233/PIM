@@ -6,6 +6,11 @@ const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const DEFAULT_API_HEALTH_TIMEOUT_MS = REPO_ROOT.startsWith("/mnt/") ? 600_000 : 240_000;
+const API_HEALTH_TIMEOUT_MS = Number.parseInt(
+  process.env.PIM_INTEGRATION_API_HEALTH_TIMEOUT_MS || String(DEFAULT_API_HEALTH_TIMEOUT_MS),
+  10,
+);
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -208,7 +213,10 @@ async function run() {
   });
 
   try {
-    await waitForHealth(baseUrl, 60_000);
+    await waitForHealth(
+      baseUrl,
+      Number.isFinite(API_HEALTH_TIMEOUT_MS) ? API_HEALTH_TIMEOUT_MS : DEFAULT_API_HEALTH_TIMEOUT_MS,
+    );
     await sleep(800);
 
     const tokenA = await loginWithRetry(baseUrl, adminA, workspaceSlugA);
