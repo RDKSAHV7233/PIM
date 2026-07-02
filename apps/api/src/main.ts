@@ -5,7 +5,6 @@ import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, raw, urlencoded } from "express";
 import helmet from "helmet";
-import { AppModule } from "./app.module";
 import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
@@ -33,6 +32,7 @@ async function bootstrap() {
     queueBackend: env.QUEUE_BACKEND,
     port: env.PORT,
   });
+  const { AppModule } = await import("./app.module");
 
   if (env.SENTRY_DSN) {
     try {
