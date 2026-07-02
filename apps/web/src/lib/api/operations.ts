@@ -397,14 +397,20 @@ export async function getBulkImportRunRows(
   status?: string,
   cursor?: string,
   options?: ApiRequestOptions,
-) {
+  limit = 100,
+): Promise<{ items: BulkImportRunRow[]; nextCursor: string | null }> {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (cursor) params.set("cursor", cursor);
+  params.set("limit", String(limit));
   const qs = params.toString();
-  return fetchJson<BulkImportRunRow[] | PaginatedResponse<BulkImportRunRow>>(
+  const response = await fetchJson<BulkImportRunRow[] | PaginatedResponse<BulkImportRunRow>>(
     `/bulk-import/runs/${encodeURIComponent(runId)}/rows${qs ? `?${qs}` : ""}`,
     undefined,
     options,
   );
+  if (Array.isArray(response)) {
+    return { items: response, nextCursor: null };
+  }
+  return { items: response.items ?? [], nextCursor: response.nextCursor ?? null };
 }

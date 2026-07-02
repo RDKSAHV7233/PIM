@@ -1854,6 +1854,20 @@ export async function requeueBulkImportDlqAction(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function retryStuckRunAction(formData: FormData) {
+  const runId = String(formData.get("runId") ?? "").trim();
+  if (!runId) {
+    throw new Error("Bulk import run id is required.");
+  }
+  try {
+    await postJsonForAction(formData, `/bulk-import/runs/${runId}/retry-stuck`, {});
+  } catch {
+    // Retry can time out while processing continues in the background.
+  }
+  revalidatePath("/operations/imports");
+  revalidatePath("/dashboard");
+}
+
 export async function processBulkImportRowAction(formData: FormData) {
   const jobId = String(formData.get("jobId") ?? "").trim();
   const rowId = String(formData.get("rowId") ?? "").trim();
