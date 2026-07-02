@@ -8,6 +8,11 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 const STEP_UP_HEADER = "x-pim-step-up-token";
 const STEP_UP_SCOPE = "mapping_high_risk";
+const DEFAULT_API_HEALTH_TIMEOUT_MS = REPO_ROOT.startsWith("/mnt/") ? 600_000 : 240_000;
+const API_HEALTH_TIMEOUT_MS = Number.parseInt(
+  process.env.PIM_INTEGRATION_API_HEALTH_TIMEOUT_MS || String(DEFAULT_API_HEALTH_TIMEOUT_MS),
+  10,
+);
 
 function getAuthPassword() {
   return process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password";
@@ -218,7 +223,7 @@ async function run() {
   });
 
   try {
-    await waitForHealth(baseUrl, 60_000);
+    await waitForHealth(baseUrl, Number.isFinite(API_HEALTH_TIMEOUT_MS) ? API_HEALTH_TIMEOUT_MS : DEFAULT_API_HEALTH_TIMEOUT_MS);
 
     const loginA = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userA,
