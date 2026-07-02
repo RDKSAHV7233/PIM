@@ -118,9 +118,27 @@ async function loginViaUi(page, role, options = {}) {
   }
 
   await page.goto(`${baseURL}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Workspace").fill(workspaceSlug);
-  await page.getByLabel("User ID").fill(identity.userId);
-  await page.getByLabel("Password").fill(DEFAULT_PASSWORD);
+  const workspaceInput = page.getByTestId("workspace");
+  const userIdInput = page.getByTestId("user-id");
+  const passwordInput = page.getByTestId("password");
+  await userIdInput.waitFor({ state: "visible" });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await workspaceInput.fill(workspaceSlug);
+  await userIdInput.fill(identity.userId);
+  await passwordInput.fill(DEFAULT_PASSWORD);
+  await page.waitForFunction(
+    ({ workspaceSlug: expectedWorkspace, userId: expectedUserId }) => {
+      const workspace = document.querySelector('[data-testid="workspace"]');
+      const userId = document.querySelector('[data-testid="user-id"]');
+      return (
+        workspace instanceof HTMLInputElement &&
+        userId instanceof HTMLInputElement &&
+        workspace.value === expectedWorkspace &&
+        userId.value === expectedUserId
+      );
+    },
+    { workspaceSlug, userId: identity.userId },
+  );
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/dashboard$/, { timeout: 20_000 });
   await page.getByText(identity.roleBadge).waitFor({ state: "visible" });
