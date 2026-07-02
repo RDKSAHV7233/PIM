@@ -35,6 +35,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     headers: {
       "Content-Type": contentType,
       "Content-Disposition": disposition,
+      "Cache-Control": "no-store, max-age=0",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
