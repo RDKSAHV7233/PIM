@@ -813,6 +813,16 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/quality/approvals", error));
     }
+    if (error instanceof ApiHttpError && error.status === 429) {
+      return (
+        <div className="space-y-5">
+          <PageHeader title="Approvals" subtitle="Review and approve product changes." />
+          <InlineAlert variant="warning" title="Too many requests">
+            You are navigating too quickly. Please wait a moment and reload the page.
+          </InlineAlert>
+        </div>
+      );
+    }
     throw error;
   }
 }
