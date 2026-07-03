@@ -30,7 +30,7 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
       header: "Attributes",
       render: (variant) => {
         const editFormId = `variant-edit-${variant.id}`;
-        const attributesDefault = JSON.stringify(variant.attributes, null, 2);
+        const attributesDefault = JSON.stringify(variant.attributes ?? {}, null, 2);
         return data.canWrite ? (
           <Textarea form={editFormId} name="attributes" rows={4} className="w-full min-w-0 text-xs" defaultValue={attributesDefault} />
         ) : (
