@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createBulkImportJobAction, processBulkImportJobAction, requeueBulkImportDlqAction } from "@/app/actions";
+import { createBulkImportJobAction, processBulkImportJobAction, requeueBulkImportDlqAction, retryStuckRunAction } from "@/app/actions";
 import { ImportPreflightForm } from "@/components/operations/import-preflight-form";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -113,6 +113,7 @@ interface OperationsImportsPageProps {
     hideTestData?: string;
     bulkJobId?: string;
     bulkRunId?: string;
+    runRowCursor?: string;
   }>;
 }
 
@@ -181,6 +182,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const selectedStatus = String(query.status ?? "").trim().toLowerCase();
   const selectedBulkJobId = String(query.bulkJobId ?? "").trim();
   const selectedBulkRunId = String(query.bulkRunId ?? "").trim();
+  const runRowCursor = String(query.runRowCursor ?? "").trim() || undefined;
   const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
@@ -201,8 +203,8 @@ export default async function OperationsImportsPage({ searchParams }: Operations
               ? getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader })
               : Promise.resolve(null),
             selectedBulkRunId
-              ? getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader })
-              : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportRunRows>>),
+              ? getBulkImportRunRows(selectedBulkRunId, undefined, runRowCursor, { role: actorRole, authHeader }, 100)
+              : Promise.resolve({ items: [], nextCursor: null } as Awaited<ReturnType<typeof getBulkImportRunRows>>),
           ])
         : [
             { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportJobs>> },
@@ -210,7 +212,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
             { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportRuns>> },
             { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportJobRows>> },
             { status: "fulfilled" as const, value: null as Awaited<ReturnType<typeof getBulkImportRun>> | null },
-            { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportRunRows>> },
+            { status: "fulfilled" as const, value: { items: [], nextCursor: null } as Awaited<ReturnType<typeof getBulkImportRunRows>> },
           ];
 
     // Re-throw 401/403 from any slot so the outer catch can redirect to login.
@@ -257,9 +259,9 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         ? largeRuns.find((run) => run.id === selectedBulkRunId) ??
           (selectedRunResult.status === "fulfilled" ? selectedRunResult.value : null)
         : null) ?? null;
-    const selectedRunRows: BulkImportRunRow[] = normalizeCollection<BulkImportRunRow>(
-      selectedRunRowsResult.status === "fulfilled" ? selectedRunRowsResult.value : [],
-    );
+    const selectedRunRowsPage = selectedRunRowsResult.status === "fulfilled" ? selectedRunRowsResult.value : { items: [], nextCursor: null };
+    const selectedRunRows: BulkImportRunRow[] = normalizeCollection<BulkImportRunRow>(selectedRunRowsPage.items);
+    const runRowsNextCursor = selectedRunRowsPage.nextCursor;
     const selectedRunRowCounts = selectedRunRows.reduce<Record<string, number>>((accumulator, row) => {
       const key = String(row.status ?? "").toLowerCase() || "unknown";
       accumulator[key] = (accumulator[key] ?? 0) + 1;
@@ -386,7 +388,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       { key: "attempts", header: "Attempts", render: (row) => row.retryCount },
     ];
 
-    const buildRunHref = (bulkRunId?: string) => {
+    const buildRunHref = (bulkRunId?: string, cursor?: string) => {
       const search = new URLSearchParams();
       if (selectedStatus) {
         search.set("status", selectedStatus);
@@ -396,6 +398,9 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       }
       if (bulkRunId) {
         search.set("bulkRunId", bulkRunId);
+      }
+      if (cursor) {
+        search.set("runRowCursor", cursor);
       }
       const queryString = search.toString();
       return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
@@ -550,11 +555,24 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 {
                   key: "actions",
                   header: "Actions",
-                  render: (run) => (
-                    <Link href={buildRunHref(run.id)} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
-                      View run
-                    </Link>
-                  ),
+                  render: (run) => {
+                    const runStatus = String(run.status ?? "").toLowerCase();
+                    const processedRows = (run.acceptedRows ?? 0) + (run.failedRows ?? 0) + (run.deadLetterRows ?? 0);
+                    const hasStuckRows = processedRows < (run.totalRows ?? 0) && runStatus !== "preflight_ready" && runStatus !== "uploaded";
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {canWrite && hasStuckRows ? (
+                          <form action={retryStuckRunAction}>
+                            <input type="hidden" name="runId" value={run.id} />
+                            <PendingSubmitButton type="submit" variant="secondary" idleLabel="Retry stuck rows" pendingLabel="Retrying..." />
+                          </form>
+                        ) : null}
+                        <Link href={buildRunHref(run.id)} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                          View run
+                        </Link>
+                      </div>
+                    );
+                  },
                 },
               ] as Column<BulkImportRun>[]}
               rows={largeRuns}
@@ -582,6 +600,19 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 <KpiCard label="Warnings" value={selectedRun.warningCount ?? 0} tone={(selectedRun.warningCount ?? 0) > 0 ? "warning" : "default"} />
               </div>
 
+              {canWrite && selectedRunProcessedRows < (selectedRun.totalRows ?? 0) && selectedRun.status !== "preflight_ready" && selectedRun.status !== "uploaded" ? (
+                <div className="rounded-md border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
+                  <p className="font-semibold">Import appears stuck</p>
+                  <p className="mt-1">
+                    {(selectedRun.totalRows ?? 0) - selectedRunProcessedRows} rows are still waiting to be processed. Click below to retry them.
+                  </p>
+                  <form action={retryStuckRunAction} className="mt-3">
+                    <input type="hidden" name="runId" value={selectedBulkRunId} />
+                    <PendingSubmitButton type="submit" variant="secondary" idleLabel="Retry stuck rows" pendingLabel="Retrying stuck rows..." />
+                  </form>
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap items-center gap-2">
                 <Link
                   href={`/api/bulk-import/runs/${encodeURIComponent(selectedBulkRunId)}/error-report`}
@@ -604,51 +635,76 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                     : "No row-level result data is available for this large import run yet."}
                 </p>
               ) : (
-                <DataGrid<BulkImportRunRow>
-                  columns={[
-                    {
-                      key: "rowNumberGlobal",
-                      header: "Row",
-                      cellClassName: "font-mono text-xs",
-                      render: (row) => String(row.rowNumberGlobal ?? row.rowNumber ?? ""),
-                    },
-                    {
-                      key: "status",
-                      header: "Status",
-                      render: (row) => translateJobStatus(row.status),
-                    },
-                    {
-                      key: "productId",
-                      header: "Catalog result",
-                      render: (row) =>
-                        row.productId ? (
-                          <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
-                            View product
-                          </Link>
-                        ) : (
-                          <span className="text-slate-500">No product created</span>
-                        ),
-                    },
-                    {
-                      key: "errorMessage",
-                      header: "Error",
-                      cellClassName: "text-xs text-slate-600",
-                      render: (row) => {
-                        if (!row.errorMessage) return "None";
-                        const translatedError = translateError(extractErrorCode(row.errorMessage));
-                        return `${translatedError.title}: ${translatedError.description}`;
+                <>
+                  <DataGrid<BulkImportRunRow>
+                    columns={[
+                      {
+                        key: "rowNumberGlobal",
+                        header: "Row",
+                        cellClassName: "font-mono text-xs",
+                        render: (row) => String(row.rowNumberGlobal ?? row.rowNumber ?? ""),
                       },
-                    },
-                    {
-                      key: "retryCount",
-                      header: "Attempts",
-                      mobileHide: true,
-                      render: (row) => String(row.retryCount ?? 0),
-                    },
-                  ] satisfies Column<BulkImportRunRow>[]}
-                  rows={selectedRunRows}
-                  getRowKey={(row) => row.id}
-                />
+                      {
+                        key: "status",
+                        header: "Status",
+                        render: (row) => translateJobStatus(row.status),
+                      },
+                      {
+                        key: "productId",
+                        header: "Catalog result",
+                        render: (row) =>
+                          row.productId ? (
+                            <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
+                              View product
+                            </Link>
+                          ) : (
+                            <span className="text-slate-500">No product created</span>
+                          ),
+                      },
+                      {
+                        key: "errorMessage",
+                        header: "Error",
+                        cellClassName: "text-xs text-slate-600",
+                        render: (row) => {
+                          if (!row.errorMessage) return "None";
+                          const translatedError = translateError(extractErrorCode(row.errorMessage));
+                          return `${translatedError.title}: ${translatedError.description}`;
+                        },
+                      },
+                      {
+                        key: "retryCount",
+                        header: "Attempts",
+                        mobileHide: true,
+                        render: (row) => String(row.retryCount ?? 0),
+                      },
+                    ] satisfies Column<BulkImportRunRow>[]}
+                    rows={selectedRunRows}
+                    getRowKey={(row) => row.id}
+                  />
+                  <div className="mt-3 flex items-center justify-between text-sm">
+                    <span className="text-slate-600">
+                      Showing {selectedRunRows.length} rows{runRowCursor ? " (paginated)" : ""}
+                    </span>
+                    <div className="flex gap-2">
+                      {runRowCursor ? (
+                        <Link
+                          href={buildRunHref(selectedBulkRunId)}
+                          className="rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          First page
+                        </Link>
+                      ) : null}
+                      {runRowsNextCursor ? (
+                        <Link
+                          href={buildRunHref(selectedBulkRunId, runRowsNextCursor)}
+                          className="rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Next page
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </Card>

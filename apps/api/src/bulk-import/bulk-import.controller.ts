@@ -366,6 +366,19 @@ export class BulkImportController {
   }
 
   @Roles("admin", "editor")
+  @Post("runs/:id/retry-stuck")
+  retryStuckRows(
+    @Param("id") runId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.retryStuckRows(runId, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
   @Get("runs/:id/rows")
   @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
   @ApiClientScopes("bulk_import.read")
