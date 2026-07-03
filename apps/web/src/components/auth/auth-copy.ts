@@ -110,7 +110,7 @@ const EN_COPY: AuthCopy = {
   workspaceChecking: "Checking workspace availability...",
   workspaceTaken: "That workspace ID is already taken.",
   workspaceNotFound: "Workspace not found. Check your workspace ID and try again.",
-  emailLabel: "User ID",
+  emailLabel: "Email / User ID",
   loginReasonSessionExpired: "Your session expired. Please sign in again.",
   loginReasonForbidden: "Your account does not have access to that page.",
   loginReasonTenantSuspended: "This workspace is temporarily suspended. Contact Vexa to restore access.",
