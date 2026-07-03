@@ -847,7 +847,7 @@ export class CatalogService {
     const mergedDescription = dto.description ?? current.description;
     const mergedBrand = dto.brand ?? current.brand;
     const mergedCategoryId = dto.categoryId ?? current.categoryId;
-    const mergedHsnCode = dto.hsnCode !== undefined ? (dto.hsnCode.trim() || null) : current.hsnCode;
+    const mergedHsnCode = dto.hsnCode === undefined ? current.hsnCode : (dto.hsnCode?.trim() || null);
     const mergedGstRate = dto.gstRate !== undefined ? dto.gstRate : current.gstRate;
     await this.requireCategory(mergedCategoryId);
     await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "edit", {
@@ -1630,7 +1630,7 @@ export class CatalogService {
       current.brand !== (dto.brand ?? current.brand).trim() ||
       current.categoryId !== (dto.categoryId ?? current.categoryId) ||
       this.normalizeVendorScopeKey(current.vendorScopeKey) !== nextVendorScopeKey ||
-      (current.hsnCode ?? null) !== (dto.hsnCode !== undefined ? (dto.hsnCode.trim() || null) : current.hsnCode) ||
+      (current.hsnCode ?? null) !== (dto.hsnCode === undefined ? current.hsnCode : (dto.hsnCode?.trim() || null)) ||
       (current.gstRate ?? null) !== (dto.gstRate !== undefined ? dto.gstRate : current.gstRate) ||
       !this.recordsEqual(currentAttributes, nextAttributes);
 
