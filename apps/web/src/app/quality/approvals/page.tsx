@@ -816,10 +816,12 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
     if (error instanceof ApiHttpError && error.status === 429) {
       return (
         <div className="space-y-5">
-          <PageHeader title="Approvals" subtitle="Review and approve product changes." />
-          <InlineAlert variant="warning" title="Too many requests">
-            You are navigating too quickly. Please wait a moment and reload the page.
-          </InlineAlert>
+          <PageHeader title="Approvals" description="Review and approve product changes." />
+          <InlineAlert
+            tone="warning"
+            title="Too many requests"
+            message="You are navigating too quickly. Please wait a moment and reload the page."
+          />
         </div>
       );
     }
