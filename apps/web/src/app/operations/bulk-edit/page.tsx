@@ -246,9 +246,9 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     const operationColumns: Column<(typeof operations)[number]>[] = [
       { key: "operation", header: "Operation", render: (operation) => <span className="font-mono text-xs">{operation.id}</span> },
       { key: "status", header: "Status", render: (operation) => translateBulkEditStatus(operation.status) },
-      { key: "requested", header: "Requested", render: (operation) => operation.requestedCount },
-      { key: "applied", header: "Applied", render: (operation) => operation.appliedCount },
-      { key: "failed", header: "Failed", render: (operation) => operation.failedCount },
+      { key: "requested", header: "Requested", render: (operation) => String(operation.requestedCount ?? 0) },
+      { key: "applied", header: "Applied", render: (operation) => String(operation.appliedCount ?? 0) },
+      { key: "failed", header: "Failed", render: (operation) => String(operation.failedCount ?? 0) },
       { key: "updates", header: "Updates", render: (operation) => <span className="text-xs">{JSON.stringify(operation.updates)}</span> },
     ];
 
