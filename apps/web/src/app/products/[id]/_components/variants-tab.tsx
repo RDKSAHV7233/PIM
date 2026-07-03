@@ -32,7 +32,7 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
         const editFormId = `variant-edit-${variant.id}`;
         const attributesDefault = JSON.stringify(variant.attributes ?? {}, null, 2);
         return data.canWrite ? (
-          <Textarea form={editFormId} name="attributes" rows={4} className="w-full min-w-0 text-xs" defaultValue={attributesDefault} />
+          <Textarea form={editFormId} name="variantAttributes" rows={4} className="w-full min-w-0 text-xs" defaultValue={attributesDefault} />
         ) : (
           <JsonPreview value={attributesDefault} className="max-w-[360px] p-2" />
         );
@@ -183,7 +183,7 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-attributes">
                 Variant Attributes
               </label>
-              <Textarea id="variant-attributes" name="attributes" rows={4} className="md:col-span-2" />
+              <Textarea id="variant-attributes" name="variantAttributes" rows={4} className="md:col-span-2" />
               <p className="text-xs text-slate-500">Optional details to describe this variant.</p>
             </div>
             <Button type="submit" className="w-fit">

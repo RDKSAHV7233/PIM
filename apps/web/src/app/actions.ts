@@ -939,7 +939,7 @@ export async function createVariantAction(formData: FormData) {
   if (!productId || !skuCode) {
     throw new Error("Product and SKU are required.");
   }
-  const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+  const attributes = parseJsonObject(formData.get("variantAttributes"), "Attributes");
   const basePath = `/products/${encodeURIComponent(productId)}`;
 
   try {
@@ -969,7 +969,7 @@ export async function updateVariantAction(formData: FormData) {
   if (!productId || !variantId || !skuCode) {
     throw new Error("Product, variant, and SKU are required.");
   }
-  const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+  const attributes = parseJsonObject(formData.get("variantAttributes"), "Attributes");
   const basePath = `/products/${encodeURIComponent(productId)}`;
 
   try {
