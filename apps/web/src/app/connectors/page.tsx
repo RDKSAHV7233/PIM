@@ -552,6 +552,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         };
       })
       .filter((item) => item.definition.launchStage !== "planned")
+      .filter((item) => !item.definition.slug.startsWith("diag-"))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => {
         const installedDelta = right.installedForDefinition.length - left.installedForDefinition.length;
@@ -572,6 +573,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
       (item) => item.workspaceState.label === "Needs setup",
     );
     const filteredInstallations = installations
+      .filter((installation) => !installation.slug.startsWith("diag-"))
       .filter((installation) => installationMatchesQuery(normalizedSearch, installation))
       .sort((left, right) => {
         const leftActive = String(left.status ?? "").trim().toUpperCase() === "ACTIVE" ? 0 : 1;

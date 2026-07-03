@@ -131,18 +131,24 @@ function submissionTimelineItems(submission: {
   }
 
   const normalized = normalizeStatus(submission.status);
-  const resolvedDescription =
-    submission.channelErrors[0]?.sellerMessage ||
-    (normalized === "SUCCESS"
+  const hasErrors = submission.channelErrors.length > 0;
+  const effectiveStatus = normalized === "SUCCESS" && hasErrors ? "PARTIAL_SUCCESS" : normalized;
+  const resolvedDescription = hasErrors
+    ? submission.channelErrors[0].sellerMessage
+    : normalized === "SUCCESS"
       ? "The connector accepted the submission."
-      : "The latest channel outcome still needs operator review.");
+      : "The latest channel outcome still needs operator review.";
 
   items.push({
     id: `${submission.id}-resolved`,
-    title: normalized === "SUCCESS" ? "Resolved successfully" : `Latest status ${normalized}`,
+    title: effectiveStatus === "SUCCESS"
+      ? "Resolved successfully"
+      : effectiveStatus === "PARTIAL_SUCCESS"
+        ? "Completed with warnings"
+        : `Latest status ${normalized}`,
     description: resolvedDescription,
     meta: submission.resolvedAt ? formatDateTime(submission.resolvedAt) : "Awaiting connector resolution",
-    tone: statusTone(submission.status),
+    tone: effectiveStatus === "PARTIAL_SUCCESS" ? "warning" : statusTone(submission.status),
   });
 
   return items;

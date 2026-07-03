@@ -1556,6 +1556,14 @@ export class AuthService implements OnModuleDestroy {
       if (defaultTenantId !== tenantId) {
         return null;
       }
+      const fromDb = await this.resolveIdentityFromDatabase(normalizedUserId, tenantId);
+      if (fromDb) {
+        this.logger.warn(
+          `[AUTH] User "${normalizedUserId}" not in PIM_AUTH_IDENTITIES_JSON but found in DB with role="${fromDb.role}". ` +
+            `Add this user to the identity JSON to avoid the DB fallback.`,
+        );
+        return fromDb;
+      }
       return {
         userId: normalizedUserId,
         tenantId,
