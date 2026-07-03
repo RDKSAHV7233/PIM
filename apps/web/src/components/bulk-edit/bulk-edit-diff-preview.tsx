@@ -162,8 +162,6 @@ export function BulkEditDiffPreview({
         ))}
       </div>
 
-      <DataGrid columns={columns} rows={previewRows} getRowKey={(product) => product.id} rowClassName="align-top" caption="Bulk edit preview" />
-
       {requestedCount > previewRows.length && (
         <Button type="button" variant="secondary" onClick={() => setShowAll(true)}>
           + Show all {requestedCount}
