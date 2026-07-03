@@ -300,6 +300,11 @@ async function runCaseStagingAllowsConsoleEmailProvider(baseEnv) {
     PIM_AUTH_IDENTITIES_JSON: "",
     PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
     PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+    // Staging validation rejects the dev-default Redis opt-outs inherited
+    // from baseEnv: staging/production must run Redis-backed auth lockout
+    // and JWT blocklist state.
+    PIM_AUTH_REDIS_DISABLED: "false",
+    JWT_BLOCKLIST_REDIS_DISABLED: "false",
   };
   const baseUrl = `http://localhost:${port}/api/v1`;
   const stdout = [];
