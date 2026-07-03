@@ -4,12 +4,84 @@ const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const { randomUUID } = require("node:crypto");
-const { spawn, execFileSync } = require("node:child_process");
+const { spawn, execFileSync, execSync } = require("node:child_process");
 const http = require("node:http");
 const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const SCHEMA_PATH = path.join(REPO_ROOT, "packages", "db", "prisma", "schema.prisma");
+const DEFAULT_API_HEALTH_TIMEOUT_MS = REPO_ROOT.startsWith("/mnt/") ? 600_000 : 240_000;
+const API_HEALTH_TIMEOUT_MS = Number.parseInt(
+  process.env.PIM_INTEGRATION_API_HEALTH_TIMEOUT_MS || String(DEFAULT_API_HEALTH_TIMEOUT_MS),
+  10,
+);
+const MIGRATIONS = [
+  {
+    table: "Product",
+    column: "vendor_scope_key",
+    file: path.join(
+      REPO_ROOT,
+      "packages",
+      "db",
+      "prisma",
+      "migrations",
+      "20260428131500_add_product_vendor_scope_key",
+      "migration.sql",
+    ),
+  },
+  {
+    table: "connector_mapping_versions",
+    column: "installation_id",
+    file: path.join(
+      REPO_ROOT,
+      "packages",
+      "db",
+      "prisma",
+      "migrations",
+      "20260514120000_connector_mapping_version_installation_id",
+      "migration.sql",
+    ),
+  },
+  {
+    table: "PriceList",
+    file: path.join(
+      REPO_ROOT,
+      "packages",
+      "db",
+      "prisma",
+      "migrations",
+      "20260516000002_localization_schema",
+      "migration.sql",
+    ),
+  },
+  {
+    table: "MarketplaceExportJob",
+    column: "installation_id",
+    file: path.join(
+      REPO_ROOT,
+      "packages",
+      "db",
+      "prisma",
+      "migrations",
+      "20260516000001_export_job_installation_id",
+      "migration.sql",
+    ),
+  },
+  {
+    table: "Product",
+    column: "assignee_id",
+    file: path.join(
+      REPO_ROOT,
+      "packages",
+      "db",
+      "prisma",
+      "migrations",
+      "20260516000006_workflow_collab_sla",
+      "migration.sql",
+    ),
+  },
+];
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -70,6 +142,78 @@ function prepareEnv() {
   // Disable the queue worker so only the explicit /process HTTP calls trigger Flipkart.
   // QUEUE_WORKER_ENABLED=false is respected by both the memory and bullmq backends.
   process.env["QUEUE_WORKER_ENABLED"] = "false";
+}
+
+async function schemaElementExists(prisma, migration) {
+  if (migration.column) {
+    const rows = await prisma.$queryRawUnsafe(
+      `
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_name = $2
+      LIMIT 1
+      `,
+      migration.table,
+      migration.column,
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  }
+  const rows = await prisma.$queryRawUnsafe(
+    `
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = $1
+    LIMIT 1
+    `,
+    migration.table,
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+async function runMigrations() {
+  const env = {
+    ...process.env,
+    DATABASE_URL: String(process.env.DATABASE_URL ?? "").trim(),
+    DATABASE_URL_POOLED: String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim(),
+    DATABASE_URL_DIRECT: String(process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL ?? "").trim(),
+  };
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: env.DATABASE_URL_POOLED || env.DATABASE_URL,
+      },
+    },
+  });
+  try {
+    for (const migration of MIGRATIONS) {
+      if (await schemaElementExists(prisma, migration)) {
+        continue;
+      }
+      const command =
+        process.platform === "win32"
+          ? `npx prisma db execute --schema "${SCHEMA_PATH}" --file "${migration.file}"`
+          : `npx prisma db execute --schema '${SCHEMA_PATH}' --file '${migration.file}'`;
+      try {
+        execSync(command, {
+          cwd: REPO_ROOT,
+          stdio: "pipe",
+          encoding: "utf8",
+          env,
+        });
+      } catch (error) {
+        const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+        if (/already exists/i.test(output) || /already contains|duplicate column/i.test(output)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 function sleep(ms) {
@@ -138,6 +282,24 @@ async function apiRequest(baseUrl, method, route, token, body) {
     payload = text;
   }
   return { status: response.status, payload };
+}
+
+async function fetchRecentAuditLogs(prisma, tenantKey) {
+  try {
+    // RLS-BYPASS: diagnostics in this integration test are manually tenant-filtered.
+    return await prisma.$queryRawUnsafe(
+      `
+      SELECT action, resource, status, details, created_at AS "createdAt"
+      FROM audit_logs
+      WHERE tenant_key = $1
+      ORDER BY created_at DESC
+      LIMIT 5
+      `,
+      tenantKey,
+    );
+  } catch {
+    return [];
+  }
 }
 
 function assertStatus(result, expected, context) {
@@ -331,6 +493,7 @@ async function seedCredentials(repoRoot, tenantKey, installationId) {
 
 async function run() {
   prepareEnv();
+  await runMigrations();
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
@@ -386,7 +549,7 @@ async function run() {
   });
 
   try {
-    await waitForHealth(baseUrl, 60_000);
+    await waitForHealth(baseUrl, Number.isFinite(API_HEALTH_TIMEOUT_MS) ? API_HEALTH_TIMEOUT_MS : 240_000);
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
@@ -424,6 +587,12 @@ async function run() {
         procurementType: "REGULAR",
       },
     });
+    if (product.status !== 201) {
+      const recentAuditLogs = await fetchRecentAuditLogs(prisma, tenantId);
+      throw new Error(
+        `create product failed: expected 201, got ${product.status} payload=${JSON.stringify(product.payload)} recentAuditLogs=${JSON.stringify(recentAuditLogs)}`,
+      );
+    }
     assertStatus(product, 201, "create product");
 
     const createVariant = await apiRequest(
@@ -652,6 +821,5 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-
 
 
