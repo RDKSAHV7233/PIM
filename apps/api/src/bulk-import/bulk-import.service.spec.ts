@@ -314,7 +314,13 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
     const prisma = {
       tenant: jest.fn().mockReturnValue({
         bulkImportJob: { update: jest.fn().mockResolvedValue({}), findUnique: jobFindUniqueMock },
-        bulkImportRow: { findMany: jest.fn().mockResolvedValue(options.rows), update: rowUpdateMock, updateMany: rowUpdateManyMock, groupBy: jest.fn().mockResolvedValue([]) },
+        // findMany must return the rows once then empty on subsequent calls so
+        // processJob()'s while-loop terminates. Real Prisma behavior mirrors
+        // this: after processRow() runs, rows leave "queued"/"retrying" and
+        // stop matching the findMany filter. Without .mockResolvedValueOnce
+        // the mock returns the same "queued" rows forever, spinning the loop
+        // and leaking jest mock.calls until OOM.
+        bulkImportRow: { findMany: jest.fn().mockResolvedValueOnce(options.rows).mockResolvedValue([]), update: rowUpdateMock, updateMany: rowUpdateManyMock, groupBy: jest.fn().mockResolvedValue([]) },
         product: { create: productCreateMock, findUnique: productFindUniqueMock },
         productTaxCode: { createMany: jest.fn() },
         taxRegime: { findMany: jest.fn().mockResolvedValue([]) },
