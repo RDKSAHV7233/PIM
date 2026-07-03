@@ -101,17 +101,7 @@ jobs:
         run: npm run build --workspace @pim1/api
 
       - name: Unit tests
-        env:
-          # Modest bump for headroom on the remaining suites.
-          NODE_OPTIONS: --max-old-space-size=4096
-        # bulk-import.service.spec.ts has an unbounded memory leak pre-existing
-        # on origin/main (first observed in the CI run for 81b11d80). It fills
-        # even an 8GB heap and OOMs — leak is DURING spec execution, not at
-        # module load, so worker restarts between suites don't help either.
-        # This PR does not touch that spec or its subject (bulk-import.service.ts),
-        # so skipping it here is scope-appropriate. Remove once the underlying
-        # leak is fixed on main (tracked in a PR comment as a follow-up).
-        run: npm run test:unit --workspace @pim1/api -- --testPathIgnorePatterns=bulk-import.service.spec
+        run: npm run test:unit --workspace @pim1/api
 
       - name: Tenant isolation concurrency integration test
         run: npm run test:integration:rls-isolation
