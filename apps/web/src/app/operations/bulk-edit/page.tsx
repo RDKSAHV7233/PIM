@@ -132,6 +132,8 @@ function parseList(value: string): string[] {
 export default async function OperationsBulkEditPage({ searchParams }: OperationsBulkEditPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  const isNonProd = appEnv !== "production";
   const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
@@ -389,6 +391,17 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                     {previewErrorCode ? translateError(previewErrorCode).title : "Bulk edit preview could not run"}
                   </p>
                   <p>{previewErrorCode ? translateError(previewErrorCode).description : previewErrorMessage}</p>
+                  {previewErrorCode === "EMPTY_SCOPE" && hideTestData && isNonProd && (
+                    <p className="mt-2 text-slate-700">
+                      Test/demo products are currently hidden.{" "}
+                      <a
+                        href={`/operations/bulk-edit?bulkEditPreview=1&hideTestData=false&bulkEditCategoryId=${encodeURIComponent(bulkEditCategoryId)}&bulkEditStatus=${encodeURIComponent(bulkEditStatus)}&bulkEditBrandContains=${encodeURIComponent(bulkEditBrandContains)}&bulkEditField=${encodeURIComponent(bulkEditField)}&bulkEditOperation=${encodeURIComponent(bulkEditOperation)}&bulkEditValue=${encodeURIComponent(bulkEditValue)}&bulkEditMode=${encodeURIComponent(bulkEditMode)}`}
+                        className="font-medium text-blue-700 underline hover:text-blue-900"
+                      >
+                        Show test data
+                      </a>
+                    </p>
+                  )}
                 </div>
               ) : null}
               {previewResult && canWrite && previewResult.requestedCount > 0 ? (
@@ -406,6 +419,22 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                   applyAction={applyBulkEditAction}
                 />
               ) : null}
+              {previewResult && previewResult.requestedCount === 0 && (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="font-medium text-slate-900">No products matched your filters.</p>
+                  {hideTestData && isNonProd && (
+                    <p className="mt-1">
+                      Test/demo products are currently hidden.{" "}
+                      <a
+                        href={`/operations/bulk-edit?bulkEditPreview=1&hideTestData=false&bulkEditCategoryId=${encodeURIComponent(bulkEditCategoryId)}&bulkEditStatus=${encodeURIComponent(bulkEditStatus)}&bulkEditBrandContains=${encodeURIComponent(bulkEditBrandContains)}&bulkEditField=${encodeURIComponent(bulkEditField)}&bulkEditOperation=${encodeURIComponent(bulkEditOperation)}&bulkEditValue=${encodeURIComponent(bulkEditValue)}&bulkEditMode=${encodeURIComponent(bulkEditMode)}`}
+                        className="font-medium text-blue-700 underline hover:text-blue-900"
+                      >
+                        Show test data
+                      </a>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
         </Card>
