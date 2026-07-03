@@ -49,6 +49,20 @@ apps/web/test-results/
 
 # Temporary staging files
 .tmp/
+tmp-*
+
+# Local runtime artifacts
+*.pid
+apps/api/dist-feature/
+
+# Railway CLI config snapshots
+.railway-config-pull-*/
+
+# Generated QA test data
+qa/realistic-data/generated/
+
+# Windows path-mangled temp files
+C:Temp*
 
 # Marketing/website handover lives in a separate repo
 vexa-pim-website-handover/
