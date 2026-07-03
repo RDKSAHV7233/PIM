@@ -33,6 +33,7 @@ module.exports = {
     "**/workspace-users/workspace-users.service.spec.ts",
     "**/pricing/pricing.service.spec.ts",
     "**/prisma/extensions/tenant-scope.spec.ts",
+    "**/common/tenant/tenant-raw-usage.spec.ts",
     "**/bulk-edit/bulk-edit.service.spec.ts",
     "**/queue/queue.service.spec.ts",
     "**/connector-framework/connector.registry.spec.ts",

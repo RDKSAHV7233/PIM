@@ -2950,7 +2950,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/media/assets?productId=&variantId=",
+              "raw": "{{base_url}}/api/v1/media/assets",
               "host": [
                 "{{base_url}}"
               ],
@@ -2959,20 +2959,6 @@
                 "v1",
                 "media",
                 "assets"
-              ],
-              "query": [
-                {
-                  "key": "productId",
-                  "value": "",
-                  "description": "(required)",
-                  "disabled": false
-                },
-                {
-                  "key": "variantId",
-                  "value": "",
-                  "description": "(required)",
-                  "disabled": false
-                }
               ]
             },
             "description": ""
@@ -8823,7 +8809,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/audit/logs?limit=&actorId=",
+              "raw": "{{base_url}}/api/v1/audit/logs",
               "host": [
                 "{{base_url}}"
               ],
@@ -8832,20 +8818,6 @@
                 "v1",
                 "audit",
                 "logs"
-              ],
-              "query": [
-                {
-                  "key": "limit",
-                  "value": "",
-                  "description": "(required)",
-                  "disabled": false
-                },
-                {
-                  "key": "actorId",
-                  "value": "",
-                  "description": "(required)",
-                  "disabled": false
-                }
               ]
             },
             "description": ""
