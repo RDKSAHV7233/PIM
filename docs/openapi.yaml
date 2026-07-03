@@ -129,17 +129,7 @@ paths:
   /api/v1/audit/logs:
     get:
       operationId: AuditController_listLogs
-      parameters:
-        - name: limit
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: actorId
-          required: true
-          in: query
-          schema:
-            type: string
+      parameters: []
       responses:
         "200":
           description: ""
@@ -3202,17 +3192,7 @@ paths:
         - Media
     get:
       operationId: MediaController_listAssets
-      parameters:
-        - name: productId
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: variantId
-          required: true
-          in: query
-          schema:
-            type: string
+      parameters: []
       responses:
         "200":
           description: ""
