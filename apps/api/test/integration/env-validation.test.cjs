@@ -6,6 +6,12 @@ const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const DEFAULT_API_HEALTH_TIMEOUT_MS = REPO_ROOT.startsWith("/mnt/") ? 600_000 : 240_000;
+const API_HEALTH_TIMEOUT_MS = Number.parseInt(
+  process.env.PIM_INTEGRATION_API_HEALTH_TIMEOUT_MS || String(DEFAULT_API_HEALTH_TIMEOUT_MS),
+  10,
+);
+const INVALID_ENV_PROCESS_TIMEOUT_MS = REPO_ROOT.startsWith("/mnt/") ? 120_000 : 20_000;
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -167,7 +173,7 @@ async function runCaseMissingJwtSecret(baseEnv) {
     new Promise((resolve) => {
       processHandle.on("close", (code) => resolve({ code, timeout: false }));
     }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
+    sleep(INVALID_ENV_PROCESS_TIMEOUT_MS).then(() => ({ code: null, timeout: true })),
   ]);
 
   if (result.timeout) {
@@ -209,7 +215,10 @@ async function runCaseValidEnvStarts(baseEnv) {
   processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
 
   try {
-    const healthy = await waitForHealth(baseUrl, 60_000);
+    const healthy = await waitForHealth(
+      baseUrl,
+      Number.isFinite(API_HEALTH_TIMEOUT_MS) ? API_HEALTH_TIMEOUT_MS : DEFAULT_API_HEALTH_TIMEOUT_MS,
+    );
     if (!healthy) {
       throw new Error(
         `Expected app to start with valid env. stdout tail=${stdout.join("").slice(-500)} stderr tail=${stderr.join("").slice(-500)}`,
@@ -291,6 +300,11 @@ async function runCaseStagingAllowsConsoleEmailProvider(baseEnv) {
     PIM_AUTH_IDENTITIES_JSON: "",
     PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
     PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+    // Staging validation rejects the dev-default Redis opt-outs inherited
+    // from baseEnv: staging/production must run Redis-backed auth lockout
+    // and JWT blocklist state.
+    PIM_AUTH_REDIS_DISABLED: "false",
+    JWT_BLOCKLIST_REDIS_DISABLED: "false",
   };
   const baseUrl = `http://localhost:${port}/api/v1`;
   const stdout = [];
@@ -305,7 +319,10 @@ async function runCaseStagingAllowsConsoleEmailProvider(baseEnv) {
   processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
 
   try {
-    const healthy = await waitForHealth(baseUrl, 60_000);
+    const healthy = await waitForHealth(
+      baseUrl,
+      Number.isFinite(API_HEALTH_TIMEOUT_MS) ? API_HEALTH_TIMEOUT_MS : DEFAULT_API_HEALTH_TIMEOUT_MS,
+    );
     if (!healthy) {
       throw new Error(
         `Expected staging startup to succeed when AUTH_EMAIL_PROVIDER=console. stdout tail=${stdout.join("").slice(-500)} stderr tail=${stderr.join("").slice(-500)}`,
