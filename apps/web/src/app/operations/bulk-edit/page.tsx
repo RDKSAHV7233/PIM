@@ -2,12 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { applyBulkEditAction } from "@/app/actions";
 import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";
+import { StructuredChangeBuilder } from "@/components/bulk-edit/structured-change-builder";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
-import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -346,71 +346,11 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                   placeholder="Optional, comma or newline separated"
                 />
               </div>
-              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:col-span-2 lg:col-span-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Structured change builder</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Default to field + operation changes here. Advanced JSON stays secondary for uncommon edits.
-                  </p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-field">
-                      Field
-                    </label>
-                    <Select id="bulk-edit-field" name="bulkEditField" defaultValue={bulkEditField}>
-                      {STRUCTURED_BULK_EDIT_FIELDS.map((field) => (
-                        <option key={field.value} value={field.value}>
-                          {field.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-operation">
-                      Operation
-                    </label>
-                    <Select id="bulk-edit-operation" name="bulkEditOperation" defaultValue={bulkEditOperation}>
-                      <option value="set">Set value</option>
-                      <option value="clear">Clear value</option>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-value">
-                      New value
-                    </label>
-                    {bulkEditField === "status" && bulkEditOperation === "set" ? (
-                      <Select id="bulk-edit-value" name="bulkEditValue" defaultValue={bulkEditValue}>
-                        <option value="draft">draft</option>
-                        <option value="in_review">in_review</option>
-                        <option value="approved">approved</option>
-                        <option value="rejected">rejected</option>
-                        <option value="active">active</option>
-                        <option value="archived">archived</option>
-                      </Select>
-                    ) : (
-                      <Input
-                        id="bulk-edit-value"
-                        name="bulkEditValue"
-                        defaultValue={bulkEditOperation === "clear" ? "" : bulkEditValue}
-                        disabled={bulkEditOperation === "clear"}
-                        placeholder={
-                          bulkEditOperation === "clear"
-                            ? "Clear sets the field to blank/null."
-                            : STRUCTURED_BULK_EDIT_FIELDS.find((field) => field.value === bulkEditField)?.placeholder
-                        }
-                      />
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-md border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Generated update payload</p>
-                  <JsonPreview value={structuredUpdatesText} className="mt-2 border-0 bg-transparent p-0" />
-                </div>
-                <Button type="submit" className="w-fit" name="bulkEditMode" value="structured">
-                  Preview affected products
-                </Button>
-              </div>
+              <StructuredChangeBuilder
+                defaultField={bulkEditField}
+                defaultOperation={bulkEditOperation}
+                defaultValue={bulkEditValue}
+              />
               <div className="space-y-1 md:col-span-2 lg:col-span-3">
                 <details className="rounded-lg border border-slate-200 bg-white">
                   <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
