@@ -6,6 +6,7 @@ import { createClient } from "redis";
 import { StripeService } from "../billing/stripe.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AuthEmailService } from "../auth/auth-email.service";
+import { escapeHtml, formatDateUtc, renderEmailHtml, renderEmailText, resolveEmailBrandConfig } from "../auth/email-template";
 import { MetricsService } from "../metrics/metrics.service";
 import {
   DEFAULT_TENANT_KEY,
@@ -544,19 +545,45 @@ export class SignupService implements OnModuleDestroy {
     expiresAt: Date;
   }): Promise<void> {
     const verifyUrl = `${this.resolveWebBaseUrl()}/signup/verify?token=${encodeURIComponent(input.verificationToken)}&email=${encodeURIComponent(input.adminEmail)}&workspace=${encodeURIComponent(input.workspaceSlug)}`;
+    const expiryText = formatDateUtc(input.expiresAt);
+    const brand = resolveEmailBrandConfig();
+
+    const bodyText =
+      `Verify your Vexa PIM workspace to finish setup.\n\n` +
+      `Workspace: ${input.workspaceSlug}\n\n` +
+      `This link expires ${expiryText}.`;
+
+    const bodyHtml =
+      `<p>Verify your Vexa PIM workspace to finish setup.</p>` +
+      `<p><strong>Workspace:</strong> ${escapeHtml(input.workspaceSlug)}</p>` +
+      `<p>This link expires ${escapeHtml(expiryText)}.</p>`;
+
+    const title = "Verify your Vexa PIM workspace";
+
     await this.authEmailService.send({
       to: input.adminEmail,
-      subject: "Verify your Vexa PIM workspace",
-      text:
-        `Verify your Vexa PIM workspace to finish setup.\n\n` +
-        `Workspace: ${input.workspaceSlug}\n` +
-        `Verification link: ${verifyUrl}\n\n` +
-        `This link expires at ${input.expiresAt.toISOString()}.`,
-      html:
-        `<p>Verify your Vexa PIM workspace to finish setup.</p>` +
-        `<p><strong>Workspace:</strong> ${this.escapeHtml(input.workspaceSlug)}</p>` +
-        `<p><a href="${verifyUrl}">Verify your workspace</a></p>` +
-        `<p>This link expires at ${this.escapeHtml(input.expiresAt.toISOString())}.</p>`,
+      subject: title,
+      text: renderEmailText({
+        ...brand,
+        title,
+        bodyText,
+        bodyHtml,
+        ctaLabel: "Verify your workspace",
+        ctaUrl: verifyUrl,
+        signatureType: "security",
+        footerReason: "You received this email because a workspace signup was requested with this address.",
+      }),
+      html: renderEmailHtml({
+        ...brand,
+        title,
+        preheader: "Finish setting up your Vexa PIM workspace",
+        bodyText,
+        bodyHtml,
+        ctaLabel: "Verify your workspace",
+        ctaUrl: verifyUrl,
+        signatureType: "security",
+        footerReason: "You received this email because a workspace signup was requested with this address.",
+      }),
       category: "signup_verification",
       metadata: {
         workspaceSlug: input.workspaceSlug,
@@ -598,15 +625,6 @@ export class SignupService implements OnModuleDestroy {
       return corsOrigins[0].replace(/\/+$/, "");
     }
     return "http://localhost:3000";
-  }
-
-  private escapeHtml(value: string): string {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
   }
 
   private async incrementAndCheckIpRateLimit(ipAddress: string, now: number): Promise<number> {

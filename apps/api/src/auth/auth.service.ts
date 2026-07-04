@@ -25,6 +25,7 @@ import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { AuthEmailService } from "./auth-email.service";
+import { escapeHtml, renderEmailHtml, renderEmailText, resolveEmailBrandConfig } from "./email-template";
 import { AccountExportStorageError, AuthExportStorageService } from "./auth-export-storage.service";
 import { AuthPolicyService } from "./auth-policy.service";
 import { LoginDto } from "./dto/login.dto";
@@ -1731,20 +1732,33 @@ export class AuthService implements OnModuleDestroy {
         ? await this.tenantDirectoryService.resolveWorkspaceSlug(payload.workspaceSlug)
         : null) ?? (await this.tenantDirectoryService.resolveTenantAlias(tenantId));
     const workspaceSlug = workspace?.workspaceSlug ?? normalizeWorkspaceSlug(payload.workspaceSlug ?? tenantId);
+    const displayName = workspace?.displayName ?? workspaceSlug;
     const webBaseUrl = this.resolveWebBaseUrl();
+    const brand = resolveEmailBrandConfig();
 
     if (payload.kind === "account_export_ready" && payload.jobId) {
       const privacyUrl = `${webBaseUrl}/settings/privacy`;
+      const templateInput = {
+        logoUrl: brand.logoUrl,
+        title: "Your Vexa PIM account export is ready",
+        bodyHtml: `<p>Your account export is ready.</p><p>Sign in to Vexa PIM and open Privacy settings to download it securely.</p>`,
+        bodyText: `Your account export is ready. Sign in to Vexa PIM and open ${privacyUrl} to download it securely.`,
+        ctaLabel: "Open privacy settings",
+        ctaUrl: privacyUrl,
+        workspaceName: displayName,
+        workspaceSlug,
+        footerReason: "You received this email because it relates to your Vexa PIM workspace.",
+        signatureType: "support" as const,
+        supportUrl: brand.supportUrl,
+        supportEmail: brand.supportEmail,
+      };
       await this.authEmailService.send({
         to: userId,
         subject: "Your Vexa PIM account export is ready",
-        text: `Your account export is ready. Sign in to Vexa PIM and open ${privacyUrl} to download it securely.`,
-        html: `<p>Your account export is ready.</p><p><a href=\"${privacyUrl}\">Sign in to Vexa PIM</a> and open Privacy settings to download it securely.</p>`,
+        text: renderEmailText(templateInput),
+        html: renderEmailHtml(templateInput),
         category: "account_export_ready",
-        metadata: {
-          tenantId,
-          jobId: payload.jobId,
-        },
+        metadata: { tenantId, jobId: payload.jobId },
       });
       return;
     }
@@ -1760,16 +1774,28 @@ export class AuthService implements OnModuleDestroy {
       ? "Your account was locked after repeated sign-in attempts. Use the link below to set a new password and regain access."
       : "Use the link below to set a new password for your Vexa PIM account.";
 
+    const templateInput = {
+      logoUrl: brand.logoUrl,
+      title: subject,
+      bodyHtml: `<p>${escapeHtml(intro)}</p><p><strong>Workspace:</strong> ${escapeHtml(workspaceSlug)}</p><p>This link expires in 30 minutes.</p>`,
+      bodyText: `${intro}\n\nWorkspace: ${workspaceSlug}\n\nThis link expires in 30 minutes.`,
+      ctaLabel: "Set a new password",
+      ctaUrl: resetUrl,
+      workspaceName: displayName,
+      workspaceSlug,
+      footerReason: "You received this email because a security action was requested for your Vexa PIM workspace.",
+      signatureType: "security" as const,
+      supportUrl: brand.supportUrl,
+      supportEmail: brand.supportEmail,
+    };
+
     await this.authEmailService.send({
       to: userId,
       subject,
-      text: `${intro}\n\nWorkspace: ${workspaceSlug}\nReset link: ${resetUrl}\n\nThis link expires in 30 minutes.`,
-      html: `<p>${intro}</p><p><strong>Workspace:</strong> ${this.escapeHtml(workspaceSlug)}</p><p><a href=\"${resetUrl}\">Set a new password</a></p><p>This link expires in 30 minutes.</p>`,
+      text: renderEmailText(templateInput),
+      html: renderEmailHtml(templateInput),
       category: isUnlock ? "account_unlock" : "password_reset",
-      metadata: {
-        tenantId,
-        workspaceSlug,
-      },
+      metadata: { tenantId, workspaceSlug },
     });
   }
 
@@ -2182,15 +2208,6 @@ export class AuthService implements OnModuleDestroy {
       return corsOrigins[0].replace(/\/+$/, "");
     }
     return "http://localhost:3000";
-  }
-
-  private escapeHtml(value: string): string {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
   }
 
   private async verifyPasswordForIdentity(

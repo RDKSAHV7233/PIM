@@ -38,6 +38,7 @@ module.exports = {
     "**/queue/queue.service.spec.ts",
     "**/connector-framework/connector.registry.spec.ts",
     "**/connector-framework/parse-capabilities.spec.ts",
+    "**/auth/email-template.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
