@@ -76,6 +76,14 @@ export function resolveConnectorLaunchPolicy(
   };
 }
 
+export function isCustomerVisibleStage(stage: ConnectorLaunchStage): boolean {
+  return stage === "live" || stage === "manual";
+}
+
+export function isInstallableStage(stage: ConnectorLaunchStage): boolean {
+  return stage === "live" || stage === "manual";
+}
+
 export function resolveSafeConnectorFallbackSlugs(): string[] {
   const configured = String(process.env.CONNECTOR_SAFE_FALLBACK_SLUGS ?? "")
     .split(",")
