@@ -35,6 +35,10 @@ export interface ValidatedEnv {
   PIM_COMMERCIAL_CONTACT_EMAIL?: string;
   PIM_COMMERCIAL_OPS_TOKEN?: string;
   PIM_COMMERCIAL_TRIAL_DAYS: number;
+  PIM_EMAIL_LOGO_URL?: string;
+  PIM_EMAIL_BANNER_URL?: string;
+  PIM_EMAIL_SUPPORT_URL?: string;
+  PIM_EMAIL_SUPPORT_EMAIL?: string;
   CORS_ORIGINS: string[];
   PORT: number;
   PIM_WEB_BASE_URL?: string;
@@ -117,6 +121,10 @@ const EnvSchema = z.object({
   AUTH_EMAIL_OUTBOX_DIR: z.string().optional(),
   PIM_COMMERCIAL_CONTACT_URL: z.string().url().optional(),
   PIM_COMMERCIAL_CONTACT_EMAIL: z.string().email().optional(),
+  PIM_EMAIL_LOGO_URL: z.string().url().optional(),
+  PIM_EMAIL_BANNER_URL: z.string().url().optional(),
+  PIM_EMAIL_SUPPORT_URL: z.string().url().optional(),
+  PIM_EMAIL_SUPPORT_EMAIL: z.string().email().optional(),
   PIM_COMMERCIAL_OPS_TOKEN: z.string().optional(),
   PIM_COMMERCIAL_TRIAL_DAYS: z.coerce.number().int().min(1).default(14),
   CORS_ORIGIN: z.string().optional(),
@@ -306,6 +314,17 @@ export function validateEnv(): ValidatedEnv {
           "PIM_COMMERCIAL_CONTACT_URL or PIM_COMMERCIAL_CONTACT_EMAIL: at least one is required for staging/production",
         );
       }
+
+      const emailImageUrls: Array<{ key: string; value: string }> = [
+        { key: "PIM_EMAIL_LOGO_URL", value: String(data.PIM_EMAIL_LOGO_URL ?? "").trim() },
+        { key: "PIM_EMAIL_BANNER_URL", value: String(data.PIM_EMAIL_BANNER_URL ?? "").trim() },
+      ];
+      for (const { key, value } of emailImageUrls) {
+        if (value && !value.startsWith("https://")) {
+          issues.push(`${key}: must use HTTPS in staging/production`);
+        }
+      }
+
       if (!String(data.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim()) {
         issues.push("PIM_COMMERCIAL_OPS_TOKEN: required for staging/production");
       }

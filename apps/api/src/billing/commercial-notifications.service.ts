@@ -1,5 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AuthEmailService } from "../auth/auth-email.service";
+import {
+  escapeHtml,
+  hasCommercialContactPath,
+  renderEmailHtml,
+  renderEmailText,
+  resolveCommercialContactText,
+  resolveEmailBrandConfig,
+} from "../auth/email-template";
 import { PrismaService } from "../prisma/prisma.service";
 import { type CommercialRequestSummary } from "./commercial-requests.service";
 import { type PlanProfileSummary } from "./plan-usage.service";
@@ -25,15 +33,14 @@ export class CommercialNotificationsService {
     event: CommercialNotificationEvent;
     profile: PlanProfileSummary;
   }): Promise<{ recipientCount: number }> {
+    if (!this.assertCommercialContactPath("notifyTenantAdmins")) {
+      return { recipientCount: 0 };
+    }
+
     const tenantDb = this.prisma.tenant(input.tenantKey);
     const workspace = await tenantDb.workspaceDirectory.findUnique({
-      where: {
-        tenantKey: input.tenantKey,
-      },
-      select: {
-        workspaceSlug: true,
-        displayName: true,
-      },
+      where: { tenantKey: input.tenantKey },
+      select: { workspaceSlug: true, displayName: true },
     });
 
     const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, input.profile.billingContactEmail);
@@ -45,24 +52,36 @@ export class CommercialNotificationsService {
     const workspaceSlug = String(workspace?.workspaceSlug ?? input.tenantKey).trim();
     const displayName = String(workspace?.displayName ?? workspaceSlug).trim() || workspaceSlug;
     const subject = this.buildSubject(input.event, displayName);
-    const text = this.buildText(input.event, {
-      displayName,
+    const intro = this.buildIntro(input.event, displayName);
+    const detailLines = this.buildProfileDetailLines(input.profile, workspaceSlug, displayName);
+    const brand = resolveEmailBrandConfig();
+
+    const bodyHtml = `<p>${escapeHtml(intro)}</p>${this.buildDetailTableHtml(detailLines)}`;
+    const bodyText = [intro, "", ...detailLines.map(([k, v]) => `${k}: ${v}`), "", resolveCommercialContactText()].join("\n");
+
+    const templateInput = {
+      logoUrl: brand.logoUrl,
+      bannerUrl: brand.bannerUrl,
+      title: subject,
+      bodyHtml,
+      bodyText,
+      workspaceName: displayName,
       workspaceSlug,
-      profile: input.profile,
-    });
-    const html = this.buildHtml(input.event, {
-      displayName,
-      workspaceSlug,
-      profile: input.profile,
-    });
+      footerReason: "You received this email because you are listed as an admin or billing contact for this Vexa PIM workspace.",
+      signatureType: "commercial" as const,
+      commercialContactUrl: brand.commercialContactUrl,
+      commercialContactEmail: brand.commercialContactEmail,
+      supportUrl: brand.supportUrl,
+      supportEmail: brand.supportEmail,
+    };
 
     await Promise.all(
       recipients.map((recipient) =>
         this.authEmailService.send({
           to: recipient,
           subject,
-          text,
-          html,
+          text: renderEmailText(templateInput),
+          html: renderEmailHtml(templateInput),
           category: "commercial_status_notice",
           metadata: {
             event: input.event,
@@ -81,6 +100,10 @@ export class CommercialNotificationsService {
   }
 
   async notifyPaymentFailed(input: { tenantKey: string; profile: PlanProfileSummary }): Promise<{ recipientCount: number }> {
+    if (!this.assertCommercialContactPath("notifyPaymentFailed")) {
+      return { recipientCount: 0 };
+    }
+
     const tenantDb = this.prisma.tenant(input.tenantKey);
     const workspace = await tenantDb.workspaceDirectory.findUnique({
       where: { tenantKey: input.tenantKey },
@@ -95,25 +118,34 @@ export class CommercialNotificationsService {
     const subject = `Payment failed: ${displayName}`;
     const grace = input.profile.graceEndsAt ? new Date(input.profile.graceEndsAt).toDateString() : null;
     const graceLine = grace ? `Access will be suspended if payment is not resolved by ${grace}.` : "Please update your payment method to avoid service interruption.";
-    const text = [
-      `A payment for your Vexa PIM workspace ${displayName} has failed.`,
-      "",
-      graceLine,
-      "",
-      this.resolveCommercialContactLine(),
-    ].join("\n");
-    const html = [
-      `<p>${this.escapeHtml(`A payment for your Vexa PIM workspace ${displayName} has failed.`)}</p>`,
-      `<p>${this.escapeHtml(graceLine)}</p>`,
-      `<p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
-    ].join("");
+    const brand = resolveEmailBrandConfig();
+
+    const bodyText = [`A payment for your Vexa PIM workspace ${displayName} has failed.`, "", graceLine, "", resolveCommercialContactText()].join("\n");
+    const bodyHtml = `<p>${escapeHtml(`A payment for your Vexa PIM workspace ${displayName} has failed.`)}</p><p>${escapeHtml(graceLine)}</p>`;
+
+    const templateInput = {
+      logoUrl: brand.logoUrl,
+      bannerUrl: brand.bannerUrl,
+      title: subject,
+      bodyHtml,
+      bodyText,
+      workspaceName: displayName,
+      workspaceSlug,
+      footerReason: "You received this email because you are listed as an admin or billing contact for this Vexa PIM workspace.",
+      signatureType: "commercial" as const,
+      commercialContactUrl: brand.commercialContactUrl,
+      commercialContactEmail: brand.commercialContactEmail,
+      supportUrl: brand.supportUrl,
+      supportEmail: brand.supportEmail,
+    };
+
     await Promise.all(
       recipients.map((recipient) =>
         this.authEmailService.send({
           to: recipient,
           subject,
-          text,
-          html,
+          text: renderEmailText(templateInput),
+          html: renderEmailHtml(templateInput),
           category: "commercial_status_notice",
           metadata: { event: "payment_failed", tenantKey: input.tenantKey, workspaceSlug },
         }),
@@ -122,11 +154,11 @@ export class CommercialNotificationsService {
     return { recipientCount: recipients.length };
   }
 
-  async notifyTrialEnding(input: {
-    tenantKey: string;
-    profile: PlanProfileSummary;
-    daysRemaining: number;
-  }): Promise<{ recipientCount: number }> {
+  async notifyTrialEnding(input: { tenantKey: string; profile: PlanProfileSummary; daysRemaining: number }): Promise<{ recipientCount: number }> {
+    if (!this.assertCommercialContactPath("notifyTrialEnding")) {
+      return { recipientCount: 0 };
+    }
+
     const tenantDb = this.prisma.tenant(input.tenantKey);
     const workspace = await tenantDb.workspaceDirectory.findUnique({
       where: { tenantKey: input.tenantKey },
@@ -140,42 +172,43 @@ export class CommercialNotificationsService {
     const displayName = String(workspace?.displayName ?? workspaceSlug).trim() || workspaceSlug;
     const dayWord = input.daysRemaining === 1 ? "day" : "days";
     const subject = `Your Vexa PIM trial ends in ${input.daysRemaining} ${dayWord}: ${displayName}`;
-    const text = [
-      `Your Vexa PIM trial for ${displayName} ends in ${input.daysRemaining} ${dayWord}.`,
-      "",
-      "To continue using Vexa PIM after the trial, please upgrade your plan.",
-      "",
-      this.resolveCommercialContactLine(),
-    ].join("\n");
-    const html = [
-      `<p>${this.escapeHtml(`Your Vexa PIM trial for ${displayName} ends in ${input.daysRemaining} ${dayWord}.`)}</p>`,
-      `<p>To continue using Vexa PIM after the trial, please upgrade your plan.</p>`,
-      `<p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
-    ].join("");
+    const brand = resolveEmailBrandConfig();
+
+    const bodyText = [`Your Vexa PIM trial for ${displayName} ends in ${input.daysRemaining} ${dayWord}.`, "", "To continue using Vexa PIM after the trial, please upgrade your plan.", "", resolveCommercialContactText()].join("\n");
+    const bodyHtml = `<p>${escapeHtml(`Your Vexa PIM trial for ${displayName} ends in ${input.daysRemaining} ${dayWord}.`)}</p><p>To continue using Vexa PIM after the trial, please upgrade your plan.</p>`;
+
+    const templateInput = {
+      logoUrl: brand.logoUrl,
+      bannerUrl: brand.bannerUrl,
+      title: subject,
+      bodyHtml,
+      bodyText,
+      workspaceName: displayName,
+      workspaceSlug,
+      footerReason: "You received this email because you are listed as an admin or billing contact for this Vexa PIM workspace.",
+      signatureType: "commercial" as const,
+      commercialContactUrl: brand.commercialContactUrl,
+      commercialContactEmail: brand.commercialContactEmail,
+      supportUrl: brand.supportUrl,
+      supportEmail: brand.supportEmail,
+    };
+
     await Promise.all(
       recipients.map((recipient) =>
         this.authEmailService.send({
           to: recipient,
           subject,
-          text,
-          html,
+          text: renderEmailText(templateInput),
+          html: renderEmailHtml(templateInput),
           category: "commercial_status_notice",
-          metadata: {
-            event: `trial_ending_${input.daysRemaining}d`,
-            tenantKey: input.tenantKey,
-            workspaceSlug,
-            daysRemaining: String(input.daysRemaining),
-          },
+          metadata: { event: `trial_ending_${input.daysRemaining}d`, tenantKey: input.tenantKey, workspaceSlug, daysRemaining: String(input.daysRemaining) },
         }),
       ),
     );
     return { recipientCount: recipients.length };
   }
 
-  async notifyCommercialOpsUpgradeRequest(input: {
-    tenantKey: string;
-    request: CommercialRequestSummary;
-  }): Promise<{ recipientCount: number }> {
+  async notifyCommercialOpsUpgradeRequest(input: { tenantKey: string; request: CommercialRequestSummary }): Promise<{ recipientCount: number }> {
     const contactEmail = String(process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim().toLowerCase();
     if (!contactEmail) {
       return { recipientCount: 0 };
@@ -184,340 +217,148 @@ export class CommercialNotificationsService {
     const workspaceSlug = String(input.request.workspaceSlug ?? input.tenantKey).trim() || input.tenantKey;
     const displayName = String(input.request.displayName ?? workspaceSlug).trim() || workspaceSlug;
     const subject = `Upgrade request: ${displayName}`;
-    const textLines = [
-      `${input.request.requestedBy} requested a commercial plan review.`,
-      "",
-      `Workspace: ${displayName}`,
-      `Workspace slug: ${workspaceSlug}`,
-      `Tenant key: ${input.tenantKey}`,
-      `Current plan tier: ${input.request.currentPlanTier}`,
-      `Requested plan tier: ${input.request.requestedPlanTier ?? "not specified"}`,
-      `Current billing status: ${input.request.currentBillingStatus}`,
-      `Current access status: ${input.request.currentAccessStatus}`,
-      `Requester role: ${input.request.requesterRole}`,
-      `Source: ${input.request.source}`,
-    ];
-    if (input.request.notes) {
-      textLines.push(`Notes: ${input.request.notes}`);
-    }
-    textLines.push("");
-    textLines.push("Review this request in the Vexa commercial workflow.");
+    const brand = resolveEmailBrandConfig();
 
-    const html = [
-      `<p>${this.escapeHtml(`${input.request.requestedBy} requested a commercial plan review.`)}</p>`,
-      "<table>",
-      `<tr><td><strong>Workspace</strong></td><td>${this.escapeHtml(displayName)}</td></tr>`,
-      `<tr><td><strong>Workspace slug</strong></td><td>${this.escapeHtml(workspaceSlug)}</td></tr>`,
-      `<tr><td><strong>Tenant key</strong></td><td>${this.escapeHtml(input.tenantKey)}</td></tr>`,
-      `<tr><td><strong>Current plan tier</strong></td><td>${this.escapeHtml(input.request.currentPlanTier)}</td></tr>`,
-      `<tr><td><strong>Requested plan tier</strong></td><td>${this.escapeHtml(input.request.requestedPlanTier ?? "not specified")}</td></tr>`,
-      `<tr><td><strong>Current billing status</strong></td><td>${this.escapeHtml(input.request.currentBillingStatus)}</td></tr>`,
-      `<tr><td><strong>Current access status</strong></td><td>${this.escapeHtml(input.request.currentAccessStatus)}</td></tr>`,
-      `<tr><td><strong>Requester</strong></td><td>${this.escapeHtml(input.request.requestedBy)}</td></tr>`,
-      `<tr><td><strong>Requester role</strong></td><td>${this.escapeHtml(input.request.requesterRole)}</td></tr>`,
-      `<tr><td><strong>Source</strong></td><td>${this.escapeHtml(input.request.source)}</td></tr>`,
-      input.request.notes
-        ? `<tr><td><strong>Notes</strong></td><td>${this.escapeHtml(input.request.notes)}</td></tr>`
-        : "",
-      "</table>",
-      "<p>Review this request in the Vexa commercial workflow.</p>",
-    ].join("");
+    const detailLines: Array<[string, string]> = [
+      ["Workspace", displayName], ["Workspace slug", workspaceSlug], ["Tenant key", input.tenantKey],
+      ["Current plan tier", input.request.currentPlanTier], ["Requested plan tier", input.request.requestedPlanTier ?? "not specified"],
+      ["Current billing status", input.request.currentBillingStatus], ["Current access status", input.request.currentAccessStatus],
+      ["Requester", input.request.requestedBy], ["Requester role", input.request.requesterRole], ["Source", input.request.source],
+    ];
+    if (input.request.notes) detailLines.push(["Notes", input.request.notes]);
+
+    const bodyText = [`${input.request.requestedBy} requested a commercial plan review.`, "", ...detailLines.map(([k, v]) => `${k}: ${v}`), "", "Review this request in the Vexa commercial workflow."].join("\n");
+    const bodyHtml = `<p>${escapeHtml(`${input.request.requestedBy} requested a commercial plan review.`)}</p>${this.buildDetailTableHtml(detailLines)}<p>Review this request in the Vexa commercial workflow.</p>`;
+
+    const templateInput = {
+      logoUrl: brand.logoUrl, bannerUrl: brand.bannerUrl, title: subject, bodyHtml, bodyText,
+      workspaceName: displayName, workspaceSlug,
+      footerReason: "You received this email because you are the Vexa PIM commercial operations contact.",
+      signatureType: "commercial" as const,
+      commercialContactUrl: brand.commercialContactUrl, commercialContactEmail: brand.commercialContactEmail,
+      supportUrl: brand.supportUrl, supportEmail: brand.supportEmail,
+    };
 
     await this.authEmailService.send({
-      to: contactEmail,
-      subject,
-      text: textLines.join("\n"),
-      html,
+      to: contactEmail, subject,
+      text: renderEmailText(templateInput), html: renderEmailHtml(templateInput),
       category: "commercial_upgrade_request",
-      metadata: {
-        event: "commercial_upgrade_request_created",
-        tenantKey: input.tenantKey,
-        requestId: input.request.id,
-        workspaceSlug,
-        requestedBy: input.request.requestedBy,
-        currentPlanTier: input.request.currentPlanTier,
-        currentBillingStatus: input.request.currentBillingStatus,
-        currentAccessStatus: input.request.currentAccessStatus,
-      },
+      metadata: { event: "commercial_upgrade_request_created", tenantKey: input.tenantKey, requestId: input.request.id, workspaceSlug, requestedBy: input.request.requestedBy, currentPlanTier: input.request.currentPlanTier, currentBillingStatus: input.request.currentBillingStatus, currentAccessStatus: input.request.currentAccessStatus },
     });
     return { recipientCount: 1 };
   }
 
-  async notifyTenantAdminsUpgradeRequestStatus(input: {
-    tenantKey: string;
-    request: CommercialRequestSummary;
-  }): Promise<{ recipientCount: number }> {
-    const tenantDb = this.prisma.tenant(input.tenantKey);
-    const workspace = await tenantDb.workspaceDirectory.findUnique({
-      where: {
-        tenantKey: input.tenantKey,
-      },
-      select: {
-        workspaceSlug: true,
-        displayName: true,
-      },
-    });
-    const profile = await tenantDb.tenantPlanProfile.findUnique({
-      where: {
-        tenantKey: input.tenantKey,
-      },
-      select: {
-        billingContactEmail: true,
-      },
-    });
-
-    const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, profile?.billingContactEmail ?? null);
-    if (recipients.length === 0) {
+  async notifyTenantAdminsUpgradeRequestStatus(input: { tenantKey: string; request: CommercialRequestSummary }): Promise<{ recipientCount: number }> {
+    if (!this.assertCommercialContactPath("notifyTenantAdminsUpgradeRequestStatus")) {
       return { recipientCount: 0 };
     }
+
+    const tenantDb = this.prisma.tenant(input.tenantKey);
+    const workspace = await tenantDb.workspaceDirectory.findUnique({ where: { tenantKey: input.tenantKey }, select: { workspaceSlug: true, displayName: true } });
+    const profile = await tenantDb.tenantPlanProfile.findUnique({ where: { tenantKey: input.tenantKey }, select: { billingContactEmail: true } });
+    const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, profile?.billingContactEmail ?? null);
+    if (recipients.length === 0) return { recipientCount: 0 };
 
     const workspaceSlug = String(workspace?.workspaceSlug ?? input.tenantKey).trim() || input.tenantKey;
     const displayName = String(workspace?.displayName ?? workspaceSlug).trim() || workspaceSlug;
     const subject = this.buildUpgradeRequestStatusSubject(input.request.status, displayName);
     const statusLabel = this.presentUpgradeRequestStatus(input.request.status);
-    const textLines = [
-      `Your Vexa PIM upgrade request is now ${statusLabel}.`,
-      "",
-      `Workspace: ${displayName}`,
-      `Workspace slug: ${workspaceSlug}`,
-      `Current plan tier: ${input.request.currentPlanTier}`,
-      `Current billing status: ${input.request.currentBillingStatus}`,
-      `Current access status: ${input.request.currentAccessStatus}`,
-      `Request status: ${statusLabel}`,
-    ];
-    if (input.request.notes) {
-      textLines.push(`Request notes: ${input.request.notes}`);
-    }
-    if (input.request.resolvedAt) {
-      textLines.push(`Updated at: ${input.request.resolvedAt}`);
-    }
-    textLines.push("");
-    textLines.push(this.resolveCommercialContactLine());
+    const brand = resolveEmailBrandConfig();
 
-    const htmlRows = [
-      ["Workspace", this.escapeHtml(displayName)],
-      ["Workspace slug", this.escapeHtml(workspaceSlug)],
-      ["Current plan tier", this.escapeHtml(input.request.currentPlanTier)],
-      ["Current billing status", this.escapeHtml(input.request.currentBillingStatus)],
-      ["Current access status", this.escapeHtml(input.request.currentAccessStatus)],
-      ["Request status", this.escapeHtml(statusLabel)],
+    const detailLines: Array<[string, string]> = [
+      ["Workspace", displayName], ["Workspace slug", workspaceSlug],
+      ["Current plan tier", input.request.currentPlanTier], ["Current billing status", input.request.currentBillingStatus],
+      ["Current access status", input.request.currentAccessStatus], ["Request status", statusLabel],
     ];
-    if (input.request.notes) {
-      htmlRows.push(["Request notes", this.escapeHtml(input.request.notes)]);
-    }
-    if (input.request.resolvedAt) {
-      htmlRows.push(["Updated at", this.escapeHtml(input.request.resolvedAt)]);
-    }
-    const tableRows = htmlRows
-      .map(([label, value]) => `<tr><td><strong>${label}</strong></td><td>${value}</td></tr>`)
-      .join("");
+    if (input.request.notes) detailLines.push(["Request notes", input.request.notes]);
+    if (input.request.resolvedAt) detailLines.push(["Updated at", input.request.resolvedAt]);
+
+    const bodyText = [`Your Vexa PIM upgrade request is now ${statusLabel}.`, "", ...detailLines.map(([k, v]) => `${k}: ${v}`), "", resolveCommercialContactText()].join("\n");
+    const bodyHtml = `<p>${escapeHtml(`Your Vexa PIM upgrade request is now ${statusLabel}.`)}</p>${this.buildDetailTableHtml(detailLines)}`;
+
+    const templateInput = {
+      logoUrl: brand.logoUrl, bannerUrl: brand.bannerUrl, title: subject, bodyHtml, bodyText,
+      workspaceName: displayName, workspaceSlug,
+      footerReason: "You received this email because you are listed as an admin or billing contact for this Vexa PIM workspace.",
+      signatureType: "commercial" as const,
+      commercialContactUrl: brand.commercialContactUrl, commercialContactEmail: brand.commercialContactEmail,
+      supportUrl: brand.supportUrl, supportEmail: brand.supportEmail,
+    };
 
     await Promise.all(
       recipients.map((recipient) =>
         this.authEmailService.send({
-          to: recipient,
-          subject,
-          text: textLines.join("\n"),
-          html: `<p>${this.escapeHtml(`Your Vexa PIM upgrade request is now ${statusLabel}.`)}</p><table>${tableRows}</table><p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
+          to: recipient, subject,
+          text: renderEmailText(templateInput), html: renderEmailHtml(templateInput),
           category: "commercial_status_notice",
-          metadata: {
-            event: "commercial_upgrade_request_status_updated",
-            tenantKey: input.tenantKey,
-            requestId: input.request.id,
-            requestStatus: input.request.status,
-            workspaceSlug,
-          },
+          metadata: { event: "commercial_upgrade_request_status_updated", tenantKey: input.tenantKey, requestId: input.request.id, requestStatus: input.request.status, workspaceSlug },
         }),
       ),
     );
-
     return { recipientCount: recipients.length };
   }
 
-  private async resolveRecipients(
-    tenantDb: ReturnType<PrismaService["tenant"]>,
-    tenantKey: string,
-    billingContactEmail: string | null,
-  ): Promise<string[]> {
-    const explicitContact = String(billingContactEmail ?? "").trim().toLowerCase();
-    if (explicitContact) {
-      return [explicitContact];
+  private assertCommercialContactPath(caller: string): boolean {
+    if (hasCommercialContactPath()) return true;
+    const appEnv = String(process.env.APP_ENV ?? "development").trim().toLowerCase();
+    if (appEnv === "production" || appEnv === "staging") {
+      this.logger.error(
+        `BLOCKED commercial email send in ${caller}: no commercial contact path configured (PIM_COMMERCIAL_CONTACT_URL or PIM_COMMERCIAL_CONTACT_EMAIL). ` +
+          `This should not happen — env validation requires at least one in staging/production.`,
+      );
+      return false;
     }
+    return true;
+  }
 
-    const admins = await tenantDb.authIdentity.findMany({
-      where: {
-        tenantKey,
-        role: "admin",
-        isActive: true,
-      },
-      orderBy: {
-        userId: "asc",
-      },
-      take: 20, // defensive cap — admin recipients; no tenant has more than a handful of admins
-      select: {
-        userId: true,
-      },
-    });
-
-    return admins
-      .map((admin) => String(admin.userId ?? "").trim().toLowerCase())
-      .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+  private async resolveRecipients(tenantDb: ReturnType<PrismaService["tenant"]>, tenantKey: string, billingContactEmail: string | null): Promise<string[]> {
+    const explicitContact = String(billingContactEmail ?? "").trim().toLowerCase();
+    if (explicitContact) return [explicitContact];
+    const admins = await tenantDb.authIdentity.findMany({ where: { tenantKey, role: "admin", isActive: true }, orderBy: { userId: "asc" }, take: 20, select: { userId: true } });
+    return admins.map((admin) => String(admin.userId ?? "").trim().toLowerCase()).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
   }
 
   private buildSubject(event: CommercialNotificationEvent, displayName: string): string {
-    if (event === "tenant_access_suspended") {
-      return `Workspace access suspended: ${displayName}`;
-    }
-    if (event === "tenant_access_resumed") {
-      return `Workspace access restored: ${displayName}`;
-    }
-    if (event === "plan_tier_changed") {
-      return `Plan updated: ${displayName}`;
-    }
+    if (event === "tenant_access_suspended") return `Workspace access suspended: ${displayName}`;
+    if (event === "tenant_access_resumed") return `Workspace access restored: ${displayName}`;
+    if (event === "plan_tier_changed") return `Plan updated: ${displayName}`;
     return `Commercial status updated: ${displayName}`;
   }
 
-  private buildText(
-    event: CommercialNotificationEvent,
-    input: {
-      displayName: string;
-      workspaceSlug: string;
-      profile: PlanProfileSummary;
-    },
-  ): string {
-    const lines = [
-      this.buildIntro(event, input.displayName),
-      "",
-      `Workspace: ${input.displayName}`,
-      `Workspace slug: ${input.workspaceSlug}`,
-      `Plan tier: ${input.profile.planTier}`,
-      `Billing status: ${input.profile.billingStatus}`,
-      `Access status: ${input.profile.accessStatus}`,
-    ];
-    if (input.profile.graceEndsAt) {
-      lines.push(`Grace ends at: ${input.profile.graceEndsAt}`);
-    }
-    if (input.profile.paidThroughAt) {
-      lines.push(`Paid through: ${input.profile.paidThroughAt}`);
-    }
-    if (input.profile.trialEndsAt) {
-      lines.push(`Trial ends at: ${input.profile.trialEndsAt}`);
-    }
-    if (input.profile.suspendedAt) {
-      lines.push(`Suspended at: ${input.profile.suspendedAt}`);
-    }
-    if (input.profile.suspensionReason) {
-      lines.push(`Reason: ${input.profile.suspensionReason}`);
-    }
-    if (input.profile.billingContactEmail) {
-      lines.push(`Billing contact: ${input.profile.billingContactEmail}`);
-    }
-    lines.push("");
-    lines.push(this.resolveCommercialContactLine());
-    return lines.join("\n");
-  }
-
-  private buildHtml(
-    event: CommercialNotificationEvent,
-    input: {
-      displayName: string;
-      workspaceSlug: string;
-      profile: PlanProfileSummary;
-    },
-  ): string {
-    const rows = [
-      ["Workspace", this.escapeHtml(input.displayName)],
-      ["Workspace slug", this.escapeHtml(input.workspaceSlug)],
-      ["Plan tier", this.escapeHtml(input.profile.planTier)],
-      ["Billing status", this.escapeHtml(input.profile.billingStatus)],
-      ["Access status", this.escapeHtml(input.profile.accessStatus)],
-    ];
-    if (input.profile.graceEndsAt) {
-      rows.push(["Grace ends at", this.escapeHtml(input.profile.graceEndsAt)]);
-    }
-    if (input.profile.paidThroughAt) {
-      rows.push(["Paid through", this.escapeHtml(input.profile.paidThroughAt)]);
-    }
-    if (input.profile.trialEndsAt) {
-      rows.push(["Trial ends at", this.escapeHtml(input.profile.trialEndsAt)]);
-    }
-    if (input.profile.suspendedAt) {
-      rows.push(["Suspended at", this.escapeHtml(input.profile.suspendedAt)]);
-    }
-    if (input.profile.suspensionReason) {
-      rows.push(["Reason", this.escapeHtml(input.profile.suspensionReason)]);
-    }
-    if (input.profile.billingContactEmail) {
-      rows.push(["Billing contact", this.escapeHtml(input.profile.billingContactEmail)]);
-    }
-    const tableRows = rows
-      .map(([label, value]) => `<tr><td><strong>${label}</strong></td><td>${value}</td></tr>`)
-      .join("");
-
-    return [
-      `<p>${this.escapeHtml(this.buildIntro(event, input.displayName))}</p>`,
-      `<table>${tableRows}</table>`,
-      `<p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
-    ].join("");
-  }
-
   private buildIntro(event: CommercialNotificationEvent, displayName: string): string {
-    if (event === "tenant_access_suspended") {
-      return `${displayName} is now suspended.`;
-    }
-    if (event === "tenant_access_resumed") {
-      return `${displayName} has been restored.`;
-    }
-    if (event === "plan_tier_changed") {
-      return `${displayName} has a new commercial plan configuration.`;
-    }
+    if (event === "tenant_access_suspended") return `${displayName} is now suspended.`;
+    if (event === "tenant_access_resumed") return `${displayName} has been restored.`;
+    if (event === "plan_tier_changed") return `${displayName} has a new commercial plan configuration.`;
     return `${displayName} has an updated commercial status.`;
   }
 
-  private resolveCommercialContactLine(): string {
-    const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim();
-    if (contactUrl) {
-      return `If you need help, contact Vexa commercial ops at ${contactUrl}.`;
-    }
-    const contactEmail = String(process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim();
-    if (contactEmail) {
-      return `If you need help, contact Vexa commercial ops at ${contactEmail}.`;
-    }
-    return "If you need help, contact Vexa commercial ops.";
+  private buildProfileDetailLines(profile: PlanProfileSummary, workspaceSlug: string, displayName: string): Array<[string, string]> {
+    const lines: Array<[string, string]> = [["Workspace", displayName], ["Workspace slug", workspaceSlug], ["Plan tier", profile.planTier], ["Billing status", profile.billingStatus], ["Access status", profile.accessStatus]];
+    if (profile.graceEndsAt) lines.push(["Grace ends at", profile.graceEndsAt]);
+    if (profile.paidThroughAt) lines.push(["Paid through", profile.paidThroughAt]);
+    if (profile.trialEndsAt) lines.push(["Trial ends at", profile.trialEndsAt]);
+    if (profile.suspendedAt) lines.push(["Suspended at", profile.suspendedAt]);
+    if (profile.suspensionReason) lines.push(["Reason", profile.suspensionReason]);
+    if (profile.billingContactEmail) lines.push(["Billing contact", profile.billingContactEmail]);
+    return lines;
+  }
+
+  private buildDetailTableHtml(rows: Array<[string, string]>): string {
+    const tableRows = rows.map(([label, value]) => `<tr><td><strong>${escapeHtml(label)}</strong></td><td>${escapeHtml(value)}</td></tr>`).join("");
+    return `<table style="border-collapse:collapse;margin:12px 0;">${tableRows}</table>`;
   }
 
   private buildUpgradeRequestStatusSubject(status: string, displayName: string): string {
-    if (status === "acknowledged") {
-      return `Upgrade request acknowledged: ${displayName}`;
-    }
-    if (status === "resolved") {
-      return `Upgrade request resolved: ${displayName}`;
-    }
-    if (status === "cancelled") {
-      return `Upgrade request closed: ${displayName}`;
-    }
+    if (status === "acknowledged") return `Upgrade request acknowledged: ${displayName}`;
+    if (status === "resolved") return `Upgrade request resolved: ${displayName}`;
+    if (status === "cancelled") return `Upgrade request closed: ${displayName}`;
     return `Upgrade request updated: ${displayName}`;
   }
 
   private presentUpgradeRequestStatus(status: string): string {
-    if (status === "acknowledged") {
-      return "acknowledged";
-    }
-    if (status === "resolved") {
-      return "resolved";
-    }
-    if (status === "cancelled") {
-      return "closed";
-    }
+    if (status === "acknowledged") return "acknowledged";
+    if (status === "resolved") return "resolved";
+    if (status === "cancelled") return "closed";
     return "open";
-  }
-
-  private escapeHtml(value: string): string {
-    return value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
   }
 }

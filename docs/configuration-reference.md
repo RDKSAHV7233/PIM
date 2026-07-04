@@ -65,6 +65,17 @@ Use this document when setting up a new environment, debugging a misconfigured s
 | `PIM_COMMERCIAL_TRIAL_DAYS` | No | `14` | Default trial length when creating a new tenant |
 | `PIM_PLAN_TIER_OVERRIDE` | No | — | **Dev only** — set to `ENTERPRISE` to bypass quota checks in load tests. Ignored in staging/production |
 
+### Email Brand Assets
+
+| Variable | Required | Default | Notes |
+|----------|----------|---------|-------|
+| `PIM_EMAIL_LOGO_URL` | Recommended (staging/prod) | — | HTTPS URL to Vexa logo image displayed at top of all HTML emails. Email renders cleanly if missing. Must be HTTPS in staging/production |
+| `PIM_EMAIL_BANNER_URL` | No | — | HTTPS URL to optional banner image for signup/commercial emails. Must be HTTPS in staging/production |
+| `PIM_EMAIL_SUPPORT_URL` | No | — | Support page URL shown in email footer/signature |
+| `PIM_EMAIL_SUPPORT_EMAIL` | No | — | Support email shown in email footer/signature when support URL is not set |
+
+**Production requirement:** At least one commercial contact path (`PIM_COMMERCIAL_CONTACT_URL` or `PIM_COMMERCIAL_CONTACT_EMAIL`) must be configured. Commercial emails will not send without a valid contact path.
+
 ---
 
 ## 5. Feature Flags
