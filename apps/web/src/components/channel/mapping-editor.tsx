@@ -15,7 +15,7 @@ import type {
   ConnectorPublishReadiness,
   MarketplaceChannelMapping,
 } from "@/lib/api";
-import { type ConnectorTaxonomyOption, describeReadinessCode, presentCompatibilityState, statusToneForPreflight } from "@/lib/channel-mappings";
+import { type ConnectorTaxonomyOption, describeReadinessCode, presentCompatibilityState, statusToneForPreflight, describeMappingSource, isDefaultMappingLevel } from "@/lib/channel-mappings";
 
 type MappingFieldRow = {
   targetField: string;
@@ -216,10 +216,17 @@ export function ResolvedMappingSnapshotCard({
   resolved: ConnectorMappingResolved | null;
   resolvedMappingJson: string;
 }) {
+  const mappingSource = describeMappingSource(resolved);
   return (
     <Card>
       <CardTitle>Resolved Mapping Snapshot</CardTitle>
       <div className="mt-2 space-y-2 text-sm text-slate-700">
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <StatusChip label={mappingSource.label} tone={mappingSource.tone} />
+          </div>
+          <p className="mt-1 text-xs text-slate-600">{mappingSource.description}</p>
+        </div>
         <p>
           Channel: <span className="font-medium capitalize">{mapping.channel}</span>
         </p>
@@ -353,9 +360,12 @@ export function MappingEditorCard({
                 {mappingTypeLabel}
               </label>
               <Select id="mapping-level" name="mappingLevel" defaultValue="tenant_connector_category_mapping">
-                <option value="tenant_connector_default">Default mapping</option>
-                <option value="tenant_connector_category_mapping">Category mapping</option>
+                <option value="tenant_connector_default">Default mapping for all categories</option>
+                <option value="tenant_connector_category_mapping">Category-specific override</option>
               </Select>
+              <p className="text-xs text-slate-500" id="mapping-level-help">
+                Default mapping applies to every category unless a category-specific override exists.
+              </p>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category-scope">

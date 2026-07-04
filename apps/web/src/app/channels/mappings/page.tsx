@@ -41,6 +41,7 @@ import {
   buildMappingRoute,
   buildMappingsViewModel,
   definitionForConnector,
+  describeMappingSource,
   mapChannelToConnectorSlug,
   parseMappingWizardState,
   resolveRequestedWizardStep,
@@ -670,6 +671,17 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
               changeScopeHref={changeScopeHref}
               currentStep={currentStep}
             />
+            {resolved ? (() => {
+              const source = describeMappingSource(resolved);
+              return (
+                <Card>
+                  <div className="flex items-center gap-2">
+                    <StatusChip label={source.label} tone={source.tone} />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600">{source.description}</p>
+                </Card>
+              );
+            })() : null}
             <MappingEditorCard
               actorRole={actorRole}
               canWrite={canWrite}

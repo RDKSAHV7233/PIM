@@ -13,6 +13,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import type { AppRole, ConnectorMappingVersion } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import {
+  isDefaultMappingLevel,
   presentCompatibilityState,
   presentLifecycleState,
   presentMappingLevel,
@@ -338,7 +339,9 @@ export function VersionManagerCard({
               action={publishConnectorMappingVersionAction}
               actorRole={actorRole}
               connectorSlug={connectorSlug}
-              description="Publishing is a high-risk action. Confirm your password before promoting this version."
+              description={isDefaultMappingLevel(version.mappingLevel)
+                ? "Publishing this default mapping will affect all categories that do not have a category-specific override. Confirm your password to proceed."
+                : "Publishing is a high-risk action. Confirm your password before promoting this version."}
               disabled={version.lifecycleState !== "validated" || (version.fallbackAckRequired && !(fallbackAcknowledged && fallbackAckVersionId === version.id))}
               label="Publish"
               open={stepUpAction === "publish" && stepUpVersionId === version.id}
@@ -349,6 +352,12 @@ export function VersionManagerCard({
               <input type="hidden" name="confirm" value="true" />
               <input type="hidden" name="fallbackAckRequired" value={version.fallbackAckRequired ? "true" : "false"} />
               <input type="hidden" name="fallbackAcknowledged" value={fallbackAcknowledged && fallbackAckVersionId === version.id ? "true" : "false"} />
+              {isDefaultMappingLevel(version.mappingLevel) ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <p className="font-semibold">Default mapping — wide impact</p>
+                  <p className="mt-1">This mapping applies to every category for this connector unless a category-specific override exists.</p>
+                </div>
+              ) : null}
               {version.fallbackAckRequired ? (
                 <p className="text-xs text-slate-500">
                   {fallbackAcknowledged && fallbackAckVersionId === version.id
