@@ -176,7 +176,7 @@ type CatalogStatsPayload = {
   redactedSections?: string[];
 };
 
-const RESTRICTED_VARIANT_FIELDS = ["sku", "mrp", "sellingPrice", "inventoryQty", "status"] as const;
+const RESTRICTED_VARIANT_FIELDS = ["mrp", "sellingPrice"] as const;
 const RESTRICTED_PRODUCT_ATTRIBUTE_FIELDS = [
   "pricing.mrp",
   "pricing.sellingPrice",
@@ -1191,6 +1191,22 @@ export class AccessPolicyService {
       resource: "Variant",
       resourceId: options.resourceId,
       fields: restricted,
+    });
+  }
+
+  async assertVariantDeleteAllowed(
+    actor: PolicyActor,
+    options: { resourceId?: string | null },
+  ): Promise<void> {
+    if (this.isAdmin(actor)) {
+      return;
+    }
+    await this.deny({
+      actor,
+      reasonCode: "VARIANT_DELETE_ADMIN_ONLY",
+      action: "variant.delete",
+      resource: "Variant",
+      resourceId: options.resourceId,
     });
   }
 
