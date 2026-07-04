@@ -190,12 +190,42 @@ export function definitionForConnector(
 
 export function presentMappingLevel(level: string): string {
   if (level === "tenant_connector_default") {
-    return "Default mapping";
+    return "Default mapping for all categories";
   }
   if (level === "tenant_connector_category_mapping") {
-    return "Category mapping";
+    return "Category-specific override";
   }
   return level;
+}
+
+export function describeMappingSource(resolved: ConnectorMappingResolved | null): {
+  label: string;
+  description: string;
+  tone: "neutral" | "info" | "success" | "warning";
+} {
+  if (!resolved) {
+    return { label: "No mapping configured", description: "Configure a default or category-specific mapping to publish.", tone: "warning" };
+  }
+  const matched = resolved.matched ?? [];
+  if (matched.length === 0) {
+    return { label: "Using system default", description: "No tenant mapping exists. The system default field map is active.", tone: "neutral" };
+  }
+  const hasCategoryMapping = matched.some((v) => v.mappingLevel === "tenant_connector_category_mapping");
+  const hasInstallationScope = matched.some((v) => v.installationId);
+  if (hasCategoryMapping && hasInstallationScope) {
+    return { label: "Using account-specific category override", description: "This category has a mapping override specific to this connector account.", tone: "success" };
+  }
+  if (hasCategoryMapping) {
+    return { label: "Using category override", description: "This category has its own mapping that takes precedence over the default.", tone: "success" };
+  }
+  if (hasInstallationScope) {
+    return { label: "Using account-specific default", description: "This connector account has its own default mapping for all categories.", tone: "info" };
+  }
+  return { label: "Using default mapping for all categories", description: "This category inherits the tenant default mapping. Create a category override to customize it.", tone: "info" };
+}
+
+export function isDefaultMappingLevel(level: string): boolean {
+  return level === "tenant_connector_default";
 }
 
 export function presentCompatibilityState(state: string | null | undefined): string {
