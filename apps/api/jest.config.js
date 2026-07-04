@@ -37,6 +37,7 @@ module.exports = {
     "**/bulk-edit/bulk-edit.service.spec.ts",
     "**/queue/queue.service.spec.ts",
     "**/connector-framework/connector.registry.spec.ts",
+    "**/connector-framework/parse-capabilities.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
