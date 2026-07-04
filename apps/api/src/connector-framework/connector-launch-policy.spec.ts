@@ -1,5 +1,9 @@
 import type { ConnectorCap } from "./connector.interface";
-import { resolveConnectorLaunchPolicy } from "./connector-launch-policy";
+import {
+  resolveConnectorLaunchPolicy,
+  isCustomerVisibleStage,
+  isInstallableStage,
+} from "./connector-launch-policy";
 
 describe("resolveConnectorLaunchPolicy", () => {
   const allCaps: ConnectorCap[] = ["VALIDATE", "PUBLISH", "STATUS_SYNC", "WEBHOOK_RECEIVE", "EXCEL_EXPORT"];
@@ -73,5 +77,54 @@ describe("resolveConnectorLaunchPolicy", () => {
       const policy = resolveConnectorLaunchPolicy("flipkart", allCaps);
       expect(policy.launchStage).toBe("live");
     });
+  });
+
+  describe("woocommerce", () => {
+    it("is planned", () => {
+      const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
+      expect(policy.launchStage).toBe("planned");
+    });
+  });
+
+  describe("myntra", () => {
+    it("is live", () => {
+      const policy = resolveConnectorLaunchPolicy("myntra", allCaps);
+      expect(policy.launchStage).toBe("live");
+    });
+  });
+
+  describe("nykaa", () => {
+    it("is manual", () => {
+      const policy = resolveConnectorLaunchPolicy("nykaa", allCaps);
+      expect(policy.launchStage).toBe("manual");
+    });
+  });
+});
+
+describe("isCustomerVisibleStage", () => {
+  it("returns true for live", () => {
+    expect(isCustomerVisibleStage("live")).toBe(true);
+  });
+
+  it("returns true for manual", () => {
+    expect(isCustomerVisibleStage("manual")).toBe(true);
+  });
+
+  it("returns false for planned", () => {
+    expect(isCustomerVisibleStage("planned")).toBe(false);
+  });
+});
+
+describe("isInstallableStage", () => {
+  it("returns true for live", () => {
+    expect(isInstallableStage("live")).toBe(true);
+  });
+
+  it("returns true for manual", () => {
+    expect(isInstallableStage("manual")).toBe(true);
+  });
+
+  it("returns false for planned", () => {
+    expect(isInstallableStage("planned")).toBe(false);
   });
 });

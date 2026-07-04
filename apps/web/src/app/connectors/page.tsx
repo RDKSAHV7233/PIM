@@ -566,9 +566,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     const manualDefinitions = definitionModels.filter(
       (item) => item.definition.launchStage === "manual",
     );
-    const plannedDefinitions = definitionModels.filter(
-      (item) => item.definition.launchStage === "planned",
-    );
     const needsSetupDefinitions = definitionModels.filter(
       (item) => item.workspaceState.label === "Needs setup",
     );
@@ -753,9 +750,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 href="#connector-catalog"
                 className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Manual and experimental</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Export / manual connectors</p>
                 <div className="mt-2 flex items-end justify-between gap-3">
-                  <p className="text-2xl font-semibold text-slate-900">{manualDefinitions.length + plannedDefinitions.length}</p>
+                  <p className="text-2xl font-semibold text-slate-900">{manualDefinitions.length}</p>
                   <StatusChip label="portfolio review" tone="info" />
                 </div>
                 <p className="mt-2 text-sm text-slate-600">
@@ -943,104 +940,46 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        {manualDefinitions.length > 0 ? (
           <Card className="border-slate-200 bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Export/manual</CardTitle>
+                <CardTitle>Export / manual</CardTitle>
                 <p className="text-sm text-slate-600">
                   Connectors with partial or coordinated manual operating paths that still matter for account planning.
                 </p>
               </div>
               <StatusChip label={`${manualDefinitions.length} connectors`} tone="warning" />
             </div>
-            {manualDefinitions.length === 0 ? (
-              <div className="mt-4">
-                <EmptyState
-                  icon="PLUG"
-                  title="No guided-rollout connectors in this view"
-                  description="Manual-rollout connectors will appear here when they are seeded into the connector definitions."
-                />
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {manualDefinitions.map((item) => (
-                  <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
-                        <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
-                      </div>
-                      <StatusChip
-                        label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
-                        tone={connectorLaunchTone(item.definition.launchStage)}
-                      />
+            <div className="mt-4 space-y-3">
+              {manualDefinitions.map((item) => (
+                <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
+                      <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
-                    {item.definition.launchNote ? (
-                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                        {item.definition.launchNote}
-                      </p>
-                    ) : null}
-                    {item.statusNote ? (
-                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        {item.statusNote}
-                      </p>
-                    ) : null}
+                    <StatusChip
+                      label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
+                      tone={connectorLaunchTone(item.definition.launchStage)}
+                    />
                   </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card className="border-slate-200 bg-white">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Experimental</CardTitle>
-                <p className="text-sm text-slate-600">
-                  Future connector opportunities that are visible for roadmap awareness but not production rollout.
-                </p>
-              </div>
-              <StatusChip label={`${plannedDefinitions.length} connectors`} tone="info" />
-            </div>
-            {plannedDefinitions.length === 0 ? (
-              <div className="mt-4">
-                <EmptyState
-                  icon="PLUG"
-                  title="No planned connectors in this view"
-                  description="When roadmap-only connector definitions are present, they will appear here."
-                />
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {plannedDefinitions.map((item) => (
-                  <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
-                        <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
-                      </div>
-                      <StatusChip
-                        label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
-                        tone={connectorLaunchTone(item.definition.launchStage)}
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
-                    {item.definition.launchNote ? (
-                      <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                        {item.definition.launchNote}
-                      </p>
-                    ) : null}
-                    <p className="mt-2 text-xs text-slate-500">Supported operations: {formatCapabilityList(item.definition.capabilities)}</p>
-                    <p className="mt-2 text-xs font-medium text-slate-500">
-                      Seller setup unlocks after the connector reaches the Live publish stage.
+                  <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
+                  {item.definition.launchNote ? (
+                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      {item.definition.launchNote}
                     </p>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ) : null}
+                  {item.statusNote ? (
+                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      {item.statusNote}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           </Card>
-        </div>
+        ) : null}
 
         <Card className="border-slate-200 bg-white">
           <div className="flex flex-wrap items-start justify-between gap-3">

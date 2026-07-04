@@ -110,7 +110,6 @@ describe("ConnectorInstallerService", () => {
 
   it("listAvailableDefinitions delegates to buildDefinitionActionsForSlugs (batch path)", async () => {
     const { service, queryMock, connectorPermissionService } = createService();
-    // Two active definitions returned by the raw query
     queryMock.mockResolvedValue([
       { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
       { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
@@ -128,11 +127,56 @@ describe("ConnectorInstallerService", () => {
       { actorId: "user_1", actorRole: "admin" },
       expect.arrayContaining(["amazon-in", "flipkart"]),
     );
-    // Both definitions should be in the result
-    expect(result).toHaveLength(2);
-    expect(result.map((d) => d.slug)).toEqual(expect.arrayContaining(["amazon-in", "flipkart"]));
-    // buildDefinitionActions (old per-slug method) must NOT be called
+    // amazon-in is planned → filtered out; only flipkart should remain
+    expect(result).toHaveLength(1);
+    expect(result[0]!.slug).toBe("flipkart");
     expect(connectorPermissionService.buildDefinitionActions).not.toHaveBeenCalled();
+  });
+
+  it("listAvailableDefinitions includes planned connectors when SHOW_PLANNED_CONNECTORS=true for admin", async () => {
+    const originalEnv = process.env.SHOW_PLANNED_CONNECTORS;
+    process.env.SHOW_PLANNED_CONNECTORS = "true";
+    try {
+      const { service, queryMock, connectorPermissionService } = createService();
+      queryMock.mockResolvedValue([
+        { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      ]);
+      (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+      const result = await service.listAvailableDefinitions({ actorId: "user_1", actorRole: "admin" });
+      expect(result).toHaveLength(2);
+      expect(result.map((d) => d.slug)).toEqual(expect.arrayContaining(["amazon-in", "flipkart"]));
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.SHOW_PLANNED_CONNECTORS;
+      } else {
+        process.env.SHOW_PLANNED_CONNECTORS = originalEnv;
+      }
+    }
+  });
+
+  it("listAvailableDefinitions hides planned connectors even with env flag when actor is not admin", async () => {
+    const originalEnv = process.env.SHOW_PLANNED_CONNECTORS;
+    process.env.SHOW_PLANNED_CONNECTORS = "true";
+    try {
+      const { service, queryMock, connectorPermissionService } = createService();
+      queryMock.mockResolvedValue([
+        { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      ]);
+      (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+      const result = await service.listAvailableDefinitions({ actorId: "user_1", actorRole: "editor" });
+      expect(result).toHaveLength(1);
+      expect(result[0]!.slug).toBe("flipkart");
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.SHOW_PLANNED_CONNECTORS;
+      } else {
+        process.env.SHOW_PLANNED_CONNECTORS = originalEnv;
+      }
+    }
   });
 
   it("throws NotFoundException when installation is missing", async () => {

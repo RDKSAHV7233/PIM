@@ -19,7 +19,7 @@ import {
   ConnectorImplementationStatus,
 } from "../connector-framework/connector.interface";
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
-import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
+import { resolveConnectorLaunchPolicy, isCustomerVisibleStage } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
@@ -164,35 +164,41 @@ export class ConnectorInstallerService {
     // Replaces the prior N×2 sequential per-slug plan check loop.
     const actionsMap = await this.connectorPermissionService.buildDefinitionActionsForSlugs(actor, slugs);
 
-    return activeRows.map((row) => {
-      const slug = String(row.slug);
-      const capabilities = parseCapabilities(row.capabilities);
-      const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
-      const actions = actionsMap.get(slug) ?? {
-        install: { allowed: false, reason: "CONNECTOR_PERMISSION_REQUIRED" },
-        reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
-        uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
-      };
-      return {
-        id: String(row.id),
-        slug,
-        displayName: String(row.displayName),
-        authType: String(row.authType),
-        capabilities: launchPolicy.surfacedCapabilities,
-        implementationStatus: this.resolveImplementationStatus(slug),
-        launchStage: launchPolicy.launchStage,
-        launchNote: launchPolicy.launchNote,
-        marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
-        connectorVersion: String(row.connectorVersion),
-        isActive: Boolean(row.isActive),
-        createdAt: String(row.createdAt),
-        updatedAt: String(row.updatedAt),
-        actions: {
-          ...actions,
-          install: this.applyInstallLaunchStageRule(slug, capabilities, actions.install),
-        },
-      };
-    });
+    // SHOW_PLANNED_CONNECTORS: dev/staging only — must NOT be enabled in production.
+    const showPlanned =
+      process.env.SHOW_PLANNED_CONNECTORS === "true" && actor.actorRole === "admin";
+
+    return activeRows
+      .map((row) => {
+        const slug = String(row.slug);
+        const capabilities = parseCapabilities(row.capabilities);
+        const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
+        const actions = actionsMap.get(slug) ?? {
+          install: { allowed: false, reason: "CONNECTOR_PERMISSION_REQUIRED" },
+          reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+          uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+        };
+        return {
+          id: String(row.id),
+          slug,
+          displayName: String(row.displayName),
+          authType: String(row.authType),
+          capabilities: launchPolicy.surfacedCapabilities,
+          implementationStatus: this.resolveImplementationStatus(slug),
+          launchStage: launchPolicy.launchStage,
+          launchNote: launchPolicy.launchNote,
+          marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
+          connectorVersion: String(row.connectorVersion),
+          isActive: Boolean(row.isActive),
+          createdAt: String(row.createdAt),
+          updatedAt: String(row.updatedAt),
+          actions: {
+            ...actions,
+            install: this.applyInstallLaunchStageRule(slug, capabilities, actions.install),
+          },
+        };
+      })
+      .filter((def) => showPlanned || isCustomerVisibleStage(def.launchStage));
   }
 
   async install(slug: string, dto: InstallConnectorDto, actor: ConnectorActor): Promise<ConnectorInstallationRecord> {

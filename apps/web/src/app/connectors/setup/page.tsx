@@ -466,6 +466,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
         };
       })
       .filter((item) => item.definition.launchStage === "live")
+      .filter((item) => !item.definition.slug.startsWith("diag-"))
       .filter((item) => (selectedSlug ? item.definition.slug === selectedSlug : true))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => left.definition.displayName.localeCompare(right.definition.displayName));
