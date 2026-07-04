@@ -2,12 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { applyBulkEditAction } from "@/app/actions";
 import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";
+import { StructuredChangeBuilder } from "@/components/bulk-edit/structured-change-builder";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
-import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -132,6 +132,8 @@ function parseList(value: string): string[] {
 export default async function OperationsBulkEditPage({ searchParams }: OperationsBulkEditPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  const isNonProd = appEnv !== "production";
   const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
@@ -246,9 +248,9 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     const operationColumns: Column<(typeof operations)[number]>[] = [
       { key: "operation", header: "Operation", render: (operation) => <span className="font-mono text-xs">{operation.id}</span> },
       { key: "status", header: "Status", render: (operation) => translateBulkEditStatus(operation.status) },
-      { key: "requested", header: "Requested", render: (operation) => operation.requestedCount },
-      { key: "applied", header: "Applied", render: (operation) => operation.appliedCount },
-      { key: "failed", header: "Failed", render: (operation) => operation.failedCount },
+      { key: "requested", header: "Requested", render: (operation) => String(operation.requestedCount ?? 0) },
+      { key: "applied", header: "Applied", render: (operation) => String(operation.appliedCount ?? 0) },
+      { key: "failed", header: "Failed", render: (operation) => String(operation.failedCount ?? 0) },
       { key: "updates", header: "Updates", render: (operation) => <span className="text-xs">{JSON.stringify(operation.updates)}</span> },
     ];
 
@@ -346,71 +348,11 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                   placeholder="Optional, comma or newline separated"
                 />
               </div>
-              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:col-span-2 lg:col-span-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Structured change builder</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Default to field + operation changes here. Advanced JSON stays secondary for uncommon edits.
-                  </p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-field">
-                      Field
-                    </label>
-                    <Select id="bulk-edit-field" name="bulkEditField" defaultValue={bulkEditField}>
-                      {STRUCTURED_BULK_EDIT_FIELDS.map((field) => (
-                        <option key={field.value} value={field.value}>
-                          {field.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-operation">
-                      Operation
-                    </label>
-                    <Select id="bulk-edit-operation" name="bulkEditOperation" defaultValue={bulkEditOperation}>
-                      <option value="set">Set value</option>
-                      <option value="clear">Clear value</option>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-value">
-                      New value
-                    </label>
-                    {bulkEditField === "status" && bulkEditOperation === "set" ? (
-                      <Select id="bulk-edit-value" name="bulkEditValue" defaultValue={bulkEditValue}>
-                        <option value="draft">draft</option>
-                        <option value="in_review">in_review</option>
-                        <option value="approved">approved</option>
-                        <option value="rejected">rejected</option>
-                        <option value="active">active</option>
-                        <option value="archived">archived</option>
-                      </Select>
-                    ) : (
-                      <Input
-                        id="bulk-edit-value"
-                        name="bulkEditValue"
-                        defaultValue={bulkEditOperation === "clear" ? "" : bulkEditValue}
-                        disabled={bulkEditOperation === "clear"}
-                        placeholder={
-                          bulkEditOperation === "clear"
-                            ? "Clear sets the field to blank/null."
-                            : STRUCTURED_BULK_EDIT_FIELDS.find((field) => field.value === bulkEditField)?.placeholder
-                        }
-                      />
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-md border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Generated update payload</p>
-                  <JsonPreview value={structuredUpdatesText} className="mt-2 border-0 bg-transparent p-0" />
-                </div>
-                <Button type="submit" className="w-fit" name="bulkEditMode" value="structured">
-                  Preview affected products
-                </Button>
-              </div>
+              <StructuredChangeBuilder
+                defaultField={bulkEditField}
+                defaultOperation={bulkEditOperation}
+                defaultValue={bulkEditValue}
+              />
               <div className="space-y-1 md:col-span-2 lg:col-span-3">
                 <details className="rounded-lg border border-slate-200 bg-white">
                   <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
@@ -449,6 +391,17 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                     {previewErrorCode ? translateError(previewErrorCode).title : "Bulk edit preview could not run"}
                   </p>
                   <p>{previewErrorCode ? translateError(previewErrorCode).description : previewErrorMessage}</p>
+                  {previewErrorCode === "EMPTY_SCOPE" && hideTestData && isNonProd && (
+                    <p className="mt-2 text-slate-700">
+                      Test/demo products are currently hidden.{" "}
+                      <a
+                        href={`/operations/bulk-edit?bulkEditPreview=1&hideTestData=false&bulkEditCategoryId=${encodeURIComponent(bulkEditCategoryId)}&bulkEditStatus=${encodeURIComponent(bulkEditStatus)}&bulkEditBrandContains=${encodeURIComponent(bulkEditBrandContains)}&bulkEditField=${encodeURIComponent(bulkEditField)}&bulkEditOperation=${encodeURIComponent(bulkEditOperation)}&bulkEditValue=${encodeURIComponent(bulkEditValue)}&bulkEditMode=${encodeURIComponent(bulkEditMode)}`}
+                        className="font-medium text-blue-700 underline hover:text-blue-900"
+                      >
+                        Show test data
+                      </a>
+                    </p>
+                  )}
                 </div>
               ) : null}
               {previewResult && canWrite && previewResult.requestedCount > 0 ? (
@@ -466,6 +419,22 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                   applyAction={applyBulkEditAction}
                 />
               ) : null}
+              {previewResult && previewResult.requestedCount === 0 && (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="font-medium text-slate-900">No products matched your filters.</p>
+                  {hideTestData && isNonProd && (
+                    <p className="mt-1">
+                      Test/demo products are currently hidden.{" "}
+                      <a
+                        href={`/operations/bulk-edit?bulkEditPreview=1&hideTestData=false&bulkEditCategoryId=${encodeURIComponent(bulkEditCategoryId)}&bulkEditStatus=${encodeURIComponent(bulkEditStatus)}&bulkEditBrandContains=${encodeURIComponent(bulkEditBrandContains)}&bulkEditField=${encodeURIComponent(bulkEditField)}&bulkEditOperation=${encodeURIComponent(bulkEditOperation)}&bulkEditValue=${encodeURIComponent(bulkEditValue)}&bulkEditMode=${encodeURIComponent(bulkEditMode)}`}
+                        className="font-medium text-blue-700 underline hover:text-blue-900"
+                      >
+                        Show test data
+                      </a>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
         </Card>

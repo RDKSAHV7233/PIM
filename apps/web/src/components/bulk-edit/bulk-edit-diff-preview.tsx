@@ -97,6 +97,7 @@ export function BulkEditDiffPreview({
   applyAction,
 }: BulkEditDiffPreviewProps) {
   const [approved, setApproved] = useState(false);
+  const [largeApproved, setLargeApproved] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [visibleCount, setVisibleCount] = useState(50);
   const changedFields = useMemo(() => Object.keys(updates), [updates]);
@@ -162,12 +163,30 @@ export function BulkEditDiffPreview({
         ))}
       </div>
 
-      <DataGrid columns={columns} rows={previewRows} getRowKey={(product) => product.id} rowClassName="align-top" caption="Bulk edit preview" />
-
       {requestedCount > previewRows.length && (
         <Button type="button" variant="secondary" onClick={() => setShowAll(true)}>
           + Show all {requestedCount}
         </Button>
+      )}
+
+      {requestedCount > 100 && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            requestedCount > 1000
+              ? "border-red-300 bg-red-50 text-red-800"
+              : "border-amber-300 bg-amber-50 text-amber-800"
+          }`}
+        >
+          <p className="font-semibold">
+            {requestedCount > 1000 ? "⚠ Very large batch update" : "⚠ Large batch update"}
+          </p>
+          <p className="mt-1">
+            You are about to update <strong>{requestedCount.toLocaleString()}</strong> products in a
+            single operation. {requestedCount > 1000
+              ? "This is a significant change that may take time to process and cannot be easily reversed."
+              : "Please double-check your filters and preview before applying."}
+          </p>
+        </div>
       )}
 
       <form action={applyAction} className="space-y-2">
@@ -184,11 +203,25 @@ export function BulkEditDiffPreview({
           />
           I have reviewed the preview and I am ready to apply these changes.
         </label>
+        {requestedCount > 1000 && (
+          <label className="flex items-center gap-2 text-sm text-red-700">
+            <input
+              type="checkbox"
+              checked={largeApproved}
+              onChange={(event) => setLargeApproved(event.target.checked)}
+            />
+            I understand this will modify {requestedCount.toLocaleString()} products and this action
+            cannot be easily undone.
+          </label>
+        )}
         <div className="flex gap-2">
-          <Button type="submit" disabled={!approved}>
-            Apply Changes
+          <Button
+            type="submit"
+            disabled={!approved || (requestedCount > 1000 && !largeApproved)}
+          >
+            Apply Changes{requestedCount > 1000 ? ` to ${requestedCount.toLocaleString()} Products` : ""}
           </Button>
-          <Button type="button" variant="secondary" onClick={() => setApproved(false)}>
+          <Button type="button" variant="secondary" onClick={() => { setApproved(false); setLargeApproved(false); }}>
             Cancel
           </Button>
         </div>
