@@ -18,6 +18,7 @@ import {
   ConnectorPublicationTarget,
   ConnectorImplementationStatus,
 } from "../connector-framework/connector.interface";
+import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
@@ -46,23 +47,6 @@ type CursorPayload = {
   installedAt: string;
   id: string;
 };
-
-function parseCapabilities(raw: unknown): ConnectorCap[] {
-  if (Array.isArray(raw)) {
-    return raw.filter((value): value is ConnectorCap => typeof value === "string") as ConnectorCap[];
-  }
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      return trimmed
-        .slice(1, -1)
-        .split(",")
-        .map((value) => value.replace(/^"|"$/g, "").trim())
-        .filter((value) => value.length > 0) as ConnectorCap[];
-    }
-  }
-  return [];
-}
 
 function resolveStubConnectorSlugs(): string[] {
   return String(process.env.CONNECTOR_STUB_SLUGS ?? "")

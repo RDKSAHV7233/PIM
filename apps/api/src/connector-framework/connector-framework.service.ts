@@ -26,24 +26,8 @@ import {
 import { resolveConnectorLaunchPolicy } from "./connector-launch-policy";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorInstallationRecord } from "./connector.types";
+import { parseCapabilities } from "./parse-capabilities";
 import { lookupAmazonMarketplace } from "../connectors/amazon/amazon-marketplace-registry";
-
-function parseCapabilities(raw: unknown): ConnectorCap[] {
-  if (Array.isArray(raw)) {
-    return raw.filter((value): value is ConnectorCap => typeof value === "string") as ConnectorCap[];
-  }
-  if (typeof raw === "string") {
-    const value = raw.trim();
-    if (value.startsWith("{") && value.endsWith("}")) {
-      return value
-        .slice(1, -1)
-        .split(",")
-        .map((item) => item.replace(/^"|"$/g, "").trim())
-        .filter((item) => item.length > 0) as ConnectorCap[];
-    }
-  }
-  return [];
-}
 
 function parseMetadata(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
