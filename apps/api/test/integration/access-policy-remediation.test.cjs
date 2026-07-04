@@ -1762,7 +1762,8 @@ async function run() {
       `expected admin catalog search to retain matched SKU, got ${JSON.stringify(adminSearchResults.payload)}`,
     );
 
-    const editorVariantUpdate = await apiRequest(
+    // Editor CAN update non-pricing variant fields (sku, inventoryQty, status)
+    const editorVariantUpdateAllowed = await apiRequest(
       baseUrl,
       "PATCH",
       `/catalog/variants/${adminVariantCreate.payload.id}`,
@@ -1776,10 +1777,40 @@ async function run() {
         attributes: adminVariantCreate.payload.attributes ?? {},
       },
     );
-    assertStatus(editorVariantUpdate, 403, "editor restricted variant update denied");
+    assertStatus(editorVariantUpdateAllowed, 200, "editor non-pricing variant update allowed");
+
+    // Editor CANNOT update pricing fields (mrp, sellingPrice)
+    const editorVariantPricingDenied = await apiRequest(
+      baseUrl,
+      "PATCH",
+      `/catalog/variants/${adminVariantCreate.payload.id}`,
+      editorToken,
+      {
+        skuCode: adminVariantCreate.payload.skuCode,
+        mrp: 2999,
+        sellingPrice: adminVariantCreate.payload.sellingPrice,
+        inventoryQty: 5,
+        status: adminVariantCreate.payload.status,
+        attributes: adminVariantCreate.payload.attributes ?? {},
+      },
+    );
+    assertStatus(editorVariantPricingDenied, 403, "editor pricing variant update denied");
     assert(
-      String(editorVariantUpdate.payload?.error ?? "") === "ACCESS_POLICY_DENIED",
-      `expected ACCESS_POLICY_DENIED for restricted variant update, got ${JSON.stringify(editorVariantUpdate.payload)}`,
+      String(editorVariantPricingDenied.payload?.error ?? "") === "ACCESS_POLICY_DENIED",
+      `expected ACCESS_POLICY_DENIED for pricing variant update, got ${JSON.stringify(editorVariantPricingDenied.payload)}`,
+    );
+
+    // Editor CANNOT delete variants
+    const editorVariantDeleteDenied = await apiRequest(
+      baseUrl,
+      "DELETE",
+      `/catalog/variants/${adminVariantCreate.payload.id}`,
+      editorToken,
+    );
+    assertStatus(editorVariantDeleteDenied, 403, "editor variant delete denied");
+    assert(
+      String(editorVariantDeleteDenied.payload?.error ?? "") === "ACCESS_POLICY_DENIED",
+      `expected ACCESS_POLICY_DENIED for variant delete, got ${JSON.stringify(editorVariantDeleteDenied.payload)}`,
     );
 
     const editorBulkEditDenied = await apiRequest(baseUrl, "POST", "/bulk-edit/apply", editorToken, {
@@ -3755,7 +3786,9 @@ async function run() {
           tenantId,
           validated: [
             "editor_restricted_product_attribute_write_denied",
-            "editor_restricted_variant_write_denied",
+            "editor_non_pricing_variant_update_allowed",
+            "editor_pricing_variant_update_denied",
+            "editor_variant_delete_denied",
             "viewer_product_reads_redact_sensitive_catalog_fields",
             "viewer_catalog_search_redacts_matched_sku",
             "admin_catalog_search_retains_matched_sku",

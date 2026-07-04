@@ -1372,8 +1372,11 @@ export class CatalogService {
         vendorScopeKey: product.vendorScopeKey,
       });
     this.assertWorkflowStateAllowsContentMutation(product.status, "create_variant");
+    const createFields: string[] = ["sku", "inventoryQty", "status"];
+    if (dto.mrp !== undefined) createFields.push("mrp");
+    if (dto.sellingPrice !== undefined) createFields.push("sellingPrice");
     await this.accessPolicy.assertVariantWriteAllowed(this.toPolicyActor(actor), {
-        changedFields: ["sku", "mrp", "sellingPrice", "inventoryQty", "status"],
+        changedFields: createFields,
       });
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
@@ -1441,9 +1444,8 @@ export class CatalogService {
         vendorScopeKey: product.vendorScopeKey,
       });
     this.assertWorkflowStateAllowsContentMutation(product.status, "delete_variant");
-    await this.accessPolicy.assertVariantWriteAllowed(this.toPolicyActor(actor), {
+    await this.accessPolicy.assertVariantDeleteAllowed(this.toPolicyActor(actor), {
         resourceId: variantId,
-        changedFields: ["sku", "mrp", "sellingPrice", "inventoryQty", "status"],
       });
     await this.prisma.tenant().variant.delete({ where: { id: variantId } });
   }
