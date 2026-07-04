@@ -29,20 +29,20 @@ import { ConnectorInstallationRecord } from "./connector.types";
 import { lookupAmazonMarketplace } from "../connectors/amazon/amazon-marketplace-registry";
 
 function parseCapabilities(raw: unknown): ConnectorCap[] {
+  let values: string[] = [];
   if (Array.isArray(raw)) {
-    return raw.filter((value): value is ConnectorCap => typeof value === "string") as ConnectorCap[];
-  }
-  if (typeof raw === "string") {
+    values = raw.filter((value): value is string => typeof value === "string");
+  } else if (typeof raw === "string") {
     const value = raw.trim();
     if (value.startsWith("{") && value.endsWith("}")) {
-      return value
+      values = value
         .slice(1, -1)
         .split(",")
         .map((item) => item.replace(/^"|"$/g, "").trim())
-        .filter((item) => item.length > 0) as ConnectorCap[];
+        .filter((item) => item.length > 0);
     }
   }
-  return [];
+  return values.map((v) => v.toUpperCase() as ConnectorCap);
 }
 
 function parseMetadata(raw: unknown): Record<string, unknown> {

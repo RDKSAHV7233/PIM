@@ -48,20 +48,20 @@ type CursorPayload = {
 };
 
 function parseCapabilities(raw: unknown): ConnectorCap[] {
+  let values: string[] = [];
   if (Array.isArray(raw)) {
-    return raw.filter((value): value is ConnectorCap => typeof value === "string") as ConnectorCap[];
-  }
-  if (typeof raw === "string") {
+    values = raw.filter((value): value is string => typeof value === "string");
+  } else if (typeof raw === "string") {
     const trimmed = raw.trim();
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      return trimmed
+      values = trimmed
         .slice(1, -1)
         .split(",")
         .map((value) => value.replace(/^"|"$/g, "").trim())
-        .filter((value) => value.length > 0) as ConnectorCap[];
+        .filter((value) => value.length > 0);
     }
   }
-  return [];
+  return values.map((v) => v.toUpperCase() as ConnectorCap);
 }
 
 function resolveStubConnectorSlugs(): string[] {
