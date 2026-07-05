@@ -18,15 +18,6 @@ function detectSourceFormat(fileName: string): "csv" | "json" | null {
   return null;
 }
 
-function encodeBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
 type ImportPreflightFormProps = {
   categories: Category[];
   canWrite: boolean;
@@ -158,64 +149,32 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         throw new Error("Uploaded file must be .csv or .json. Spreadsheet imports remain disabled.");
       }
 
-      let body: Record<string, unknown>;
       if (sourceFormat === "json") {
         const text = await file.text();
         const parsed = JSON.parse(text);
         if (!Array.isArray(parsed)) {
           throw new Error("Uploaded JSON file must contain an array of row objects.");
         }
-        body = {
-          categoryId,
-          sourceFormat,
-          sourceName: file.name,
-          rows: parsed,
-          mapping: JSON.parse(DEFAULT_MAPPING),
-          chunkSize,
-          maxRetries,
-        };
-      } else {
-        body = {
-          categoryId,
-          sourceFormat,
-          sourceName: file.name,
-          fileContentBase64: encodeBase64(await file.arrayBuffer()),
-          mapping: JSON.parse(DEFAULT_MAPPING),
-          chunkSize,
-          maxRetries,
-        };
       }
 
       const csrfToken = readCsrfCookie();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
+      const commonHeaders: Record<string, string> = {
         Accept: "application/json",
         ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
       };
 
-      // Quick preflight via the direct validate route
-      const preflightResponse = await fetch("/api/bulk-import/validate", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-      const preflightPayload = await preflightResponse.json();
-      if (!preflightResponse.ok) {
-        const serverMsg = (preflightPayload as { message?: string }).message ?? (preflightPayload as { error?: string }).error;
-        throw new Error(
-          serverMsg
-            ? String(serverMsg)
-            : preflightResponse.status >= 500
-              ? "The import file is too large to process. Try reducing the number of rows or using a smaller file."
-              : "Import validation failed.",
-        );
-      }
+      // Upload via multipart FormData — avoids the body-size limit that
+      // breaks base64-in-JSON for large CSV files.
+      const uploadForm = new FormData();
+      uploadForm.append("sourceFile", file);
+      uploadForm.append("categoryId", categoryId);
+      uploadForm.append("sourceName", file.name);
+      uploadForm.append("maxRetries", String(maxRetries));
 
-      // Stage the run via the large-run–capable API for actual import execution
-      const uploadResponse = await fetch("/api/bulk-import/runs", {
+      const uploadResponse = await fetch("/api/bulk-import/runs/upload", {
         method: "POST",
-        headers,
-        body: JSON.stringify(body),
+        headers: commonHeaders,
+        body: uploadForm,
       });
       const uploadPayload = await uploadResponse.json();
       if (!uploadResponse.ok || !uploadPayload.id) {
@@ -224,20 +183,20 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       }
       const runId = uploadPayload.id;
 
-      // Validate the run to transition it from "uploaded" → "preflight_ready".
-      // Without this the server action rejects it when "Start validated import" is submitted.
-      await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
+      // Validate the run — reads the stored file from storage, runs full
+      // preflight checks, and transitions "uploaded" → "preflight_ready".
+      const validateResponse = await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
         method: "POST",
-        headers,
+        headers: { ...commonHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
+      const validatePayload = await validateResponse.json();
+      if (!validateResponse.ok) {
+        const serverMsg = (validatePayload as { message?: string }).message ?? (validatePayload as { error?: string }).error;
+        throw new Error(serverMsg ? String(serverMsg) : "Import validation failed.");
+      }
 
-      // Merge preflight summary into the staged run shape
-      const mergedRun: BulkImportRun = {
-        ...(uploadPayload as BulkImportRun),
-        id: runId,
-        preflightSummary: (preflightPayload as BulkImportRun).preflightSummary ?? preflightPayload,
-      };
+      const mergedRun: BulkImportRun = validatePayload as BulkImportRun;
       setStagedRun(mergedRun);
     } catch (error) {
       setStagedRun(null);
