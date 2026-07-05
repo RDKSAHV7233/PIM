@@ -44,8 +44,15 @@ function run() {
     source.includes("const [permissions, submissionsRaw, products, shopifyPublicationState] = await Promise.all([") &&
       source.includes("getConnectorPermissions(installation.slug, { role: actorRole, authHeader })") &&
       source.includes("getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader })") &&
-      source.includes("getAllProductsSlim({ role: actorRole, authHeader })"),
-    "Channel connector detail must fetch permissions, installation-scoped submissions, and authoritative catalog lookup data together.",
+      source.includes("getProductListPage({ slim: true, limit: 500 }, { role: actorRole, authHeader })"),
+    "Channel connector detail must fetch permissions, installation-scoped submissions, and bounded catalog lookup data together.",
+  );
+  assert(
+    source.includes("missingProductIds") &&
+      source.includes("!productsById.has(id)") &&
+      source.includes("getProduct(id, { role: actorRole, authHeader })") &&
+      source.includes("Promise.allSettled"),
+    "Channel connector detail must backfill submission-referenced products missing from the bounded first-page fetch.",
   );
   assert(
       source.includes("getConnectorPublications(installation.id, { role: actorRole, authHeader })") &&

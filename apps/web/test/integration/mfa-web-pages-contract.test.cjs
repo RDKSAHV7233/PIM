@@ -33,25 +33,30 @@ function run() {
 
   assert(
     challengePage.includes("MfaChallengePageClient") &&
-      challengePage.includes("pendingToken") &&
+      challengePage.includes("pim_mfa_pending_token") &&
       challengePage.includes('redirect("/login")') &&
       challengePage.includes("sanitizeNextPath"),
-    "MFA challenge page must guard missing token with a redirect to /login, pass pendingToken to client, and sanitize the next path.",
+    "MFA challenge page must guard missing token with a redirect to /login and sanitize the next path. Token must stay server-side (cookie only, not passed as client prop).",
   );
 
   assert(
     enrollPage.includes("MfaEnrollPageClient") &&
-      enrollPage.includes("enrollmentToken") &&
+      enrollPage.includes("pim_mfa_enrollment_token") &&
       enrollPage.includes('redirect("/login")'),
-    "MFA enroll page must guard missing token with a redirect to /login and pass enrollmentToken to client.",
+    "MFA enroll page must guard missing token with a redirect to /login. Token must stay server-side (cookie only, not passed as client prop).",
   );
 
   assert(
     challengeClient.includes("/api/auth/mfa/verify-login") &&
-      challengeClient.includes("pendingToken") &&
       challengeClient.includes("MFA_PENDING_TOKEN_REQUIRED") &&
       challengeClient.includes("window.location.assign"),
-    "MFA challenge client must POST to verify-login proxy, handle expired token error, and assign to nextPath on success.",
+    "MFA challenge client must POST to verify-login proxy, handle expired token error, and assign to nextPath on success. pendingToken must NOT be a client prop (cookie-only).",
+  );
+
+  assert(
+    !challengeClient.includes("pendingToken:") &&
+      !challengeClient.includes("pendingToken,"),
+    "MFA challenge client must NOT receive pendingToken as a prop — the httpOnly cookie is sent automatically with the fetch.",
   );
 
   assert(

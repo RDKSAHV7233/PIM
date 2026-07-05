@@ -17,9 +17,10 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
-  getAllProductsSlim,
   getCategoryAttributes,
   getConnectorPublications,
+  getProduct,
+  getProductListPage,
   getConnectorPermissions,
   getConnectorPayloadPreview,
   getConnectorSchedule,
@@ -39,6 +40,7 @@ import { getServerSession } from "@/lib/server-session";
 import { formatDateTime as fmtDT } from "@/lib/format";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
 import { MeeshoExportPanel } from "@/components/ui/meesho-export-panel";
+import { BulkPublishConfirmForm } from "./bulk-publish-confirm-form";
 
 export const dynamic = "force-dynamic";
 
@@ -697,16 +699,42 @@ export default async function ChannelConnectorDetailPage({
         }
         return [] as Awaited<ReturnType<typeof getSubmissions>>;
       }),
-      getAllProductsSlim({ role: actorRole, authHeader }).catch((err) => {
+      getProductListPage({ slim: true, limit: 500 }, { role: actorRole, authHeader }).then((page) => page.items).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
           throw err;
         }
-        return [] as Awaited<ReturnType<typeof getAllProductsSlim>>;
+        return [] as Awaited<ReturnType<typeof getProductListPage>>["items"];
       }),
       shopifyPublicationStatePromise,
     ]);
     const submissions = toItems(submissionsRaw);
     const productsById = new Map(products.map((product) => [product.id, product]));
+
+    // Backfill submission-referenced products missing from the bounded first-page fetch.
+    const missingProductIds = [...new Set(submissions.map((s) => s.productId))].filter((id) => !productsById.has(id));
+    if (missingProductIds.length > 0) {
+      const backfilled = await Promise.allSettled(
+        missingProductIds.map((id) => getProduct(id, { role: actorRole, authHeader })),
+      );
+      for (const result of backfilled) {
+        if (result.status === "fulfilled") {
+          const p = result.value;
+          productsById.set(p.id, {
+            id: p.id,
+            title: p.title,
+            brand: p.brand,
+            categoryId: p.categoryId,
+            status: p.status,
+            variantCount: p.variants?.length ?? 0,
+            openValidationErrorCount: 0,
+            openValidationWarningCount: 0,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          });
+        }
+      }
+    }
+
     const failedSubmissions = submissions.filter(
       (item) => item.status === "ERROR" || item.status === "REJECTED" || item.status === "SUPPRESSED",
     );
@@ -2304,21 +2332,11 @@ export default async function ChannelConnectorDetailPage({
                     <code className="font-mono bg-white border border-amber-200 px-1 rounded">JSON_LISTINGS_FEED</code>{" "}
                     document. Each product gets an individual submission record you can track in the Jobs workspace.
                   </p>
-                  <form
+                  <BulkPublishConfirmForm
+                    installationId={installation.id}
+                    returnTo={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
                     action={triggerBulkPublishAction}
-                    className="mt-3 flex flex-wrap items-center gap-3"
-                  >
-                    <input type="hidden" name="installationId" value={installation.id} />
-                    <input
-                      type="hidden"
-                      name="returnTo"
-                      value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
-                    />
-                    <PendingSubmitButton
-                      idleLabel="Submit bulk feed"
-                      className="bg-amber-600 hover:bg-amber-700 text-white"
-                    />
-                  </form>
+                  />
                 </div>
               ) : null}
               <p className="text-xs text-slate-500">

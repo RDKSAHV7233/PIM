@@ -8,7 +8,6 @@ import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
 
 interface MfaEnrollPageClientProps {
-  enrollmentToken: string;
   maskedEmail: string;
   workspaceSlug: string;
   locale: PimLocale;
@@ -23,7 +22,6 @@ interface EnrollData {
 }
 
 export function MfaEnrollPageClient({
-  enrollmentToken,
   maskedEmail,
   workspaceSlug,
   locale,
@@ -77,7 +75,7 @@ export function MfaEnrollPageClient({
     return () => {
       cancelled = true;
     };
-  }, [enrollmentToken]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

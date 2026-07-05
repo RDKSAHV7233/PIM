@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { postJson } from "@/lib/api";
+import { getJson } from "@/lib/api";
 import type { AppRole, BulkImportJob } from "@/lib/api";
 import { translateJobStatus } from "@/lib/errors";
 
@@ -33,23 +33,22 @@ export function ImportProgress({ initialJob, role }: ImportProgressProps) {
       }
       inFlightRef.current = true;
       try {
-        const processed = await postJson<BulkImportJob>(
-          `/bulk-import/jobs/${encodeURIComponent(job.id)}/process`,
-          { chunkSize: job.chunkSize },
+        const updated = await getJson<BulkImportJob>(
+          `/bulk-import/jobs/${encodeURIComponent(job.id)}`,
           { role },
         );
-        setJob(processed);
+        setJob(updated);
       } catch {
         // Keep trying in the next tick. Failures are visible in job status fields.
       } finally {
         inFlightRef.current = false;
       }
-    }, 1500);
+    }, 2000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [job.id, job.status, job.chunkSize, role]);
+  }, [job.id, job.status, role]);
 
   const progressPct = useMemo(() => {
     if (job.totalRows <= 0) {

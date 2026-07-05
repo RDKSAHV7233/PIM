@@ -28,10 +28,10 @@ function run() {
       approvalsSource.includes("getIssueInbox(") &&
       approvalsSource.includes('productStatus: "in_review",') &&
       approvalsSource.includes("limit: 50,") &&
-      approvalsSource.includes("getAllProductsSlim({ role: actorRole, authHeader })") &&
+      approvalsSource.includes("getProductListPage({ slim: true, limit: 1000 }, { role: actorRole, authHeader })") &&
       approvalsSource.includes("loadSupportingRead(getWorkflowSla({ role: actorRole, authHeader }))") &&
       approvalsSource.includes("loadSupportingRead(getOverdueCount({ role: actorRole, authHeader }))"),
-    "Approval Queue must load stats, in-review issue inbox data, and the full slim product catalog together from the shared auth context.",
+    "Approval Queue must load stats, in-review issue inbox data, and bounded product catalog page together from the shared auth context.",
   );
   assert(
     approvalsSource.includes("const blockingProducts = new Set(") &&
@@ -98,16 +98,17 @@ function run() {
     "Approval Queue must render an honest restricted state when approval-count visibility is redacted for the current role.",
   );
   assert(
+    approvalsSource.includes("productListTruncated") &&
+      approvalsSource.includes("productsPage.nextCursor") &&
+      approvalsSource.includes("Some in-review items may not appear here"),
+    "Approval Queue must detect and warn when the product list is truncated so reviewers know items may be missing.",
+  );
+  assert(
     approvalsSource.includes('const canApprove = summary.blocking === 0;') &&
-      approvalsSource.includes('<form action={decideProductReviewAction} className="space-y-2">') &&
-      approvalsSource.includes('name="status"') &&
-      approvalsSource.includes('value="approved"') &&
-      approvalsSource.includes('value="rejected"') &&
-      approvalsSource.includes('buttonVariants({ variant: "secondary" })') &&
-      approvalsSource.includes("Reviewer note") &&
-      approvalsSource.includes('disabled={!canApprove}') &&
-      approvalsSource.includes("Clear blocking issues before approving."),
-    "Approval Queue must submit explicit approved/rejected status values through the shared decision form, disable approval when blockers remain, and explain that constraint inline.",
+      approvalsSource.includes("ApprovalDecisionForm") &&
+      approvalsSource.includes("canApprove={canApprove}") &&
+      approvalsSource.includes("action={decideProductReviewAction}"),
+    "Approval Queue must route approve/reject through the confirmation-wrapped ApprovalDecisionForm, disabling approval when blockers remain.",
   );
   assert(
     approvalsSource.includes('query.decisionStatus ? (') &&

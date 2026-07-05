@@ -17,8 +17,8 @@ function getString(value: string | string[] | undefined): string {
 export default async function MfaEnrollPage({ searchParams }: MfaEnrollPageProps) {
   const params = await searchParams;
   const cookieStore = await cookies();
-  const token = cookieStore.get("pim_mfa_enrollment_token")?.value ?? "";
-  if (!token) {
+  const hasEnrollmentToken = Boolean(cookieStore.get("pim_mfa_enrollment_token")?.value);
+  if (!hasEnrollmentToken) {
     redirect("/login");
   }
   const maskedEmail = getString(params.email).trim();
@@ -27,7 +27,6 @@ export default async function MfaEnrollPage({ searchParams }: MfaEnrollPageProps
 
   return (
     <MfaEnrollPageClient
-      enrollmentToken={token}
       maskedEmail={maskedEmail}
       workspaceSlug={workspaceSlug}
       locale={locale}
