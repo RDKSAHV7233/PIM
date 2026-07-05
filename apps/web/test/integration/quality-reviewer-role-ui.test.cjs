@@ -34,10 +34,9 @@ function run() {
   );
   assert(
     approvalsSource.includes("decideProductReviewAction") &&
-      approvalsSource.includes("getAllProductsSlim({ role: actorRole, authHeader })") &&
+      approvalsSource.includes("getProductListPage({ slim: true, limit: 1000 }, { role: actorRole, authHeader })") &&
       approvalsSource.includes("canDecideApproval(actorRole)") &&
-      approvalsSource.includes("Approve") &&
-      approvalsSource.includes("Reject"),
+      approvalsSource.includes("ApprovalDecisionForm"),
     "Approval Queue must expose explicit approve/reject actions driven by the reviewer-capable decision path.",
   );
   assert(

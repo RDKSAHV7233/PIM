@@ -150,6 +150,14 @@ export async function getBulkImportTemplates(
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
+export async function getBulkImportJob(jobId: string, options?: ApiRequestOptions): Promise<BulkImportJob> {
+  return fetchJson<BulkImportJob>(
+    `/bulk-import/jobs/${encodeURIComponent(jobId)}`,
+    undefined,
+    options,
+  );
+}
+
 export async function getBulkImportJobRows(
   jobId: string,
   status?: BulkImportRowStatus,
