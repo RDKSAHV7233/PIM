@@ -27,85 +27,6 @@ import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
-const IMPORT_FIELD_GUIDE = [
-  {
-    name: "title",
-    example: "Classic Cotton Tee",
-    notes: "Primary product name shown in catalog and product workbench.",
-  },
-  {
-    name: "description",
-    example: "Soft crew-neck t-shirt",
-    notes: "Plain text description for the base product record.",
-  },
-  {
-    name: "brand",
-    example: "Vexa PIM",
-    notes: "Brand label used in product search and merchandising.",
-  },
-  {
-    name: "hsnCode",
-    example: "61091000",
-    notes: "India GST classification code (HSN). 4, 6, or 8 digits.",
-  },
-  {
-    name: "gstRate",
-    example: "12",
-    notes: "India GST rate as a number (5, 12, 18, 28). Digits only, no % sign.",
-  },
-  {
-    name: "gb_commodity_code",
-    example: "6204420000",
-    notes: "UK Trade Tariff commodity code (10 digits). Optional — leave blank if not selling in the UK.",
-  },
-  {
-    name: "ae_hs_code",
-    example: "620442",
-    notes: "UAE HS code (6 digits). Optional — leave blank if not selling in the UAE.",
-  },
-  {
-    name: "us_tax_category",
-    example: "CLOTHING",
-    notes: "US Avalara/AvaTax tax category string. Optional — leave blank if not selling in the US.",
-  },
-  {
-    name: "au_commodity_code",
-    example: "62044200",
-    notes: "Australia commodity code. Optional — leave blank if not selling in Australia.",
-  },
-  {
-    name: "status",
-    example: "draft",
-    notes: "Use a valid workflow status for the imported row.",
-  },
-  {
-    name: "attributes",
-    example: '{"material":"cotton","color":"black","size":"M"}',
-    notes: "JSON object for category-specific attributes.",
-  },
-] as const;
-
-const SAMPLE_JSON_PREVIEW = `[
-  {
-    "title": "Classic Cotton Tee",
-    "description": "Soft crew-neck t-shirt",
-    "brand": "Vexa PIM",
-    "hsnCode": "61091000",
-    "gstRate": 12,
-    "taxCodes": [
-      { "regimeKey": "GB", "key": "COMMODITY_CODE", "value": "6204420000" },
-      { "regimeKey": "AE", "key": "HS_CODE",        "value": "620442" },
-      { "regimeKey": "US", "key": "TAX_CATEGORY",   "value": "CLOTHING" },
-      { "regimeKey": "AU", "key": "COMMODITY_CODE", "value": "62044200" }
-    ],
-    "status": "draft",
-    "attributes": {
-      "material": "cotton",
-      "color": "black",
-      "size": "M"
-    }
-  }
-]`;
 
 interface OperationsImportsPageProps {
   searchParams: Promise<{
@@ -145,12 +66,16 @@ function isBulkImportProblemRow(row: { status?: string | null; errorMessage?: st
 
 function importWorkflowSteps(input: {
   selectedBulkJobId: string;
+  selectedBulkRunId: string;
   selectedJobStatus: string | null;
   selectedAttentionRows: number;
   selectedSuccessfulRows: number;
+  selectedRunAttentionRows: number;
+  selectedRunSuccessfulRows: number;
 }): WorkflowStep[] {
-  const hasSelection = input.selectedBulkJobId.length > 0;
-  const status = String(input.selectedJobStatus ?? "").trim().toLowerCase();
+  const hasSelection = input.selectedBulkJobId.length > 0 || input.selectedBulkRunId.length > 0;
+  const attentionRows = input.selectedAttentionRows + input.selectedRunAttentionRows;
+  const successfulRows = input.selectedSuccessfulRows + input.selectedRunSuccessfulRows;
 
   return [
     {
@@ -171,12 +96,12 @@ function importWorkflowSteps(input: {
     {
       label: "Review result and repair rows",
       tone:
-        input.selectedAttentionRows > 0
+        attentionRows > 0
           ? "current"
-          : input.selectedSuccessfulRows > 0 && hasSelection
+          : successfulRows > 0 && hasSelection
             ? "complete"
             : "pending",
-      description: "Open the selected job, review results, download the error report, and repair remaining rows.",
+      description: "Select an import job or run to review results, download the error report, and repair remaining rows.",
     },
   ];
 }
@@ -254,12 +179,6 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const selectedRowsNeedingRepair = selectedRows.filter((row) => row.status !== "success");
     const selectedSuccessfulRows = selectedRows.filter((row) => row.status === "success");
     const selectedAttentionRows = selectedProblemRows.length;
-    const operatorWorkflowSteps = importWorkflowSteps({
-      selectedBulkJobId,
-      selectedJobStatus: selectedJob?.status ?? null,
-      selectedAttentionRows,
-      selectedSuccessfulRows: selectedSuccessfulRows.length,
-    });
     const selectedRun: BulkImportRun | null =
       (selectedBulkRunId
         ? largeRuns.find((run) => run.id === selectedBulkRunId) ??
@@ -278,6 +197,15 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const selectedRunSuccessfulRows = selectedRunRows.filter((row) => row.status === "success");
     const selectedRunProcessedRows =
       (selectedRun?.acceptedRows ?? 0) + (selectedRun?.failedRows ?? 0) + (selectedRun?.deadLetterRows ?? 0);
+    const operatorWorkflowSteps = importWorkflowSteps({
+      selectedBulkJobId,
+      selectedBulkRunId,
+      selectedJobStatus: selectedJob?.status ?? null,
+      selectedAttentionRows,
+      selectedSuccessfulRows: selectedSuccessfulRows.length,
+      selectedRunAttentionRows: selectedRunProblemRows.length,
+      selectedRunSuccessfulRows: selectedRunSuccessfulRows.length,
+    });
 
     const statusCounts = filteredByData.reduce<Record<string, number>>((accumulator, job) => {
       const key = String(job.status ?? "").toLowerCase() || "unknown";
@@ -309,11 +237,6 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       const queryString = search.toString();
       return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
     };
-    const importFieldColumns: Column<(typeof IMPORT_FIELD_GUIDE)[number]>[] = [
-      { key: "field", header: "Field", render: (field) => <span className="font-mono text-xs text-slate-900">{field.name}</span> },
-      { key: "example", header: "Example", render: (field) => <span className="font-mono text-xs text-slate-700">{field.example}</span> },
-      { key: "notes", header: "How to use it", render: (field) => <span className="text-slate-600">{field.notes}</span> },
-    ];
     const jobColumns: Column<(typeof visibleJobs)[number]>[] = [
       { key: "job", header: "Job", render: (job) => <span className="font-mono text-xs">{job.id}</span> },
       { key: "format", header: "Format", render: (job) => job.sourceFormat },
@@ -461,10 +384,10 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           </Card>
 
           <Card>
-            <CardTitle>Sample Files</CardTitle>
+            <CardTitle>Sample Files &amp; Format Guide</CardTitle>
             <div className="space-y-3 text-sm text-slate-600">
               <p>
-                Download a ready-to-edit sample to see the expected bulk import format before uploading your own file.
+                Download a ready-to-edit sample to see the expected bulk import format. CSV uploads should use the exact canonical column names; JSON uploads should use the same keys on each row object.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Link
@@ -480,42 +403,35 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                   Download sample JSON
                 </Link>
               </div>
-              <ul className="list-disc space-y-1 pl-5">
-                <li>CSV uploads use the canonical columns below.</li>
-                <li>JSON imports should contain an array of row objects.</li>
-                <li>Start with one sample row, then add your own category-specific attributes.</li>
-              </ul>
-            </div>
-          </Card>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <Card>
-            <CardTitle>Import Format Guide</CardTitle>
-            <div className="space-y-3 text-sm text-slate-600">
-              <p>
-                CSV uploads should use the exact canonical column names below. JSON uploads should use the
-                same keys on each row object.
-              </p>
-              <DataGrid columns={importFieldColumns} rows={IMPORT_FIELD_GUIDE.slice()} getRowKey={(field) => field.name} />
+              <div className="overflow-x-auto rounded-md border border-slate-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold text-slate-700">Field</th>
+                      <th className="px-3 py-2 font-semibold text-slate-700">Example</th>
+                      <th className="px-3 py-2 font-semibold text-slate-700">How to use it</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">title</td><td className="px-3 py-1.5 font-mono text-slate-700">Classic Cotton Tee</td><td className="px-3 py-1.5 text-slate-600">Primary product name shown in catalog and product workbench.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">description</td><td className="px-3 py-1.5 font-mono text-slate-700">Soft crew-neck t-shirt</td><td className="px-3 py-1.5 text-slate-600">Plain text description for the base product record.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">brand</td><td className="px-3 py-1.5 font-mono text-slate-700">Vexa PIM</td><td className="px-3 py-1.5 text-slate-600">Brand label used in product search and merchandising.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">hsnCode</td><td className="px-3 py-1.5 font-mono text-slate-700">61091000</td><td className="px-3 py-1.5 text-slate-600">India GST classification code (HSN). 4, 6, or 8 digits.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">gstRate</td><td className="px-3 py-1.5 font-mono text-slate-700">12</td><td className="px-3 py-1.5 text-slate-600">India GST rate as a number (5, 12, 18, 28). Digits only, no % sign.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">gb_commodity_code</td><td className="px-3 py-1.5 font-mono text-slate-700">6204420000</td><td className="px-3 py-1.5 text-slate-600">UK Trade Tariff commodity code (10 digits). Optional.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">ae_hs_code</td><td className="px-3 py-1.5 font-mono text-slate-700">620442</td><td className="px-3 py-1.5 text-slate-600">UAE HS code (6 digits). Optional.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">us_tax_category</td><td className="px-3 py-1.5 font-mono text-slate-700">CLOTHING</td><td className="px-3 py-1.5 text-slate-600">US Avalara/AvaTax tax category string. Optional.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">au_commodity_code</td><td className="px-3 py-1.5 font-mono text-slate-700">62044200</td><td className="px-3 py-1.5 text-slate-600">Australia commodity code. Optional.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">status</td><td className="px-3 py-1.5 font-mono text-slate-700">draft</td><td className="px-3 py-1.5 text-slate-600">Use a valid workflow status for the imported row.</td></tr>
+                    <tr><td className="px-3 py-1.5 font-mono text-slate-900">attributes</td><td className="px-3 py-1.5 font-mono text-slate-700">{`{"material":"cotton"}`}</td><td className="px-3 py-1.5 text-slate-600">JSON object for category-specific attributes.</td></tr>
+                  </tbody>
+                </table>
+              </div>
               <ul className="list-disc space-y-1 pl-5">
                 <li>Keep the first row as headers for CSV uploads.</li>
                 <li>Use one product row per line in CSV, or one object per item in JSON.</li>
-                <li>Start with a single sample row first, then scale up after the mapping looks correct.</li>
+                <li>Start with a single sample row, then scale up after the mapping looks correct.</li>
               </ul>
-            </div>
-          </Card>
-
-          <Card>
-            <CardTitle>JSON Example</CardTitle>
-            <div className="space-y-3 text-sm text-slate-600">
-              <p>
-                If you prefer JSON imports, upload an array of product row objects using the same field names as the
-                CSV sample.
-              </p>
-              <pre className="overflow-hidden whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800">
-                <code>{SAMPLE_JSON_PREVIEW}</code>
-              </pre>
             </div>
           </Card>
         </section>
@@ -852,14 +768,14 @@ export default async function OperationsImportsPage({ searchParams }: Operations
               </div>
             )}
           </Card>
-        ) : (
+        ) : !selectedBulkRunId ? (
           <Card>
             <CardTitle>Stage 4 | Review result and repair rows</CardTitle>
             <p className="text-sm text-slate-600">
               Select an import job from Stage 3 to open the result summary, download the error report, and move directly into the row repair console when failed rows remain.
             </p>
           </Card>
-        )}
+        ) : null}
 
         {selectedBulkRunId && selectedRun ? (
           <Card aria-live="polite" aria-atomic="true">
