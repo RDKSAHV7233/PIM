@@ -19,7 +19,7 @@ import {
   ConnectorImplementationStatus,
 } from "../connector-framework/connector.interface";
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
-import { resolveConnectorLaunchPolicy, isCustomerVisibleStage } from "../connector-framework/connector-launch-policy";
+import { resolveConnectorLaunchPolicy, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
@@ -127,7 +127,7 @@ export class ConnectorInstallerService {
     action: ConnectorActionRule,
   ): ConnectorActionRule {
     const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
-    if (launchPolicy.launchStage === "planned") {
+    if (!isInstallableStage(launchPolicy.launchStage)) {
       return {
         allowed: false,
         reason: "CONNECTOR_LAUNCH_STAGE_PLANNED",
@@ -164,9 +164,13 @@ export class ConnectorInstallerService {
     // Replaces the prior N×2 sequential per-slug plan check loop.
     const actionsMap = await this.connectorPermissionService.buildDefinitionActionsForSlugs(actor, slugs);
 
-    // SHOW_PLANNED_CONNECTORS: dev/staging only — must NOT be enabled in production.
+    const boundaryRoles = actor.adminBoundaryRoles ?? [];
+    const isInternalAdmin =
+      actor.actorRole === "admin" &&
+      (boundaryRoles.includes("system_admin") || boundaryRoles.includes("super_admin"));
     const showPlanned =
-      process.env.SHOW_PLANNED_CONNECTORS === "true" && actor.actorRole === "admin";
+      isInternalAdmin ||
+      (process.env.SHOW_PLANNED_CONNECTORS === "true" && actor.actorRole === "admin");
 
     return activeRows
       .map((row) => {
@@ -252,7 +256,7 @@ export class ConnectorInstallerService {
 
       const definitionCapabilities = parseCapabilities(definition.capabilities);
       const launchPolicy = resolveConnectorLaunchPolicy(normalizedSlug, definitionCapabilities);
-      if (launchPolicy.launchStage === "planned") {
+      if (!isInstallableStage(launchPolicy.launchStage)) {
         throw new BadRequestException({
           error: "CONNECTOR_LAUNCH_STAGE_PLANNED",
           message:

@@ -1,12 +1,29 @@
 import { ConnectorCap } from "./connector.interface";
 import { CONNECTOR_SLUGS } from "./connector.constants";
 
-export type ConnectorLaunchStage = "live" | "manual" | "planned";
+export type ConnectorLaunchStage =
+  | "planned"
+  | "under_development"
+  | "code_complete"
+  | "qa_validation"
+  | "po_review"
+  | "early_access"
+  | "manual"
+  | "live"
+  | "deprecated"
+  | "internal_diagnostic";
 
 type ConnectorLaunchPolicy = {
   launchStage: ConnectorLaunchStage;
   launchNote: string | null;
   surfacedCapabilities: ConnectorCap[];
+};
+
+export type ConnectorPipelineMetadata = {
+  owner: string;
+  milestone: string | null;
+  blockers: string[];
+  internalNotes: string | null;
 };
 
 export function resolveConnectorLaunchPolicy(
@@ -17,7 +34,7 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.AMAZON) {
     return {
-      launchStage: "planned",
+      launchStage: "under_development",
       launchNote:
         "Amazon India is in experimental preview. Seller install and credential validation are available; publish and status sync are under active validation. Not recommended for production catalogues.",
       surfacedCapabilities: capabilities,
@@ -62,10 +79,18 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
-      launchStage: "planned",
+      launchStage: "code_complete",
       launchNote:
-        "WooCommerce connector is under active development. Self-serve install and publishing are not yet available. Contact your account manager for early access.",
+        "WooCommerce connector is code-complete (W1–W10). QA validation and PO review pending before general availability. Contact your account manager for early access.",
       surfacedCapabilities: capabilities,
+    };
+  }
+
+  if (slug.startsWith("diag-")) {
+    return {
+      launchStage: "internal_diagnostic",
+      launchNote: "Internal diagnostic connector. Not visible to customers and not installable.",
+      surfacedCapabilities: [],
     };
   }
 
@@ -82,6 +107,50 @@ export function isCustomerVisibleStage(stage: ConnectorLaunchStage): boolean {
 
 export function isInstallableStage(stage: ConnectorLaunchStage): boolean {
   return stage === "live" || stage === "manual";
+}
+
+const LAUNCH_STAGE_LABELS: Record<ConnectorLaunchStage, string> = {
+  planned: "Planned",
+  under_development: "Under development",
+  code_complete: "Code complete",
+  qa_validation: "QA validation",
+  po_review: "PO review",
+  early_access: "Early access",
+  manual: "Manual export",
+  live: "Live",
+  deprecated: "Deprecated",
+  internal_diagnostic: "Internal diagnostic",
+};
+
+export function formatLaunchStageLabel(stage: ConnectorLaunchStage): string {
+  return LAUNCH_STAGE_LABELS[stage] ?? stage;
+}
+
+export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelineMetadata {
+  const s = String(slug ?? "").trim().toLowerCase();
+
+  if (s === CONNECTOR_SLUGS.SHOPIFY) {
+    return { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — full lifecycle support." };
+  }
+  if (s === CONNECTOR_SLUGS.MYNTRA) {
+    return { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — Listing Management API." };
+  }
+  if (s === CONNECTOR_SLUGS.FLIPKART) {
+    return { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — default fallback connector." };
+  }
+  if (s === CONNECTOR_SLUGS.MEESHO) {
+    return { owner: "Platform", milestone: "RD-MEESHO-1", blockers: ["Meesho API access pending"], internalNotes: "Export-only. Waiting on Meesho partner API programme." };
+  }
+  if (s === CONNECTOR_SLUGS.NYKAA) {
+    return { owner: "Platform", milestone: null, blockers: ["Nykaa platform-partner credentials"], internalNotes: "Export-only. Direct API requires partner credentials." };
+  }
+  if (s === CONNECTOR_SLUGS.AMAZON) {
+    return { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." };
+  }
+  if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
+    return { owner: "Platform", milestone: "W10 complete", blockers: ["QA validation", "PO review"], internalNotes: "W1–W10 code-complete. 59 static + 49 runtime assertions passing." };
+  }
+  return { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };
 }
 
 export function resolveSafeConnectorFallbackSlugs(): string[] {

@@ -197,7 +197,7 @@ function isDisabledInstallation(installation: ConnectorInstallation): boolean {
   return String(installation.status ?? "").trim().toUpperCase() === "DISABLED";
 }
 
-function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
+function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
@@ -208,7 +208,7 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
 }
 
 function connectorLaunchLabel(
-  stage: "live" | "manual" | "planned",
+  stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
   if (stage === "live" && implementationStatus === "partial") {
@@ -477,7 +477,7 @@ function summarizeDefinitionWorkspace(
     return {
       label: "Export/manual",
       tone: "warning",
-      description: "Operationally limited. Use this connector for export-led or coordinated manual workflows only.",
+      description: "Manual export workflow. This connector supports file/export-based operations and does not enable direct live publish yet.",
     };
   }
   if (definition.launchStage === "planned") {
@@ -551,7 +551,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
-      .filter((item) => item.definition.launchStage !== "planned")
+      .filter((item) => item.definition.launchStage === "live" || item.definition.launchStage === "manual")
       .filter((item) => !item.definition.slug.startsWith("diag-"))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => {
@@ -975,6 +975,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       {item.statusNote}
                     </p>
                   ) : null}
+                  <div className="mt-3">
+                    <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-500 cursor-default">
+                      Review manual export
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

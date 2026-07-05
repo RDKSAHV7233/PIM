@@ -3,15 +3,18 @@ import {
   resolveConnectorLaunchPolicy,
   isCustomerVisibleStage,
   isInstallableStage,
+  formatLaunchStageLabel,
+  resolveConnectorPipelineMetadata,
+  type ConnectorLaunchStage,
 } from "./connector-launch-policy";
 
 describe("resolveConnectorLaunchPolicy", () => {
   const allCaps: ConnectorCap[] = ["VALIDATE", "PUBLISH", "STATUS_SYNC", "WEBHOOK_RECEIVE", "EXCEL_EXPORT"];
 
   describe("amazon-in", () => {
-    it("is planned (experimental preview, not yet production-recommended)", () => {
+    it("is under_development (experimental preview, not yet production-recommended)", () => {
       const policy = resolveConnectorLaunchPolicy("amazon-in", allCaps);
-      expect(policy.launchStage).toBe("planned");
+      expect(policy.launchStage).toBe("under_development");
     });
 
     it("surfaces all capabilities", () => {
@@ -55,6 +58,29 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
+  describe("diag-* (diagnostic connectors)", () => {
+    it("resolves to internal_diagnostic", () => {
+      const policy = resolveConnectorLaunchPolicy("diag-1781806774339", allCaps);
+      expect(policy.launchStage).toBe("internal_diagnostic");
+    });
+
+    it("surfaces no capabilities", () => {
+      const policy = resolveConnectorLaunchPolicy("diag-1781806774339", allCaps);
+      expect(policy.surfacedCapabilities).toEqual([]);
+    });
+
+    it("applies to any diag- prefix slug", () => {
+      expect(resolveConnectorLaunchPolicy("diag-abc", allCaps).launchStage).toBe("internal_diagnostic");
+      expect(resolveConnectorLaunchPolicy("diag-999", allCaps).launchStage).toBe("internal_diagnostic");
+    });
+
+    it("has a launchNote explaining internal-only status", () => {
+      const policy = resolveConnectorLaunchPolicy("diag-test", allCaps);
+      expect(policy.launchNote).toMatch(/internal/i);
+      expect(policy.launchNote).toMatch(/not.*visible|not.*installable/i);
+    });
+  });
+
   describe("unknown slug", () => {
     it("defaults to live", () => {
       const policy = resolveConnectorLaunchPolicy("some-future-connector", allCaps);
@@ -80,9 +106,9 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("woocommerce", () => {
-    it("is planned", () => {
+    it("is code_complete", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchStage).toBe("planned");
+      expect(policy.launchStage).toBe("code_complete");
     });
   });
 
@@ -113,6 +139,20 @@ describe("isCustomerVisibleStage", () => {
   it("returns false for planned", () => {
     expect(isCustomerVisibleStage("planned")).toBe(false);
   });
+
+  it("returns false for internal_diagnostic (diag-* connectors)", () => {
+    expect(isCustomerVisibleStage("internal_diagnostic")).toBe(false);
+  });
+
+  const nonCustomerStages: ConnectorLaunchStage[] = [
+    "under_development", "code_complete", "qa_validation",
+    "po_review", "early_access", "deprecated", "internal_diagnostic",
+  ];
+  for (const stage of nonCustomerStages) {
+    it(`returns false for ${stage}`, () => {
+      expect(isCustomerVisibleStage(stage)).toBe(false);
+    });
+  }
 });
 
 describe("isInstallableStage", () => {
@@ -126,5 +166,74 @@ describe("isInstallableStage", () => {
 
   it("returns false for planned", () => {
     expect(isInstallableStage("planned")).toBe(false);
+  });
+
+  it("returns false for internal_diagnostic (diag-* install guard)", () => {
+    expect(isInstallableStage("internal_diagnostic")).toBe(false);
+  });
+
+  const nonInstallableStages: ConnectorLaunchStage[] = [
+    "under_development", "code_complete", "qa_validation",
+    "po_review", "early_access", "deprecated", "internal_diagnostic",
+  ];
+  for (const stage of nonInstallableStages) {
+    it(`returns false for ${stage}`, () => {
+      expect(isInstallableStage(stage)).toBe(false);
+    });
+  }
+});
+
+describe("formatLaunchStageLabel", () => {
+  it("returns human-readable labels for all stages", () => {
+    expect(formatLaunchStageLabel("live")).toBe("Live");
+    expect(formatLaunchStageLabel("manual")).toBe("Manual export");
+    expect(formatLaunchStageLabel("planned")).toBe("Planned");
+    expect(formatLaunchStageLabel("under_development")).toBe("Under development");
+    expect(formatLaunchStageLabel("code_complete")).toBe("Code complete");
+    expect(formatLaunchStageLabel("qa_validation")).toBe("QA validation");
+    expect(formatLaunchStageLabel("po_review")).toBe("PO review");
+    expect(formatLaunchStageLabel("early_access")).toBe("Early access");
+    expect(formatLaunchStageLabel("deprecated")).toBe("Deprecated");
+    expect(formatLaunchStageLabel("internal_diagnostic")).toBe("Internal diagnostic");
+  });
+});
+
+describe("resolveConnectorPipelineMetadata", () => {
+  it("returns metadata for known connectors", () => {
+    const shopify = resolveConnectorPipelineMetadata("shopify");
+    expect(shopify.owner).toBe("Platform");
+    expect(shopify.blockers).toEqual([]);
+  });
+
+  it("returns blockers for under-development connectors", () => {
+    const amazon = resolveConnectorPipelineMetadata("amazon-in");
+    expect(amazon.blockers.length).toBeGreaterThan(0);
+    expect(amazon.milestone).toBe("Sprint F");
+  });
+
+  it("returns blockers for code-complete connectors", () => {
+    const woo = resolveConnectorPipelineMetadata("woocommerce");
+    expect(woo.blockers).toContain("QA validation");
+    expect(woo.blockers).toContain("PO review");
+  });
+
+  it("returns unknown owner for unregistered slugs", () => {
+    const unknown = resolveConnectorPipelineMetadata("some-new-connector");
+    expect(unknown.owner).toBe("Unknown");
+  });
+});
+
+describe("diag-* end-to-end policy checks", () => {
+  const allCaps: ConnectorCap[] = ["VALIDATE", "PUBLISH", "STATUS_SYNC", "WEBHOOK_RECEIVE", "EXCEL_EXPORT"];
+
+  it("diag-* resolves to internal_diagnostic and is not customer-visible or installable", () => {
+    const policy = resolveConnectorLaunchPolicy("diag-1781806774339", allCaps);
+    expect(policy.launchStage).toBe("internal_diagnostic");
+    expect(isCustomerVisibleStage(policy.launchStage)).toBe(false);
+    expect(isInstallableStage(policy.launchStage)).toBe(false);
+  });
+
+  it("pipeline page isCustomerVisible returns false for internal_diagnostic", () => {
+    expect(isCustomerVisibleStage("internal_diagnostic")).toBe(false);
   });
 });
