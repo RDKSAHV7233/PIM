@@ -100,7 +100,7 @@ function connectorAccountReferencePlaceholder(slug: string): string {
   return "Optional";
 }
 
-function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
+function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
@@ -111,7 +111,7 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
 }
 
 function connectorLaunchLabel(
-  stage: "live" | "manual" | "planned",
+  stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
   if (stage === "live" && implementationStatus === "partial") {

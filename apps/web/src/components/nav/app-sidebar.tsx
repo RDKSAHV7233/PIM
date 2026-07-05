@@ -164,6 +164,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Issues", href: "/channels/health", icon: "pulse" },
       { label: "Submission Log", href: "/channels/submissions", icon: "send" },
       { label: "Governance", href: "/admin/connectors", icon: "shield", visibility: "connector_admin_plus" },
+      { label: "Pipeline", href: "/admin/connectors/pipeline", icon: "flask", visibility: "system_admin_gated" },
     ],
   },
   {

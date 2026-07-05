@@ -26,7 +26,7 @@ import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto"
 import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 import { ConnectorInstallerService } from "./connector-installer.service";
 
-type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string };
+type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimAdminBoundaryRoles?: string[] };
 
 @Controller("connectors")
 @DisallowApiClient()
@@ -44,6 +44,7 @@ export class ConnectorInstallerController {
       actorId: request.pimUserId ?? "system",
       actorRole: request.pimRole ?? "viewer",
       tenantId: request.pimTenant,
+      adminBoundaryRoles: Array.isArray(request.pimAdminBoundaryRoles) ? request.pimAdminBoundaryRoles : [],
     } as const;
   }
 

@@ -167,7 +167,7 @@ function installationStatusTone(status: string): "neutral" | "success" | "warnin
   return "neutral";
 }
 
-function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | "warning" | "info" {
+function connectorLaunchTone(stage: string): "success" | "warning" | "info" {
   if (stage === "live") {
     return "success";
   }
@@ -178,7 +178,7 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | 
 }
 
 function connectorLaunchLabel(
-  stage: "live" | "manual" | "planned",
+  stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
   if (stage === "live" && implementationStatus === "partial") {

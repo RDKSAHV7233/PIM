@@ -127,10 +127,60 @@ describe("ConnectorInstallerService", () => {
       { actorId: "user_1", actorRole: "admin" },
       expect.arrayContaining(["amazon-in", "flipkart"]),
     );
-    // amazon-in is planned → filtered out; only flipkart should remain
+    // amazon-in is under_development → filtered out; only flipkart should remain
     expect(result).toHaveLength(1);
     expect(result[0]!.slug).toBe("flipkart");
     expect(connectorPermissionService.buildDefinitionActions).not.toHaveBeenCalled();
+  });
+
+  it("listAvailableDefinitions includes non-customer-visible connectors for admin with system_admin boundary role", async () => {
+    const { service, queryMock, connectorPermissionService } = createService();
+    queryMock.mockResolvedValue([
+      { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ]);
+    (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+    const result = await service.listAvailableDefinitions({
+      actorId: "user_1",
+      actorRole: "admin",
+      adminBoundaryRoles: ["system_admin"],
+    });
+    expect(result).toHaveLength(2);
+    expect(result.map((d) => d.slug)).toEqual(expect.arrayContaining(["amazon-in", "flipkart"]));
+  });
+
+  it("listAvailableDefinitions includes non-customer-visible connectors for admin with super_admin boundary role", async () => {
+    const { service, queryMock, connectorPermissionService } = createService();
+    queryMock.mockResolvedValue([
+      { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ]);
+    (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+    const result = await service.listAvailableDefinitions({
+      actorId: "user_1",
+      actorRole: "admin",
+      adminBoundaryRoles: ["super_admin"],
+    });
+    expect(result).toHaveLength(2);
+  });
+
+  it("listAvailableDefinitions hides non-customer-visible connectors for admin without boundary roles", async () => {
+    const { service, queryMock, connectorPermissionService } = createService();
+    queryMock.mockResolvedValue([
+      { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ]);
+    (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+    const result = await service.listAvailableDefinitions({
+      actorId: "user_1",
+      actorRole: "admin",
+      adminBoundaryRoles: [],
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.slug).toBe("flipkart");
   });
 
   it("listAvailableDefinitions includes planned connectors when SHOW_PLANNED_CONNECTORS=true for admin", async () => {

@@ -14,6 +14,7 @@ export type ConnectorPermissionAction = "install" | "reconnect" | "uninstall";
 export interface ConnectorActor {
   actorId: string;
   actorRole: AppRole;
+  adminBoundaryRoles?: readonly string[];
 }
 
 export interface ConnectorActionRule {
