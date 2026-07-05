@@ -1060,6 +1060,32 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </p>
                     ) : null}
 
+                    {isInstallationAttentionStatus(installation.status) && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="flex-1 text-sm font-medium text-red-800">
+                          This account needs attention — credentials may be expired or the connection has errors.
+                        </p>
+                        {installation.actions?.reconnect.allowed ? (
+                          <form action={reconnectConnectorAction}>
+                            <input type="hidden" name="installationId" value={installation.id} />
+                            <PendingSubmitButton
+                              type="submit"
+                              variant="secondary"
+                              idleLabel="Reconnect"
+                              pendingLabel="Reconnecting..."
+                            />
+                          </form>
+                        ) : (
+                          <Link
+                            href={`/channels/connectors/${encodeURIComponent(installation.id)}`}
+                            className="inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-50"
+                          >
+                            Review recovery
+                          </Link>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">External reference</p>

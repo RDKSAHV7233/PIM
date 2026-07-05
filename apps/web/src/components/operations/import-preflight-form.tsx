@@ -251,9 +251,12 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
             accept=".csv,.json"
             className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             aria-invalid={fieldErrors.sourceFile ? "true" : undefined}
-            aria-describedby={fieldErrors.sourceFile ? "bulk-import-file-error" : undefined}
+            aria-describedby={fieldErrors.sourceFile ? "bulk-import-file-error" : "bulk-import-file-guidance"}
             onChange={resetValidationState}
           />
+          <p id="bulk-import-file-guidance" className="text-xs text-slate-500">
+            CSV or JSON only. Maximum upload size: 32 MB. Large files are uploaded using staged validation before import.
+          </p>
           {fieldErrors.sourceFile ? (
             <p id="bulk-import-file-error" className="text-xs text-red-700">
               {fieldErrors.sourceFile}
