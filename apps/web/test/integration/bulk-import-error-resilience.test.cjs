@@ -62,6 +62,27 @@ try {
   const procRedirectIdx = processSource.indexOf("redirect(returnTo);");
   assert(procRedirectIdx > procCatchIdx, "processBulkImportJobAction: redirect must be outside the catch block");
 
+  // --- ImportProgress: poll failure tracking ---
+  const progressSource = read("apps/web/src/components/ui/import-progress.tsx");
+  assert(
+    progressSource.includes("pollFailures") &&
+      progressSource.includes("setPollFailures"),
+    "ImportProgress must track consecutive poll failures in state",
+  );
+  assert(
+    progressSource.includes("setPollFailures(0)"),
+    "ImportProgress must reset poll failure counter on successful poll",
+  );
+  assert(
+    progressSource.includes("setPollFailures((prev) => prev + 1)"),
+    "ImportProgress must increment poll failure counter in catch block",
+  );
+  assert(
+    progressSource.includes("pollFailures >= 3") &&
+      progressSource.includes("having trouble refreshing import status"),
+    "ImportProgress must show a warning after 3+ consecutive poll failures",
+  );
+
   // --- imports page: primary data fetches must not crash the page on API failure ---
   const importsPage = read("apps/web/src/app/operations/imports/page.tsx");
   assert(
@@ -101,6 +122,9 @@ try {
           "create_bulk_import_action_redirect_always_fires",
           "process_bulk_import_action_process_call_is_guarded",
           "process_bulk_import_action_redirect_always_fires",
+          "import_progress_tracks_consecutive_poll_failures",
+          "import_progress_resets_counter_on_success",
+          "import_progress_shows_warning_after_3_failures",
           "next_config_body_limit_accommodates_api_max_source_size",
           "imports_page_primary_fetches_degrade_gracefully_on_api_failure",
         ],

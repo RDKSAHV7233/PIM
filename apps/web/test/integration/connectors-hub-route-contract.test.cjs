@@ -65,6 +65,13 @@ function run() {
     "Connectors hub must filter test-mode products from the product list shown during connector setup.",
   );
 
+  assert(
+    page.includes("isInstallationAttentionStatus(installation.status)") &&
+      page.includes("credentials may be expired") &&
+      page.includes("Review recovery"),
+    "Connectors hub must show a prominent recovery CTA on cards where credentials are expired or the connection has errors.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -77,6 +84,7 @@ function run() {
           "connectors_hub_tone_codes_installation_health",
           "connectors_hub_humanises_raw_install_error_codes",
           "connectors_hub_filters_test_mode_products",
+          "connectors_hub_shows_credential_expiry_recovery_cta",
         ],
         checkedAt: new Date().toISOString(),
       },

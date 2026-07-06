@@ -127,6 +127,14 @@ function run() {
     "Import preflight form must render a useful malformed-file state instead of a generic validation failure.",
   );
   assert(
+    componentSource.includes('id="bulk-import-file-guidance"') &&
+      componentSource.includes("CSV or JSON only") &&
+      componentSource.includes("Maximum upload size: 32 MB") &&
+      componentSource.includes("staged validation"),
+    "Import preflight form must show upload guidance near the file input with allowed types, size limit, and staged validation note.",
+  );
+
+  assert(
     routeSource.includes("validateCsrf(request)") &&
       routeSource.includes('resolveBearerToken(request)') &&
       routeSource.includes('fetch(`${getApiBaseUrl()}/bulk-import/validate`') &&
@@ -244,6 +252,7 @@ function run() {
           "backend_malformed_csv_row_validation",
           "backend_tenant_isolation",
           "server_action_reuses_staged_run",
+          "upload_guidance_shows_types_size_and_staged_validation",
         ],
         checkedAt: new Date().toISOString(),
       },

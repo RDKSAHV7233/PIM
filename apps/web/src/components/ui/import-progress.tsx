@@ -16,6 +16,7 @@ const TERMINAL_STATUSES = new Set(["completed", "dead_letter", "failed"]);
 export function ImportProgress({ initialJob, role }: ImportProgressProps) {
   const [job, setJob] = useState<BulkImportJob>(initialJob);
   const [startedAt] = useState<number>(() => Date.now());
+  const [pollFailures, setPollFailures] = useState(0);
   const inFlightRef = useRef(false);
 
   useEffect(() => {
@@ -38,8 +39,9 @@ export function ImportProgress({ initialJob, role }: ImportProgressProps) {
           { role },
         );
         setJob(updated);
+        setPollFailures(0);
       } catch {
-        // Keep trying in the next tick. Failures are visible in job status fields.
+        setPollFailures((prev) => prev + 1);
       } finally {
         inFlightRef.current = false;
       }
@@ -92,6 +94,14 @@ export function ImportProgress({ initialJob, role }: ImportProgressProps) {
         <p className="text-xs font-medium text-amber-700">
           Import finished with issues. Check the error report for details.
         </p>
+      )}
+      {pollFailures >= 3 && !TERMINAL_STATUSES.has(job.status) && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs font-medium text-amber-800">
+            We are having trouble refreshing import status. The import may still be running.
+            Try refreshing this page.
+          </p>
+        </div>
       )}
     </div>
   );
