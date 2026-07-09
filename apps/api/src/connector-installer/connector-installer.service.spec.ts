@@ -1,7 +1,10 @@
 ﻿import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service";
+import { signConnectorOAuthState } from "./connector-oauth-state";
 import { ConnectorInstallerService } from "./connector-installer.service";
 import type { InstallConnectorDto } from "./dto/install-connector.dto";
+
+const TEST_JWT_SECRET = "test-jwt-secret-at-least-32-characters-long-for-hkdf-derive";
 
 describe("ConnectorInstallerService", () => {
   function createService() {
@@ -331,6 +334,217 @@ describe("ConnectorInstallerService", () => {
           plainValue: "SK_abc",
         }),
       );
+    });
+  });
+
+  // ─── handlePublicOAuthCallback ──────────────────────────────────────────────
+
+  describe("handlePublicOAuthCallback", () => {
+    const INSTALLATION_ROW = {
+      id: "inst_001",
+      tenantKey: "tenant_abc",
+      connectorId: "def_shopify",
+      slug: "shopify",
+      accountAlias: "primary",
+      externalAccountRef: "test.myshopify.com",
+      metadata: JSON.stringify({
+        shopDomain: "test.myshopify.com",
+        oauthNonceHash: "",
+        oauthNonceIssuedAt: 0,
+        oauthNonceExpiresAt: 0,
+      }),
+    };
+
+    function setupEnv() {
+      const original = process.env.JWT_SECRET;
+      process.env.JWT_SECRET = TEST_JWT_SECRET;
+      return () => {
+        if (original === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = original;
+      };
+    }
+
+    function signState(overrides?: Partial<{ tenantKey: string; installationId: string; connectorKey: string }>) {
+      const { createHash } = require("node:crypto");
+      const result = signConnectorOAuthState({
+        tenantKey: overrides?.tenantKey ?? "tenant_abc",
+        installationId: overrides?.installationId ?? "inst_001",
+        connectorKey: overrides?.connectorKey ?? "shopify",
+      }, TEST_JWT_SECRET);
+      const nonceHash = createHash("sha256").update(result.nonce).digest("hex");
+      return { ...result, nonceHash };
+    }
+
+    function mockInstallationWithNonce(queryMock: jest.Mock, executeMock: jest.Mock, nonceHash: string, expiresAt: number) {
+      const meta = {
+        shopDomain: "test.myshopify.com",
+        oauthNonceHash: nonceHash,
+        oauthNonceIssuedAt: Date.now(),
+        oauthNonceExpiresAt: expiresAt,
+      };
+      queryMock.mockResolvedValue([{ ...INSTALLATION_ROW, metadata: JSON.stringify(meta) }]);
+      executeMock.mockResolvedValue(1);
+    }
+
+    it("rejects a missing state token (empty string)", async () => {
+      const restore = setupEnv();
+      try {
+        const { service } = createService();
+        await expect(
+          service.handlePublicOAuthCallback("", {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("rejects a tampered state token", async () => {
+      const restore = setupEnv();
+      try {
+        const { service } = createService();
+        await expect(
+          service.handlePublicOAuthCallback("dGFtcGVyZWQ.dGFtcGVyZWQ", {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("rejects an expired state token", async () => {
+      const restore = setupEnv();
+      const originalNow = Date.now;
+      try {
+        // Sign a token in the past so it's already expired
+        Date.now = () => originalNow() - 11 * 60 * 1000;
+        const { stateToken } = signState();
+        Date.now = originalNow;
+
+        const { service } = createService();
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally {
+        Date.now = originalNow;
+        restore();
+      }
+    });
+
+    it("rejects when expectedConnectorKey does not match state connectorKey", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken } = signState({ connectorKey: "woocommerce" });
+        const { service } = createService();
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("rejects when installation slug does not match state connectorKey", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken, nonceHash, expiresAt } = signState({ connectorKey: "shopify" });
+        const { service, queryMock, executeMock } = createService();
+        // Return an installation with a different slug
+        const wrongRow = { ...INSTALLATION_ROW, slug: "flipkart", metadata: JSON.stringify({
+          oauthNonceHash: nonceHash,
+          oauthNonceIssuedAt: Date.now(),
+          oauthNonceExpiresAt: expiresAt,
+        })};
+        queryMock.mockResolvedValue([wrongRow]);
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("rejects when nonce hash does not match (replay attempt)", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken, expiresAt } = signState();
+        const { service, queryMock, executeMock } = createService();
+        // Store a different nonce hash
+        mockInstallationWithNonce(queryMock, executeMock, "wrong_nonce_hash", expiresAt);
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("rejects when nonce has expired", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken, nonceHash } = signState();
+        const { service, queryMock, executeMock } = createService();
+        // Nonce expired in the past
+        mockInstallationWithNonce(queryMock, executeMock, nonceHash, Date.now() - 1000);
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("rejects when no nonce is stored (initiation never happened)", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken } = signState();
+        const { service, queryMock, executeMock } = createService();
+        // Empty nonce hash
+        mockInstallationWithNonce(queryMock, executeMock, "", Date.now() + 600_000);
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+
+    it("succeeds with valid state, matching nonce, and clears nonce after use", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken, nonceHash, expiresAt } = signState();
+        const { service, queryMock, executeMock, connectorPermissionService } = createService();
+
+        const connectorMock = { handleOAuthCallback: jest.fn().mockResolvedValue(undefined) };
+        const connectorRegistry = (service as any).connectorRegistry;
+        connectorRegistry.getConnector = jest.fn().mockReturnValue(connectorMock);
+
+        mockInstallationWithNonce(queryMock, executeMock, nonceHash, expiresAt);
+        // Second call: prisma update for status = ACTIVE
+        const tenantMock = (service as any).prisma.tenant;
+        tenantMock.mockReturnValue({
+          $queryRawUnsafe: queryMock,
+          $executeRawUnsafe: executeMock,
+          connectorInstallation: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        });
+
+        const result = await service.handlePublicOAuthCallback(
+          stateToken,
+          { code: "test_code", shop: "test.myshopify.com" },
+          "shopify",
+        );
+        expect(result).toEqual({ installationId: "inst_001", status: "CONNECTED" });
+        expect(connectorMock.handleOAuthCallback).toHaveBeenCalledTimes(1);
+        // Nonce should be cleared (executeMock called with null values via positional args)
+        expect(executeMock).toHaveBeenCalledWith(
+          expect.stringContaining("metadata = metadata ||"),
+          expect.stringContaining("oauthNonceHash"),
+          "inst_001",
+          "tenant_abc",
+        );
+      } finally { restore(); }
+    });
+
+    it("rejects when connector does not support OAuth", async () => {
+      const restore = setupEnv();
+      try {
+        const { stateToken, nonceHash, expiresAt } = signState();
+        const { service, queryMock, executeMock } = createService();
+
+        const connectorMock = {}; // no handleOAuthCallback
+        const connectorRegistry = (service as any).connectorRegistry;
+        connectorRegistry.getConnector = jest.fn().mockReturnValue(connectorMock);
+
+        mockInstallationWithNonce(queryMock, executeMock, nonceHash, expiresAt);
+
+        await expect(
+          service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
     });
   });
 });

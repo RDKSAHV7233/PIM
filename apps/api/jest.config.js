@@ -29,6 +29,8 @@ module.exports = {
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",
     "**/connector-installer/credential-encryption.util.spec.ts",
+    "**/connector-installer/connector-oauth-state.spec.ts",
+    "**/connectors/shopify/shopify-oauth-hmac.spec.ts",
     "**/compliance/compliance.service.spec.ts",
     "**/workspace-users/workspace-users.service.spec.ts",
     "**/pricing/pricing.service.spec.ts",
