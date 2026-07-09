@@ -1207,7 +1207,7 @@ export default async function ChannelConnectorDetailPage({
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Account Profile</CardTitle>
-                <dl className="mt-2 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+                <dl className="mt-2 grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[140px_1fr]">
                   <dt className="text-slate-500">Connector</dt>
                   <dd>{installation.displayName}</dd>
                   <dt className="text-slate-500">Maturity</dt>
@@ -1483,7 +1483,7 @@ export default async function ChannelConnectorDetailPage({
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Account Connection</CardTitle>
-                <dl className="mt-2 grid grid-cols-[160px_1fr] gap-y-2 text-sm">
+                <dl className="mt-2 grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[160px_1fr]">
                   <dt className="text-slate-500">Connector</dt>
                   <dd>{installation.displayName}</dd>
                   <dt className="text-slate-500">Account alias</dt>
@@ -1554,7 +1554,7 @@ export default async function ChannelConnectorDetailPage({
 
                 {/* Current configuration at a glance */}
                 <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                  <dl className="grid grid-cols-[180px_1fr] gap-y-1">
+                  <dl className="grid grid-cols-1 gap-y-1 sm:grid-cols-[180px_1fr]">
                     <dt className="text-slate-500">Marketplace ID</dt>
                     <dd className="font-mono text-xs text-slate-700">
                       {metadataMarketplaceId
