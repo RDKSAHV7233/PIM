@@ -247,7 +247,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
       {currentUsage ? (
         <Card>
           <CardTitle>This workspace — {currentUsage.profile.tenantKey}</CardTitle>
-          <div className="mt-3 flex flex-wrap items-center gap-6">
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:flex sm:flex-wrap sm:items-center sm:gap-6">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current tier</div>
               <span className={`mt-1 inline-block rounded px-2 py-0.5 text-sm font-semibold ${formatTierBadge(currentUsage.planTier)}`}>
@@ -267,7 +267,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
               <div className="mt-1 text-sm">{currentUsage.users.current} / {currentUsage.users.limit}</div>
             </div>
           </div>
-          <form action={changePlanTierAction} className="mt-4 flex items-center gap-3">
+          <form action={changePlanTierAction} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input type="hidden" name="tenantKey" value={currentUsage.profile.tenantKey} />
             <select
               name="planTier"
@@ -311,53 +311,92 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         ) : null}
 
         {searchResults && searchResults.length > 0 ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="pb-2 pr-4">Workspace</th>
-                  <th className="pb-2 pr-4">Name</th>
-                  <th className="pb-2 pr-4">Admins</th>
-                  <th className="pb-2 pr-4">Tier</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2">Change tier</th>
-                </tr>
-              </thead>
-              <tbody>
-                {searchResults.map((tenant) => (
-                  <tr key={tenant.tenantKey} className="border-b last:border-0">
-                    <td className="py-3 pr-4 font-mono text-xs">{tenant.workspaceSlug}</td>
-                    <td className="py-3 pr-4 text-sm">{tenant.displayName}</td>
-                    <td className="py-3 pr-4 text-xs text-slate-600">{(tenant.adminEmails ?? []).join(", ") || "—"}</td>
-                    <td className="py-3 pr-4">
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
-                        {tenant.planTier ?? "—"}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-xs">{formatStatus(tenant.billingStatus)}</td>
-                    <td className="py-3">
-                      <form action={changePlanTierAction} className="flex items-center gap-2">
-                        <input type="hidden" name="tenantKey" value={tenant.tenantKey} />
-                        <select
-                          name="planTier"
-                          defaultValue={tenant.planTier ?? "STARTER"}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs"
-                        >
-                          <option value="STARTER">STARTER</option>
-                          <option value="GROWTH">GROWTH</option>
-                          <option value="BUSINESS">BUSINESS</option>
-                          <option value="ENTERPRISE">ENTERPRISE</option>
-                        </select>
-                        <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800">
-                          Apply
-                        </button>
-                      </form>
-                    </td>
+          <>
+            <div className="mt-4 hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="pb-2 pr-4">Workspace</th>
+                    <th className="pb-2 pr-4">Name</th>
+                    <th className="pb-2 pr-4">Admins</th>
+                    <th className="pb-2 pr-4">Tier</th>
+                    <th className="pb-2 pr-4">Status</th>
+                    <th className="pb-2">Change tier</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {searchResults.map((tenant) => (
+                    <tr key={tenant.tenantKey} className="border-b last:border-0">
+                      <td className="py-3 pr-4 font-mono text-xs">{tenant.workspaceSlug}</td>
+                      <td className="py-3 pr-4 text-sm">{tenant.displayName}</td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">{(tenant.adminEmails ?? []).join(", ") || "—"}</td>
+                      <td className="py-3 pr-4">
+                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
+                          {tenant.planTier ?? "—"}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-xs">{formatStatus(tenant.billingStatus)}</td>
+                      <td className="py-3">
+                        <form action={changePlanTierAction} className="flex items-center gap-2">
+                          <input type="hidden" name="tenantKey" value={tenant.tenantKey} />
+                          <select
+                            name="planTier"
+                            defaultValue={tenant.planTier ?? "STARTER"}
+                            className="rounded border border-slate-300 px-2 py-1 text-xs"
+                          >
+                            <option value="STARTER">STARTER</option>
+                            <option value="GROWTH">GROWTH</option>
+                            <option value="BUSINESS">BUSINESS</option>
+                            <option value="ENTERPRISE">ENTERPRISE</option>
+                          </select>
+                          <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800">
+                            Apply
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 space-y-3 md:hidden">
+              {searchResults.map((tenant) => (
+                <div key={tenant.tenantKey} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{tenant.displayName}</p>
+                      <p className="mt-0.5 font-mono text-xs text-slate-500">{tenant.workspaceSlug}</p>
+                    </div>
+                    <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
+                      {tenant.planTier ?? "—"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
+                    <span>{formatStatus(tenant.billingStatus)}</span>
+                    {(tenant.adminEmails ?? []).length > 0 ? (
+                      <span className="truncate">{(tenant.adminEmails ?? []).join(", ")}</span>
+                    ) : null}
+                  </div>
+                  <form action={changePlanTierAction} className="mt-3 flex items-center gap-2">
+                    <input type="hidden" name="tenantKey" value={tenant.tenantKey} />
+                    <select
+                      name="planTier"
+                      defaultValue={tenant.planTier ?? "STARTER"}
+                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+                    >
+                      <option value="STARTER">STARTER</option>
+                      <option value="GROWTH">GROWTH</option>
+                      <option value="BUSINESS">BUSINESS</option>
+                      <option value="ENTERPRISE">ENTERPRISE</option>
+                    </select>
+                    <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800">
+                      Apply
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </>
         ) : null}
       </Card>
 
@@ -367,61 +406,100 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         {requests.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">No open upgrade requests.</p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="pb-2 pr-4">Tenant</th>
-                  <th className="pb-2 pr-4">Current tier</th>
-                  <th className="pb-2 pr-4">Requested tier</th>
-                  <th className="pb-2 pr-4">Requested by</th>
-                  <th className="pb-2 pr-4">Usage snapshot</th>
-                  <th className="pb-2 pr-4">Notes</th>
-                  <th className="pb-2 pr-4">Date</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((req) => (
-                  <tr key={req.id} className="border-b last:border-0">
-                    <td className="py-3 pr-4 font-mono text-xs">{req.tenantKey}</td>
-                    <td className="py-3 pr-4">
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.currentPlanTier)}`}>
-                        {req.currentPlanTier}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.requestedPlanTier)}`}>
-                        {req.requestedPlanTier ?? "Not specified"}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-xs">{req.requestedBy}</td>
-                    <td className="py-3 pr-4 text-xs text-slate-600">{formatSnapshotUsage(req.usageSnapshot)}</td>
-                    <td className="py-3 pr-4 text-xs text-slate-600">{req.notes ?? "—"}</td>
-                    <td className="py-3 pr-4 text-xs text-slate-500">{new Date(req.createdAt).toLocaleDateString("en-IN")}</td>
-                    <td className="py-3">
-                      <div className="flex gap-2">
-                        <form action={resolveUpgradeRequestAction}>
-                          <input type="hidden" name="requestId" value={req.id} />
-                          <input type="hidden" name="status" value="resolved" />
-                          <button type="submit" className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100">
-                            Resolve
-                          </button>
-                        </form>
-                        <form action={resolveUpgradeRequestAction}>
-                          <input type="hidden" name="requestId" value={req.id} />
-                          <input type="hidden" name="status" value="cancelled" />
-                          <button type="submit" className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
-                            Cancel
-                          </button>
-                        </form>
-                      </div>
-                    </td>
+          <>
+            <div className="mt-3 hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="pb-2 pr-4">Tenant</th>
+                    <th className="pb-2 pr-4">Current tier</th>
+                    <th className="pb-2 pr-4">Requested tier</th>
+                    <th className="pb-2 pr-4">Requested by</th>
+                    <th className="pb-2 pr-4">Usage snapshot</th>
+                    <th className="pb-2 pr-4">Notes</th>
+                    <th className="pb-2 pr-4">Date</th>
+                    <th className="pb-2">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {requests.map((req) => (
+                    <tr key={req.id} className="border-b last:border-0">
+                      <td className="py-3 pr-4 font-mono text-xs">{req.tenantKey}</td>
+                      <td className="py-3 pr-4">
+                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.currentPlanTier)}`}>
+                          {req.currentPlanTier}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.requestedPlanTier)}`}>
+                          {req.requestedPlanTier ?? "Not specified"}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-xs">{req.requestedBy}</td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">{formatSnapshotUsage(req.usageSnapshot)}</td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">{req.notes ?? "—"}</td>
+                      <td className="py-3 pr-4 text-xs text-slate-500">{new Date(req.createdAt).toLocaleDateString("en-IN")}</td>
+                      <td className="py-3">
+                        <div className="flex gap-2">
+                          <form action={resolveUpgradeRequestAction}>
+                            <input type="hidden" name="requestId" value={req.id} />
+                            <input type="hidden" name="status" value="resolved" />
+                            <button type="submit" className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100">
+                              Resolve
+                            </button>
+                          </form>
+                          <form action={resolveUpgradeRequestAction}>
+                            <input type="hidden" name="requestId" value={req.id} />
+                            <input type="hidden" name="status" value="cancelled" />
+                            <button type="submit" className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
+                              Cancel
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 space-y-3 md:hidden">
+              {requests.map((req) => (
+                <div key={req.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-mono text-xs text-slate-700">{req.tenantKey}</p>
+                    <p className="text-xs text-slate-500">{new Date(req.createdAt).toLocaleDateString("en-IN")}</p>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.currentPlanTier)}`}>
+                      {req.currentPlanTier}
+                    </span>
+                    <span className="text-xs text-slate-400" aria-hidden="true">&rarr;</span>
+                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.requestedPlanTier)}`}>
+                      {req.requestedPlanTier ?? "Not specified"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600">By {req.requestedBy}</p>
+                  {req.notes ? <p className="mt-1 text-xs text-slate-500">{req.notes}</p> : null}
+                  <div className="mt-3 flex gap-2">
+                    <form action={resolveUpgradeRequestAction}>
+                      <input type="hidden" name="requestId" value={req.id} />
+                      <input type="hidden" name="status" value="resolved" />
+                      <button type="submit" className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100">
+                        Resolve
+                      </button>
+                    </form>
+                    <form action={resolveUpgradeRequestAction}>
+                      <input type="hidden" name="requestId" value={req.id} />
+                      <input type="hidden" name="status" value="cancelled" />
+                      <button type="submit" className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
+                        Cancel
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Card>
     </div>
