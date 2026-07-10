@@ -4101,6 +4101,40 @@
           }
         },
         {
+          "name": "Handle connector OAuth redirect (public GET callback, signed state token)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/:id/oauth/callback",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                ":id",
+                "oauth",
+                "callback"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": "Handle connector OAuth redirect (public GET callback, signed state token)"
+          }
+        },
+        {
           "name": "Initiate OAuth authorization flow — generates signed state token and authorization URL",
           "request": {
             "method": "POST",
@@ -4132,40 +4166,6 @@
               ]
             },
             "description": "Initiate OAuth authorization flow — generates signed state token and authorization URL"
-          }
-        },
-        {
-          "name": "Handle Shopify OAuth redirect (public GET callback)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/connectors/:id/oauth/callback",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "connectors",
-                ":id",
-                "oauth",
-                "callback"
-              ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "",
-                  "description": "Path parameter"
-                }
-              ]
-            },
-            "description": "Handle Shopify OAuth redirect (public GET callback)"
           }
         },
         {

@@ -1019,21 +1019,6 @@ paths:
       summary: Update connector installation configuration (marketplace ID, default
         product type, etc.)
       tags: *a13
-  /api/v1/connectors/{id}/oauth/initiate:
-    post:
-      operationId: ConnectorInstallerController_initiateOAuth
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "201":
-          description: Authorization URL and state token returned
-      summary: Initiate OAuth authorization flow — generates signed state token and
-        authorization URL
-      tags: *a13
   /api/v1/connectors/{id}/oauth/callback:
     post:
       operationId: ConnectorInstallerController_oauthCallback
@@ -1059,7 +1044,23 @@ paths:
       responses:
         "302":
           description: Redirects to web app after token exchange
-      summary: Handle Shopify OAuth redirect (public GET callback)
+      summary: Handle connector OAuth redirect (public GET callback, signed state
+        token)
+      tags: *a13
+  /api/v1/connectors/{id}/oauth/initiate:
+    post:
+      operationId: ConnectorInstallerController_initiateOAuth
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Authorization URL and state token returned
+      summary: Initiate OAuth authorization flow — generates signed state token and
+        authorization URL
       tags: *a13
   /api/v1/connectors/shopify/oauth/callback:
     get:
