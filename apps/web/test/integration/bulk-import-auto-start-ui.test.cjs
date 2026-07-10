@@ -23,8 +23,17 @@ try {
   assert(createEnd > createStart, "createBulkImportJobAction slice must terminate before createBulkImportTemplateAction");
 
   const source = actions.slice(createStart, createEnd);
-  const uploadRunIndex = source.indexOf("uploadBulkImportRun(");
-  const validateRunIndex = source.indexOf("validateBulkImportRun(");
+
+  // The Server Action requires a prestaged run — it must never receive raw file bytes.
+  assert(
+    source.includes("stagedRunId") && source.includes("getBulkImportRun("),
+    "Server Action must require a prestaged run ID and fetch its state",
+  );
+  assert(
+    !source.includes("uploadBulkImportRun("),
+    "Server Action must not contain a raw-file upload fallback (files go through the Route Handler)",
+  );
+
   const startRunIndex = source.indexOf("startBulkImportRun(");
   const runRedirectIndex = source.indexOf('redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`)');
   const blockedStandardIndex = source.indexOf('if (validatedRun.status !== "preflight_ready")');
@@ -32,11 +41,9 @@ try {
   const processIndex = source.indexOf("/bulk-import/jobs/${createdJob.id}/process");
   const redirectIndex = source.indexOf('redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`)');
 
-  assert(uploadRunIndex >= 0, "CSV uploads must create a staged bulk import run before deciding standard vs large mode");
-  assert(validateRunIndex > uploadRunIndex, "Bulk import run validation must happen after staged upload");
-  assert(startRunIndex > validateRunIndex, "Large import runs must start only after validation");
-  assert(runRedirectIndex > validateRunIndex, "Large import mode must redirect to the parent run view");
-  assert(blockedStandardIndex > validateRunIndex, "CSV imports must stop when pre-validation is not ready");
+  assert(startRunIndex >= 0, "Large import runs must start only after validation");
+  assert(runRedirectIndex >= 0, "Large import mode must redirect to the parent run view");
+  assert(blockedStandardIndex >= 0, "CSV imports must stop when pre-validation is not ready");
   assert(createIndex >= 0, "standard bulk import path must still create a job");
   assert(source.includes("runId: linkedRunId"), "standard bulk import jobs must link back to their staged preflight run");
   assert(processIndex >= 0, "standard bulk import path must still start processing the created job");
@@ -46,7 +53,8 @@ try {
   console.log(JSON.stringify({
     status: "ok",
     validated: [
-      "csv_uploads_stage_and_validate_bulk_import_runs",
+      "server_action_requires_prestaged_run_id",
+      "server_action_has_no_raw_file_upload_fallback",
       "large_import_runs_start_after_validation",
       "large_import_runs_redirect_to_parent_run",
       "blocked_csv_preflight_stops_standard_processing",

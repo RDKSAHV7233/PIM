@@ -20,7 +20,6 @@ import {
   postJson,
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
-import { postFormData } from "@/lib/api/core";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerSession } from "@/lib/server-session";
 import {
@@ -272,17 +271,6 @@ function parseStringList(value: FormDataEntryValue | null): string[] {
         .filter((item) => item.length > 0),
     ),
   );
-}
-
-function detectSourceFormatFromFileName(fileName: string) {
-  const normalized = fileName.trim().toLowerCase();
-  if (normalized.endsWith(".csv")) {
-    return "csv" as const;
-  }
-  if (normalized.endsWith(".json")) {
-    return "json" as const;
-  }
-  return null;
 }
 
 function resolveTenantKey(formData: FormData): string {
@@ -1641,23 +1629,8 @@ export async function retrySubmissionAction(formData: FormData) {
   redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
 
-async function uploadBulkImportRun(actionFormData: FormData, categoryId: string, sourceName: string, sourceFile: File, chunkSize: number | undefined, maxRetries: number | undefined): Promise<{ id: string; status: string }> {
-  const opts = await resolveActionOptions(actionFormData);
-  const upload = new FormData();
-  upload.append("categoryId", categoryId);
-  upload.append("sourceFile", sourceFile, sourceFile.name);
-  if (sourceName) upload.append("sourceName", sourceName);
-  if (chunkSize != null) upload.append("chunkSize", String(chunkSize));
-  if (maxRetries != null) upload.append("maxRetries", String(maxRetries));
-  return postFormData<{ id: string; status: string }>("/bulk-import/runs/upload", upload, opts);
-}
-
 async function getBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {
   return getJsonForAction<{ id: string; status: string; effectiveMode: string | null }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}`);
-}
-
-async function validateBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {
-  return postJsonForAction<{ id: string; status: string; effectiveMode: string | null }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {});
 }
 
 async function startBulkImportRun(formData: FormData, runId: string): Promise<void> {
@@ -1676,37 +1649,15 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Category is required for bulk import.");
   }
 
-  // When the browser wizard already staged the run via the multipart Route Handler,
-  // skip all file processing — the backend reads rows from the staged CSV.
-  const prestagedRunId = String(formData.get("stagedRunId") ?? "").trim();
-
-  let linkedRunId: string;
-  let validatedRun: { id: string; status: string; effectiveMode: string | null };
-
-  if (prestagedRunId) {
-    linkedRunId = prestagedRunId;
-    validatedRun = await getBulkImportRun(formData, linkedRunId);
-  } else {
-    const sourceFileEntry = formData.get("sourceFile");
-    const sourceFile =
-      sourceFileEntry instanceof File && sourceFileEntry.size > 0 ? sourceFileEntry : null;
-    if (!sourceFile) {
-      throw new Error("A CSV or JSON file is required for bulk import.");
-    }
-    const detectedFormat = detectSourceFormatFromFileName(sourceFile.name);
-    if (!detectedFormat) {
-      throw new Error("Uploaded file must be .csv or .json. Spreadsheet imports are temporarily disabled.");
-    }
-    if (sourceFormat && sourceFormat !== detectedFormat) {
-      throw new Error(`Selected source format does not match uploaded file (${detectedFormat}).`);
-    }
-    sourceFormat = detectedFormat;
-    sourceName = sourceName || sourceFile.name;
-
-    const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceName, sourceFile, chunkSize, maxRetries);
-    linkedRunId = stagedRun.id;
-    validatedRun = await validateBulkImportRun(formData, linkedRunId);
+  // The browser wizard must stage the run via the multipart Route Handler before
+  // form submission. The Server Action never receives raw file bytes — only metadata.
+  const stagedRunId = String(formData.get("stagedRunId") ?? "").trim();
+  if (!stagedRunId) {
+    throw new Error("Import must be validated before submission. Please validate your file first.");
   }
+
+  const linkedRunId = stagedRunId;
+  const validatedRun = await getBulkImportRun(formData, linkedRunId);
 
   // Large import runs start only after validation
   if (validatedRun.effectiveMode === "large" && validatedRun.status === "preflight_ready") {

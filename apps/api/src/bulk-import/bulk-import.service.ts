@@ -762,10 +762,13 @@ export class BulkImportService {
     if (linkedRunId && !this.hasInlineSourceData(dto)) {
       const run = await this.prisma.tenant().bulkImportRun.findUniqueOrThrow({
         where: { id: linkedRunId },
-        select: { sourceFileKey: true },
+        select: { sourceFileKey: true, sourceExpiresAt: true },
       });
       if (!run.sourceFileKey) {
         throw new BadRequestException("Staged run has no stored file. Re-upload the import file.");
+      }
+      if (run.sourceExpiresAt && run.sourceExpiresAt < new Date()) {
+        throw new BadRequestException("Staged import file has expired. Please re-upload the file.");
       }
       sourceRows = await this.readRowsFromStagedCsv(run.sourceFileKey);
     } else {

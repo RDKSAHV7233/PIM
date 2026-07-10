@@ -36,7 +36,9 @@ function run() {
   const routeSource = fs.readFileSync(PREFLIGHT_ROUTE, "utf8");
 
   assert(
-    componentSource.includes('fetch("/api/bulk-import/validate"') &&
+    componentSource.includes('fetch("/api/bulk-import/runs/upload"') &&
+      !componentSource.includes("encodeBase64") &&
+      !componentSource.includes('fetch("/api/bulk-import/validate"') &&
       (componentSource.includes('readCsrfCookie') || componentSource.includes('readCookie("pim_csrf_token")')) &&
       componentSource.includes('name="sourceFile"') &&
       componentSource.includes('aria-invalid={fieldErrors.sourceFile ? "true" : undefined}') &&
@@ -47,7 +49,7 @@ function run() {
       componentSource.includes("Unmapped fields") &&
       componentSource.includes("Unused headers") &&
       componentSource.includes("Representative issues"),
-    "Import preflight form must validate through the same-origin route, keep file-field accessibility wiring, and show a validation summary before import starts.",
+    "Import preflight form must use multipart upload (not base64 JSON), keep file-field accessibility wiring, and show a validation summary before import starts.",
   );
   assert(
     componentSource.includes('idleLabel={validation?.canImport ? "Start validated import" : "Validate before importing"}') &&
@@ -74,10 +76,35 @@ function run() {
   );
   assert(
     routeSource.includes("validateCsrf(request)") &&
-      routeSource.includes('resolveBearerToken(request)') &&
-      routeSource.includes('fetch(`${getApiBaseUrl()}/bulk-import/validate`') &&
-      routeSource.includes('"Content-Type": "application/json"'),
-    "Import preflight route must enforce CSRF, reuse the authenticated bearer token, and proxy the validation request to the API.",
+      routeSource.includes('resolveBearerToken(request)'),
+    "Import preflight route must enforce CSRF and reuse the authenticated bearer token.",
+  );
+
+  // CTO audit: file input must be cleared after staging so the Server Action
+  // never receives raw file bytes (stays under the 10 MB body limit).
+  assert(
+    componentSource.includes('input[type="file"]') &&
+      componentSource.includes("fileInput.value"),
+    "Import preflight form must clear the file input after staging to keep the Server Action request body small.",
+  );
+
+  // CTO audit: changing category must reset stagedRunId so stale staged runs
+  // cannot be submitted against a different category.
+  assert(
+    componentSource.includes("resetValidationState") &&
+      componentSource.includes("onChange={resetValidationState}"),
+    "Import preflight form must reset validation state (including stagedRunId) when the category selection changes.",
+  );
+
+  // CTO audit: the Server Action must require stagedRunId and never accept raw files.
+  const actionsSource = fs.readFileSync(
+    path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts"),
+    "utf8",
+  );
+  assert(
+    actionsSource.includes("stagedRunId") &&
+      !actionsSource.includes("uploadBulkImportRun"),
+    "Server Action createBulkImportJobAction must require stagedRunId and not contain a raw-file upload fallback.",
   );
 
   console.log(
@@ -85,12 +112,16 @@ function run() {
       {
         status: "ok",
         validated: [
-          "bulk_import_preflight_form_uses_same_origin_validation_route",
+          "bulk_import_preflight_uses_multipart_upload_not_base64",
+          "bulk_import_preflight_form_no_legacy_validate_endpoint",
           "bulk_import_preflight_form_gates_import_creation_on_preflight",
           "bulk_import_preflight_form_explains_blocking_state",
           "bulk_import_preflight_form_allows_warning_only_state",
           "bulk_import_preflight_form_handles_malformed_file_state",
           "bulk_import_preflight_route_enforces_csrf_and_auth",
+          "bulk_import_preflight_clears_file_after_staging",
+          "bulk_import_preflight_resets_staged_run_on_category_change",
+          "server_action_requires_staged_run_id_no_raw_file_fallback",
         ],
         checkedAt: new Date().toISOString(),
       },

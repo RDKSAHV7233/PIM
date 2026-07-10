@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { Readable } from "node:stream";
 import { BulkImportRowStatus } from "@prisma/client";
 import { BulkImportRunService } from "./bulk-import-run.service";
 import { BulkImportService } from "./bulk-import.service";
@@ -713,5 +714,141 @@ describe("Bulk import error report CSV", () => {
       "BulkImportRun",
       "run_1",
     );
+  });
+});
+
+describe("BulkImportService.createJob — staged CSV read path", () => {
+  const CSV_CONTENT = "title,description,brand\nWidget A,A desc,Vexa\nWidget B,B desc,Vexa\n";
+
+  function makeCreateJobService(options: {
+    runRecord?: { sourceFileKey: string | null; sourceExpiresAt: Date | null } | null;
+    csvContent?: string;
+  }) {
+    const runFindUnique = jest.fn().mockResolvedValue(options.runRecord ?? null);
+    const jobCreateMock = jest.fn().mockImplementation((args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: "job-1", ...args.data }),
+    );
+    const rowCreateManyMock = jest.fn().mockResolvedValue({ count: 2 });
+    const txMock = {
+      bulkImportJob: { create: jobCreateMock },
+      bulkImportRow: { createMany: rowCreateManyMock },
+    };
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1", name: "Test", path: "/test" }) },
+        bulkImportRun: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "run-1", categoryId: "cat1", status: "preflight_ready", effectiveMode: "standard",
+          }),
+          findUniqueOrThrow: runFindUnique,
+        },
+        bulkImportJob: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "job-1", categoryId: "cat1", status: "queued", totalRows: 2,
+            category: { id: "cat1", path: "/test" }, rows: [],
+          }),
+        },
+        bulkImportRow: {
+          groupBy: jest.fn().mockResolvedValue([]),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(txMock)),
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      assertBulkImportAccess: jest.fn().mockResolvedValue(undefined),
+      assertBulkImportAllowed: jest.fn().mockResolvedValue(undefined),
+      assertRequestedProductScopeAllowed: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
+    };
+    const storageService = {
+      readStagedCsvStream: jest.fn().mockReturnValue(
+        Readable.from(options.csvContent ?? CSV_CONTENT),
+      ),
+    };
+    const svc = new BulkImportService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      storageService as never,
+    );
+    return { svc, storageService, runFindUnique, jobCreateMock, rowCreateManyMock };
+  }
+
+  it("reads rows from staged CSV when runId is provided and no inline data", async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const { svc, storageService, rowCreateManyMock } = makeCreateJobService({
+      runRecord: { sourceFileKey: "staged/run-1.csv", sourceExpiresAt: futureDate },
+    });
+    await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(storageService.readStagedCsvStream).toHaveBeenCalledWith("staged/run-1.csv");
+    expect(rowCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ rowNumber: 1 }),
+          expect.objectContaining({ rowNumber: 2 }),
+        ]),
+      }),
+    );
+  });
+
+  it("does not require csvContent or fileContentBase64 when runId is provided", async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const { svc } = makeCreateJobService({
+      runRecord: { sourceFileKey: "staged/run-1.csv", sourceExpiresAt: futureDate },
+    });
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects expired staged source", async () => {
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 1);
+    const { svc } = makeCreateJobService({
+      runRecord: { sourceFileKey: "staged/run-1.csv", sourceExpiresAt: pastDate },
+    });
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow("expired");
+  });
+
+  it("rejects when staged run has no stored file", async () => {
+    const { svc } = makeCreateJobService({
+      runRecord: { sourceFileKey: null, sourceExpiresAt: null },
+    });
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow("no stored file");
+  });
+
+  it("rejects when run record does not exist (foreign tenant)", async () => {
+    const { svc, runFindUnique } = makeCreateJobService({});
+    runFindUnique.mockRejectedValue(new Error("No BulkImportRun found"));
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-foreign", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow();
   });
 });
