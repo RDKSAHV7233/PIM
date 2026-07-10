@@ -20,6 +20,7 @@ import {
   postJson,
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
+import { postFormData } from "@/lib/api/core";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerSession } from "@/lib/server-session";
 import {
@@ -1640,18 +1641,15 @@ export async function retrySubmissionAction(formData: FormData) {
   redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
 
-async function uploadBulkImportRun(formData: FormData, categoryId: string, sourceFormat: string, sourceName: string, csvContent: string, fileContentBase64: string | undefined, rows: Record<string, unknown>[] | undefined, mapping: Record<string, unknown>, chunkSize: number | undefined, maxRetries: number | undefined): Promise<{ id: string; status: string }> {
-  return postJsonForAction<{ id: string; status: string }>(formData, "/bulk-import/runs", {
-    categoryId,
-    sourceFormat,
-    sourceName: sourceName || undefined,
-    csvContent: sourceFormat === "csv" ? csvContent : undefined,
-    fileContentBase64,
-    rows: sourceFormat === "json" ? rows : undefined,
-    mapping,
-    chunkSize,
-    maxRetries,
-  });
+async function uploadBulkImportRun(actionFormData: FormData, categoryId: string, sourceName: string, sourceFile: File, chunkSize: number | undefined, maxRetries: number | undefined): Promise<{ id: string; status: string }> {
+  const opts = await resolveActionOptions(actionFormData);
+  const upload = new FormData();
+  upload.append("categoryId", categoryId);
+  upload.append("sourceFile", sourceFile, sourceFile.name);
+  if (sourceName) upload.append("sourceName", sourceName);
+  if (chunkSize != null) upload.append("chunkSize", String(chunkSize));
+  if (maxRetries != null) upload.append("maxRetries", String(maxRetries));
+  return postFormData<{ id: string; status: string }>("/bulk-import/runs/upload", upload, opts);
 }
 
 async function getBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {
@@ -1741,7 +1739,10 @@ export async function createBulkImportJobAction(formData: FormData) {
     linkedRunId = prestagedRunId;
     validatedRun = await getBulkImportRun(formData, linkedRunId);
   } else {
-    const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceFormat, sourceName, csvContent, fileContentBase64, rows, mapping, chunkSize, maxRetries);
+    if (!sourceFile) {
+      throw new Error("A CSV or JSON file is required for bulk import.");
+    }
+    const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceName, sourceFile, chunkSize, maxRetries);
     linkedRunId = stagedRun.id;
     validatedRun = await validateBulkImportRun(formData, linkedRunId);
   }

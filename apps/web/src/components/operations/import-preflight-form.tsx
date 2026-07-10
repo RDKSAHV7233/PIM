@@ -7,6 +7,8 @@ import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-ste
 import type { BulkImportRun, Category } from "@/lib/api";
 import { readCsrfCookie } from "@/lib/csrf";
 
+const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+
 function detectSourceFormat(fileName: string): "csv" | "json" | null {
   const normalized = fileName.trim().toLowerCase();
   if (normalized.endsWith(".csv")) {
@@ -16,15 +18,6 @@ function detectSourceFormat(fileName: string): "csv" | "json" | null {
     return "json";
   }
   return null;
-}
-
-function encodeBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
 }
 
 type ImportPreflightFormProps = {
@@ -129,6 +122,8 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
     }
     if (!file) {
       nextFieldErrors.sourceFile = "Upload a CSV or JSON file before validating.";
+    } else if (file.size > MAX_UPLOAD_BYTES) {
+      nextFieldErrors.sourceFile = `File exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB upload limit.`;
     }
     const chunkSize = Number(chunkSizeRaw);
     if (!chunkSizeRaw || !Number.isFinite(chunkSize) || chunkSize < 1 || chunkSize > 500) {
@@ -158,85 +153,53 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         throw new Error("Uploaded file must be .csv or .json. Spreadsheet imports remain disabled.");
       }
 
-      let body: Record<string, unknown>;
-      if (sourceFormat === "json") {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) {
-          throw new Error("Uploaded JSON file must contain an array of row objects.");
-        }
-        body = {
-          categoryId,
-          sourceFormat,
-          sourceName: file.name,
-          rows: parsed,
-          mapping: JSON.parse(DEFAULT_MAPPING),
-          chunkSize,
-          maxRetries,
-        };
-      } else {
-        body = {
-          categoryId,
-          sourceFormat,
-          sourceName: file.name,
-          fileContentBase64: encodeBase64(await file.arrayBuffer()),
-          mapping: JSON.parse(DEFAULT_MAPPING),
-          chunkSize,
-          maxRetries,
-        };
-      }
-
       const csrfToken = readCsrfCookie();
-      const headers: Record<string, string> = {
+      const jsonHeaders: Record<string, string> = {
         "Content-Type": "application/json",
         Accept: "application/json",
         ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
       };
 
-      // Quick preflight via the direct validate route
-      const preflightResponse = await fetch("/api/bulk-import/validate", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-      const preflightPayload = await preflightResponse.json();
-      if (!preflightResponse.ok) {
-        const serverMsg = (preflightPayload as { message?: string }).message ?? (preflightPayload as { error?: string }).error;
-        throw new Error(
-          serverMsg
-            ? String(serverMsg)
-            : preflightResponse.status >= 500
-              ? "The import file is too large to process. Try reducing the number of rows or using a smaller file."
-              : "Import validation failed.",
-        );
-      }
+      // Step 1: Upload file via multipart FormData (bypasses the 10MB JSON body limit)
+      const uploadForm = new FormData();
+      uploadForm.append("categoryId", categoryId);
+      uploadForm.append("sourceFile", file, file.name);
+      uploadForm.append("sourceName", file.name);
 
-      // Stage the run via the large-run–capable API for actual import execution
-      const uploadResponse = await fetch("/api/bulk-import/runs", {
+      const uploadHeaders: Record<string, string> = {
+        Accept: "application/json",
+        ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+      };
+
+      const uploadResponse = await fetch("/api/bulk-import/runs/upload", {
         method: "POST",
-        headers,
-        body: JSON.stringify(body),
+        headers: uploadHeaders,
+        body: uploadForm,
       });
       const uploadPayload = await uploadResponse.json();
       if (!uploadResponse.ok || !uploadPayload.id) {
         const serverMsg = uploadPayload.message ?? uploadPayload.error;
-        throw new Error(serverMsg ? String(serverMsg) : "Failed to stage import run.");
+        throw new Error(serverMsg ? String(serverMsg) : "Failed to upload import file.");
       }
-      const runId = uploadPayload.id;
+      const runId: string = uploadPayload.id;
 
-      // Validate the run to transition it from "uploaded" → "preflight_ready".
-      // Without this the server action rejects it when "Start validated import" is submitted.
-      await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
+      // Step 2: Validate the staged run (parses the stored file server-side)
+      const validateResponse = await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
         method: "POST",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({}),
       });
+      const validatePayload = await validateResponse.json();
+      if (!validateResponse.ok) {
+        const serverMsg = (validatePayload as { message?: string }).message ?? (validatePayload as { error?: string }).error;
+        throw new Error(serverMsg ? String(serverMsg) : "Import validation failed.");
+      }
 
-      // Merge preflight summary into the staged run shape
       const mergedRun: BulkImportRun = {
-        ...(uploadPayload as BulkImportRun),
+        ...uploadPayload,
+        ...validatePayload,
         id: runId,
-        preflightSummary: (preflightPayload as BulkImportRun).preflightSummary ?? preflightPayload,
+        preflightSummary: validatePayload.preflightSummary ?? validatePayload,
       };
       setStagedRun(mergedRun);
     } catch (error) {
