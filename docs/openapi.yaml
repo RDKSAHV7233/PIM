@@ -1044,8 +1044,7 @@ paths:
       responses:
         "302":
           description: Redirects to web app after token exchange
-      summary: Handle connector OAuth redirect (public GET callback, signed state
-        token)
+      summary: Handle connector OAuth redirect (public GET callback, signed state token)
       tags: *a13
   /api/v1/connectors/{id}/oauth/initiate:
     post:
