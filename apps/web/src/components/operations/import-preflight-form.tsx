@@ -202,6 +202,11 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         preflightSummary: validatePayload.preflightSummary ?? validatePayload,
       };
       setStagedRun(mergedRun);
+
+      // Clear the file input so the form submission only sends stagedRunId,
+      // keeping the Server Action request body well under the Next.js body limit.
+      const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
+      if (fileInput) fileInput.value = "";
     } catch (error) {
       setStagedRun(null);
       setValidationError(error instanceof Error ? error.message : "Import validation failed.");

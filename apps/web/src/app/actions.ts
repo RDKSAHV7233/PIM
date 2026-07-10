@@ -1668,9 +1668,6 @@ export async function createBulkImportJobAction(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   let sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
   let sourceName = String(formData.get("sourceName") ?? "").trim();
-  const csvContent = String(formData.get("csvContent") ?? "");
-  const rowsJson = String(formData.get("rowsJson") ?? "").trim();
-  const sourceFileEntry = formData.get("sourceFile");
   const mapping = parseJsonObject(formData.get("mapping"), "Mapping");
   const chunkSize = parseNumber(formData.get("chunkSize"));
   const maxRetries = parseNumber(formData.get("maxRetries"));
@@ -1679,12 +1676,23 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Category is required for bulk import.");
   }
 
-  const sourceFile =
-    sourceFileEntry instanceof File && sourceFileEntry.size > 0 ? sourceFileEntry : null;
-  let fileContentBase64: string | undefined;
+  // When the browser wizard already staged the run via the multipart Route Handler,
+  // skip all file processing — the backend reads rows from the staged CSV.
+  const prestagedRunId = String(formData.get("stagedRunId") ?? "").trim();
 
-  let rows: Record<string, unknown>[] | undefined;
-  if (sourceFile) {
+  let linkedRunId: string;
+  let validatedRun: { id: string; status: string; effectiveMode: string | null };
+
+  if (prestagedRunId) {
+    linkedRunId = prestagedRunId;
+    validatedRun = await getBulkImportRun(formData, linkedRunId);
+  } else {
+    const sourceFileEntry = formData.get("sourceFile");
+    const sourceFile =
+      sourceFileEntry instanceof File && sourceFileEntry.size > 0 ? sourceFileEntry : null;
+    if (!sourceFile) {
+      throw new Error("A CSV or JSON file is required for bulk import.");
+    }
     const detectedFormat = detectSourceFormatFromFileName(sourceFile.name);
     if (!detectedFormat) {
       throw new Error("Uploaded file must be .csv or .json. Spreadsheet imports are temporarily disabled.");
@@ -1695,53 +1703,6 @@ export async function createBulkImportJobAction(formData: FormData) {
     sourceFormat = detectedFormat;
     sourceName = sourceName || sourceFile.name;
 
-    if (sourceFormat === "json") {
-      const text = await sourceFile.text();
-      try {
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) {
-          throw new Error("JSON file must contain an array of rows.");
-        }
-        rows = parsed as Record<string, unknown>[];
-      } catch {
-        throw new Error("Uploaded JSON file must contain a valid JSON array.");
-      }
-    } else {
-      fileContentBase64 = Buffer.from(await sourceFile.arrayBuffer()).toString("base64");
-    }
-  } else if (sourceFormat === "json") {
-    if (!rowsJson) {
-      throw new Error("rowsJson is required when source format is json and no file is uploaded.");
-    }
-    try {
-      const parsed = JSON.parse(rowsJson);
-      if (!Array.isArray(parsed)) {
-        throw new Error("rowsJson must be a JSON array.");
-      }
-      rows = parsed as Record<string, unknown>[];
-    } catch {
-      throw new Error("rowsJson must be valid JSON array.");
-    }
-  } else if (sourceFormat === "csv") {
-    if (!csvContent.trim()) {
-      throw new Error("csvContent is required when source format is csv and no file is uploaded.");
-    }
-  } else {
-    throw new Error("Source format must be csv or json.");
-  }
-
-  // If the browser wizard already staged and validated the run, fetch its current state and skip
-  // re-streaming the file. Re-validating a 30k run would add ~15s with no benefit.
-  const prestagedRunId = String(formData.get("stagedRunId") ?? "").trim();
-  let linkedRunId: string;
-  let validatedRun: { id: string; status: string; effectiveMode: string | null };
-  if (prestagedRunId) {
-    linkedRunId = prestagedRunId;
-    validatedRun = await getBulkImportRun(formData, linkedRunId);
-  } else {
-    if (!sourceFile) {
-      throw new Error("A CSV or JSON file is required for bulk import.");
-    }
     const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceName, sourceFile, chunkSize, maxRetries);
     linkedRunId = stagedRun.id;
     validatedRun = await validateBulkImportRun(formData, linkedRunId);
@@ -1754,19 +1715,17 @@ export async function createBulkImportJobAction(formData: FormData) {
     redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
   }
 
-  // CSV imports must stop when pre-validation is not ready
   if (validatedRun.status !== "preflight_ready") {
     throw new Error(`Bulk import preflight did not pass validation. Status: ${validatedRun.status}`);
   }
 
+  // The backend reads rows from the staged CSV when runId is provided
+  // and no inline data is sent — no need to retransmit the file.
   const createdJob = await postJsonForAction<{ id: string }>(formData, "/bulk-import/jobs", {
     categoryId,
     runId: linkedRunId,
-    sourceFormat,
+    sourceFormat: sourceFormat || "csv",
     sourceName: sourceName || undefined,
-    csvContent: sourceFormat === "csv" ? csvContent : undefined,
-    fileContentBase64,
-    rows: sourceFormat === "json" ? rows : undefined,
     mapping,
     chunkSize,
     maxRetries,

@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
+import { createInterface } from "node:readline";
 import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus, TaxCodeKey } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { getCorrelationContext } from "../common/logging/correlation-context";
@@ -18,6 +19,7 @@ import {
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MetricsService } from "../metrics/metrics.service";
+import { BulkImportStorageService } from "./bulk-import-storage.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
@@ -341,6 +343,7 @@ export class BulkImportService {
     private readonly planUsageService: PlanUsageService,
     private readonly metricsService: MetricsService,
     private readonly logger: LoggerService,
+    private readonly storageService: BulkImportStorageService,
   ) {}
 
   suggestMapping(headers: string[]) {
@@ -754,7 +757,20 @@ export class BulkImportService {
     if (linkedRunId) {
       await this.assertLinkedStandardRun(linkedRunId, dto.categoryId, actor);
     }
-    const sourceRows = this.resolveImportSourceRows(dto);
+
+    let sourceRows: BulkImportPreparedSourceRows;
+    if (linkedRunId && !this.hasInlineSourceData(dto)) {
+      const run = await this.prisma.tenant().bulkImportRun.findUniqueOrThrow({
+        where: { id: linkedRunId },
+        select: { sourceFileKey: true },
+      });
+      if (!run.sourceFileKey) {
+        throw new BadRequestException("Staged run has no stored file. Re-upload the import file.");
+      }
+      sourceRows = await this.readRowsFromStagedCsv(run.sourceFileKey);
+    } else {
+      sourceRows = this.resolveImportSourceRows(dto);
+    }
 
     const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
     const normalizedRows = sourceRows.rows.map((row) =>
@@ -1732,6 +1748,35 @@ export class BulkImportService {
       return this.parseCsv(dto.csvContent ?? "");
     }
     return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
+  }
+
+  private hasInlineSourceData(dto: CreateBulkImportJobDto): boolean {
+    if (dto.sourceFormat === "csv") {
+      return Boolean(dto.fileContentBase64 || (dto.csvContent && dto.csvContent.trim()));
+    }
+    return Boolean(dto.rows && dto.rows.length > 0);
+  }
+
+  private async readRowsFromStagedCsv(sourceFileKey: string): Promise<BulkImportPreparedSourceRows> {
+    const stream = await this.storageService.readStagedCsvStream(sourceFileKey);
+    const rl = createInterface({ input: stream as unknown as NodeJS.ReadableStream, crlfDelay: Infinity });
+    let headers: string[] = [];
+    const rows: Record<string, unknown>[] = [];
+    let isHeader = true;
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (isHeader) {
+        headers = this.parseCsvLine(trimmed);
+        isHeader = false;
+        continue;
+      }
+      const values = this.parseCsvLine(trimmed);
+      const row: Record<string, unknown> = {};
+      headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
+      rows.push(row);
+    }
+    return { headers, rows };
   }
 
   private parseCsvLine(line: string) {

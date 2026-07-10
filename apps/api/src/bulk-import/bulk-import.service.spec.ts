@@ -46,6 +46,7 @@ function makeService(options?: { importRowLimit?: number }) {
     planUsageService as never,
     metricsService as never,
     logger as never,
+    {} as never,
   );
 }
 
@@ -176,6 +177,7 @@ describe("BulkImportService.validateImport", () => {
         { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
         { emit: jest.fn().mockResolvedValue(undefined) } as never,
         { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+        {} as never,
       );
       const result = await svc.validateImport({
         fileName: "products.csv",
@@ -276,6 +278,7 @@ describe("BulkImportService.processJob — terminal status guard", () => {
       { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
       { emit: jest.fn() } as never,
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
     );
     return { svc, updateMock };
   }
@@ -339,6 +342,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
       { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
       { emit: jest.fn() } as never,
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
     );
     return { svc, productCreateMock, rowUpdateMock, rowUpdateManyMock, productFindUniqueMock };
   }
@@ -588,6 +592,7 @@ describe("Bulk import error report CSV", () => {
       { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
       { emit: jest.fn() } as never,
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
     );
 
     const csv = await service.buildErrorReportCsv("job_1", { actorId: "admin", actorRole: "admin" as never });
