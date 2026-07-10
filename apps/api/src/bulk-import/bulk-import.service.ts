@@ -21,6 +21,7 @@ import { MetricsService } from "../metrics/metrics.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
+import { safeCsvCell } from "./csv-safe";
 
 export type BulkImportFailureClass = "source_data" | "mapping" | "policy" | "storage" | "platform" | "unknown";
 
@@ -2230,8 +2231,7 @@ export class BulkImportService {
   }
 
   private toCsvCell(value: string) {
-    const escaped = String(value ?? "").replace(/"/g, '""');
-    return `"${escaped}"`;
+    return safeCsvCell(value);
   }
 
   private scoreHeader(field: (typeof CANONICAL_FIELDS)[number], header: string) {

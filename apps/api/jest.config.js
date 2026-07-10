@@ -28,6 +28,8 @@ module.exports = {
     "**/billing/commercial-reminders.service.spec.ts",
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",
+    "**/bulk-import/csv-safe.spec.ts",
+    "**/bulk-import/bulk-import-storage.service.spec.ts",
     "**/connector-installer/credential-encryption.util.spec.ts",
     "**/compliance/compliance.service.spec.ts",
     "**/workspace-users/workspace-users.service.spec.ts",
