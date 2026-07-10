@@ -69,4 +69,63 @@ describe("BulkImportStorageService", () => {
 
     expect((service as any).useLocalFallback).toBe(false);
   });
+
+  describe("readStagedCsvStream — storage key validation", () => {
+    it("accepts a valid S3 key with imports/ prefix", async () => {
+      const service = createService({ R2_ENDPOINT: "http://127.0.0.1:9000" });
+      // S3 client will fail to connect, but the key validation should pass
+      await expect(service.readStagedCsvStream("imports/tenant-a/run-1/source.csv"))
+        .rejects.not.toThrow("Invalid staged file path.");
+    });
+
+    it("rejects an S3 key with ../ traversal", async () => {
+      const service = createService({ R2_ENDPOINT: "http://127.0.0.1:9000" });
+      await expect(service.readStagedCsvStream("imports/../etc/passwd"))
+        .rejects.toThrow("Invalid staged file path.");
+    });
+
+    it("rejects an S3 key with backslash traversal", async () => {
+      const service = createService({ R2_ENDPOINT: "http://127.0.0.1:9000" });
+      await expect(service.readStagedCsvStream("imports\\..\\etc\\passwd"))
+        .rejects.toThrow("Invalid staged file path.");
+    });
+
+    it("rejects an S3 key with unexpected prefix", async () => {
+      const service = createService({ R2_ENDPOINT: "http://127.0.0.1:9000" });
+      await expect(service.readStagedCsvStream("secrets/credentials.json"))
+        .rejects.toThrow("Invalid staged file path.");
+    });
+
+    it("rejects an empty key", async () => {
+      const service = createService({ R2_ENDPOINT: "http://127.0.0.1:9000" });
+      await expect(service.readStagedCsvStream(""))
+        .rejects.toThrow("Invalid staged file path.");
+    });
+
+    it("allows a valid local absolute path under storage/imports/", async () => {
+      const dir = await createTempWorkspace();
+      const service = createService({ R2_ACCOUNT_ID: "local-dev" });
+      const importDir = path.join(dir, "storage", "imports", "tenant-a", "run-1");
+      await fs.mkdir(importDir, { recursive: true });
+      const filePath = path.join(importDir, "source.csv");
+      await fs.writeFile(filePath, "title\nShirt\n");
+
+      const stream = await service.readStagedCsvStream(filePath);
+      expect(stream).toBeDefined();
+      (stream as unknown as import("node:stream").Readable).destroy();
+    });
+
+    it("rejects an absolute path outside storage/imports/", async () => {
+      await createTempWorkspace();
+      const service = createService({ R2_ACCOUNT_ID: "local-dev" });
+      await expect(service.readStagedCsvStream("/etc/passwd"))
+        .rejects.toThrow("Invalid staged file path.");
+    });
+
+    it("rejects a Windows-style absolute path with traversal", async () => {
+      const service = createService({ R2_ENDPOINT: "http://127.0.0.1:9000" });
+      await expect(service.readStagedCsvStream("imports/tenant\\..\\..\\etc\\passwd"))
+        .rejects.toThrow("Invalid staged file path.");
+    });
+  });
 });

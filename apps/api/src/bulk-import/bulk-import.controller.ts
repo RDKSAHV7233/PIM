@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Header, Param, Post, Query, Req, Res, UseInterceptors, UploadedFile } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { Throttle } from "@nestjs/throttler";
 import type { Response } from "express";
 import { Type } from "class-transformer";
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
@@ -39,6 +40,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("validate")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   validateJobInput(
     @Body() dto: CreateBulkImportJobDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -52,6 +54,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("jobs")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   createJob(
     @Body() dto: CreateBulkImportJobDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -65,6 +68,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("validate/preflight")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   validateImport(
     @Body() dto: ImportValidateDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -212,6 +216,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("jobs/:id/process")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   processJob(
     @Param("id") jobId: string,
     @Body() dto: ProcessBulkImportJobDto,
@@ -228,6 +233,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("jobs/:id/requeue-dlq")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   requeueDlq(
     @Param("id") jobId: string,
     @Body() dto: RequeueDlqDto,
@@ -273,6 +279,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("runs")
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   createRunFromJson(
     @Body() dto: CreateBulkImportRunJsonDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -286,6 +293,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("runs/upload")
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @UseInterceptors(FileInterceptor("sourceFile", { limits: { fileSize: 32 * 1024 * 1024 } }))
   async uploadRun(
     @Body() dto: CreateBulkImportRunDto,
@@ -341,6 +349,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("runs/:id/validate")
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   validateRun(
     @Param("id") runId: string,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -354,6 +363,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("runs/:id/start")
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   startRun(
     @Param("id") runId: string,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -367,6 +377,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("runs/:id/retry-stuck")
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   retryStuckRows(
     @Param("id") runId: string,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },

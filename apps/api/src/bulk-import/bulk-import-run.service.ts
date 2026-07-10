@@ -21,6 +21,7 @@ import {
 } from "../common/pagination/cursor-pagination";
 import { CreateBulkImportRunDto } from "./dto/create-bulk-import-run.dto";
 import { CreateBulkImportRunJsonDto } from "./dto/create-bulk-import-run-json.dto";
+import { safeCsvCell } from "./csv-safe";
 
 const LARGE_IMPORT_MAX_FILE_SIZE_BYTES = 32 * 1024 * 1024; // 32 MB
 const LARGE_IMPORT_ROW_CEILING = 30_000;
@@ -586,19 +587,12 @@ export class BulkImportRunService implements OnModuleInit {
       );
     }
     if (run.status !== BulkImportRunStatus.preflight_ready) {
+      if (run.status === BulkImportRunStatus.processing || run.status === BulkImportRunStatus.completed) {
+        return this.getRun(runId, actor);
+      }
       throw new BadRequestException(
         `Run must be in 'preflight_ready' status to start. Current status: ${run.status}`,
       );
-    }
-
-    // Idempotency: check if jobs already exist
-    const existingJobs = await this.prisma.tenant().bulkImportJob.findMany({
-      where: { runId },
-      select: { id: true },
-      take: 500, // defensive cap — batch count is bounded by totalRows / LARGE_IMPORT_BATCH_SIZE
-    });
-    if (existingJobs.length > 0) {
-      return this.getRun(runId, actor);
     }
 
     const totalRows = run.totalRows ?? 0;
@@ -608,6 +602,20 @@ export class BulkImportRunService implements OnModuleInit {
     const jobIds: Array<{ id: string; batchIndex: number }> = [];
 
     await this.prisma.tenant().$transaction(async (tx) => {
+      // Atomically claim the run — only the first concurrent request transitions
+      // from preflight_ready. The `where` clause acts as an optimistic lock: if
+      // another request already moved the status, updateMany returns count=0.
+      const claimed = await tx.bulkImportRun.updateMany({
+        where: { id: runId, status: BulkImportRunStatus.preflight_ready },
+        data: {
+          status: BulkImportRunStatus.processing,
+          estimatedBatchCount: batchCount,
+        },
+      });
+      if (claimed.count === 0) {
+        return;
+      }
+
       for (let i = 0; i < batchCount; i++) {
         const rowStart = i * LARGE_IMPORT_BATCH_SIZE + 1;
         const rowEnd = Math.min((i + 1) * LARGE_IMPORT_BATCH_SIZE, totalRows);
@@ -633,25 +641,18 @@ export class BulkImportRunService implements OnModuleInit {
           },
         });
       }
-
-      await tx.bulkImportRun.update({
-        where: { id: runId },
-        data: {
-          status: BulkImportRunStatus.processing,
-          estimatedBatchCount: batchCount,
-        },
-      });
     });
 
-    // Enqueue jobs outside the transaction
-    for (const { id: jobId, batchIndex } of jobIds) {
-      await this.queueService.enqueue<LargeRunBatchPayload>(QUEUE_NAMES.BULK_IMPORT, {
-        kind: "large_run_batch",
-        runId,
-        jobId,
-        tenantKey,
-        batchIndex,
-      });
+    if (jobIds.length > 0) {
+      for (const { id: jobId, batchIndex } of jobIds) {
+        await this.queueService.enqueue<LargeRunBatchPayload>(QUEUE_NAMES.BULK_IMPORT, {
+          kind: "large_run_batch",
+          runId,
+          jobId,
+          tenantKey,
+          batchIndex,
+        });
+      }
     }
 
     return this.getRun(runId, actor);
@@ -1121,7 +1122,6 @@ export class BulkImportRunService implements OnModuleInit {
   }
 
   private toCsvCell(value: string): string {
-    const escaped = String(value ?? "").replace(/"/g, '""');
-    return `"${escaped}"`;
+    return safeCsvCell(value);
   }
 }
