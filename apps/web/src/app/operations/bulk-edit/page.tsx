@@ -321,6 +321,9 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                 <Select id="bulk-edit-status" name="bulkEditStatus" defaultValue={bulkEditStatus}>
                   <option value="">All statuses</option>
                   <option value="draft">draft</option>
+                  <option value="in_review">in_review</option>
+                  <option value="approved">approved</option>
+                  <option value="rejected">rejected</option>
                   <option value="active">active</option>
                   <option value="archived">archived</option>
                 </Select>
