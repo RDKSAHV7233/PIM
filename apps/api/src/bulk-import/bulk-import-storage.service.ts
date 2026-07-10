@@ -107,6 +107,10 @@ export class BulkImportStorageService {
     if (explicitEndpoint) {
       return false;
     }
+    const appEnv = String(process.env.APP_ENV ?? "").trim().toLowerCase();
+    if (appEnv && appEnv !== "development") {
+      return false;
+    }
     const accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim().toLowerCase();
     return !accountId || this.isLocalFallbackAccountId(accountId);
   }
