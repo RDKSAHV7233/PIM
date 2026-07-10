@@ -12,6 +12,8 @@ import {
   getCommercialOverview,
   listUpgradeRequests,
   searchCommercialTenants,
+  listEnrichedTenants,
+  listRecentSignups,
   isOpsTokenConfigured,
 } from "@/lib/api/commercial-ops";
 import { changePlanTierAction, resolveUpgradeRequestAction } from "./actions";
@@ -140,10 +142,13 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
   let currentUsage;
   let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
   let searchResults = null as Awaited<ReturnType<typeof searchCommercialTenants>> | null;
+  let enrichedTenants: Awaited<ReturnType<typeof listEnrichedTenants>> = [];
+  let recentSignups: Awaited<ReturnType<typeof listRecentSignups>> = [];
   const searchQuery = String(query.q ?? "").trim();
+  const tenantFilter = String(query.filter ?? "").trim();
 
   try {
-    [overview, requests, currentUsage, signupTrends] = await Promise.all([
+    [overview, requests, currentUsage, signupTrends, enrichedTenants, recentSignups] = await Promise.all([
       getCommercialOverview(operatorId),
       listUpgradeRequests(operatorId, "open"),
       getBillingUsage({ role: actorRole, authHeader }),
@@ -151,6 +156,12 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         if (err instanceof ApiHttpError && err.status === 404) return null;
         throw err;
       }),
+      listEnrichedTenants(operatorId, {
+        billingStatus: tenantFilter === "trial" ? "trial" : undefined,
+        planTier: tenantFilter === "trial" ? undefined : undefined,
+        limit: 50,
+      }).catch(() => [] as Awaited<ReturnType<typeof listEnrichedTenants>>),
+      listRecentSignups(operatorId, 15).catch(() => [] as Awaited<ReturnType<typeof listRecentSignups>>),
     ]);
     if (searchQuery.length >= 2) {
       searchResults = await searchCommercialTenants(searchQuery, operatorId);
@@ -242,6 +253,229 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
           signupExportHref={signupExportHref}
         />
       ) : null}
+
+      {/* Recent Signups */}
+      {recentSignups.length > 0 ? (
+        <Card>
+          <CardTitle>Recent Signups ({recentSignups.length})</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Latest workspace signup requests and their verification status.
+          </p>
+          <div className="mt-3 hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="pb-2 pr-4">Workspace</th>
+                  <th className="pb-2 pr-4">Admin Email</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2 pr-4">Signed Up</th>
+                  <th className="pb-2">Verified</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentSignups.map((signup) => (
+                  <tr key={signup.id} className="border-b last:border-0">
+                    <td className="py-3 pr-4">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{signup.displayName}</p>
+                        <p className="font-mono text-xs text-slate-500">{signup.workspaceSlug}</p>
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4 text-xs text-slate-600">{signup.adminEmail}</td>
+                    <td className="py-3 pr-4">
+                      <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${
+                        signup.status === "verified"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : signup.status === "pending"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-slate-100 text-slate-700"
+                      }`}>
+                        {signup.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-xs text-slate-500">
+                      {new Date(signup.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                    </td>
+                    <td className="py-3 text-xs text-slate-500">
+                      {signup.verifiedAt
+                        ? new Date(signup.verifiedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 space-y-3 md:hidden">
+            {recentSignups.map((signup) => (
+              <div key={signup.id} className="rounded-lg border border-slate-200 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{signup.displayName}</p>
+                    <p className="mt-0.5 font-mono text-xs text-slate-500">{signup.workspaceSlug}</p>
+                  </div>
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${
+                    signup.status === "verified"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : signup.status === "pending"
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-100 text-slate-700"
+                  }`}>
+                    {signup.status}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-600">{signup.adminEmail}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {new Date(signup.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {/* All Tenants — with usage, connectors, and filter */}
+      <Card>
+        <CardTitle>All Tenants ({enrichedTenants.length})</CardTitle>
+        <p className="mt-2 text-sm text-slate-600">
+          Full tenant list with plan usage and connector details. Use filters to narrow by billing status.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href="/admin/commercial"
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
+              !tenantFilter
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            All
+          </Link>
+          <Link
+            href="/admin/commercial?filter=trial"
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
+              tenantFilter === "trial"
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Trial
+          </Link>
+        </div>
+        {enrichedTenants.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No tenants found.</p>
+        ) : (
+          <>
+            <div className="mt-3 hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="pb-2 pr-4">Workspace</th>
+                    <th className="pb-2 pr-4">Tier</th>
+                    <th className="pb-2 pr-4">Billing</th>
+                    <th className="pb-2 pr-4">SKUs</th>
+                    <th className="pb-2 pr-4">Users</th>
+                    <th className="pb-2 pr-4">Connectors</th>
+                    <th className="pb-2 pr-4">Storage</th>
+                    <th className="pb-2">Since</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrichedTenants.map((tenant) => (
+                    <tr key={tenant.tenantKey} className="border-b last:border-0">
+                      <td className="py-3 pr-4">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{tenant.displayName}</p>
+                          <p className="font-mono text-xs text-slate-500">{tenant.workspaceSlug}</p>
+                          <p className="mt-0.5 text-xs text-slate-400">{(tenant.adminEmails ?? []).join(", ") || "—"}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
+                          {tenant.planTier}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="text-xs">{formatStatus(tenant.billingStatus)}</span>
+                        {tenant.trialEndsAt ? (
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            Ends {new Date(tenant.trialEndsAt).toLocaleDateString("en-IN")}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">
+                        {tenant.usage ? tenant.usage.skuCount.toLocaleString() : "—"}
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">
+                        {tenant.usage ? tenant.usage.userCount : "—"}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {tenant.connectors.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {tenant.connectors.map((c) => (
+                              <span
+                                key={c.slug}
+                                className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700"
+                                title={`${c.displayName} (${c.accountCount} account${c.accountCount !== 1 ? "s" : ""})`}
+                              >
+                                {c.displayName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">None</span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-slate-600">
+                        {tenant.usage ? `${tenant.usage.storageGb} GB` : "—"}
+                      </td>
+                      <td className="py-3 text-xs text-slate-500">
+                        {new Date(tenant.createdAt).toLocaleDateString("en-IN")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 space-y-3 md:hidden">
+              {enrichedTenants.map((tenant) => (
+                <div key={tenant.tenantKey} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{tenant.displayName}</p>
+                      <p className="mt-0.5 font-mono text-xs text-slate-500">{tenant.workspaceSlug}</p>
+                    </div>
+                    <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
+                      {tenant.planTier}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                    <span>{formatStatus(tenant.billingStatus)}</span>
+                    {tenant.usage ? (
+                      <>
+                        <span>SKUs: {tenant.usage.skuCount.toLocaleString()}</span>
+                        <span>Users: {tenant.usage.userCount}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  {tenant.connectors.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {tenant.connectors.map((c) => (
+                        <span key={c.slug} className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
+                          {c.displayName}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {tenant.trialEndsAt ? (
+                    <p className="mt-1 text-xs text-slate-400">Trial ends {new Date(tenant.trialEndsAt).toLocaleDateString("en-IN")}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Card>
 
       {/* Current Tenant — always visible, no search needed */}
       {currentUsage ? (

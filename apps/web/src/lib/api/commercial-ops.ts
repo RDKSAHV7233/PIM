@@ -135,6 +135,52 @@ export async function updateUpgradeRequestStatus(
   });
 }
 
+interface EnrichedTenant extends CommercialTenant {
+  usage: {
+    skuCount: number;
+    userCount: number;
+    submissionCount: number;
+    storageGb: number;
+    connectorInstallationsCount: number;
+  } | null;
+  connectors: Array<{ slug: string; displayName: string; accountCount: number }>;
+  createdAt: string;
+}
+
+interface RecentSignup {
+  id: string;
+  displayName: string;
+  workspaceSlug: string;
+  adminEmail: string;
+  status: string;
+  createdAt: string;
+  verifiedAt: string | null;
+}
+
+export async function listEnrichedTenants(
+  operatorId: string,
+  filters?: { planTier?: string; billingStatus?: string; limit?: number },
+): Promise<EnrichedTenant[]> {
+  const params = new URLSearchParams();
+  if (filters?.planTier) params.set("planTier", filters.planTier);
+  if (filters?.billingStatus) params.set("billingStatus", filters.billingStatus);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  const result = await opsFetch<{ items: EnrichedTenant[] }>(
+    `/billing/internal/tenants/list${qs ? `?${qs}` : ""}`,
+    { headers: opsHeaders(operatorId) },
+  );
+  return result.items;
+}
+
+export async function listRecentSignups(operatorId: string, limit = 20): Promise<RecentSignup[]> {
+  const result = await opsFetch<{ items: RecentSignup[] }>(
+    `/billing/internal/recent-signups?limit=${limit}`,
+    { headers: opsHeaders(operatorId) },
+  );
+  return result.items;
+}
+
 export function isOpsTokenConfigured(): boolean {
   return String(process.env.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim().length > 0;
 }
