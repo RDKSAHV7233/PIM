@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import {
   configureAmazonAction,
   deleteConnectorSyncScheduleAction,
+  initiateOAuthAction,
   queueConnectorDeltaSyncAction,
   triggerBulkPublishAction,
   updateConnectorPublicationTargetsAction,
@@ -1202,6 +1203,17 @@ export default async function ChannelConnectorDetailPage({
                     See the Managed Install Handoff checklist on the Credentials tab.
                   </a>
                 </p>
+                {shopifyAwaitingManagedInstall ? (
+                  <form action={initiateOAuthAction} className="mt-2">
+                    <input type="hidden" name="installationId" value={installation.id} />
+                    <PendingSubmitButton
+                      type="submit"
+                      variant="secondary"
+                      idleLabel="Authorize Shopify"
+                      pendingLabel="Redirecting to Shopify..."
+                    />
+                  </form>
+                ) : null}
               </div>
             ) : null}
             <section className="grid gap-4 lg:grid-cols-2">
@@ -1478,6 +1490,17 @@ export default async function ChannelConnectorDetailPage({
                 <p className="mt-1">
                   OAuth has not been finalized for this account. The Managed Install Handoff checklist below shows exactly which steps remain. Complete the handoff before refreshing publication channels or publishing products.
                 </p>
+                {shopifyAwaitingManagedInstall ? (
+                  <form action={initiateOAuthAction} className="mt-2">
+                    <input type="hidden" name="installationId" value={installation.id} />
+                    <PendingSubmitButton
+                      type="submit"
+                      variant="secondary"
+                      idleLabel="Authorize Shopify"
+                      pendingLabel="Redirecting to Shopify..."
+                    />
+                  </form>
+                ) : null}
               </div>
             ) : null}
             <section className="grid gap-4 lg:grid-cols-2">

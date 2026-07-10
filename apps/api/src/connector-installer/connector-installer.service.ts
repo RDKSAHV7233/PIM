@@ -976,13 +976,14 @@ export class ConnectorInstallerService {
     stateToken: string,
   ): string {
     if (installation.slug === "shopify") {
-      const shopDomain = String(installation.metadata.shopDomain ?? "").trim();
-      if (!shopDomain) {
+      const rawDomain = String(installation.metadata.shopDomain ?? "").trim();
+      if (!rawDomain) {
         throw new BadRequestException({
           error: "SHOPIFY_SHOP_DOMAIN_REQUIRED",
           message: "Shop domain must be set before initiating OAuth. Re-install the connector with a valid store domain.",
         });
       }
+      const shopDomain = this.normalizeShopifyDomain(rawDomain);
       const clientId = String(process.env.PIM_SHOPIFY_CLIENT_ID ?? "").trim();
       if (!clientId) {
         throw new Error("PIM_SHOPIFY_CLIENT_ID is not configured.");
@@ -1006,6 +1007,26 @@ export class ConnectorInstallerService {
       error: "CONNECTOR_OAUTH_NOT_SUPPORTED",
       message: `OAuth initiation is not implemented for ${installation.slug}.`,
     });
+  }
+
+  private normalizeShopifyDomain(raw: string): string {
+    let domain = raw
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/.*$/, "")
+      .replace(/\?.*$/, "")
+      .replace(/#.*$/, "")
+      .toLowerCase()
+      .trim();
+    if (!domain.endsWith(".myshopify.com")) {
+      domain = `${domain}.myshopify.com`;
+    }
+    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) {
+      throw new BadRequestException({
+        error: "SHOPIFY_SHOP_DOMAIN_INVALID",
+        message: "Shop domain must be a valid {store}.myshopify.com hostname.",
+      });
+    }
+    return domain;
   }
 
   async handleOAuthCallback(

@@ -507,8 +507,8 @@ describe("ConnectorInstallerService", () => {
         // Second call: prisma update for status = ACTIVE
         const tenantMock = (service as any).prisma.tenant;
         tenantMock.mockReturnValue({
-          $queryRawUnsafe: queryMock,
-          $executeRawUnsafe: executeMock,
+          $queryRawUnsafe: queryMock, // RLS-BYPASS: manual tenant filter
+          $executeRawUnsafe: executeMock, // RLS-BYPASS: manual tenant filter
           connectorInstallation: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         });
 
@@ -544,6 +544,117 @@ describe("ConnectorInstallerService", () => {
         await expect(
           service.handlePublicOAuthCallback(stateToken, {}, "shopify"),
         ).rejects.toBeInstanceOf(BadRequestException);
+      } finally { restore(); }
+    });
+  });
+
+  // ─── initiateOAuth — shopDomain validation ──────────────────────────────────
+
+  describe("initiateOAuth — shopDomain validation", () => {
+    function setupInitiateEnv() {
+      const origJwt = process.env.JWT_SECRET;
+      const origClientId = process.env.PIM_SHOPIFY_CLIENT_ID;
+      const origRedirect = process.env.PIM_SHOPIFY_REDIRECT_URI;
+      process.env.JWT_SECRET = TEST_JWT_SECRET;
+      process.env.PIM_SHOPIFY_CLIENT_ID = "test-client-id";
+      process.env.PIM_SHOPIFY_REDIRECT_URI = "https://app.vexa.test/connectors/shopify/oauth/callback";
+      return () => {
+        if (origJwt === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = origJwt;
+        if (origClientId === undefined) delete process.env.PIM_SHOPIFY_CLIENT_ID; else process.env.PIM_SHOPIFY_CLIENT_ID = origClientId;
+        if (origRedirect === undefined) delete process.env.PIM_SHOPIFY_REDIRECT_URI; else process.env.PIM_SHOPIFY_REDIRECT_URI = origRedirect;
+      };
+    }
+
+    function mockInstallation(queryMock: jest.Mock, executeMock: jest.Mock, shopDomain: string) {
+      queryMock.mockResolvedValue([{
+        id: "inst_001",
+        tenantKey: "tenant_abc",
+        connectorId: "def_shopify",
+        slug: "shopify",
+        accountAlias: "primary",
+        externalAccountRef: shopDomain,
+        metadata: JSON.stringify({ shopDomain, connectionStage: "awaiting_managed_install" }),
+      }]);
+      executeMock.mockResolvedValue(1);
+    }
+
+    const ACTOR = { actorId: "user_1", actorRole: "admin" as const };
+
+    function enableOAuthOnConnector(service: any) {
+      service.connectorRegistry = {
+        getConnector: jest.fn().mockReturnValue({ handleOAuthCallback: jest.fn() }),
+      };
+    }
+
+    async function expectOAuthReject(service: any, code: string) {
+      try {
+        await service.initiateOAuth("inst_001", ACTOR);
+        throw new Error("Expected initiateOAuth to throw");
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestException);
+        const body = (err as BadRequestException).getResponse();
+        expect(body).toEqual(expect.objectContaining({ error: code }));
+      }
+    }
+
+    it("rejects shopDomain with protocol injection", async () => {
+      const { service, queryMock, executeMock, connectorPermissionService } = createService();
+      connectorPermissionService.assertActionAllowed.mockResolvedValue(undefined);
+      enableOAuthOnConnector(service);
+      const restore = setupInitiateEnv();
+      try {
+        mockInstallation(queryMock, executeMock, "https://evil.com/admin?x=.myshopify.com");
+        await expectOAuthReject(service, "SHOPIFY_SHOP_DOMAIN_INVALID");
+      } finally { restore(); }
+    });
+
+    it("rejects shopDomain pointing to non-myshopify.com host", async () => {
+      const { service, queryMock, executeMock, connectorPermissionService } = createService();
+      connectorPermissionService.assertActionAllowed.mockResolvedValue(undefined);
+      enableOAuthOnConnector(service);
+      const restore = setupInitiateEnv();
+      try {
+        mockInstallation(queryMock, executeMock, "evil.com");
+        await expectOAuthReject(service, "SHOPIFY_SHOP_DOMAIN_INVALID");
+      } finally { restore(); }
+    });
+
+    it("rejects empty shopDomain", async () => {
+      const { service, queryMock, executeMock, connectorPermissionService } = createService();
+      connectorPermissionService.assertActionAllowed.mockResolvedValue(undefined);
+      enableOAuthOnConnector(service);
+      const restore = setupInitiateEnv();
+      try {
+        mockInstallation(queryMock, executeMock, "");
+        await expectOAuthReject(service, "SHOPIFY_SHOP_DOMAIN_REQUIRED");
+      } finally { restore(); }
+    });
+
+    it("normalizes bare store name to .myshopify.com and returns valid authorizationUrl", async () => {
+      const { service, queryMock, executeMock, connectorPermissionService } = createService();
+      connectorPermissionService.assertActionAllowed.mockResolvedValue(undefined);
+      enableOAuthOnConnector(service);
+      const restore = setupInitiateEnv();
+      try {
+        mockInstallation(queryMock, executeMock, "test-store");
+        const result = await service.initiateOAuth("inst_001", ACTOR);
+        expect(result.authorizationUrl).toMatch(/^https:\/\/test-store\.myshopify\.com\/admin\/oauth\/authorize\?/);
+        const url = new URL(result.authorizationUrl);
+        expect(url.hostname).toBe("test-store.myshopify.com");
+      } finally { restore(); }
+    });
+
+    it("authorizationUrl host is always *.myshopify.com for valid domains", async () => {
+      const { service, queryMock, executeMock, connectorPermissionService } = createService();
+      connectorPermissionService.assertActionAllowed.mockResolvedValue(undefined);
+      enableOAuthOnConnector(service);
+      const restore = setupInitiateEnv();
+      try {
+        mockInstallation(queryMock, executeMock, "my-shop.myshopify.com");
+        const result = await service.initiateOAuth("inst_001", ACTOR);
+        const url = new URL(result.authorizationUrl);
+        expect(url.hostname).toMatch(/\.myshopify\.com$/);
+        expect(url.pathname).toBe("/admin/oauth/authorize");
       } finally { restore(); }
     });
   });
