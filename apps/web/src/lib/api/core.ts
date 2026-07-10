@@ -1478,6 +1478,7 @@ const API_BASE_URL = getApiBaseUrl();
 
 export interface ApiRequestOptions {
   role?: AppRole;
+  /** @deprecated Dead field — fetchJson never reads this. Remove callers then delete. */
   tenantKey?: string;
   authHeader?: string;
   headers?: Record<string, string>;

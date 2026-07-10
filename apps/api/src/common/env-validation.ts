@@ -48,6 +48,10 @@ export interface ValidatedEnv {
   FLIPKART_CLIENT_SECRET?: string;
   MEESHO_MERCHANT_ID?: string;
   MEESHO_SECRET_KEY?: string;
+  PIM_SHOPIFY_CLIENT_ID?: string;
+  PIM_SHOPIFY_CLIENT_SECRET?: string;
+  PIM_SHOPIFY_SCOPES?: string;
+  PIM_SHOPIFY_REDIRECT_URI?: string;
   FEATURE_ONDC_ENABLED: BoolText;
   FEATURE_PUBLIC_SIGNUP_ENABLED: BoolText;
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
@@ -136,6 +140,16 @@ const EnvSchema = z.object({
   FLIPKART_CLIENT_SECRET: z.string().optional(),
   MEESHO_MERCHANT_ID: z.string().optional(),
   MEESHO_SECRET_KEY: z.string().optional(),
+  PIM_SHOPIFY_CLIENT_ID: OptionalTrimmedText,
+  PIM_SHOPIFY_CLIENT_SECRET: OptionalTrimmedText,
+  PIM_SHOPIFY_SCOPES: OptionalTrimmedText,
+  PIM_SHOPIFY_REDIRECT_URI: z.preprocess(
+    (value) => {
+      const normalized = String(value ?? "").trim();
+      return normalized.length === 0 ? undefined : normalized;
+    },
+    z.string().url().optional(),
+  ),
   FEATURE_ONDC_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_PUBLIC_SIGNUP_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
