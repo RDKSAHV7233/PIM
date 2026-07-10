@@ -1716,6 +1716,30 @@
         ]
       }
     },
+    "/api/v1/connectors/{id}/oauth/initiate": {
+      "post": {
+        "operationId": "ConnectorInstallerController_initiateOAuth",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Authorization URL and state token returned"
+          }
+        },
+        "summary": "Initiate OAuth authorization flow — generates signed state token and authorization URL",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
     "/api/v1/connectors/{id}/oauth/callback": {
       "post": {
         "operationId": "ConnectorInstallerController_oauthCallback",
@@ -1771,7 +1795,7 @@
             "description": "Redirects to web app after token exchange"
           }
         },
-        "summary": "Handle Shopify OAuth redirect via static callback URL (installation ID in state)",
+        "summary": "Handle Shopify OAuth redirect via static callback URL (signed state token)",
         "tags": [
           "Connectors"
         ]
