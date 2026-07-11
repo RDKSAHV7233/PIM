@@ -17,20 +17,16 @@ const {
 
 // Pages every authenticated role should be able to read (top-level sections).
 // /settings is excluded: redirect-only (→ /admin), causes ERR_ABORTED after redirect chain.
-// /quality/approvals is excluded: redirects all non-admin roles to login via RSC soft-redirect
-// (getBillingPlanProfile returns 403 for non-admin), which aborts mid-stream and causes
-// ERR_ABORTED for subsequent page.goto calls. Admin's access to /quality/approvals is
-// verified below via ADMIN_ONLY_PAGES.
 const UNIVERSAL_READ_PAGES = [
   "/dashboard",
   "/catalog/products",
   "/catalog/categories",
   "/channels",
+  "/quality/approvals",
 ];
 
-// Admin-only pages (system_admin_gated in sidebar) + pages that redirect non-admin roles
+// Admin-only pages (system_admin_gated in sidebar)
 const ADMIN_ONLY_PAGES = [
-  "/quality/approvals",
   "/admin/users",
   "/admin/api-keys",
   "/admin/webhooks",

@@ -700,7 +700,7 @@ export default async function ChannelConnectorDetailPage({
         }
         return [] as Awaited<ReturnType<typeof getSubmissions>>;
       }),
-      getProductListPage({ slim: true, limit: 500 }, { role: actorRole, authHeader }).then((page) => page.items).catch((err) => {
+      getProductListPage({ slim: true, limit: 200 }, { role: actorRole, authHeader }).then((page) => page.items).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
           throw err;
         }

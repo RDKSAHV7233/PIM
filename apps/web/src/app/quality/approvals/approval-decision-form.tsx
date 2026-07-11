@@ -20,7 +20,7 @@ export function ApprovalDecisionForm({
   canApprove,
   action,
 }: ApprovalDecisionFormProps) {
-  const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const [pendingDecision, setPendingDecision] = useState<"approved" | "rejected" | null>(null);
 
   function handleClick(decision: "approved" | "rejected") {
@@ -28,21 +28,18 @@ export function ApprovalDecisionForm({
   }
 
   function handleConfirm() {
-    if (!formRef.current || !pendingDecision) return;
-    const hiddenInput = formRef.current.querySelector<HTMLInputElement>("input[name='status']");
-    if (hiddenInput) {
-      hiddenInput.value = pendingDecision;
-    }
-    formRef.current.requestSubmit();
+    if (!submitRef.current || !pendingDecision) return;
+    submitRef.current.value = pendingDecision;
+    submitRef.current.click();
     setPendingDecision(null);
   }
 
   return (
     <>
-      <form ref={formRef} action={action} className="space-y-2">
+      <form action={action} className="space-y-2">
         <input type="hidden" name="productId" value={productId} />
         <input type="hidden" name="returnTo" value={returnTo} />
-        <input type="hidden" name="status" value="" />
+        <button ref={submitRef} type="submit" name="status" value="" className="hidden" aria-hidden="true" tabIndex={-1} />
         <label className="block space-y-1 text-xs text-slate-600">
           <span className="font-medium text-slate-700">Reviewer note</span>
           <textarea

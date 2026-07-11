@@ -76,13 +76,14 @@ test.describe("Journey: Admin Product to Publish", () => {
     expect(product.id).toBeTruthy();
     expect(product.status).toBe("draft");
 
-    // Verify product appears in catalog list via API
-    const products = await apiRequest(
+    // Verify product exists via API
+    const fetched = await apiRequest(
       "GET",
-      `/catalog/products?categoryId=${category.id}&limit=10`,
+      `/catalog/products/${product.id}`,
       adminToken,
     );
-    expect(products).toBeTruthy();
+    expect(fetched).toBeTruthy();
+    expect(fetched.id).toBe(product.id);
   });
 
   // ── 3. Open product detail ────────────────────────────────────────────────
@@ -105,9 +106,15 @@ test.describe("Journey: Admin Product to Publish", () => {
 
     const updatedTitle = uniqueName("e2e-updated");
     const updated = await updateProduct(adminToken, product.id, {
+      expectedVersion: product.version,
       title: updatedTitle,
       brand: "Updated E2E Brand",
       description: "Updated description for E2E testing",
+      categoryId: product.categoryId,
+      hsnCode: product.hsnCode,
+      gstRate: product.gstRate,
+      attributes: product.attributes,
+      status: product.status,
     });
 
     expect(updated).toBeTruthy();

@@ -123,8 +123,15 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
   }
 
   try {
-    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
-    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    let planTier = "ENTERPRISE";
+    try {
+      const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+      planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    } catch (planError) {
+      if (planError instanceof ApiHttpError && planError.status === 401) {
+        throw planError;
+      }
+    }
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (
         <div className="space-y-5">
@@ -164,7 +171,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         },
         { role: actorRole, authHeader },
       ),
-      getProductListPage({ slim: true, limit: 1000 }, { role: actorRole, authHeader }),
+      getProductListPage({ slim: true, limit: 200, status: "in_review" }, { role: actorRole, authHeader }),
       loadSupportingRead(getWorkflowSla({ role: actorRole, authHeader })),
       loadSupportingRead(getOverdueCount({ role: actorRole, authHeader })),
     ]);

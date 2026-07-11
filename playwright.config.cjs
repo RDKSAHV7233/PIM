@@ -37,6 +37,7 @@ const config = defineConfig({
   ],
   outputDir: ".runlogs/playwright-test-results",
   globalSetup: require.resolve("./apps/web/test/e2e/helpers/global-setup.cjs"),
+  globalTeardown: require.resolve("./apps/web/test/e2e/helpers/global-teardown.cjs"),
   webServer: [
     {
       command: "node scripts/start-playwright-api.cjs",

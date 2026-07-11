@@ -538,6 +538,7 @@ export type ProductListQuery = {
   slim?: boolean;
   cursor?: string;
   limit?: number;
+  status?: string;
 };
 
 export type CategoryListQuery = {

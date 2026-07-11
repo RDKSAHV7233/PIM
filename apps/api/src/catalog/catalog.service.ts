@@ -104,11 +104,12 @@ export class CatalogService {
     pagination?: CursorPaginationQuery,
     options?: {
       slim?: boolean;
+      status?: string;
     },
     actor?: ActorContext,
   ) {
     if (options?.slim) {
-      return this.listProductsSlim(pagination, actor);
+      return this.listProductsSlim(pagination, actor, options?.status);
     }
 
     const policyActor = this.toPolicyActor(actor);
@@ -200,7 +201,7 @@ export class CatalogService {
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_products_redacted", scored);
   }
 
-  private async listProductsSlim(pagination?: CursorPaginationQuery, actor?: ActorContext) {
+  private async listProductsSlim(pagination?: CursorPaginationQuery, actor?: ActorContext, status?: string) {
     const scopeWhere = await this.accessPolicy.buildProductScopeWhere(this.toPolicyActor(actor), "view");
     const limit = resolveCursorLimit(pagination?.limit ?? 50);
     const token = decodeCursorToken(pagination?.cursor);
@@ -214,18 +215,21 @@ export class CatalogService {
 
     const products = await this.prisma.tenant().product.findMany({
       where: mergeWhere(
-        token && cursorDate
-          ? {
-              OR: [
-                { updatedAt: { lt: cursorDate } },
-                {
-                  updatedAt: cursorDate,
-                  id: { lt: token.id },
-                },
-              ],
-            }
-          : undefined,
-        scopeWhere,
+        mergeWhere(
+          token && cursorDate
+            ? {
+                OR: [
+                  { updatedAt: { lt: cursorDate } },
+                  {
+                    updatedAt: cursorDate,
+                    id: { lt: token.id },
+                  },
+                ],
+              }
+            : undefined,
+          scopeWhere,
+        ),
+        status ? { status } as Prisma.ProductWhereInput : undefined,
       ),
       select: {
         id: true,

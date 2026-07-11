@@ -106,6 +106,9 @@ export async function getProductListPage(
   if (typeof queryInput.limit === "number" && Number.isFinite(queryInput.limit)) {
     params.set("limit", String(Math.max(1, Math.floor(queryInput.limit))));
   }
+  if (queryInput.status) {
+    params.set("status", queryInput.status);
+  }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   const response = await fetchJson<PaginatedResponse<ProductListItem> | ProductListItem[]>(
     `/catalog/products${query}`,
