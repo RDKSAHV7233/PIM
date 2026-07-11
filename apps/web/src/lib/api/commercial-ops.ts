@@ -181,6 +181,77 @@ export async function listRecentSignups(operatorId: string, limit = 20): Promise
   return result.items;
 }
 
+export interface TenantDetailUser {
+  userId: string;
+  identityType: "email" | "external_identifier" | "unknown";
+  role: string;
+  isActive: boolean;
+  isLocked: boolean;
+  lockedUntil: string | null;
+  createdAt: string;
+}
+
+export interface TenantDetailConnector {
+  installationId: string;
+  connectorName: string;
+  connectorSlug: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface TenantDetail {
+  tenant: {
+    tenantKey: string;
+    workspaceName: string;
+    workspaceSlug: string;
+    createdAt: string;
+  };
+  commercial: {
+    planTier: string;
+    billingStatus: string;
+    accessStatus: string;
+    trialEndsAt: string | null;
+    paidThroughAt: string | null;
+    graceEndsAt: string | null;
+    cancelledAt: string | null;
+    suspendedAt: string | null;
+    suspensionReason: string | null;
+    billingContactEmail: string | null;
+  };
+  usage: {
+    skuCount: number;
+    userCount: number;
+    submissionCount: number;
+    storageBytes: number;
+  };
+  signup: {
+    adminEmail: string;
+    status: string;
+    requestedAt: string;
+    verifiedAt: string | null;
+  } | null;
+  users: {
+    items: TenantDetailUser[];
+    total: number;
+    limit: number;
+    truncated: boolean;
+  };
+  connectors: {
+    items: TenantDetailConnector[];
+    total: number;
+    limit: number;
+    truncated: boolean;
+  };
+}
+
+export async function getTenantDetail(tenantKey: string, operatorId: string): Promise<TenantDetail> {
+  const encoded = encodeURIComponent(tenantKey);
+  return opsFetch<TenantDetail>(
+    `/billing/internal/tenants/${encoded}`,
+    { headers: opsHeaders(operatorId) },
+  );
+}
+
 export function isOpsTokenConfigured(): boolean {
   return String(process.env.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim().length > 0;
 }
