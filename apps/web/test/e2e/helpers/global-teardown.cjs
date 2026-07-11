@@ -5,34 +5,49 @@ const path = require("node:path");
 const E2E_PRODUCT_PATTERNS = [
   "e2e-",
   "E2E Journey Product",
-  "E2E ",
   "TEST-demo-",
   "mapping-publish-product-",
   "test-product-fix-",
 ];
 
+const EXPECTED_E2E_WORKSPACE = process.env.PLAYWRIGHT_WORKSPACE || "default";
+const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 module.exports = async function globalTeardown() {
   const apiURL = process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1";
+
+  if (!EXPECTED_E2E_WORKSPACE || EXPECTED_E2E_WORKSPACE.trim().length === 0) {
+    console.warn("[global-teardown] No PLAYWRIGHT_WORKSPACE configured — refusing cleanup (fail closed).");
+    return;
+  }
 
   const tokenCachePath = path.join(
     __dirname,
     "../../../../../.runlogs/storage-state/api-tokens.json",
   );
   let adminToken;
+  let cachedWorkspace;
   try {
     const cache = JSON.parse(fs.readFileSync(tokenCachePath, "utf-8"));
-    const workspace = process.env.PLAYWRIGHT_WORKSPACE || "default";
-    adminToken = cache[`${apiURL}|${workspace}|admin`]?.accessToken;
+    const cacheKey = `${apiURL}|${EXPECTED_E2E_WORKSPACE}|admin`;
+    adminToken = cache[cacheKey]?.accessToken;
+    cachedWorkspace = EXPECTED_E2E_WORKSPACE;
   } catch {
     console.warn("[global-teardown] Could not read token cache — skipping product cleanup.");
     return;
   }
   if (!adminToken) {
-    console.warn("[global-teardown] No admin token available — skipping product cleanup.");
+    console.warn("[global-teardown] No admin token available — skipping product cleanup (fail closed).");
     return;
   }
 
+  console.log(`[global-teardown] Cleanup scoped to workspace "${cachedWorkspace}".`);
+
   let deleted = 0;
+  let candidates = 0;
+  let skippedAge = 0;
+  const cutoff = new Date(Date.now() - MAX_AGE_MS);
+
   try {
     const listRes = await fetch(
       `${apiURL}/catalog/products?slim=true&limit=200`,
@@ -51,6 +66,14 @@ module.exports = async function globalTeardown() {
       const title = product.title ?? "";
       const isE2E = E2E_PRODUCT_PATTERNS.some((p) => title.startsWith(p));
       if (!isE2E) continue;
+      candidates++;
+
+      const createdAt = product.createdAt ? new Date(product.createdAt) : null;
+      if (createdAt && createdAt < cutoff) {
+        skippedAge++;
+        continue;
+      }
+
       try {
         const delRes = await fetch(`${apiURL}/catalog/products/${product.id}`, {
           method: "DELETE",
@@ -68,7 +91,7 @@ module.exports = async function globalTeardown() {
     console.warn(`[global-teardown] Product cleanup error: ${err.message}`);
   }
 
-  if (deleted > 0) {
-    console.log(`[global-teardown] Cleaned up ${deleted} E2E-created products.`);
-  }
+  console.log(
+    `[global-teardown] Candidates: ${candidates}, deleted: ${deleted}, skipped (age > 24h): ${skippedAge}.`,
+  );
 };
