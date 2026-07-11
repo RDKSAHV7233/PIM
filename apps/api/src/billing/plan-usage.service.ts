@@ -292,6 +292,69 @@ export interface RecentSignupResult {
   verifiedAt: string | null;
 }
 
+export interface CommercialTenantDetailUser {
+  userId: string;
+  identityType: "email" | "external_identifier" | "unknown";
+  role: string;
+  isActive: boolean;
+  isLocked: boolean;
+  lockedUntil: string | null;
+  createdAt: string;
+}
+
+export interface CommercialTenantDetailConnector {
+  installationId: string;
+  connectorName: string;
+  connectorSlug: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface CommercialTenantDetail {
+  tenant: {
+    tenantKey: string;
+    workspaceName: string;
+    workspaceSlug: string;
+    createdAt: string;
+  };
+  commercial: {
+    planTier: string;
+    billingStatus: string;
+    accessStatus: string;
+    trialEndsAt: string | null;
+    paidThroughAt: string | null;
+    graceEndsAt: string | null;
+    cancelledAt: string | null;
+    suspendedAt: string | null;
+    suspensionReason: string | null;
+    billingContactEmail: string | null;
+  };
+  usage: {
+    skuCount: number;
+    userCount: number;
+    submissionCount: number;
+    storageBytes: number;
+  };
+  signup: {
+    adminEmail: string;
+    status: string;
+    requestedAt: string;
+    verifiedAt: string | null;
+  } | null;
+  users: {
+    items: CommercialTenantDetailUser[];
+    total: number;
+    limit: number;
+    truncated: boolean;
+  };
+  connectors: {
+    items: CommercialTenantDetailConnector[];
+    total: number;
+    limit: number;
+    truncated: boolean;
+  };
+}
+
 export interface UpdateCommercialStateInput {
   billingStatus?: string;
   accessStatus?: string;
@@ -1082,6 +1145,141 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
+  async getTenantDetail(tenantKeyInput: string): Promise<CommercialTenantDetail | null> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const db = this.prismaDirect.getClient();
+    const month = this.getMonthKey();
+
+    const workspace = await db.workspaceDirectory.findUnique({
+      where: { tenantKey },
+      select: { tenantKey: true, displayName: true, workspaceSlug: true, createdAt: true },
+    });
+    if (!workspace) return null;
+
+    const USER_LIMIT = 200;
+    const CONNECTOR_LIMIT = 50;
+
+    const [profile, usageRow, signupRow, userRows, userTotal, connectorRows, connectorTotal] = await Promise.all([
+      db.tenantPlanProfile.findFirst({
+        where: { tenantKey },
+        select: {
+          planTier: true, billingStatus: true, accessStatus: true,
+          trialEndsAt: true, paidThroughAt: true, graceEndsAt: true,
+          cancelledAt: true, suspendedAt: true, suspensionReason: true,
+          billingContactEmail: true,
+        },
+      }),
+      db.planUsage.findFirst({
+        where: { tenantKey, month },
+        select: { skuCount: true, submissionCount: true, storageGb: true },
+      }),
+      db.publicSignupRequest.findFirst({
+        where: { workspaceSlug: workspace.workspaceSlug },
+        select: { adminEmail: true, status: true, createdAt: true, verifiedAt: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      db.authIdentity.findMany({
+        where: { tenantKey },
+        select: { userId: true, role: true, isActive: true, lockedUntil: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+        take: USER_LIMIT,
+      }),
+      db.authIdentity.count({ where: { tenantKey } }),
+      db.$queryRaw<Array<{
+        installationId: string;
+        connectorName: string;
+        connectorSlug: string;
+        status: string;
+        createdAt: Date;
+      }>>`
+        SELECT
+          ci.id AS "installationId",
+          cd.display_name AS "connectorName",
+          cd.slug AS "connectorSlug",
+          ci.status AS "status",
+          ci.created_at AS "createdAt"
+        FROM connector_installations ci
+        JOIN connector_definitions cd ON cd.id = ci.connector_id
+        WHERE ci.tenant_key = ${tenantKey}
+        ORDER BY ci.created_at DESC
+        LIMIT ${CONNECTOR_LIMIT}
+      `,
+      db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS "count"
+        FROM connector_installations
+        WHERE tenant_key = ${tenantKey}
+      `,
+    ]);
+
+    const now = new Date();
+    const planTier = this.normalizePlanTier(profile?.planTier ?? "TRIAL");
+
+    return {
+      tenant: {
+        tenantKey,
+        workspaceName: workspace.displayName,
+        workspaceSlug: workspace.workspaceSlug,
+        createdAt: workspace.createdAt.toISOString(),
+      },
+      commercial: {
+        planTier,
+        billingStatus: this.normalizeBillingStatus(profile?.billingStatus ?? null, planTier),
+        accessStatus: this.normalizeAccessStatus(profile?.accessStatus ?? null),
+        trialEndsAt: this.toIsoString(profile?.trialEndsAt ?? null),
+        paidThroughAt: this.toIsoString(profile?.paidThroughAt ?? null),
+        graceEndsAt: this.toIsoString(profile?.graceEndsAt ?? null),
+        cancelledAt: this.toIsoString(profile?.cancelledAt ?? null),
+        suspendedAt: this.toIsoString(profile?.suspendedAt ?? null),
+        suspensionReason: profile?.suspensionReason ? String(profile.suspensionReason).trim() || null : null,
+        billingContactEmail: this.normalizeOptionalEmail(profile?.billingContactEmail ?? null),
+      },
+      usage: {
+        skuCount: usageRow?.skuCount ?? 0,
+        userCount: userTotal,
+        submissionCount: usageRow?.submissionCount ?? 0,
+        storageBytes: Math.round((usageRow?.storageGb ?? 0) * 1024 * 1024 * 1024),
+      },
+      signup: signupRow
+        ? {
+            adminEmail: signupRow.adminEmail,
+            status: signupRow.status,
+            requestedAt: signupRow.createdAt.toISOString(),
+            verifiedAt: signupRow.verifiedAt?.toISOString() ?? null,
+          }
+        : null,
+      users: {
+        items: userRows.map((u) => {
+          const lockedUntil = u.lockedUntil ? new Date(u.lockedUntil) : null;
+          const isLocked = lockedUntil !== null && lockedUntil > now;
+          return {
+            userId: String(u.userId ?? ""),
+            identityType: this.classifyIdentityType(String(u.userId ?? "")),
+            role: String(u.role ?? "viewer"),
+            isActive: Boolean(u.isActive),
+            isLocked,
+            lockedUntil: isLocked ? lockedUntil.toISOString() : null,
+            createdAt: u.createdAt.toISOString(),
+          };
+        }),
+        total: userTotal,
+        limit: USER_LIMIT,
+        truncated: userTotal > USER_LIMIT,
+      },
+      connectors: {
+        items: connectorRows.map((c) => ({
+          installationId: c.installationId,
+          connectorName: c.connectorName,
+          connectorSlug: c.connectorSlug,
+          status: c.status,
+          createdAt: new Date(c.createdAt).toISOString(),
+        })),
+        total: connectorTotal[0]?.count ?? 0,
+        limit: CONNECTOR_LIMIT,
+        truncated: (connectorTotal[0]?.count ?? 0) > CONNECTOR_LIMIT,
+      },
+    };
+  }
+
   async getCommercialTenantOverview(): Promise<CommercialTenantOverview> {
     const workspaces = await this.prismaDirect.getClient().workspaceDirectory.findMany({
       select: {
@@ -1503,6 +1701,12 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       createdAt: new Date(row.createdAt).toISOString(),
       updatedAt: new Date(row.updatedAt).toISOString(),
     };
+  }
+
+  private classifyIdentityType(userId: string): "email" | "external_identifier" | "unknown" {
+    const value = userId.trim();
+    if (!value) return "unknown";
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "email" : "external_identifier";
   }
 
   private normalizePlanTier(value: string): PlanTier {
