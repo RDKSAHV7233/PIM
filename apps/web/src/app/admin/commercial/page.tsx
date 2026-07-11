@@ -5,7 +5,7 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
-import { isSystemAdminBoundary } from "@/lib/role-capabilities";
+import { canAccessCommercialOperations } from "@/lib/role-capabilities";
 import { ApiHttpError, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import {
@@ -107,7 +107,10 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/commercial", 401));
   }
-  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+  if (!canAccessCommercialOperations({ actorRole, adminBoundaryRoles })) {
+    if (actorRole !== "admin") {
+      redirect("/admin");
+    }
     return (
       <div className="space-y-5">
         <PageHeader
@@ -118,9 +121,6 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         <SystemAdminRequiredCard surfaceLabel="Commercial ops" />
       </div>
     );
-  }
-  if (actorRole !== "admin") {
-    redirect("/admin");
   }
   if (!isOpsTokenConfigured()) {
     return (
@@ -384,11 +384,11 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                   {enrichedTenants.map((tenant) => (
                     <tr key={tenant.tenantKey} className="border-b last:border-0">
                       <td className="py-3 pr-4">
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{tenant.displayName}</p>
+                        <Link href={`/admin/commercial/${encodeURIComponent(tenant.tenantKey)}`} className="block">
+                          <p className="text-sm font-medium text-slate-900 underline-offset-2 hover:underline">{tenant.displayName}</p>
                           <p className="font-mono text-xs text-slate-500">{tenant.workspaceSlug}</p>
                           <p className="mt-0.5 text-xs text-slate-400">{(tenant.adminEmails ?? []).join(", ") || "—"}</p>
-                        </div>
+                        </Link>
                       </td>
                       <td className="py-3 pr-4">
                         <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
@@ -439,7 +439,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
             </div>
             <div className="mt-3 space-y-3 md:hidden">
               {enrichedTenants.map((tenant) => (
-                <div key={tenant.tenantKey} className="rounded-lg border border-slate-200 p-3">
+                <Link key={tenant.tenantKey} href={`/admin/commercial/${encodeURIComponent(tenant.tenantKey)}`} className="block rounded-lg border border-slate-200 p-3 hover:border-slate-300">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-slate-900">{tenant.displayName}</p>
@@ -470,7 +470,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                   {tenant.trialEndsAt ? (
                     <p className="mt-1 text-xs text-slate-400">Trial ends {new Date(tenant.trialEndsAt).toLocaleDateString("en-IN")}</p>
                   ) : null}
-                </div>
+                </Link>
               ))}
             </div>
           </>
@@ -561,8 +561,8 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                 <tbody>
                   {searchResults.map((tenant) => (
                     <tr key={tenant.tenantKey} className="border-b last:border-0">
-                      <td className="py-3 pr-4 font-mono text-xs">{tenant.workspaceSlug}</td>
-                      <td className="py-3 pr-4 text-sm">{tenant.displayName}</td>
+                      <td className="py-3 pr-4 font-mono text-xs"><Link href={`/admin/commercial/${encodeURIComponent(tenant.tenantKey)}`} className="underline-offset-2 hover:underline">{tenant.workspaceSlug}</Link></td>
+                      <td className="py-3 pr-4 text-sm"><Link href={`/admin/commercial/${encodeURIComponent(tenant.tenantKey)}`} className="underline-offset-2 hover:underline">{tenant.displayName}</Link></td>
                       <td className="py-3 pr-4 text-xs text-slate-600">{(tenant.adminEmails ?? []).join(", ") || "—"}</td>
                       <td className="py-3 pr-4">
                         <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
@@ -596,15 +596,17 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
             <div className="mt-4 space-y-3 md:hidden">
               {searchResults.map((tenant) => (
                 <div key={tenant.tenantKey} className="rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{tenant.displayName}</p>
-                      <p className="mt-0.5 font-mono text-xs text-slate-500">{tenant.workspaceSlug}</p>
+                  <Link href={`/admin/commercial/${encodeURIComponent(tenant.tenantKey)}`} className="block">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 underline-offset-2 hover:underline">{tenant.displayName}</p>
+                        <p className="mt-0.5 font-mono text-xs text-slate-500">{tenant.workspaceSlug}</p>
+                      </div>
+                      <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
+                        {tenant.planTier ?? "—"}
+                      </span>
                     </div>
-                    <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(tenant.planTier)}`}>
-                      {tenant.planTier ?? "—"}
-                    </span>
-                  </div>
+                  </Link>
                   <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
                     <span>{formatStatus(tenant.billingStatus)}</span>
                     {(tenant.adminEmails ?? []).length > 0 ? (

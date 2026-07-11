@@ -27,6 +27,7 @@ module.exports = {
     "**/connectors/meesho/meesho-category-templates.spec.ts",
     "**/billing/commercial-reminders.service.spec.ts",
     "**/billing/commercial-enriched-tenants.spec.ts",
+    "**/billing/commercial-tenant-detail.spec.ts",
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",
     "**/bulk-import/csv-safe.spec.ts",

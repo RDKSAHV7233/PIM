@@ -40,3 +40,10 @@ export function isReadOnlyRole(role: AppRole): boolean {
 export function isSystemAdminBoundary(adminBoundaryRoles: readonly string[]): boolean {
   return adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
 }
+
+export function canAccessCommercialOperations(input: {
+  actorRole: string;
+  adminBoundaryRoles: readonly string[];
+}): boolean {
+  return input.actorRole === "admin" && isSystemAdminBoundary(input.adminBoundaryRoles);
+}

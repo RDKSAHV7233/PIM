@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Logger, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Logger, NotFoundException, Param, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { AuditService } from "../audit/audit.service";
@@ -619,6 +619,61 @@ export class BillingController {
       },
     });
     return { items, count: items.length };
+  }
+
+  @Public()
+  @Get("internal/tenants/:tenantKey")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only tenant detail view" })
+  async getTenantDetailInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Param("tenantKey") tenantKeyParam: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const { actorId, actorRole } = await this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+      request,
+      "billing.internal.tenants.detail",
+    );
+
+    const rawKey = String(tenantKeyParam ?? "").trim();
+    if (!rawKey || !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(rawKey)) {
+      throw new BadRequestException({ error: "INVALID_TENANT_KEY" });
+    }
+
+    const detail = await this.planUsageService.getTenantDetail(rawKey);
+    if (!detail) {
+      await this.auditService.record({
+        actorId,
+        actorRole,
+        action: "COMMERCIAL_TENANT_DETAIL_NOT_FOUND",
+        resource: "WORKSPACE_DIRECTORY",
+        resourceId: rawKey,
+        tenantKey: this.resolveCommercialAuditTenantKey(),
+        metadata: { event: "commercial_tenant_detail_not_found", requestedTenantKey: rawKey },
+      });
+      throw new NotFoundException({ error: "TENANT_NOT_FOUND" });
+    }
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_TENANT_DETAIL_VIEWED",
+      resource: "WORKSPACE_DIRECTORY",
+      resourceId: rawKey,
+      tenantKey: this.resolveCommercialAuditTenantKey(rawKey),
+      metadata: {
+        event: "commercial_tenant_detail_viewed",
+        tenantKey: rawKey,
+        userCount: detail.users.total,
+        connectorCount: detail.connectors.total,
+      },
+    });
+    return detail;
   }
 
   @Public()
