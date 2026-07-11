@@ -229,7 +229,7 @@ export class CatalogService {
             : undefined,
           scopeWhere,
         ),
-        status ? { status } : undefined,
+        status ? { status } as Prisma.ProductWhereInput : undefined,
       ),
       select: {
         id: true,
