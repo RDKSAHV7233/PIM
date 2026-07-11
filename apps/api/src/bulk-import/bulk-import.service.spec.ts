@@ -852,3 +852,148 @@ describe("BulkImportService.createJob — staged CSV read path", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("BulkImportService.createJob — duplicate prevention (idempotent)", () => {
+  const CSV_CONTENT = "title,description,brand\nWidget A,A desc,Vexa\nWidget B,B desc,Vexa\n";
+  const { PrismaClientKnownRequestError } = jest.requireActual("@prisma/client").Prisma;
+
+  function makeDuplicateTestService(options?: { existingJobId?: string }) {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const makeJobRecord = (id: string) => ({
+      id, categoryId: "cat1", status: "queued", totalRows: 2,
+      category: { id: "cat1", path: "/test" }, rows: [],
+      runId: "run-1", jobRole: "standard", sourceFormat: "csv",
+      sourceName: null, mapping: {}, chunkSize: 100, maxRetries: 3,
+      processedRows: 0, successRows: 0, failedRows: 0, deadLetterRows: 0,
+      batchIndex: null, rowStart: null, rowEnd: null,
+      createdAt: new Date(), updatedAt: new Date(), tenantKey: "default",
+    });
+    const jobCreateMock = jest.fn();
+    const rowCreateManyMock = jest.fn().mockResolvedValue({ count: 2 });
+    const findFirstMock = jest.fn().mockImplementation(() =>
+      Promise.resolve(options?.existingJobId ? makeJobRecord(options.existingJobId) : null),
+    );
+    const findUniqueMock = jest.fn().mockImplementation((args: { where: { id: string } }) =>
+      Promise.resolve(makeJobRecord(args?.where?.id ?? options?.existingJobId ?? "job-new")),
+    );
+    const txMock = {
+      bulkImportJob: { create: jobCreateMock },
+      bulkImportRow: { createMany: rowCreateManyMock },
+    };
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1", name: "Test", path: "/test" }) },
+        bulkImportRun: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "run-1", categoryId: "cat1", status: "preflight_ready", effectiveMode: "standard",
+          }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({
+            sourceFileKey: "staged/run-1.csv", sourceExpiresAt: futureDate,
+          }),
+        },
+        bulkImportJob: {
+          findFirst: findFirstMock,
+          findUnique: findUniqueMock,
+        },
+        bulkImportRow: {
+          groupBy: jest.fn().mockResolvedValue([]),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(txMock)),
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      assertBulkImportAccess: jest.fn().mockResolvedValue(undefined),
+      assertBulkImportAllowed: jest.fn().mockResolvedValue(undefined),
+      assertRequestedProductScopeAllowed: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
+    };
+    const storageService = {
+      readStagedCsvStream: jest.fn().mockReturnValue(Readable.from(CSV_CONTENT)),
+    };
+    const svc = new BulkImportService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      storageService as never,
+    );
+    return { svc, jobCreateMock, rowCreateManyMock, findFirstMock, prisma };
+  }
+
+  it("first request creates the job normally", async () => {
+    const { svc, jobCreateMock, rowCreateManyMock } = makeDuplicateTestService();
+    jobCreateMock.mockResolvedValue({ id: "job-new", categoryId: "cat1" });
+    await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(jobCreateMock).toHaveBeenCalledTimes(1);
+    expect(rowCreateManyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns existing job on P2002 unique constraint violation", async () => {
+    const { svc, jobCreateMock, findFirstMock } = makeDuplicateTestService({ existingJobId: "job-existing" });
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: ["tenantKey", "runId"] },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    const result = await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(findFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ runId: "run-1", jobRole: "standard" }) }),
+    );
+    expect(result).toBeDefined();
+  });
+
+  it("does not create rows when returning existing job", async () => {
+    const { svc, jobCreateMock, rowCreateManyMock } = makeDuplicateTestService({ existingJobId: "job-existing" });
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: ["tenantKey", "runId"] },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(rowCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it("rethrows non-P2002 errors", async () => {
+    const { svc, jobCreateMock } = makeDuplicateTestService();
+    jobCreateMock.mockRejectedValue(new Error("Connection timeout"));
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow("Connection timeout");
+  });
+
+  it("rethrows P2002 when runId is null (inline import)", async () => {
+    const { svc, jobCreateMock } = makeDuplicateTestService();
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: ["tenantKey", "runId"] },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", sourceFormat: "csv", mapping: {}, csvContent: "title\nTest" } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow();
+  });
+});

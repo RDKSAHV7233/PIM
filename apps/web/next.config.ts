@@ -42,6 +42,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    middlewareClientMaxBodySize: "33mb",
     webpackBuildWorker: false,
     devtoolSegmentExplorer: false,
   },

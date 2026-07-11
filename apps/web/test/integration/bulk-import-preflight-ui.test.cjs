@@ -107,6 +107,34 @@ function run() {
     "Server Action createBulkImportJobAction must require stagedRunId and not contain a raw-file upload fallback.",
   );
 
+  // CTO audit: Next.js upload proxy must forward the raw multipart body (preserving
+  // the browser-generated boundary) instead of re-encoding via FormData.
+  const uploadRouteSource = fs.readFileSync(
+    path.join(REPO_ROOT, "apps", "web", "src", "app", "api", "bulk-import", "runs", "upload", "route.ts"),
+    "utf8",
+  );
+  assert(
+    !uploadRouteSource.includes("new FormData") &&
+      uploadRouteSource.includes("request.arrayBuffer()") &&
+      uploadRouteSource.includes('"Content-Type": contentType'),
+    "Upload proxy must forward the raw body with the original Content-Type (preserving multipart boundary), not re-encode via FormData.",
+  );
+  assert(
+    uploadRouteSource.includes("MAX_UPLOAD_BYTES") &&
+      uploadRouteSource.includes("File too large"),
+    "Upload proxy must enforce a size limit matching the API FileInterceptor (32 MB).",
+  );
+
+  // CTO audit: next.config must allow large request bodies through the proxy.
+  const nextConfigSource = fs.readFileSync(
+    path.join(REPO_ROOT, "apps", "web", "next.config.ts"),
+    "utf8",
+  );
+  assert(
+    nextConfigSource.includes("middlewareClientMaxBodySize"),
+    "next.config.ts must set experimental.middlewareClientMaxBodySize to allow uploads larger than the default 10 MB limit.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -122,6 +150,9 @@ function run() {
           "bulk_import_preflight_clears_file_after_staging",
           "bulk_import_preflight_resets_staged_run_on_category_change",
           "server_action_requires_staged_run_id_no_raw_file_fallback",
+          "upload_proxy_forwards_raw_body_preserving_boundary",
+          "upload_proxy_enforces_32mb_size_limit",
+          "next_config_allows_large_body_through_proxy",
         ],
         checkedAt: new Date().toISOString(),
       },

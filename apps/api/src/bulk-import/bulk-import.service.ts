@@ -799,35 +799,53 @@ export class BulkImportService {
       throw new BadRequestException(`Maximum ${importRowLimit.toLocaleString("en-US")} rows per job.`);
     }
 
-    const created = await this.prisma.tenant().$transaction(async (tx) => {
-      const job = await tx.bulkImportJob.create({
-        data: {
-          categoryId: dto.categoryId,
-          runId: linkedRunId,
-          jobRole: "standard",
-          sourceFormat: dto.sourceFormat,
-          sourceName: dto.sourceName?.trim() || null,
-          mapping: suggestion.mapping as unknown as Prisma.JsonObject,
-          chunkSize: dto.chunkSize ?? 100,
-          maxRetries: dto.maxRetries ?? 3,
-          status: BulkImportJobStatus.queued,
-          totalRows: normalizedRows.length,
-        },
-      });
+    let created: { id: string };
+    try {
+      created = await this.prisma.tenant().$transaction(async (tx) => {
+        const job = await tx.bulkImportJob.create({
+          data: {
+            categoryId: dto.categoryId,
+            runId: linkedRunId,
+            jobRole: "standard",
+            sourceFormat: dto.sourceFormat,
+            sourceName: dto.sourceName?.trim() || null,
+            mapping: suggestion.mapping as unknown as Prisma.JsonObject,
+            chunkSize: dto.chunkSize ?? 100,
+            maxRetries: dto.maxRetries ?? 3,
+            status: BulkImportJobStatus.queued,
+            totalRows: normalizedRows.length,
+          },
+        });
 
-      await tx.bulkImportRow.createMany({
-        data: normalizedRows.map((row, index) => ({
-          jobId: job.id,
-          runId: linkedRunId,
-          rowNumber: index + 1,
-          rowNumberGlobal: linkedRunId ? index + 1 : null,
-          rowNumberInBatch: linkedRunId ? index + 1 : null,
-          payload: row as Prisma.JsonObject,
-          status: BulkImportRowStatus.queued,
-        })),
+        await tx.bulkImportRow.createMany({
+          data: normalizedRows.map((row, index) => ({
+            jobId: job.id,
+            runId: linkedRunId,
+            rowNumber: index + 1,
+            rowNumberGlobal: linkedRunId ? index + 1 : null,
+            rowNumberInBatch: linkedRunId ? index + 1 : null,
+            payload: row as Prisma.JsonObject,
+            status: BulkImportRowStatus.queued,
+          })),
+        });
+        return job;
       });
-      return job;
-    });
+    } catch (error) {
+      if (
+        linkedRunId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const existing = await this.prisma.tenant().bulkImportJob.findFirst({
+          where: { runId: linkedRunId, jobRole: "standard" },
+          select: { id: true },
+        });
+        if (existing) {
+          return this.getJob(existing.id, actor);
+        }
+      }
+      throw error;
+    }
 
     return this.getJob(created.id, actor);
   }
