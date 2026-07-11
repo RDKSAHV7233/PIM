@@ -20,14 +20,14 @@ const RUNTIME_MANIFEST_PATH = path.join(GENERATED_DIR, "runtime-manifest.json");
 const DEFAULT_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
 
 const ROLE_IDENTITIES = {
-  admin: process.env.PLAYWRIGHT_ADMIN_USER || "admin@pim1.local",
-  editor: process.env.PLAYWRIGHT_EDITOR_USER || "editor@test.com",
-  publisher: process.env.PLAYWRIGHT_PUBLISHER_USER || "publisher@test.com",
-  approver: process.env.PLAYWRIGHT_APPROVER_USER || "approver@test.com",
-  channel_manager: process.env.PLAYWRIGHT_CHANNEL_MANAGER_USER || "channel_manager@test.com",
-  connector_admin: process.env.PLAYWRIGHT_CONNECTOR_ADMIN_USER || "connector_admin@test.com",
-  reviewer: process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@test.com",
-  viewer: process.env.PLAYWRIGHT_VIEWER_USER || "viewer@test.com",
+  admin: process.env.PLAYWRIGHT_ADMIN_USER || "admin@vexa-pim.local",
+  editor: process.env.PLAYWRIGHT_EDITOR_USER || "editor@vexa-pim.local",
+  publisher: process.env.PLAYWRIGHT_PUBLISHER_USER || "publisher@vexa-pim.local",
+  approver: process.env.PLAYWRIGHT_APPROVER_USER || "approver@vexa-pim.local",
+  channel_manager: process.env.PLAYWRIGHT_CHANNEL_MANAGER_USER || "channel_manager@vexa-pim.local",
+  connector_admin: process.env.PLAYWRIGHT_CONNECTOR_ADMIN_USER || "connector_admin@vexa-pim.local",
+  reviewer: process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@vexa-pim.local",
+  viewer: process.env.PLAYWRIGHT_VIEWER_USER || "viewer@vexa-pim.local",
 };
 
 function ensureDir(targetDir) {

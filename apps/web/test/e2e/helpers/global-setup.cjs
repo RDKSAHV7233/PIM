@@ -109,6 +109,43 @@ module.exports = async function globalSetup() {
   );
 
 
+  // ── Preflight: SKU capacity check ──────────────────────────────────────────
+  // Fail fast if the test tenant has accumulated too many products and is close
+  // to hitting the plan limit.  Without this, tests silently get 402
+  // PLAN_LIMIT_EXCEEDED responses and produce misleading failures.
+  const SKU_HEADROOM_MIN = 500;
+  const adminCacheKey = `${apiURL}|${workspace}|admin`;
+  const adminToken = tokenCache[adminCacheKey]?.accessToken;
+  if (adminToken) {
+    try {
+      const usageRes = await fetch(`${apiURL}/billing/usage`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (usageRes.ok) {
+        const usage = await usageRes.json();
+        const skuCurrent = usage?.skus?.current ?? 0;
+        const skuLimit = usage?.skus?.limit ?? 0;
+        const headroom = skuLimit - skuCurrent;
+        console.log(
+          `[global-setup] SKU preflight: ${skuCurrent}/${skuLimit} used (${headroom} headroom)`,
+        );
+        if (skuLimit > 0 && headroom < SKU_HEADROOM_MIN) {
+          throw new Error(
+            `SKU capacity insufficient: ${skuCurrent}/${skuLimit} products ` +
+              `(${headroom} headroom < ${SKU_HEADROOM_MIN} minimum). ` +
+              `Clean up test products before running the suite.`,
+          );
+        }
+      } else {
+        console.warn(`[global-setup] SKU preflight check returned ${usageRes.status} — skipping.`);
+      }
+    } catch (err) {
+      if (err.message.includes("SKU capacity insufficient")) throw err;
+      console.warn(`[global-setup] SKU preflight check failed: ${err.message} — skipping.`);
+    }
+  }
+
   console.log(
     JSON.stringify(
       {

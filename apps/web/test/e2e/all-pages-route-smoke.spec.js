@@ -136,7 +136,7 @@ test.describe("Public routes — anonymous access", () => {
       expect(response).not.toBeNull();
       const status = response.status();
 
-      // Public pages should load (200) or redirect (3xx)
+      // Public pages should load (200), redirect (3xx), or 404 for feature-gated routes
       expect(status).toBeLessThan(500);
 
       // Page should not be blank
@@ -145,7 +145,11 @@ test.describe("Public routes — anonymous access", () => {
 
       // Filter out known benign console errors
       const realErrors = consoleErrors.filter(
-        (e) => !e.includes("favicon") && !e.includes("next-dev") && !e.includes("hydration"),
+        (e) =>
+          !e.includes("favicon") &&
+          !e.includes("next-dev") &&
+          !e.includes("hydration") &&
+          !(status === 404 && e.includes("Failed to load resource")),
       );
       expect(realErrors).toHaveLength(0);
     });
@@ -176,7 +180,7 @@ test.describe("Authenticated routes — admin role", () => {
       } else {
         expect(status).toBe(200);
         // Page must have visible main content
-        await expect(page.locator("main, [role='main'], .container, h1, h2").first()).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator("#main-content, main, [role='main']").first()).toBeVisible({ timeout: 15_000 });
       }
 
       const realErrors = consoleErrors.filter(
@@ -192,7 +196,7 @@ test.describe("Authenticated routes — admin role", () => {
       expect(response).not.toBeNull();
       expect(response.status()).toBeLessThan(500);
 
-      await expect(page.locator("main, [role='main'], .container, h1, h2").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator("#main-content, main, [role='main']").first()).toBeVisible({ timeout: 15_000 });
     });
   }
 });
@@ -233,12 +237,12 @@ test.describe("Viewer restrictions — no mutation actions visible", () => {
 
   test("viewer can access dashboard", async ({ page }) => {
     await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("main, h1, h2").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#main-content, main, [role='main']").first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("viewer can access catalog/products read-only", async ({ page }) => {
     await page.goto("/catalog/products", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("main, h1, h2").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#main-content, main, [role='main']").first()).toBeVisible({ timeout: 15_000 });
 
     // Viewer should NOT see create/import/edit buttons
     const createButton = page.getByRole("button", { name: /create product|new product/i });
@@ -252,7 +256,7 @@ test.describe("Viewer restrictions — no mutation actions visible", () => {
     const isBlocked =
       url.includes("/login") ||
       url.includes("/dashboard") ||
-      (await page.getByText(/not authorized|access denied|forbidden/i).count()) > 0 ||
+      (await page.getByText(/not authorized|access denied|forbidden|security admin access required|restricted to/i).count()) > 0 ||
       (await page.locator("[data-testid='not-found']").count()) > 0;
     expect(isBlocked).toBe(true);
   });
