@@ -2679,18 +2679,24 @@
         "parameters": [
           {
             "name": "productId",
-            "required": true,
+            "required": false,
             "in": "query",
+            "description": "Filter export jobs by product ID",
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "templateSummary",
-            "required": true,
+            "required": false,
             "in": "query",
+            "description": "Include template summary in response",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
             }
           }
         ],

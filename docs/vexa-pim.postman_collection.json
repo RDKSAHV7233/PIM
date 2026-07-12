@@ -5398,7 +5398,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/marketplace/export-jobs?productId=&templateSummary=",
+              "raw": "{{base_url}}/api/v1/marketplace/export-jobs",
               "host": [
                 "{{base_url}}"
               ],
@@ -5412,14 +5412,14 @@
                 {
                   "key": "productId",
                   "value": "",
-                  "description": "(required)",
-                  "disabled": false
+                  "description": "Filter export jobs by product ID",
+                  "disabled": true
                 },
                 {
                   "key": "templateSummary",
                   "value": "",
-                  "description": "(required)",
-                  "disabled": false
+                  "description": "Include template summary in response",
+                  "disabled": true
                 }
               ]
             },
