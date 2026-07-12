@@ -66,6 +66,9 @@ async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<
       if (error.status === 403) {
         return { state: "restricted" };
       }
+      if (error.status >= 500) {
+        return { state: "unavailable" };
+      }
     }
     if (isDashboardApiUnavailable(error)) {
       return { state: "unavailable" };

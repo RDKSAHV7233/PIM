@@ -328,7 +328,7 @@ export class MarketplaceController {
   }
 
   @Post("products/:id/export-jobs")
-  @Roles("admin", "editor", "publisher", "channel_manager")
+  @Roles("admin", "publisher", "channel_manager")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("submissions")
   @ApiOperation({ summary: "Create marketplace export job" })
@@ -363,7 +363,7 @@ export class MarketplaceController {
   }
 
   @Post("export-job")
-  @Roles("admin", "editor", "publisher", "channel_manager")
+  @Roles("admin", "publisher", "channel_manager")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("submissions")
   @ApiOperation({ summary: "Create export job (alias endpoint)" })

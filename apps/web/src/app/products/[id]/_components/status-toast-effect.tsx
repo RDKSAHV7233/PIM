@@ -59,6 +59,10 @@ export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
       toast.success("Export job requeued.");
       return;
     }
+    if (updateStatus === "export-forbidden") {
+      toast.error("Your role does not have permission to publish to channels.");
+      return;
+    }
     if (updateStatus === "error" || updateStatus === "conflict") {
       toast.error("Update failed");
       return;

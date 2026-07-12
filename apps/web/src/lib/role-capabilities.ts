@@ -8,6 +8,10 @@ export function canManageChannels(role: AppRole): boolean {
   return role === "admin" || role === "editor" || role === "channel_manager";
 }
 
+export function canPublishToChannels(role: AppRole): boolean {
+  return role === "admin" || role === "publisher" || role === "channel_manager";
+}
+
 export function canManageConnectors(role: AppRole): boolean {
   return role === "admin" || role === "editor" || role === "connector_admin";
 }

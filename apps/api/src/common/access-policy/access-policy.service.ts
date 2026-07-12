@@ -1263,7 +1263,7 @@ export class AccessPolicyService {
       fields?: string[];
     },
   ): Promise<void> {
-    if (options.action === "marketplace.export" && this.isAdmin(actor)) {
+    if (options.action === "marketplace.export" && this.canExportToMarketplace(actor)) {
       return;
     }
     if (options.action === "connector.preview" && this.isAdmin(actor)) {
@@ -1549,6 +1549,12 @@ export class AccessPolicyService {
       return false;
     }
     return true;
+  }
+
+  private canExportToMarketplace(actor: PolicyActor): boolean {
+    if (this.hasBlockedFoundationRole(actor)) return false;
+    const role = normalizeRole(actor.actorRole);
+    return role === "admin" || role === "publisher" || role === "channel_manager";
   }
 
   private canReadSensitiveProductFields(actor: PolicyActor): boolean {
