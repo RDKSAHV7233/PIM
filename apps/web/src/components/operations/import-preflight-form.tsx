@@ -7,6 +7,8 @@ import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-ste
 import type { BulkImportRun, Category } from "@/lib/api";
 import { readCsrfCookie } from "@/lib/csrf";
 
+const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+
 function detectSourceFormat(fileName: string): "csv" | "json" | null {
   const normalized = fileName.trim().toLowerCase();
   if (normalized.endsWith(".csv")) {
@@ -120,6 +122,8 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
     }
     if (!file) {
       nextFieldErrors.sourceFile = "Upload a CSV or JSON file before validating.";
+    } else if (file.size > MAX_UPLOAD_BYTES) {
+      nextFieldErrors.sourceFile = `File exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB upload limit.`;
     }
     const chunkSize = Number(chunkSizeRaw);
     if (!chunkSizeRaw || !Number.isFinite(chunkSize) || chunkSize < 1 || chunkSize > 500) {
@@ -179,9 +183,9 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       const uploadPayload = await uploadResponse.json();
       if (!uploadResponse.ok || !uploadPayload.id) {
         const serverMsg = uploadPayload.message ?? uploadPayload.error;
-        throw new Error(serverMsg ? String(serverMsg) : "Failed to stage import run.");
+        throw new Error(serverMsg ? String(serverMsg) : "Failed to upload import file.");
       }
-      const runId = uploadPayload.id;
+      const runId: string = uploadPayload.id;
 
       // Validate the run — reads the stored file from storage, runs full
       // preflight checks, and transitions "uploaded" → "preflight_ready".
@@ -198,6 +202,11 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
 
       const mergedRun: BulkImportRun = validatePayload as BulkImportRun;
       setStagedRun(mergedRun);
+
+      // Clear the file input so the form submission only sends stagedRunId,
+      // keeping the Server Action request body well under the Next.js body limit.
+      const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
+      if (fileInput) fileInput.value = "";
     } catch (error) {
       setStagedRun(null);
       setValidationError(error instanceof Error ? error.message : "Import validation failed.");
@@ -213,7 +222,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
   return canWrite ? (
     <form ref={formRef} action={submitAction} className="space-y-4" suppressHydrationWarning>
       <input type="hidden" name="mapping" value={DEFAULT_MAPPING} />
-      {stagedRun?.id ? <input type="hidden" name="stagedRunId" value={stagedRun.id} /> : null}
+      <input type="hidden" name="stagedRunId" value={stagedRun ? stagedRun.id : ""} />
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm text-slate-700">
           <span className="font-medium">Category</span>
@@ -247,7 +256,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
           <input
             type="file"
             name="sourceFile"
-            required
+            required={!stagedRun}
             accept=".csv,.json"
             className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             aria-invalid={fieldErrors.sourceFile ? "true" : undefined}

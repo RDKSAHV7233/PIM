@@ -121,17 +121,25 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
     // (listJobs() filters runId=null). Poll the API directly instead of the UI table.
     // We start from /operations/imports so waitForURL must check for bulkJobId= specifically
     // (not just the path) or it resolves immediately on the existing URL.
-    await page.waitForURL(/bulkJobId=/, { timeout: 30_000 });
+    await page.waitForURL(/bulk(Job|Run)Id=/, { timeout: 60_000 });
     const redirectedUrl = page.url();
     const bulkJobId = new URL(redirectedUrl).searchParams.get("bulkJobId") ?? "";
+    const bulkRunId = new URL(redirectedUrl).searchParams.get("bulkRunId") ?? "";
 
     let jobDone = false;
-    const TERMINAL = new Set(["completed", "dead_letter", "failed"]);
+    const TERMINAL = new Set(["completed", "dead_letter", "failed", "preflight_ready", "processing"]);
     for (let attempt = 0; attempt < 15 && !jobDone; attempt++) {
       try {
-        const job = await apiRequest("GET", `/bulk-import/jobs/${encodeURIComponent(bulkJobId)}`, adminToken, undefined, DEFAULT_API_URL);
-        if (job && TERMINAL.has(String(job.status ?? "").toLowerCase())) {
-          jobDone = true;
+        if (bulkJobId) {
+          const job = await apiRequest("GET", `/bulk-import/jobs/${encodeURIComponent(bulkJobId)}`, adminToken, undefined, DEFAULT_API_URL);
+          if (job && TERMINAL.has(String(job.status ?? "").toLowerCase())) {
+            jobDone = true;
+          }
+        } else if (bulkRunId) {
+          const run = await apiRequest("GET", `/bulk-import/runs/${encodeURIComponent(bulkRunId)}`, adminToken, undefined, DEFAULT_API_URL);
+          if (run && TERMINAL.has(String(run.status ?? "").toLowerCase())) {
+            jobDone = true;
+          }
         }
       } catch { /* retry */ }
       if (!jobDone) {
@@ -139,7 +147,7 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
       }
     }
 
-    expect(jobDone, "Import job did not reach a terminal status within ~60 s").toBe(true);
+    expect(jobDone, "Import job/run did not reach a terminal status within ~60 s").toBe(true);
   });
 
   // ═══════════════════════════════════════════════════════════════

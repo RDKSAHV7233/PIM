@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
+import { createInterface } from "node:readline";
 import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus, TaxCodeKey } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { getCorrelationContext } from "../common/logging/correlation-context";
@@ -18,6 +19,7 @@ import {
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MetricsService } from "../metrics/metrics.service";
+import { BulkImportStorageService } from "./bulk-import-storage.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
@@ -342,6 +344,7 @@ export class BulkImportService {
     private readonly planUsageService: PlanUsageService,
     private readonly metricsService: MetricsService,
     private readonly logger: LoggerService,
+    private readonly storageService: BulkImportStorageService,
   ) {}
 
   suggestMapping(headers: string[]) {
@@ -755,7 +758,23 @@ export class BulkImportService {
     if (linkedRunId) {
       await this.assertLinkedStandardRun(linkedRunId, dto.categoryId, actor);
     }
-    const sourceRows = this.resolveImportSourceRows(dto);
+
+    let sourceRows: BulkImportPreparedSourceRows;
+    if (linkedRunId && !this.hasInlineSourceData(dto)) {
+      const run = await this.prisma.tenant().bulkImportRun.findUniqueOrThrow({
+        where: { id: linkedRunId },
+        select: { sourceFileKey: true, sourceExpiresAt: true },
+      });
+      if (!run.sourceFileKey) {
+        throw new BadRequestException("Staged run has no stored file. Re-upload the import file.");
+      }
+      if (run.sourceExpiresAt && run.sourceExpiresAt < new Date()) {
+        throw new BadRequestException("Staged import file has expired. Please re-upload the file.");
+      }
+      sourceRows = await this.readRowsFromStagedCsv(run.sourceFileKey);
+    } else {
+      sourceRows = this.resolveImportSourceRows(dto);
+    }
 
     const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
     const normalizedRows = sourceRows.rows.map((row) =>
@@ -781,37 +800,56 @@ export class BulkImportService {
       throw new BadRequestException(`Maximum ${importRowLimit.toLocaleString("en-US")} rows per job.`);
     }
 
-    const created = await this.prisma.tenant().$transaction(async (tx) => {
-      const job = await tx.bulkImportJob.create({
-        data: {
-          categoryId: dto.categoryId,
-          runId: linkedRunId,
-          jobRole: "standard",
-          sourceFormat: dto.sourceFormat,
-          sourceName: dto.sourceName?.trim() || null,
-          mapping: suggestion.mapping as unknown as Prisma.JsonObject,
-          chunkSize: dto.chunkSize ?? 100,
-          maxRetries: dto.maxRetries ?? 3,
-          status: BulkImportJobStatus.queued,
-          totalRows: normalizedRows.length,
-        },
-      });
+    let created: { id: string };
+    try {
+      created = await this.prisma.tenant().$transaction(async (tx) => {
+        const job = await tx.bulkImportJob.create({
+          data: {
+            categoryId: dto.categoryId,
+            runId: linkedRunId,
+            jobRole: "standard",
+            sourceFormat: dto.sourceFormat,
+            sourceName: dto.sourceName?.trim() || null,
+            mapping: suggestion.mapping as unknown as Prisma.JsonObject,
+            chunkSize: dto.chunkSize ?? 100,
+            maxRetries: dto.maxRetries ?? 3,
+            status: BulkImportJobStatus.queued,
+            totalRows: normalizedRows.length,
+          },
+        });
 
-      await tx.bulkImportRow.createMany({
-        data: normalizedRows.map((row, index) => ({
-          jobId: job.id,
-          runId: linkedRunId,
-          rowNumber: index + 1,
-          rowNumberGlobal: linkedRunId ? index + 1 : null,
-          rowNumberInBatch: linkedRunId ? index + 1 : null,
-          payload: row as Prisma.JsonObject,
-          status: BulkImportRowStatus.queued,
-        })),
+        await tx.bulkImportRow.createMany({
+          data: normalizedRows.map((row, index) => ({
+            jobId: job.id,
+            runId: linkedRunId,
+            rowNumber: index + 1,
+            rowNumberGlobal: linkedRunId ? index + 1 : null,
+            rowNumberInBatch: linkedRunId ? index + 1 : null,
+            payload: row as Prisma.JsonObject,
+            status: BulkImportRowStatus.queued,
+          })),
+        });
+        return job;
       });
-      return job;
-    });
+    } catch (error) {
+      if (
+        linkedRunId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        this.isDuplicateStandardRunConstraint(error)
+      ) {
+        const existing = await this.prisma.tenant().bulkImportJob.findFirst({
+          where: { runId: linkedRunId, jobRole: "standard" },
+          select: { id: true },
+        });
+        if (existing) {
+          return { ...(await this.getJob(existing.id, actor)), created: false };
+        }
+      }
+      throw error;
+    }
 
-    return this.getJob(created.id, actor);
+    return { ...(await this.getJob(created.id, actor)), created: true };
   }
 
   async listJobs(status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
@@ -968,12 +1006,17 @@ export class BulkImportService {
     }
 
     const effectiveChunk = Math.max(1, Math.min(500, chunkSize ?? job.chunkSize));
-    await this.prisma.tenant().bulkImportJob.update({
-      where: { id: job.id },
-      data: {
-        status: BulkImportJobStatus.processing,
+
+    const claimed = await this.prisma.tenant().bulkImportJob.updateMany({
+      where: {
+        id: job.id,
+        status: { in: [BulkImportJobStatus.queued, BulkImportJobStatus.retrying] },
       },
+      data: { status: BulkImportJobStatus.processing },
     });
+    if (claimed.count === 0) {
+      return this.getJob(job.id, actor);
+    }
 
     // Process all remaining rows in chunks until none are left.
     // Each iteration fetches the next batch of queued/retrying rows,
@@ -1733,6 +1776,46 @@ export class BulkImportService {
       return this.parseCsv(dto.csvContent ?? "");
     }
     return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
+  }
+
+  private isDuplicateStandardRunConstraint(error: Prisma.PrismaClientKnownRequestError): boolean {
+    const target = (error.meta as { target?: unknown })?.target;
+    if (Array.isArray(target)) {
+      return target.includes("tenantKey") && target.includes("runId");
+    }
+    if (typeof target === "string") {
+      return target === "BulkImportJob_unique_standard_run";
+    }
+    return false;
+  }
+
+  private hasInlineSourceData(dto: CreateBulkImportJobDto): boolean {
+    if (dto.sourceFormat === "csv") {
+      return Boolean(dto.fileContentBase64 || (dto.csvContent && dto.csvContent.trim()));
+    }
+    return Boolean(dto.rows && dto.rows.length > 0);
+  }
+
+  private async readRowsFromStagedCsv(sourceFileKey: string): Promise<BulkImportPreparedSourceRows> {
+    const stream = await this.storageService.readStagedCsvStream(sourceFileKey);
+    const rl = createInterface({ input: stream as unknown as NodeJS.ReadableStream, crlfDelay: Infinity });
+    let headers: string[] = [];
+    const rows: Record<string, unknown>[] = [];
+    let isHeader = true;
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (isHeader) {
+        headers = this.parseCsvLine(trimmed);
+        isHeader = false;
+        continue;
+      }
+      const values = this.parseCsvLine(trimmed);
+      const row: Record<string, unknown> = {};
+      headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
+      rows.push(row);
+    }
+    return { headers, rows };
   }
 
   private parseCsvLine(line: string) {

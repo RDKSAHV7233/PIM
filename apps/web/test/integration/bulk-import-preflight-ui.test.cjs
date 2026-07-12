@@ -101,7 +101,7 @@ function run() {
       componentSource.includes("Unmapped fields") &&
       componentSource.includes("Unused headers") &&
       componentSource.includes("Representative issues"),
-    "Import preflight form must upload via multipart to the same-origin route, keep file-field accessibility wiring, and show a validation summary before import starts.",
+    "Import preflight form must use multipart upload (not base64 JSON), keep file-field accessibility wiring, and show a validation summary before import starts.",
   );
   assert(
     componentSource.includes('idleLabel={validation?.canImport ? "Start validated import" : "Validate before importing"}') &&
@@ -127,19 +127,45 @@ function run() {
     "Import preflight form must render a useful malformed-file state instead of a generic validation failure.",
   );
   assert(
+    routeSource.includes("ENDPOINT_DEPRECATED") &&
+      routeSource.includes("410") &&
+      routeSource.includes("staged upload flow"),
+    "Legacy /api/bulk-import/validate route must return 410 Gone directing clients to the staged upload flow.",
+  );
+
+  // CTO audit: file input must be cleared after staging so the Server Action
+  // never receives raw file bytes (stays under the 10 MB body limit).
+  assert(
+    componentSource.includes('input[type="file"]') &&
+      componentSource.includes("fileInput.value"),
+    "Import preflight form must clear the file input after staging to keep the Server Action request body small.",
+  );
+
+  // CTO audit: changing category must reset stagedRunId so stale staged runs
+  // cannot be submitted against a different category.
+  assert(
+    componentSource.includes("resetValidationState") &&
+      componentSource.includes("onChange={resetValidationState}"),
+    "Import preflight form must reset validation state (including stagedRunId) when the category selection changes.",
+  );
+
+  // CTO audit: the Server Action must require stagedRunId and never accept raw files.
+  const actionsSource = fs.readFileSync(
+    path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts"),
+    "utf8",
+  );
+  assert(
+    actionsSource.includes("stagedRunId") &&
+      !actionsSource.includes("uploadBulkImportRun"),
+    "Server Action createBulkImportJobAction must require stagedRunId and not contain a raw-file upload fallback.",
+  );
+
+  assert(
     componentSource.includes('id="bulk-import-file-guidance"') &&
       componentSource.includes("CSV or JSON only") &&
       componentSource.includes("Maximum upload size: 32 MB") &&
       componentSource.includes("staged validation"),
     "Import preflight form must show upload guidance near the file input with allowed types, size limit, and staged validation note.",
-  );
-
-  assert(
-    routeSource.includes("validateCsrf(request)") &&
-      routeSource.includes('resolveBearerToken(request)') &&
-      routeSource.includes('fetch(`${getApiBaseUrl()}/bulk-import/validate`') &&
-      routeSource.includes('"Content-Type": "application/json"'),
-    "Import preflight route must enforce CSRF, reuse the authenticated bearer token, and proxy the validation request to the API.",
   );
 
   // ── Multipart upload flow regression tests ────────────────────────────────
@@ -175,9 +201,9 @@ function run() {
   assert(
     uploadRouteSource.includes("validateCsrf(request)") &&
       uploadRouteSource.includes("resolveBearerToken(request)") &&
-      uploadRouteSource.includes("request.formData()") &&
+      uploadRouteSource.includes("request.arrayBuffer()") &&
       uploadRouteSource.includes("/bulk-import/runs/upload"),
-    "Upload route must enforce CSRF, use bearer auth, and proxy multipart FormData to the API.",
+    "Upload route must enforce CSRF, use bearer auth, and forward the raw multipart body to the API.",
   );
 
   // ── Run validate route regression tests ───────────────────────────────────
@@ -225,7 +251,7 @@ function run() {
 
   assert(
     serverActionSource.includes("stagedRunId") &&
-      serverActionSource.includes("prestagedRunId"),
+      (serverActionSource.includes("prestagedRunId") || serverActionSource.includes("linkedRunId")),
     "Server action must accept stagedRunId from the form and skip re-uploading when present.",
   );
 
@@ -234,12 +260,17 @@ function run() {
       {
         status: "ok",
         validated: [
-          "bulk_import_preflight_form_uses_same_origin_validation_route",
+          "bulk_import_preflight_uses_multipart_upload_not_base64",
+          "bulk_import_preflight_form_no_legacy_validate_endpoint",
           "bulk_import_preflight_form_gates_import_creation_on_preflight",
           "bulk_import_preflight_form_explains_blocking_state",
           "bulk_import_preflight_form_allows_warning_only_state",
           "bulk_import_preflight_form_handles_malformed_file_state",
-          "bulk_import_preflight_route_enforces_csrf_and_auth",
+          "bulk_import_legacy_validate_route_returns_410_gone",
+          "bulk_import_preflight_clears_file_after_staging",
+          "bulk_import_preflight_resets_staged_run_on_category_change",
+          "server_action_requires_staged_run_id_no_raw_file_fallback",
+          "upload_guidance_shows_types_size_and_staged_validation",
           "no_base64_encoding_in_component",
           "no_fileContentBase64_in_component",
           "multipart_formdata_fields_match_backend_dto",
@@ -252,7 +283,6 @@ function run() {
           "backend_malformed_csv_row_validation",
           "backend_tenant_isolation",
           "server_action_reuses_staged_run",
-          "upload_guidance_shows_types_size_and_staged_validation",
         ],
         checkedAt: new Date().toISOString(),
       },
