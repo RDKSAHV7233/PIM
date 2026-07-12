@@ -43,6 +43,7 @@ interface ProductDetailDeferredSectionProps {
   actorRole: AppRole;
   authHeader: string | undefined;
   canWrite: boolean;
+  canPublish: boolean;
   activeTab: DetailTab;
   showChannelDiagnostics: boolean;
   returnTo: string;
@@ -62,6 +63,7 @@ export async function ProductDetailDeferredSection({
   actorRole,
   authHeader,
   canWrite,
+  canPublish,
   activeTab,
   showChannelDiagnostics,
   returnTo,
@@ -172,6 +174,7 @@ export async function ProductDetailDeferredSection({
     imageAssetCount: mediaAssets.filter((asset) => asset.mimeType.startsWith("image/")).length,
     actorRole,
     canWrite,
+    canPublish,
     activeTab,
     showChannelDiagnostics,
     selectedChannel,

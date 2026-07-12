@@ -1419,6 +1419,18 @@ export async function createExportJobAction(formData: FormData) {
     if (redirectPath) {
       redirect(redirectPath);
     }
+    if (error instanceof ApiHttpError && error.status === 403) {
+      redirect(
+        replaceQueryParams(`/products/${encodeURIComponent(productId)}`, {
+          tab: "channels",
+          channel,
+          templateId: templateId || null,
+          returnTo: returnTo || null,
+          updateStatus: "export-forbidden",
+          statusAt,
+        }),
+      );
+    }
     throw error;
   }
   revalidatePath(`/products/${productId}`);

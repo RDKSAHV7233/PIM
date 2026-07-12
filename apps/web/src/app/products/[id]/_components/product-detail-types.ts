@@ -42,6 +42,7 @@ export type ProductDetailPageData = {
   imageAssetCount: number;
   actorRole: AppRole;
   canWrite: boolean;
+  canPublish: boolean;
   activeTab: DetailTab;
   showChannelDiagnostics: boolean;
   selectedChannel: MarketplaceChannel;

@@ -58,7 +58,7 @@ function extractCookieValue(setCookieHeader: string | null, name: string): strin
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
-const PUBLIC_PATHS = ["/login", "/signup", "/contact", "/health", "/consent", "/rejection", "/account-suspended"];
+const PUBLIC_PATHS = ["/login", "/signup", "/contact", "/health", "/consent", "/account-suspended"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
