@@ -75,9 +75,10 @@ function run() {
     "Import preflight form must render a useful malformed-file state instead of a generic validation failure.",
   );
   assert(
-    routeSource.includes("validateCsrf(request)") &&
-      routeSource.includes('resolveBearerToken(request)'),
-    "Import preflight route must enforce CSRF and reuse the authenticated bearer token.",
+    routeSource.includes("ENDPOINT_DEPRECATED") &&
+      routeSource.includes("410") &&
+      routeSource.includes("staged upload flow"),
+    "Legacy /api/bulk-import/validate route must return 410 Gone directing clients to the staged upload flow.",
   );
 
   // CTO audit: file input must be cleared after staging so the Server Action
@@ -120,9 +121,10 @@ function run() {
     "Upload proxy must forward the raw body with the original Content-Type (preserving multipart boundary), not re-encode via FormData.",
   );
   assert(
-    uploadRouteSource.includes("MAX_UPLOAD_BYTES") &&
+    uploadRouteSource.includes("MAX_FILE_BYTES") &&
+      uploadRouteSource.includes("MAX_REQUEST_ENVELOPE_BYTES") &&
       uploadRouteSource.includes("File too large"),
-    "Upload proxy must enforce a size limit matching the API FileInterceptor (32 MB).",
+    "Upload proxy must enforce separate file and request-envelope size limits (32 MB file + multipart overhead).",
   );
 
   // CTO audit: next.config must allow large request bodies through the proxy.
@@ -146,7 +148,7 @@ function run() {
           "bulk_import_preflight_form_explains_blocking_state",
           "bulk_import_preflight_form_allows_warning_only_state",
           "bulk_import_preflight_form_handles_malformed_file_state",
-          "bulk_import_preflight_route_enforces_csrf_and_auth",
+          "bulk_import_legacy_validate_route_returns_410_gone",
           "bulk_import_preflight_clears_file_after_staging",
           "bulk_import_preflight_resets_staged_run_on_category_change",
           "server_action_requires_staged_run_id_no_raw_file_fallback",

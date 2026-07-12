@@ -319,7 +319,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
     const rowUpdateManyMock = jest.fn().mockResolvedValue({ count: options.claimCount ?? 1 });
     const prisma = {
       tenant: jest.fn().mockReturnValue({
-        bulkImportJob: { update: jest.fn().mockResolvedValue({}), findUnique: jobFindUniqueMock },
+        bulkImportJob: { update: jest.fn().mockResolvedValue({ id: "job1", status: "completed", runId: null }), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUnique: jobFindUniqueMock },
         // findMany must return the rows once then empty on subsequent calls so
         // processJob()'s while-loop terminates. Real Prisma behavior mirrors
         // this: after processRow() runs, rows leave "queued"/"retrying" and
@@ -339,7 +339,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
     };
     const svc = new BulkImportService(
       prisma as never, { validateAndPersistProduct: jest.fn().mockResolvedValue(undefined) } as never,
-      {} as never, accessPolicy as never,
+      { emitImportStatus: jest.fn().mockResolvedValue(undefined) } as never, accessPolicy as never,
       { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
       { emit: jest.fn() } as never,
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
@@ -995,5 +995,181 @@ describe("BulkImportService.createJob — duplicate prevention (idempotent)", ()
         { actorId: "u1", actorRole: "admin" as never },
       ),
     ).rejects.toThrow();
+  });
+
+  it("rethrows P2002 from an unrelated constraint (different target fields)", async () => {
+    const { svc, jobCreateMock } = makeDuplicateTestService();
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: ["categoryId", "sourceName"] },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow("Unique constraint failed");
+  });
+
+  it("rethrows P2002 when error.meta is missing", async () => {
+    const { svc, jobCreateMock } = makeDuplicateTestService();
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rethrows P2002 when existing job not found (tenant isolation)", async () => {
+    const { svc, jobCreateMock, findFirstMock } = makeDuplicateTestService();
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: ["tenantKey", "runId"] },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    findFirstMock.mockResolvedValue(null);
+    await expect(
+      svc.createJob(
+        { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+        { actorId: "u1", actorRole: "admin" as never },
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("returns created: true for new jobs", async () => {
+    const { svc, jobCreateMock, rowCreateManyMock } = makeDuplicateTestService();
+    jobCreateMock.mockResolvedValue({ id: "job-new", categoryId: "cat1" });
+    const result = await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(result).toHaveProperty("created", true);
+  });
+
+  it("returns created: false for existing (duplicate) jobs", async () => {
+    const { svc, jobCreateMock } = makeDuplicateTestService({ existingJobId: "job-existing" });
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: ["tenantKey", "runId"] },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    const result = await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(result).toHaveProperty("created", false);
+  });
+
+  it("accepts P2002 with string target matching the index name", async () => {
+    const { svc, jobCreateMock } = makeDuplicateTestService({ existingJobId: "job-existing" });
+    const p2002 = new PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.0.0",
+      meta: { target: "BulkImportJob_unique_standard_run" },
+    });
+    jobCreateMock.mockRejectedValue(p2002);
+    const result = await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(result).toHaveProperty("created", false);
+  });
+});
+
+describe("BulkImportService.processJob — atomic claim", () => {
+  function makeProcessJobService(options?: { claimCount?: number }) {
+    const makeJobRecord = (id: string, status = "queued") => ({
+      id, categoryId: "cat1", status, totalRows: 2,
+      category: { id: "cat1", path: "/test" }, rows: [],
+      runId: "run-1", jobRole: "standard", sourceFormat: "csv",
+      sourceName: null, mapping: {}, chunkSize: 100, maxRetries: 3,
+      processedRows: 0, successRows: 0, failedRows: 0, deadLetterRows: 0,
+      batchIndex: null, rowStart: null, rowEnd: null,
+      createdAt: new Date(), updatedAt: new Date(), tenantKey: "default",
+    });
+    const updateManyMock = jest.fn().mockResolvedValue({ count: options?.claimCount ?? 1 });
+    const findUniqueMock = jest.fn().mockImplementation((args: { where: { id: string } }) =>
+      Promise.resolve(makeJobRecord(args?.where?.id ?? "job-1")),
+    );
+    const findManyMock = jest.fn().mockResolvedValue([]);
+    const groupByMock = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1", name: "Test", path: "/test" }) },
+        bulkImportJob: {
+          findUnique: findUniqueMock,
+          updateMany: updateManyMock,
+          update: jest.fn().mockImplementation((args: { where: { id: string } }) =>
+            Promise.resolve({ ...makeJobRecord(args?.where?.id ?? "job-1", "completed"), runId: null }),
+          ),
+        },
+        bulkImportRow: {
+          findMany: findManyMock,
+          groupBy: groupByMock,
+        },
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
+    };
+    const svc = new BulkImportService(
+      prisma as never,
+      {} as never,
+      { emitImportStatus: jest.fn().mockResolvedValue(undefined) } as never,
+      accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+    );
+    return { svc, updateManyMock, findManyMock };
+  }
+
+  it("claims the job atomically via updateMany with status condition", async () => {
+    const { svc, updateManyMock } = makeProcessJobService({ claimCount: 1 });
+    await svc.processJob("job-1", undefined, { actorId: "u1", actorRole: "admin" as never });
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "job-1",
+          status: expect.objectContaining({ in: expect.arrayContaining(["queued"]) }),
+        }),
+        data: expect.objectContaining({ status: "processing" }),
+      }),
+    );
+  });
+
+  it("returns current job state without processing when claim fails (concurrent worker)", async () => {
+    const { svc, updateManyMock, findManyMock } = makeProcessJobService({ claimCount: 0 });
+    await svc.processJob("job-1", undefined, { actorId: "u1", actorRole: "admin" as never });
+    expect(updateManyMock).toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it("skips processing for terminal statuses", async () => {
+    const { svc, updateManyMock } = makeProcessJobService();
+    const findUniqueMock = (svc as unknown as { prisma: { tenant: () => { bulkImportJob: { findUnique: jest.Mock } } } }).prisma.tenant().bulkImportJob.findUnique;
+    findUniqueMock.mockResolvedValue({
+      id: "job-1", categoryId: "cat1", status: "completed", totalRows: 2,
+      category: { id: "cat1", path: "/test" }, rows: [],
+      runId: "run-1", jobRole: "standard", sourceFormat: "csv",
+      sourceName: null, mapping: {}, chunkSize: 100, maxRetries: 3,
+      processedRows: 2, successRows: 2, failedRows: 0, deadLetterRows: 0,
+      batchIndex: null, rowStart: null, rowEnd: null,
+      createdAt: new Date(), updatedAt: new Date(), tenantKey: "default",
+    });
+    await svc.processJob("job-1", undefined, { actorId: "u1", actorRole: "admin" as never });
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 });

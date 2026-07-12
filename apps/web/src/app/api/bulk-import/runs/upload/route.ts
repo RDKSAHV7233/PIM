@@ -4,7 +4,8 @@ import { resolveBearerToken, validateCsrf } from "../../../_auth";
 
 export const dynamic = "force-dynamic";
 
-const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+const MAX_FILE_BYTES = 32 * 1024 * 1024;
+const MAX_REQUEST_ENVELOPE_BYTES = MAX_FILE_BYTES + 1024 * 1024;
 
 export async function POST(request: NextRequest) {
   const csrfError = validateCsrf(request);
@@ -23,8 +24,8 @@ export async function POST(request: NextRequest) {
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (contentLength > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "File too large" }, { status: 413 });
+  if (contentLength > MAX_REQUEST_ENVELOPE_BYTES) {
+    return NextResponse.json({ error: "File too large (max 32 MB)" }, { status: 413 });
   }
 
   let body: ArrayBuffer;
@@ -34,8 +35,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to read request body" }, { status: 400 });
   }
 
-  if (body.byteLength > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "File too large" }, { status: 413 });
+  if (body.byteLength > MAX_REQUEST_ENVELOPE_BYTES) {
+    return NextResponse.json({ error: "File too large (max 32 MB)" }, { status: 413 });
   }
 
   const response = await fetch(`${getApiBaseUrl()}/bulk-import/runs/upload`, {

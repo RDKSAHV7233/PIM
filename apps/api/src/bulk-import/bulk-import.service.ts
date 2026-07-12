@@ -834,20 +834,21 @@ export class BulkImportService {
       if (
         linkedRunId &&
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
+        error.code === "P2002" &&
+        this.isDuplicateStandardRunConstraint(error)
       ) {
         const existing = await this.prisma.tenant().bulkImportJob.findFirst({
           where: { runId: linkedRunId, jobRole: "standard" },
           select: { id: true },
         });
         if (existing) {
-          return this.getJob(existing.id, actor);
+          return { ...(await this.getJob(existing.id, actor)), created: false };
         }
       }
       throw error;
     }
 
-    return this.getJob(created.id, actor);
+    return { ...(await this.getJob(created.id, actor)), created: true };
   }
 
   async listJobs(status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
@@ -1004,12 +1005,17 @@ export class BulkImportService {
     }
 
     const effectiveChunk = Math.max(1, Math.min(500, chunkSize ?? job.chunkSize));
-    await this.prisma.tenant().bulkImportJob.update({
-      where: { id: job.id },
-      data: {
-        status: BulkImportJobStatus.processing,
+
+    const claimed = await this.prisma.tenant().bulkImportJob.updateMany({
+      where: {
+        id: job.id,
+        status: { in: [BulkImportJobStatus.queued, BulkImportJobStatus.retrying] },
       },
+      data: { status: BulkImportJobStatus.processing },
     });
+    if (claimed.count === 0) {
+      return this.getJob(job.id, actor);
+    }
 
     // Process all remaining rows in chunks until none are left.
     // Each iteration fetches the next batch of queued/retrying rows,
@@ -1769,6 +1775,17 @@ export class BulkImportService {
       return this.parseCsv(dto.csvContent ?? "");
     }
     return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
+  }
+
+  private isDuplicateStandardRunConstraint(error: Prisma.PrismaClientKnownRequestError): boolean {
+    const target = (error.meta as { target?: unknown })?.target;
+    if (Array.isArray(target)) {
+      return target.includes("tenantKey") && target.includes("runId");
+    }
+    if (typeof target === "string") {
+      return target === "BulkImportJob_unique_standard_run";
+    }
+    return false;
   }
 
   private hasInlineSourceData(dto: CreateBulkImportJobDto): boolean {

@@ -52,15 +52,18 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("jobs")
-  createJob(
+  async createJob(
     @Body() dto: CreateBulkImportJobDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.bulkImportService.createJob(dto, {
+    const result = await this.bulkImportService.createJob(dto, {
       actorId: request.pimUserId,
       actorRole: request.pimRole,
       tenantId: request.pimTenant,
     });
+    res.status(result.created === false ? 200 : 201);
+    return result;
   }
 
   @Roles("admin", "editor")
