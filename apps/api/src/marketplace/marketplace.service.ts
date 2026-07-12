@@ -3057,12 +3057,13 @@ export class MarketplaceService implements OnModuleInit {
       previewChanges: (ctx: unknown, product: ProductPayload, gid: string) => Promise<ShopifyProductPreview>;
     };
 
-    const ctx = {
-      tenantId: installation.tenantKey,
-      installationId: installation.id,
+    const ctx = this.connectorFramework.buildContextForInstallation({
+      id: installation.id,
+      tenantKey: installation.tenantKey,
       connectorId: installation.connectorId,
-      getAccessToken: async () => "",
-    };
+      slug: connectorSlug,
+      metadata: (installation.metadata ?? {}) as Record<string, unknown>,
+    });
 
     return connector.previewChanges(ctx, payload, shopifyGid);
   }

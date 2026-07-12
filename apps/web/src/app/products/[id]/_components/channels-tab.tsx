@@ -188,7 +188,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
       header: "Actions",
       render: (job) => (
         <div className="flex flex-wrap gap-2">
-          {data.canWrite ? (
+          {data.actorRole === "admin" ? (
             <form action={processExportJobAction}>
               <input type="hidden" name="jobId" value={job.id} />
               <input type="hidden" name="productId" value={data.productId} />
@@ -204,7 +204,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
               />
             </form>
           ) : null}
-          {data.canWrite &&
+          {data.actorRole === "admin" &&
           (job.status === "dead_letter" || job.status === "retrying" || job.status === "failed") ? (
             <form action={requeueExportJobAction}>
               <input type="hidden" name="jobId" value={job.id} />
@@ -326,10 +326,19 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 <input type="hidden" name="channel" value={data.defaultExportChannel} />
                 <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
                 {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
-                <select name="fallbackAcknowledged" defaultValue={data.fallbackAckRequired ? "false" : "true"} className="sr-only" aria-hidden="true">
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
+                {data.fallbackAckRequired ? (
+                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      name="fallbackAcknowledged"
+                      value="true"
+                      className="rounded border-slate-300"
+                    />
+                    Acknowledge fallback mapping usage for this export
+                  </label>
+                ) : (
+                  <input type="hidden" name="fallbackAcknowledged" value="true" />
+                )}
                 <div className="flex items-center gap-3">
                   <PendingSubmitButton
                     type="submit"
