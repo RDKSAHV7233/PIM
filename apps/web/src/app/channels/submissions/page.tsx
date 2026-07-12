@@ -221,7 +221,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
         ) : null}
 
         <FilterBar>
-          <form method="get" className="grid gap-3 md:grid-cols-[220px_240px_220px_auto]">
+          <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[220px_240px_220px_auto]">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="channel-submissions-status">
                 Status

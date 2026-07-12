@@ -51,17 +51,19 @@ export function AuthenticatedShell({
               aria-haspopup="dialog"
               aria-expanded={mobileNavOpen}
             >
-              Menu
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
             <Link href="/dashboard" className="inline-flex items-center" aria-label="Vexa PIM home">
               <BrandLogo variant="compact" />
             </Link>
             <GlobalSearch />
           </div>
-          <div className="flex items-center gap-3">
-            <LocaleSwitcher locale={locale} />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="hidden sm:block"><LocaleSwitcher locale={locale} /></span>
             <NotificationCenter />
-            {showRoleBadge ? <RoleBadge role={actorRole} /> : null}
+            {showRoleBadge ? <span className="hidden sm:block"><RoleBadge role={actorRole} /></span> : null}
             <LogoutButton />
           </div>
         </div>

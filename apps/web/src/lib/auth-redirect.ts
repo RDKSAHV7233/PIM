@@ -42,7 +42,14 @@ export function sanitizeNextPath(value: string): string {
   if (!trimmed.startsWith("/")) {
     return "/";
   }
-  if (trimmed.startsWith("//")) {
+  // Block protocol-relative URLs and backslash variants that browsers
+  // normalise to forward slashes (e.g. /\evil.com → //evil.com).
+  if (/^\/[/\\]/.test(trimmed)) {
+    return "/";
+  }
+  // Block percent-encoded slashes/backslashes in the second character that
+  // could decode to a protocol-relative URL.
+  if (/^\/%(?:2[fF]|5[cC])/.test(trimmed)) {
     return "/";
   }
   return trimmed;

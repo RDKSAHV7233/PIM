@@ -106,7 +106,24 @@ export class BulkEditService implements OnModuleInit {
       QUEUE_NAMES.BULK_EDIT,
       { laneResolver: (payload) => payload.tenantKey },
       async (payload) => {
-        await runWithTenantContext(payload.tenantKey, () => this.processApplyJob(payload));
+        try {
+          await runWithTenantContext(payload.tenantKey, () => this.processApplyJob(payload));
+        } catch (error) {
+          this.logger.error(
+            `Bulk edit operation ${payload.operationId} failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          await runWithTenantContext(payload.tenantKey, async () => {
+            try {
+              await this.prisma.tenant().bulkEditOperation.update({
+                where: { id: payload.operationId },
+                data: { status: BulkEditOperationStatus.failed },
+              });
+            } catch {
+              this.logger.error(`Failed to mark operation ${payload.operationId} as failed.`);
+            }
+          });
+          throw error;
+        }
       },
     );
   }

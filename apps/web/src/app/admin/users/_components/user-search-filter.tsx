@@ -15,15 +15,18 @@ interface UserSearchFilterProps {
 export function UserSearchFilter({ users, columns, currentUserId: _currentUserId, availableRoles }: UserSearchFilterProps) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
       const matchesSearch = !q || u.userId.toLowerCase().includes(q);
       const matchesRole = roleFilter === "all" || u.role === roleFilter;
-      return matchesSearch && matchesRole;
+      const userStatus = !u.isActive ? "inactive" : u.isLocked ? "locked" : "active";
+      const matchesStatus = statusFilter === "all" || userStatus === statusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
     });
-  }, [users, search, roleFilter]);
+  }, [users, search, roleFilter, statusFilter]);
 
   return (
     <div className="space-y-3">
@@ -52,6 +55,17 @@ export function UserSearchFilter({ users, columns, currentUserId: _currentUserId
           />
         </div>
         <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filter by status"
+          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+        >
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="locked">Locked</option>
+        </select>
+        <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
           aria-label="Filter by role"
@@ -75,12 +89,12 @@ export function UserSearchFilter({ users, columns, currentUserId: _currentUserId
         getRowKey={(u) => u.id}
         caption="Workspace Users"
         emptyState={
-          search || roleFilter !== "all" ? (
+          search || roleFilter !== "all" || statusFilter !== "all" ? (
             <p className="text-sm text-slate-500">
               No users match the current filters.{" "}
               <button
                 type="button"
-                onClick={() => { setSearch(""); setRoleFilter("all"); }}
+                onClick={() => { setSearch(""); setRoleFilter("all"); setStatusFilter("all"); }}
                 className="text-blue-600 underline"
               >
                 Clear filters

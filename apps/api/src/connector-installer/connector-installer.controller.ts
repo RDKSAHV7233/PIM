@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Logger, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
@@ -17,6 +17,7 @@ import {
   isRoleAvailableForTier,
   Roles,
 } from "../common/rbac/roles";
+import { verifyShopifyOAuthHmac } from "../connectors/shopify/shopify-oauth-hmac";
 import { ConfigureConnectorDto } from "./dto/configure-connector.dto";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dto";
@@ -26,13 +27,15 @@ import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto"
 import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 import { ConnectorInstallerService } from "./connector-installer.service";
 
-type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string };
+type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimAdminBoundaryRoles?: string[] };
 
 @Controller("connectors")
 @DisallowApiClient()
 @AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @ApiTags("Connectors")
 export class ConnectorInstallerController {
+  private readonly logger = new Logger(ConnectorInstallerController.name);
+
   constructor(
     private readonly connectorInstallerService: ConnectorInstallerService,
     private readonly planUsageService: PlanUsageService,
@@ -44,6 +47,7 @@ export class ConnectorInstallerController {
       actorId: request.pimUserId ?? "system",
       actorRole: request.pimRole ?? "viewer",
       tenantId: request.pimTenant,
+      adminBoundaryRoles: Array.isArray(request.pimAdminBoundaryRoles) ? request.pimAdminBoundaryRoles : [],
     } as const;
   }
 
@@ -156,55 +160,103 @@ export class ConnectorInstallerController {
     );
   }
 
+  @Post(":id/oauth/initiate")
+  @Roles("admin", "editor", "connector_admin")
+  @ApiOperation({ summary: "Initiate OAuth authorization flow — generates signed state token and authorization URL" })
+  @ApiResponse({ status: 201, description: "Authorization URL and state token returned" })
+  initiateOAuth(
+    @Param("id") installationId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.connectorInstallerService.initiateOAuth(
+      installationId,
+      this.resolveActor(request),
+    );
+  }
+
   @Get("shopify/oauth/callback")
   @Public()
-  @ApiOperation({ summary: "Handle Shopify OAuth redirect via static callback URL (installation ID in state)" })
+  @ApiOperation({ summary: "Handle Shopify OAuth redirect via static callback URL (signed state token)" })
   @ApiResponse({ status: 302, description: "Redirects to web app after token exchange" })
   async oauthCallbackStatic(
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ) {
     const webRoot = String(process.env.CORS_ORIGIN ?? "http://localhost:3000").replace(/\/+$/, "");
-    // state is the installation ID
-    const installationId = String(query.state ?? "").trim();
-    if (!installationId) {
-      res.redirect(`${webRoot}/channels/connectors?status=oauth_error&detail=${encodeURIComponent("Missing installation ID in state parameter")}`);
+    const stateToken = String(query.state ?? "").trim();
+    if (!stateToken) {
+      this.logger.warn("OAuth callback received without state parameter");
+      res.redirect(`${webRoot}/channels/connectors?status=oauth_error&code=MISSING_STATE`);
       return;
     }
+
+    if (query.code) {
+      const clientSecret = String(process.env.PIM_SHOPIFY_CLIENT_SECRET ?? "").trim();
+      if (clientSecret && !verifyShopifyOAuthHmac(query, clientSecret)) {
+        this.logger.warn("Shopify OAuth HMAC verification failed", { shop: query.shop });
+        res.redirect(`${webRoot}/channels/connectors?status=oauth_error&code=HMAC_INVALID`);
+        return;
+      }
+    }
+
     try {
-      await this.connectorInstallerService.handleOAuthCallback(
-        installationId,
+      const result = await this.connectorInstallerService.handlePublicOAuthCallback(
+        stateToken,
         query ?? {},
-        { actorId: "oauth-redirect", actorRole: "admin" },
+        "shopify",
       );
-      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_complete`);
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(result.installationId)}?status=oauth_complete`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=${encodeURIComponent(msg)}`);
+      const code = this.extractOAuthErrorCode(err);
+      this.logger.warn("Shopify OAuth static callback failed", {
+        code,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      res.redirect(`${webRoot}/channels/connectors?status=oauth_error&code=${encodeURIComponent(code)}`);
     }
   }
 
   @Get(":id/oauth/callback")
   @Public()
-  @ApiOperation({ summary: "Handle Shopify OAuth redirect (public GET callback)" })
+  @ApiOperation({ summary: "Handle connector OAuth redirect (public GET callback, signed state token)" })
   @ApiResponse({ status: 302, description: "Redirects to web app after token exchange" })
   async oauthCallbackRedirect(
-    @Param("id") installationId: string,
+    @Param("id") _installationIdHint: string,
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ) {
     const webRoot = String(process.env.CORS_ORIGIN ?? "http://localhost:3000").replace(/\/+$/, "");
-    try {
-      await this.connectorInstallerService.handleOAuthCallback(
-        installationId,
-        query ?? {},
-        { actorId: "oauth-redirect", actorRole: "admin" },
-      );
-      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_complete`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=${encodeURIComponent(msg)}`);
+    const stateToken = String(query.state ?? "").trim();
+    if (!stateToken) {
+      this.logger.warn("OAuth callback received without state parameter");
+      res.redirect(`${webRoot}/channels/connectors?status=oauth_error&code=MISSING_STATE`);
+      return;
     }
+
+    try {
+      const result = await this.connectorInstallerService.handlePublicOAuthCallback(
+        stateToken,
+        query ?? {},
+      );
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(result.installationId)}?status=oauth_complete`);
+    } catch (err) {
+      const code = this.extractOAuthErrorCode(err);
+      this.logger.warn("OAuth generic callback failed", {
+        code,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      res.redirect(`${webRoot}/channels/connectors?status=oauth_error&code=${encodeURIComponent(code)}`);
+    }
+  }
+
+  private extractOAuthErrorCode(err: unknown): string {
+    if (err instanceof BadRequestException) {
+      const response = err.getResponse();
+      if (typeof response === "object" && response !== null && "code" in response) {
+        return String((response as Record<string, unknown>).code);
+      }
+    }
+    return "CALLBACK_FAILED";
   }
 
   @Get(":id/product-type-schema")

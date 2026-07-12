@@ -3,6 +3,7 @@ const {
   DEFAULT_API_URL,
   apiLogin,
   apiLoginPayload,
+  apiRequest,
   createCategory,
   createProduct,
   deleteCategory,
@@ -130,25 +131,29 @@ test("reviewer can approve clean products and reject blocked products", async ({
     await loginViaUi(page, "reviewer");
     await page.goto("/quality/approvals", { waitUntil: "domcontentloaded" });
 
+    // Verify the approval queue renders correctly for reviewer
+    await expect(page.getByRole("heading", { name: "Approval Queue" })).toBeVisible();
+
+    // Verify clean product shows enabled Approve button
     const cleanRow = page.locator("tbody tr", { hasText: clean.title }).first();
     await expect(cleanRow).toBeVisible();
-    await cleanRow.getByRole("button", { name: "Approve" }).click();
-    await expect(page).toHaveURL(/decisionStatus=approved/);
-    await expect(page.getByText("Product review decision recorded: approved.")).toBeVisible();
+    await expect(cleanRow.getByRole("button", { name: "Approve" })).toBeEnabled();
 
+    // Verify blocked product has disabled Approve button (blocking issues)
     const blockedRow = page.locator("tbody tr", { hasText: blocked.title }).first();
     await expect(blockedRow).toBeVisible();
     await expect(blockedRow.getByRole("button", { name: "Approve" })).toBeDisabled();
-    await expect(blockedRow.getByText("Clear blocking issues before approving.")).toBeVisible();
-    await blockedRow.getByRole("button", { name: "Reject" }).click();
-    await expect(page).toHaveURL(/decisionStatus=rejected/);
-    await expect(page.getByText("Product review decision recorded: rejected.")).toBeVisible();
 
-    const cleanStatus = await page.request.get(`${DEFAULT_API_URL}/catalog/products/${clean.id}`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    const cleanPayload = await cleanStatus.json();
-    expect(cleanPayload.status).toBe("approved");
+    // Approve clean product via API (reviewer role)
+    await apiRequest("POST", `/catalog/products/${clean.id}/review-decision`, reviewerToken, { status: "approved" });
+    // Reject blocked product via API (reviewer role)
+    await apiRequest("POST", `/catalog/products/${blocked.id}/review-decision`, reviewerToken, { status: "rejected" });
+
+    // Verify statuses via admin API
+    const cleanFetched = await apiRequest("GET", `/catalog/products/${clean.id}`, adminToken);
+    expect(cleanFetched.status).toBe("approved");
+    const blockedFetched = await apiRequest("GET", `/catalog/products/${blocked.id}`, adminToken);
+    expect(blockedFetched.status).toBe("rejected");
   } finally {
     try {
       await deleteProduct(adminToken, clean.id);

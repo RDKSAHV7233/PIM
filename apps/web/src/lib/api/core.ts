@@ -215,7 +215,7 @@ export interface ConnectorInstallation {
   status: "ACTIVE" | "PAUSED" | "CREDENTIAL_EXPIRED" | "DISABLED" | string;
   capabilities: string[];
   implementationStatus?: "full" | "partial" | "stub";
-  launchStage: "live" | "manual" | "planned";
+  launchStage: "live" | "manual" | "planned" | "under_development" | "code_complete" | "qa_validation" | "po_review" | "early_access" | "deprecated" | "internal_diagnostic";
   launchNote: string | null;
   metadata: Record<string, unknown>;
   installedAt: string;
@@ -276,7 +276,7 @@ export interface ConnectorDefinition {
   authType: string;
   capabilities: string[];
   implementationStatus?: "full" | "partial" | "stub";
-  launchStage: "live" | "manual" | "planned";
+  launchStage: "live" | "manual" | "planned" | "under_development" | "code_complete" | "qa_validation" | "po_review" | "early_access" | "deprecated" | "internal_diagnostic";
   launchNote: string | null;
   marketplaceId: string | null;
   connectorVersion: string;
@@ -538,6 +538,7 @@ export type ProductListQuery = {
   slim?: boolean;
   cursor?: string;
   limit?: number;
+  status?: string;
 };
 
 export type CategoryListQuery = {
@@ -1478,6 +1479,7 @@ const API_BASE_URL = getApiBaseUrl();
 
 export interface ApiRequestOptions {
   role?: AppRole;
+  /** @deprecated Dead field — fetchJson never reads this. Remove callers then delete. */
   tenantKey?: string;
   authHeader?: string;
   headers?: Record<string, string>;

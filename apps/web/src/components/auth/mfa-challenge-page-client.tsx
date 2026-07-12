@@ -8,7 +8,6 @@ import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
 
 interface MfaChallengePageClientProps {
-  pendingToken: string;
   maskedEmail: string;
   workspaceSlug: string;
   nextPath: string;
@@ -16,7 +15,6 @@ interface MfaChallengePageClientProps {
 }
 
 export function MfaChallengePageClient({
-  pendingToken,
   maskedEmail,
   workspaceSlug,
   nextPath,

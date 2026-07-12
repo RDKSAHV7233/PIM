@@ -4,7 +4,11 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  signConnectorOAuthState,
+  verifyConnectorOAuthState,
+} from "./connector-oauth-state";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
@@ -19,7 +23,7 @@ import {
   ConnectorImplementationStatus,
 } from "../connector-framework/connector.interface";
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
-import { resolveConnectorLaunchPolicy, isCustomerVisibleStage } from "../connector-framework/connector-launch-policy";
+import { resolveConnectorLaunchPolicy, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
@@ -127,7 +131,7 @@ export class ConnectorInstallerService {
     action: ConnectorActionRule,
   ): ConnectorActionRule {
     const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
-    if (launchPolicy.launchStage === "planned") {
+    if (!isInstallableStage(launchPolicy.launchStage)) {
       return {
         allowed: false,
         reason: "CONNECTOR_LAUNCH_STAGE_PLANNED",
@@ -164,9 +168,13 @@ export class ConnectorInstallerService {
     // Replaces the prior N×2 sequential per-slug plan check loop.
     const actionsMap = await this.connectorPermissionService.buildDefinitionActionsForSlugs(actor, slugs);
 
-    // SHOW_PLANNED_CONNECTORS: dev/staging only — must NOT be enabled in production.
+    const boundaryRoles = actor.adminBoundaryRoles ?? [];
+    const isInternalAdmin =
+      actor.actorRole === "admin" &&
+      (boundaryRoles.includes("system_admin") || boundaryRoles.includes("super_admin"));
     const showPlanned =
-      process.env.SHOW_PLANNED_CONNECTORS === "true" && actor.actorRole === "admin";
+      isInternalAdmin ||
+      (process.env.SHOW_PLANNED_CONNECTORS === "true" && actor.actorRole === "admin");
 
     return activeRows
       .map((row) => {
@@ -252,7 +260,7 @@ export class ConnectorInstallerService {
 
       const definitionCapabilities = parseCapabilities(definition.capabilities);
       const launchPolicy = resolveConnectorLaunchPolicy(normalizedSlug, definitionCapabilities);
-      if (launchPolicy.launchStage === "planned") {
+      if (!isInstallableStage(launchPolicy.launchStage)) {
         throw new BadRequestException({
           error: "CONNECTOR_LAUNCH_STAGE_PLANNED",
           message:
@@ -913,6 +921,114 @@ export class ConnectorInstallerService {
     );
   }
 
+  async initiateOAuth(
+    installationId: string,
+    actor: ConnectorActor,
+  ): Promise<{ authorizationUrl: string; state: string }> {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+
+    await this.connectorPermissionService.assertActionAllowed(actor, {
+      connectorSlug: installation.slug,
+      action: "reconnect",
+      accountAlias: installation.accountAlias,
+    });
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    if (!connector.handleOAuthCallback) {
+      throw new BadRequestException({
+        error: "CONNECTOR_OAUTH_NOT_SUPPORTED",
+        message: `${installation.slug} does not support OAuth authorization.`,
+      });
+    }
+
+    const jwtSecret = String(process.env.JWT_SECRET ?? process.env.PIM_JWT_SECRET ?? "").trim();
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new Error("JWT_SECRET is required and must be at least 32 characters for OAuth state signing.");
+    }
+
+    const { stateToken, nonce, expiresAt } = signConnectorOAuthState(
+      {
+        tenantKey,
+        installationId: installation.id,
+        connectorKey: installation.slug,
+      },
+      jwtSecret,
+    );
+
+    const nonceHash = createHash("sha256").update(nonce).digest("hex");
+    await this.patchInstallationMetadata(tenantKey, installation.id, {
+      oauthNonceHash: nonceHash,
+      oauthNonceIssuedAt: Date.now(),
+      oauthNonceExpiresAt: expiresAt,
+    });
+
+    const authorizationUrl = this.buildConnectorAuthorizationUrl(installation, stateToken);
+
+    return { authorizationUrl, state: stateToken };
+  }
+
+  private buildConnectorAuthorizationUrl(
+    installation: {
+      slug: string;
+      metadata: Record<string, unknown>;
+    },
+    stateToken: string,
+  ): string {
+    if (installation.slug === "shopify") {
+      const rawDomain = String(installation.metadata.shopDomain ?? "").trim();
+      if (!rawDomain) {
+        throw new BadRequestException({
+          error: "SHOPIFY_SHOP_DOMAIN_REQUIRED",
+          message: "Shop domain must be set before initiating OAuth. Re-install the connector with a valid store domain.",
+        });
+      }
+      const shopDomain = this.normalizeShopifyDomain(rawDomain);
+      const clientId = String(process.env.PIM_SHOPIFY_CLIENT_ID ?? "").trim();
+      if (!clientId) {
+        throw new Error("PIM_SHOPIFY_CLIENT_ID is not configured.");
+      }
+      const scopes = String(process.env.PIM_SHOPIFY_SCOPES ?? "write_products,read_products").trim();
+      const redirectUri = String(
+        process.env.PIM_SHOPIFY_REDIRECT_URI ??
+        `${String(process.env.CORS_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "").replace(/:3000$/, ":4000")}/connectors/shopify/oauth/callback`,
+      ).trim();
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        scope: scopes,
+        redirect_uri: redirectUri,
+        state: stateToken,
+      });
+      return `https://${shopDomain}/admin/oauth/authorize?${params.toString()}`;
+    }
+
+    throw new BadRequestException({
+      error: "CONNECTOR_OAUTH_NOT_SUPPORTED",
+      message: `OAuth initiation is not implemented for ${installation.slug}.`,
+    });
+  }
+
+  private normalizeShopifyDomain(raw: string): string {
+    let domain = raw
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/.*$/, "")
+      .replace(/\?.*$/, "")
+      .replace(/#.*$/, "")
+      .toLowerCase()
+      .trim();
+    if (!domain.endsWith(".myshopify.com")) {
+      domain = `${domain}.myshopify.com`;
+    }
+    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) {
+      throw new BadRequestException({
+        error: "SHOPIFY_SHOP_DOMAIN_INVALID",
+        message: "Shop domain must be a valid {store}.myshopify.com hostname.",
+      });
+    }
+    return domain;
+  }
+
   async handleOAuthCallback(
     installationId: string,
     params: Record<string, string>,
@@ -944,6 +1060,76 @@ export class ConnectorInstallerService {
       },
     });
     return { id: installationId, status: "CONNECTED" };
+  }
+
+  /**
+   * Handle OAuth callback from a public (unauthenticated) redirect.
+   * Extracts tenantKey from the verified state token instead of AsyncLocalStorage.
+   */
+  async handlePublicOAuthCallback(
+    stateToken: string,
+    params: Record<string, string>,
+    expectedConnectorKey?: string,
+  ): Promise<{ installationId: string; status: "CONNECTED" }> {
+    const jwtSecret = String(process.env.JWT_SECRET ?? process.env.PIM_JWT_SECRET ?? "").trim();
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "SERVER_CONFIG_ERROR" });
+    }
+
+    const result = verifyConnectorOAuthState(stateToken, jwtSecret);
+    if (!result.valid) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: result.error });
+    }
+
+    const { payload } = result;
+
+    if (expectedConnectorKey && payload.connectorKey !== expectedConnectorKey) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "CONNECTOR_MISMATCH" });
+    }
+
+    const installation = await this.requireInstallationRuntimeRecord(payload.installationId, payload.tenantKey);
+
+    if (installation.slug !== payload.connectorKey) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "CONNECTOR_MISMATCH" });
+    }
+
+    const metadata = installation.metadata;
+    const storedNonceHash = String(metadata.oauthNonceHash ?? "").trim();
+    const nonceExpiresAt = Number(metadata.oauthNonceExpiresAt ?? 0);
+
+    if (!storedNonceHash) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "NONCE_NOT_FOUND" });
+    }
+    if (Date.now() > nonceExpiresAt) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "NONCE_EXPIRED" });
+    }
+
+    const expectedNonceHash = createHash("sha256").update(payload.nonce).digest("hex");
+    if (storedNonceHash !== expectedNonceHash) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "NONCE_MISMATCH" });
+    }
+
+    await this.patchInstallationMetadata(payload.tenantKey, payload.installationId, {
+      oauthNonceHash: null,
+      oauthNonceIssuedAt: null,
+      oauthNonceExpiresAt: null,
+    });
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    if (!connector.handleOAuthCallback) {
+      throw new BadRequestException({ error: "OAUTH_STATE_VERIFICATION_FAILED", code: "CONNECTOR_UNSUPPORTED" });
+    }
+
+    await connector.handleOAuthCallback(this.buildConnectorContext(installation), params);
+    await this.prisma.tenant(payload.tenantKey).connectorInstallation.updateMany({
+      where: { id: payload.installationId },
+      data: {
+        status: "ACTIVE",
+        updatedAt: new Date(),
+      },
+    });
+
+    return { installationId: payload.installationId, status: "CONNECTED" };
   }
 
   async fetchProductTypeSchema(

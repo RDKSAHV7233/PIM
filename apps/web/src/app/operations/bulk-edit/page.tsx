@@ -5,6 +5,7 @@ import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-previ
 import { StructuredChangeBuilder } from "@/components/bulk-edit/structured-change-builder";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
@@ -164,12 +165,32 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   const bulkEditUpdatesText = bulkEditMode === "advanced" ? advancedBulkEditUpdatesText : structuredUpdatesText;
 
   try {
-    let planTier = "TRIAL";
+    let planTier: string | null = null;
     try {
       const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
       planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
     } catch {
-      // Billing API unavailable — default to TRIAL so the page still renders
+      planTier = null;
+    }
+    if (planTier === null) {
+      return (
+        <div className="space-y-5">
+          <PageHeader
+            title="Bulk Edit"
+            description="Apply field changes across multiple products in a single operation."
+            breadcrumb={
+              <>
+                <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Bulk Edit</span>
+              </>
+            }
+          />
+          <InlineAlert
+            tone="warning"
+            title="Unable to verify your plan"
+            message="The billing service is temporarily unavailable. Please try again in a few moments. If this persists, contact support."
+          />
+        </div>
+      );
     }
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (
@@ -323,6 +344,9 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                 <Select id="bulk-edit-status" name="bulkEditStatus" defaultValue={bulkEditStatus}>
                   <option value="">All statuses</option>
                   <option value="draft">draft</option>
+                  <option value="in_review">in_review</option>
+                  <option value="approved">approved</option>
+                  <option value="rejected">rejected</option>
                   <option value="active">active</option>
                   <option value="archived">archived</option>
                 </Select>

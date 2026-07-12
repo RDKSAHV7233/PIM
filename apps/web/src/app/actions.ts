@@ -1210,6 +1210,39 @@ export async function reconnectConnectorAction(formData: FormData) {
   redirect("/channels/connectors?status=reconnected");
 }
 
+export async function initiateOAuthAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canManageConnectors(actorRole)) {
+    throw new Error("Forbidden: connector management role required.");
+  }
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  if (!installationId) {
+    throw new Error("Connector installation id is required.");
+  }
+
+  let authorizationUrl: string;
+  try {
+    const result = await postJsonForAction<{ authorizationUrl: string }>(
+      formData,
+      `/connectors/${encodeURIComponent(installationId)}/oauth/initiate`,
+      {},
+    );
+    authorizationUrl = result.authorizationUrl;
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    let code = "oauth_initiate_failed";
+    if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+      const payload = error.body as Record<string, unknown>;
+      if (String(payload.error ?? "") === "CONNECTOR_OAUTH_NOT_SUPPORTED") {
+        code = "oauth_not_supported";
+      }
+    }
+    redirect(appendQueryParams("/channels/connectors", { status: code }));
+  }
+
+  redirect(authorizationUrl);
+}
+
 export async function updateConnectorPublicationTargetsAction(formData: FormData) {
   const { actorRole } = await getServerSession();
   if (!canManageConnectors(actorRole)) {
@@ -1374,6 +1407,18 @@ export async function createExportJobAction(formData: FormData) {
     const redirectPath = withPlanLimitQuery(`/products/${encodeURIComponent(productId)}`, error);
     if (redirectPath) {
       redirect(redirectPath);
+    }
+    if (error instanceof ApiHttpError && error.status === 403) {
+      redirect(
+        replaceQueryParams(`/products/${encodeURIComponent(productId)}`, {
+          tab: "channels",
+          channel,
+          templateId: templateId || null,
+          returnTo: returnTo || null,
+          updateStatus: "export-forbidden",
+          statusAt,
+        }),
+      );
     }
     throw error;
   }

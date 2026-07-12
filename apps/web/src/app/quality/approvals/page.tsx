@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
 import { createChangeRequestAction, resolveChangeRequestAction } from "@/app/quality-actions";
-import { ApiHttpError, getAllProductsSlim, getApprovalComments, getBillingPlanProfile, getIssueInbox, getStats } from "@/lib/api";
+import { ApiHttpError, getApprovalComments, getBillingPlanProfile, getIssueInbox, getProductListPage, getStats } from "@/lib/api";
 import { getChangeRequests, getWorkflowSla, getOverdueCount } from "@/lib/api/catalog";
 import { SlaBadge } from "@/components/ui/sla-badge";
 import type { ProductRevision } from "@/lib/api";
@@ -21,6 +21,7 @@ import { canDecideApproval } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ApprovalDecisionForm } from "./approval-decision-form";
 import { ApprovalEvidenceDrawer } from "./approval-evidence-drawer";
 import type { ProductRevisionsResponse } from "@/lib/api/revisions";
 
@@ -122,8 +123,15 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
   }
 
   try {
-    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
-    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    let planTier = "ENTERPRISE";
+    try {
+      const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+      planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    } catch (planError) {
+      if (planError instanceof ApiHttpError && planError.status === 401) {
+        throw planError;
+      }
+    }
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (
         <div className="space-y-5">
@@ -154,7 +162,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         </div>
       );
     }
-    const [stats, inbox, products, slaConfigResult, overdueCountResult] = await Promise.all([
+    const [stats, inbox, productsPage, slaConfigResult, overdueCountResult] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getIssueInbox(
         {
@@ -163,10 +171,12 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         },
         { role: actorRole, authHeader },
       ),
-      getAllProductsSlim({ role: actorRole, authHeader }),
+      getProductListPage({ slim: true, limit: 200, status: "in_review" }, { role: actorRole, authHeader }),
       loadSupportingRead(getWorkflowSla({ role: actorRole, authHeader })),
       loadSupportingRead(getOverdueCount({ role: actorRole, authHeader })),
     ]);
+    const products = productsPage.items;
+    const productListTruncated = Boolean(productsPage.nextCursor);
 
     const blockingProducts = new Set(
       inbox.items.filter((item) => item.severity === "BLOCKING").map((item) => item.productId),
@@ -470,6 +480,12 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
 
         <Card>
           <CardTitle>Review Decisions</CardTitle>
+          {productListTruncated ? (
+            <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <p className="font-semibold">Showing first {products.length} products</p>
+              <p>Your catalog exceeds {products.length} products. Some in-review items may not appear here. Use the product detail page to review individual items beyond this list.</p>
+            </div>
+          ) : null}
           <DataGrid
             columns={[
               {
@@ -668,44 +684,13 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                   const summary = issuesByProduct.get(product.id) ?? { blocking: 0, warning: 0 };
                   const canApprove = summary.blocking === 0;
                   return decisionEnabled ? (
-                    <div className="space-y-2">
-                      <form action={decideProductReviewAction} className="space-y-2">
-                        <input type="hidden" name="productId" value={product.id} />
-                        <input type="hidden" name="returnTo" value={returnTo} />
-                        <label className="block space-y-1 text-xs text-slate-600">
-                          <span className="font-medium text-slate-700">Reviewer note</span>
-                          <textarea
-                            name="note"
-                            rows={3}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                            placeholder="Capture approval context or rejection rationale."
-                          />
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <PendingSubmitButton
-                            type="submit"
-                            name="status"
-                            value="approved"
-                            disabled={!canApprove}
-                            variant="dark"
-                            className="bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900"
-                            idleLabel="Approve"
-                            pendingLabel="Approving..."
-                          />
-                          <PendingSubmitButton
-                            type="submit"
-                            name="status"
-                            value="rejected"
-                            className={buttonVariants({ variant: "secondary" })}
-                            idleLabel="Reject"
-                            pendingLabel="Rejecting..."
-                          />
-                        </div>
-                      </form>
-                      {!canApprove ? (
-                        <p className="text-xs text-slate-500">Clear blocking issues before approving.</p>
-                      ) : null}
-                    </div>
+                    <ApprovalDecisionForm
+                      productId={product.id}
+                      productTitle={product.title}
+                      returnTo={returnTo}
+                      canApprove={canApprove}
+                      action={decideProductReviewAction}
+                    />
                   ) : (
                     <p className="text-sm text-slate-600">Your role can review items here, but not record final decisions.</p>
                   );

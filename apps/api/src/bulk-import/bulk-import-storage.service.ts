@@ -65,8 +65,16 @@ export class BulkImportStorageService {
   }
 
   async readStagedCsvStream(storageKey: string): Promise<NodeJS.ReadableStream> {
+    this.assertSafeStorageKey(storageKey);
+
     if (path.isAbsolute(storageKey)) {
-      return createReadStream(storageKey, { encoding: "utf8" });
+      const expectedBase = path.join(process.cwd(), "storage", "imports");
+      const resolved = path.resolve(storageKey);
+      if (!resolved.startsWith(expectedBase)) {
+        this.logger.warn(`Blocked local read outside storage dir: ${storageKey}`);
+        throw new Error("Invalid staged file path.");
+      }
+      return createReadStream(resolved, { encoding: "utf8" });
     }
 
     if (!this.s3Client) {
@@ -85,6 +93,7 @@ export class BulkImportStorageService {
 
   stagingKeyToLocalPath(storageKey: string): string | null {
     if (path.isAbsolute(storageKey)) {
+      this.assertSafeStorageKey(storageKey);
       return storageKey;
     }
     return null;
@@ -96,6 +105,10 @@ export class BulkImportStorageService {
     }
     const explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
     if (explicitEndpoint) {
+      return false;
+    }
+    const appEnv = String(process.env.APP_ENV ?? "").trim().toLowerCase();
+    if (appEnv && appEnv !== "development") {
       return false;
     }
     const accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim().toLowerCase();
@@ -117,6 +130,27 @@ export class BulkImportStorageService {
       return endpoint.hostname === "127.0.0.1" || endpoint.hostname === "localhost";
     } catch {
       return false;
+    }
+  }
+
+  private assertSafeStorageKey(key: string): void {
+    if (!key || typeof key !== "string") {
+      throw new Error("Invalid staged file path.");
+    }
+    if (key.includes("..")) {
+      this.logger.warn(`Blocked traversal in storage key: ${key}`);
+      throw new Error("Invalid staged file path.");
+    }
+    if (path.isAbsolute(key)) {
+      return;
+    }
+    if (key.includes("\\")) {
+      this.logger.warn(`Blocked backslash in storage key: ${key}`);
+      throw new Error("Invalid staged file path.");
+    }
+    if (!key.startsWith("imports/")) {
+      this.logger.warn(`Blocked unexpected storage key prefix: ${key}`);
+      throw new Error("Invalid staged file path.");
     }
   }
 

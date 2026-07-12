@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   deleteConnectorInstallationAction,
+  initiateOAuthAction,
   reconnectConnectorAction,
   uninstallConnectorAction,
 } from "@/app/actions";
@@ -67,7 +68,25 @@ function formatStatusMessage(raw: string): string | null {
   if (value === "deleted") {
     return "Connector installation record deleted.";
   }
+  if (value === "oauth_complete") {
+    return "Shopify OAuth authorization completed successfully.";
+  }
+  if (value === "oauth_error") {
+    return "Shopify OAuth authorization failed — check connector credentials and retry.";
+  }
+  if (value === "oauth_initiate_failed") {
+    return "Could not start OAuth authorization — check connector configuration.";
+  }
+  if (value === "oauth_not_supported") {
+    return "This connector does not support OAuth authorization.";
+  }
   return null;
+}
+
+const ERROR_STATUSES = new Set(["oauth_error", "oauth_initiate_failed", "oauth_not_supported"]);
+
+function isErrorStatus(raw: string): boolean {
+  return ERROR_STATUSES.has(String(raw ?? "").trim().toLowerCase());
 }
 
 function formatInstallErrorMessage(raw: string, connectorSlug?: string): string | null {
@@ -197,7 +216,7 @@ function isDisabledInstallation(installation: ConnectorInstallation): boolean {
   return String(installation.status ?? "").trim().toUpperCase() === "DISABLED";
 }
 
-function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
+function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
@@ -208,7 +227,7 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
 }
 
 function connectorLaunchLabel(
-  stage: "live" | "manual" | "planned",
+  stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
   if (stage === "live" && implementationStatus === "partial") {
@@ -477,7 +496,7 @@ function summarizeDefinitionWorkspace(
     return {
       label: "Export/manual",
       tone: "warning",
-      description: "Operationally limited. Use this connector for export-led or coordinated manual workflows only.",
+      description: "Manual export workflow. This connector supports file/export-based operations and does not enable direct live publish yet.",
     };
   }
   if (definition.launchStage === "planned") {
@@ -514,7 +533,9 @@ function summarizeDefinitionWorkspace(
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole } = await getServerSession();
-  const actionStatusMessage = formatStatusMessage(String(query.status ?? ""));
+  const rawStatus = String(query.status ?? "");
+  const actionStatusMessage = formatStatusMessage(rawStatus);
+  const actionIsError = isErrorStatus(rawStatus);
   const installErrorMessage = formatInstallErrorMessage(
     String(query.installError ?? ""),
     String(query.connectorSlug ?? "").trim().toLowerCase(),
@@ -551,7 +572,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
-      .filter((item) => item.definition.launchStage !== "planned")
+      .filter((item) => item.definition.launchStage === "live" || item.definition.launchStage === "manual")
       .filter((item) => !item.definition.slug.startsWith("diag-"))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => {
@@ -663,7 +684,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         />
 
         {actionStatusMessage ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <div className={`rounded-md border px-3 py-2 text-sm ${actionIsError ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
             {actionStatusMessage}
           </div>
         ) : null}
@@ -975,6 +996,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       {item.statusNote}
                     </p>
                   ) : null}
+                  <div className="mt-3">
+                    <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-500 cursor-default">
+                      Review manual export
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1024,6 +1050,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
                     : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
                 const shopifyContext = resolveShopifyPortfolioContext(installation);
+                const shopifyAwaitingOAuth =
+                  installation.slug === "shopify" &&
+                  readMetadataValue(installation.metadata, "connectionStage") === "awaiting_managed_install";
 
                 return (
                   <section
@@ -1054,6 +1083,32 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         {statusNote}
                       </p>
                     ) : null}
+
+                    {isInstallationAttentionStatus(installation.status) && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="flex-1 text-sm font-medium text-red-800">
+                          This account needs attention — credentials may be expired or the connection has errors.
+                        </p>
+                        {installation.actions?.reconnect.allowed ? (
+                          <form action={reconnectConnectorAction}>
+                            <input type="hidden" name="installationId" value={installation.id} />
+                            <PendingSubmitButton
+                              type="submit"
+                              variant="secondary"
+                              idleLabel="Reconnect"
+                              pendingLabel="Reconnecting..."
+                            />
+                          </form>
+                        ) : (
+                          <Link
+                            href={`/channels/connectors/${encodeURIComponent(installation.id)}`}
+                            className="inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-50"
+                          >
+                            Review recovery
+                          </Link>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -1145,6 +1200,22 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                             )}
                           </div>
                         </div>
+                        {shopifyAwaitingOAuth ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-100/60 px-4 py-3">
+                            <p className="flex-1 text-sm font-medium text-blue-800">
+                              This Shopify connection is awaiting OAuth authorization to complete setup.
+                            </p>
+                            <form action={initiateOAuthAction}>
+                              <input type="hidden" name="installationId" value={installation.id} />
+                              <PendingSubmitButton
+                                type="submit"
+                                variant="secondary"
+                                idleLabel="Authorize Shopify"
+                                pendingLabel="Redirecting to Shopify..."
+                              />
+                            </form>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
 

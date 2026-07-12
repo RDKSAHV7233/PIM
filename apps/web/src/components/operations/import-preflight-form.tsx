@@ -153,27 +153,31 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         throw new Error("Uploaded file must be .csv or .json. Spreadsheet imports remain disabled.");
       }
 
+      if (sourceFormat === "json") {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Uploaded JSON file must contain an array of row objects.");
+        }
+      }
+
       const csrfToken = readCsrfCookie();
-      const jsonHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
+      const commonHeaders: Record<string, string> = {
         Accept: "application/json",
         ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
       };
 
-      // Step 1: Upload file via multipart FormData (bypasses the 10MB JSON body limit)
+      // Upload via multipart FormData — avoids the body-size limit that
+      // breaks base64-in-JSON for large CSV files.
       const uploadForm = new FormData();
+      uploadForm.append("sourceFile", file);
       uploadForm.append("categoryId", categoryId);
-      uploadForm.append("sourceFile", file, file.name);
       uploadForm.append("sourceName", file.name);
-
-      const uploadHeaders: Record<string, string> = {
-        Accept: "application/json",
-        ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
-      };
+      uploadForm.append("maxRetries", String(maxRetries));
 
       const uploadResponse = await fetch("/api/bulk-import/runs/upload", {
         method: "POST",
-        headers: uploadHeaders,
+        headers: commonHeaders,
         body: uploadForm,
       });
       const uploadPayload = await uploadResponse.json();
@@ -183,10 +187,11 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       }
       const runId: string = uploadPayload.id;
 
-      // Step 2: Validate the staged run (parses the stored file server-side)
+      // Validate the run — reads the stored file from storage, runs full
+      // preflight checks, and transitions "uploaded" → "preflight_ready".
       const validateResponse = await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
         method: "POST",
-        headers: jsonHeaders,
+        headers: { ...commonHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       const validatePayload = await validateResponse.json();
@@ -195,12 +200,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         throw new Error(serverMsg ? String(serverMsg) : "Import validation failed.");
       }
 
-      const mergedRun: BulkImportRun = {
-        ...uploadPayload,
-        ...validatePayload,
-        id: runId,
-        preflightSummary: validatePayload.preflightSummary ?? validatePayload,
-      };
+      const mergedRun: BulkImportRun = validatePayload as BulkImportRun;
       setStagedRun(mergedRun);
 
       // Clear the file input so the form submission only sends stagedRunId,
@@ -260,9 +260,12 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
             accept=".csv,.json"
             className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             aria-invalid={fieldErrors.sourceFile ? "true" : undefined}
-            aria-describedby={fieldErrors.sourceFile ? "bulk-import-file-error" : undefined}
+            aria-describedby={fieldErrors.sourceFile ? "bulk-import-file-error" : "bulk-import-file-guidance"}
             onChange={resetValidationState}
           />
+          <p id="bulk-import-file-guidance" className="text-xs text-slate-500">
+            CSV or JSON only. Maximum upload size: 32 MB. Large files are uploaded using staged validation before import.
+          </p>
           {fieldErrors.sourceFile ? (
             <p id="bulk-import-file-error" className="text-xs text-red-700">
               {fieldErrors.sourceFile}

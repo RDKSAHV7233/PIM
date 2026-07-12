@@ -8,6 +8,10 @@ export function canManageChannels(role: AppRole): boolean {
   return role === "admin" || role === "editor" || role === "channel_manager";
 }
 
+export function canPublishToChannels(role: AppRole): boolean {
+  return role === "admin" || role === "publisher" || role === "channel_manager";
+}
+
 export function canManageConnectors(role: AppRole): boolean {
   return role === "admin" || role === "editor" || role === "connector_admin";
 }
@@ -39,4 +43,11 @@ export function isReadOnlyRole(role: AppRole): boolean {
 // adminBoundaryRoles comes from.
 export function isSystemAdminBoundary(adminBoundaryRoles: readonly string[]): boolean {
   return adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+}
+
+export function canAccessCommercialOperations(input: {
+  actorRole: string;
+  adminBoundaryRoles: readonly string[];
+}): boolean {
+  return input.actorRole === "admin" && isSystemAdminBoundary(input.adminBoundaryRoles);
 }

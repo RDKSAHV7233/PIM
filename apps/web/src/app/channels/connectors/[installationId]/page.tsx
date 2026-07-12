@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import {
   configureAmazonAction,
   deleteConnectorSyncScheduleAction,
+  initiateOAuthAction,
   queueConnectorDeltaSyncAction,
   triggerBulkPublishAction,
   updateConnectorPublicationTargetsAction,
@@ -17,9 +18,10 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
-  getAllProductsSlim,
   getCategoryAttributes,
   getConnectorPublications,
+  getProduct,
+  getProductListPage,
   getConnectorPermissions,
   getConnectorPayloadPreview,
   getConnectorSchedule,
@@ -39,6 +41,7 @@ import { getServerSession } from "@/lib/server-session";
 import { formatDateTime as fmtDT } from "@/lib/format";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
 import { MeeshoExportPanel } from "@/components/ui/meesho-export-panel";
+import { BulkPublishConfirmForm } from "./bulk-publish-confirm-form";
 
 export const dynamic = "force-dynamic";
 
@@ -167,7 +170,7 @@ function installationStatusTone(status: string): "neutral" | "success" | "warnin
   return "neutral";
 }
 
-function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | "warning" | "info" {
+function connectorLaunchTone(stage: string): "success" | "warning" | "info" {
   if (stage === "live") {
     return "success";
   }
@@ -178,7 +181,7 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | 
 }
 
 function connectorLaunchLabel(
-  stage: "live" | "manual" | "planned",
+  stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
   if (stage === "live" && implementationStatus === "partial") {
@@ -697,16 +700,42 @@ export default async function ChannelConnectorDetailPage({
         }
         return [] as Awaited<ReturnType<typeof getSubmissions>>;
       }),
-      getAllProductsSlim({ role: actorRole, authHeader }).catch((err) => {
+      getProductListPage({ slim: true, limit: 200 }, { role: actorRole, authHeader }).then((page) => page.items).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
           throw err;
         }
-        return [] as Awaited<ReturnType<typeof getAllProductsSlim>>;
+        return [] as Awaited<ReturnType<typeof getProductListPage>>["items"];
       }),
       shopifyPublicationStatePromise,
     ]);
     const submissions = toItems(submissionsRaw);
     const productsById = new Map(products.map((product) => [product.id, product]));
+
+    // Backfill submission-referenced products missing from the bounded first-page fetch.
+    const missingProductIds = [...new Set(submissions.map((s) => s.productId))].filter((id) => !productsById.has(id));
+    if (missingProductIds.length > 0) {
+      const backfilled = await Promise.allSettled(
+        missingProductIds.map((id) => getProduct(id, { role: actorRole, authHeader })),
+      );
+      for (const result of backfilled) {
+        if (result.status === "fulfilled") {
+          const p = result.value;
+          productsById.set(p.id, {
+            id: p.id,
+            title: p.title,
+            brand: p.brand,
+            categoryId: p.categoryId,
+            status: p.status,
+            variantCount: p.variants?.length ?? 0,
+            openValidationErrorCount: 0,
+            openValidationWarningCount: 0,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          });
+        }
+      }
+    }
+
     const failedSubmissions = submissions.filter(
       (item) => item.status === "ERROR" || item.status === "REJECTED" || item.status === "SUPPRESSED",
     );
@@ -1174,12 +1203,23 @@ export default async function ChannelConnectorDetailPage({
                     See the Managed Install Handoff checklist on the Credentials tab.
                   </a>
                 </p>
+                {shopifyAwaitingManagedInstall ? (
+                  <form action={initiateOAuthAction} className="mt-2">
+                    <input type="hidden" name="installationId" value={installation.id} />
+                    <PendingSubmitButton
+                      type="submit"
+                      variant="secondary"
+                      idleLabel="Authorize Shopify"
+                      pendingLabel="Redirecting to Shopify..."
+                    />
+                  </form>
+                ) : null}
               </div>
             ) : null}
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Account Profile</CardTitle>
-                <dl className="mt-2 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+                <dl className="mt-2 grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[140px_1fr]">
                   <dt className="text-slate-500">Connector</dt>
                   <dd>{installation.displayName}</dd>
                   <dt className="text-slate-500">Maturity</dt>
@@ -1450,12 +1490,23 @@ export default async function ChannelConnectorDetailPage({
                 <p className="mt-1">
                   OAuth has not been finalized for this account. The Managed Install Handoff checklist below shows exactly which steps remain. Complete the handoff before refreshing publication channels or publishing products.
                 </p>
+                {shopifyAwaitingManagedInstall ? (
+                  <form action={initiateOAuthAction} className="mt-2">
+                    <input type="hidden" name="installationId" value={installation.id} />
+                    <PendingSubmitButton
+                      type="submit"
+                      variant="secondary"
+                      idleLabel="Authorize Shopify"
+                      pendingLabel="Redirecting to Shopify..."
+                    />
+                  </form>
+                ) : null}
               </div>
             ) : null}
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Account Connection</CardTitle>
-                <dl className="mt-2 grid grid-cols-[160px_1fr] gap-y-2 text-sm">
+                <dl className="mt-2 grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[160px_1fr]">
                   <dt className="text-slate-500">Connector</dt>
                   <dd>{installation.displayName}</dd>
                   <dt className="text-slate-500">Account alias</dt>
@@ -1526,7 +1577,7 @@ export default async function ChannelConnectorDetailPage({
 
                 {/* Current configuration at a glance */}
                 <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                  <dl className="grid grid-cols-[180px_1fr] gap-y-1">
+                  <dl className="grid grid-cols-1 gap-y-1 sm:grid-cols-[180px_1fr]">
                     <dt className="text-slate-500">Marketplace ID</dt>
                     <dd className="font-mono text-xs text-slate-700">
                       {metadataMarketplaceId
@@ -2304,21 +2355,11 @@ export default async function ChannelConnectorDetailPage({
                     <code className="font-mono bg-white border border-amber-200 px-1 rounded">JSON_LISTINGS_FEED</code>{" "}
                     document. Each product gets an individual submission record you can track in the Jobs workspace.
                   </p>
-                  <form
+                  <BulkPublishConfirmForm
+                    installationId={installation.id}
+                    returnTo={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
                     action={triggerBulkPublishAction}
-                    className="mt-3 flex flex-wrap items-center gap-3"
-                  >
-                    <input type="hidden" name="installationId" value={installation.id} />
-                    <input
-                      type="hidden"
-                      name="returnTo"
-                      value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
-                    />
-                    <PendingSubmitButton
-                      idleLabel="Submit bulk feed"
-                      className="bg-amber-600 hover:bg-amber-700 text-white"
-                    />
-                  </form>
+                  />
                 </div>
               ) : null}
               <p className="text-xs text-slate-500">

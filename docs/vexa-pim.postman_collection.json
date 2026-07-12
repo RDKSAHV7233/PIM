@@ -4101,7 +4101,7 @@
           }
         },
         {
-          "name": "Handle Shopify OAuth redirect (public GET callback)",
+          "name": "Handle connector OAuth redirect (public GET callback, signed state token)",
           "request": {
             "method": "GET",
             "header": [
@@ -4131,11 +4131,45 @@
                 }
               ]
             },
-            "description": "Handle Shopify OAuth redirect (public GET callback)"
+            "description": "Handle connector OAuth redirect (public GET callback, signed state token)"
           }
         },
         {
-          "name": "Handle Shopify OAuth redirect via static callback URL (installation ID in state)",
+          "name": "Initiate OAuth authorization flow — generates signed state token and authorization URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/:id/oauth/initiate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                ":id",
+                "oauth",
+                "initiate"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": "Initiate OAuth authorization flow — generates signed state token and authorization URL"
+          }
+        },
+        {
+          "name": "Handle Shopify OAuth redirect via static callback URL (signed state token)",
           "request": {
             "method": "GET",
             "header": [
@@ -4158,7 +4192,7 @@
                 "callback"
               ]
             },
-            "description": "Handle Shopify OAuth redirect via static callback URL (installation ID in state)"
+            "description": "Handle Shopify OAuth redirect via static callback URL (signed state token)"
           }
         },
         {

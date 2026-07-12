@@ -319,7 +319,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
               )}
             </div>
           </div>
-          {data.canWrite && data.publishableChannels.length > 0 ? (
+          {data.canPublish && data.publishableChannels.length > 0 ? (
             <>
               <form action={createExportJobAction} className="space-y-3">
                 <input type="hidden" name="productId" value={data.productId} />
@@ -358,7 +358,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
               />
             </>
-          ) : data.canWrite ? (
+          ) : data.canPublish ? (
             <p className="text-sm text-slate-600">
               No installed connector with publish capability is available for this tenant.
             </p>

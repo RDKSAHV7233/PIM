@@ -35,7 +35,7 @@ function run() {
       pageSource.includes("resolveRequestedWizardStep") &&
       pageSource.includes("buildMappingRoute") &&
       pageSource.includes("installations={matchingInstallations}") &&
-      pageSource.includes("selectedProductId ? Promise.resolve([]) : getProducts") &&
+      pageSource.includes("selectedProductId ? Promise.resolve([]) : getProductListPage") &&
       pageSource.includes("sampleProduct: previewProduct") &&
       pageSource.includes("mode: sampleProductMode") &&
       pageSource.includes("connectorHealthHref={connectorHealthHref}") &&

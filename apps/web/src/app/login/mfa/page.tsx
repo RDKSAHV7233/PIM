@@ -18,8 +18,8 @@ function getString(value: string | string[] | undefined): string {
 export default async function MfaChallengePage({ searchParams }: MfaChallengePageProps) {
   const params = await searchParams;
   const cookieStore = await cookies();
-  const token = cookieStore.get("pim_mfa_pending_token")?.value ?? "";
-  if (!token) {
+  const hasPendingToken = Boolean(cookieStore.get("pim_mfa_pending_token")?.value);
+  if (!hasPendingToken) {
     redirect("/login");
   }
   const maskedEmail = getString(params.email).trim();
@@ -29,7 +29,6 @@ export default async function MfaChallengePage({ searchParams }: MfaChallengePag
 
   return (
     <MfaChallengePageClient
-      pendingToken={token}
       maskedEmail={maskedEmail}
       workspaceSlug={workspaceSlug}
       nextPath={nextPath}

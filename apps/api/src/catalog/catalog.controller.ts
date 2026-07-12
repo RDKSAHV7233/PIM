@@ -62,7 +62,7 @@ export class CatalogController {
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     // Full list payload remains available for legacy callers; prefer ?slim=true for list surfaces.
-    return this.catalogService.listProducts(query, { slim: query.slim === "true" }, this.resolveActor(request));
+    return this.catalogService.listProducts(query, { slim: query.slim === "true", status: query.status }, this.resolveActor(request));
   }
 
   @Get("products/search")

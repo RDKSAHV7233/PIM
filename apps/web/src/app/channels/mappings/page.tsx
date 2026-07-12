@@ -17,7 +17,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import {
   ApiHttpError,
-  getAllProductsSlim as getProducts,
+  getProductListPage,
   getInstalledConnectors,
   getProduct,
   type ConnectorInstallation,
@@ -456,7 +456,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           shouldFetchAdvancedShopify
             ? getShopifyConfig(selectedInstallationId, { role: actorRole, authHeader }).catch(() => null as ShopifyStoreConfig | null)
             : Promise.resolve(null as ShopifyStoreConfig | null),
-          selectedProductId ? Promise.resolve([]) : getProducts({ role: actorRole, authHeader }).catch(() => []),
+          selectedProductId ? Promise.resolve([]) : getProductListPage({ slim: true, limit: 200 }, { role: actorRole, authHeader }).then((page) => page.items).catch(() => []),
         ])
       : [null, [], null, [], [], [], null, null, null, []];
     const sampleProducts = filterTestData(sampleProductsRaw, true);

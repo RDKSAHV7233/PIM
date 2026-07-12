@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Logger, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Logger, NotFoundException, Param, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { AuditService } from "../audit/audit.service";
@@ -24,6 +24,7 @@ import {
 import { ExportCommercialTenantsDto } from "./dto/export-commercial-tenants.dto";
 import { InternalUpdateTenantCommercialStateDto } from "./dto/internal-update-tenant-commercial-state.dto";
 import { InternalSetTenantPlanTierDto } from "./dto/internal-set-tenant-plan-tier.dto";
+import { ListEnrichedTenantsDto } from "./dto/list-enriched-tenants.dto";
 import { ListPlanUpgradeRequestsDto } from "./dto/list-plan-upgrade-requests.dto";
 import { SearchCommercialTenantsDto } from "./dto/search-commercial-tenants.dto";
 import { SetTenantPlanTierDto } from "./dto/set-tenant-plan-tier.dto";
@@ -538,6 +539,141 @@ export class BillingController {
       },
     });
     return csv;
+  }
+
+  @Public()
+  @Get("internal/tenants/list")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only enriched tenant listing with usage and connector data" })
+  async listEnrichedTenantsInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Query() query: ListEnrichedTenantsDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const { actorId, actorRole } = await this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+      request,
+      "billing.internal.tenants.list",
+    );
+
+    const items = await this.planUsageService.listEnrichedTenants({
+      planTier: query.planTier,
+      billingStatus: query.billingStatus,
+      limit: query.limit,
+    });
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_TENANT_LIST_ENRICHED",
+      resource: "WORKSPACE_DIRECTORY",
+      resourceId: "all",
+      tenantKey: this.resolveCommercialAuditTenantKey(),
+      metadata: {
+        event: "commercial_tenant_list_enriched",
+        planTier: query.planTier ?? null,
+        billingStatus: query.billingStatus ?? null,
+        limit: query.limit ?? null,
+        resultCount: items.length,
+      },
+    });
+    return { items, count: items.length };
+  }
+
+  @Public()
+  @Get("internal/recent-signups")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only recent signup listing" })
+  async listRecentSignupsInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Query("limit") limitParam: string | undefined,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const { actorId, actorRole } = await this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+      request,
+      "billing.internal.recent_signups",
+    );
+
+    const parsedLimit = Number.parseInt(String(limitParam ?? "").trim(), 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 20;
+    const items = await this.planUsageService.listRecentSignups(limit);
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_RECENT_SIGNUPS_VIEWED",
+      resource: "PUBLIC_SIGNUP_REQUEST",
+      resourceId: "all",
+      tenantKey: this.resolveCommercialAuditTenantKey(),
+      metadata: {
+        event: "commercial_recent_signups_viewed",
+        limit,
+        resultCount: items.length,
+      },
+    });
+    return { items, count: items.length };
+  }
+
+  @Public()
+  @Get("internal/tenants/:tenantKey")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only tenant detail view" })
+  async getTenantDetailInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Param("tenantKey") tenantKeyParam: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const { actorId, actorRole } = await this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+      request,
+      "billing.internal.tenants.detail",
+    );
+
+    const rawKey = String(tenantKeyParam ?? "").trim();
+    if (!rawKey || !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(rawKey)) {
+      throw new BadRequestException({ error: "INVALID_TENANT_KEY" });
+    }
+
+    const detail = await this.planUsageService.getTenantDetail(rawKey);
+    if (!detail) {
+      await this.auditService.record({
+        actorId,
+        actorRole,
+        action: "COMMERCIAL_TENANT_DETAIL_NOT_FOUND",
+        resource: "WORKSPACE_DIRECTORY",
+        resourceId: rawKey,
+        tenantKey: this.resolveCommercialAuditTenantKey(),
+        metadata: { event: "commercial_tenant_detail_not_found", requestedTenantKey: rawKey },
+      });
+      throw new NotFoundException({ error: "TENANT_NOT_FOUND" });
+    }
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_TENANT_DETAIL_VIEWED",
+      resource: "WORKSPACE_DIRECTORY",
+      resourceId: rawKey,
+      tenantKey: this.resolveCommercialAuditTenantKey(rawKey),
+      metadata: {
+        event: "commercial_tenant_detail_viewed",
+        tenantKey: rawKey,
+        userCount: detail.users.total,
+        connectorCount: detail.connectors.total,
+      },
+    });
+    return detail;
   }
 
   @Public()

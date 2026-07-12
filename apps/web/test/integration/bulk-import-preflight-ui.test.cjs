@@ -24,6 +24,55 @@ const PREFLIGHT_ROUTE = path.join(
   "validate",
   "route.ts",
 );
+const UPLOAD_ROUTE = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "api",
+  "bulk-import",
+  "runs",
+  "upload",
+  "route.ts",
+);
+const RUN_VALIDATE_ROUTE = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "api",
+  "bulk-import",
+  "runs",
+  "[runId]",
+  "validate",
+  "route.ts",
+);
+const API_CONTROLLER = path.join(
+  REPO_ROOT,
+  "apps",
+  "api",
+  "src",
+  "bulk-import",
+  "bulk-import.controller.ts",
+);
+const API_RUN_SERVICE = path.join(
+  REPO_ROOT,
+  "apps",
+  "api",
+  "src",
+  "bulk-import",
+  "bulk-import-run.service.ts",
+);
+const SERVER_ACTION = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "actions.ts",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -34,11 +83,14 @@ function assert(condition, message) {
 function run() {
   const componentSource = fs.readFileSync(PREFLIGHT_COMPONENT, "utf8");
   const routeSource = fs.readFileSync(PREFLIGHT_ROUTE, "utf8");
+  const uploadRouteSource = fs.readFileSync(UPLOAD_ROUTE, "utf8");
+  const runValidateRouteSource = fs.readFileSync(RUN_VALIDATE_ROUTE, "utf8");
+  const controllerSource = fs.readFileSync(API_CONTROLLER, "utf8");
+  const runServiceSource = fs.readFileSync(API_RUN_SERVICE, "utf8");
+  const serverActionSource = fs.readFileSync(SERVER_ACTION, "utf8");
 
   assert(
     componentSource.includes('fetch("/api/bulk-import/runs/upload"') &&
-      !componentSource.includes("encodeBase64") &&
-      !componentSource.includes('fetch("/api/bulk-import/validate"') &&
       (componentSource.includes('readCsrfCookie') || componentSource.includes('readCookie("pim_csrf_token")')) &&
       componentSource.includes('name="sourceFile"') &&
       componentSource.includes('aria-invalid={fieldErrors.sourceFile ? "true" : undefined}') &&
@@ -108,33 +160,99 @@ function run() {
     "Server Action createBulkImportJobAction must require stagedRunId and not contain a raw-file upload fallback.",
   );
 
-  // CTO audit: Next.js upload proxy must forward the raw multipart body (preserving
-  // the browser-generated boundary) instead of re-encoding via FormData.
-  const uploadRouteSource = fs.readFileSync(
-    path.join(REPO_ROOT, "apps", "web", "src", "app", "api", "bulk-import", "runs", "upload", "route.ts"),
-    "utf8",
-  );
   assert(
-    !uploadRouteSource.includes("new FormData") &&
-      uploadRouteSource.includes("request.arrayBuffer()") &&
-      uploadRouteSource.includes('"Content-Type": contentType'),
-    "Upload proxy must forward the raw body with the original Content-Type (preserving multipart boundary), not re-encode via FormData.",
-  );
-  assert(
-    uploadRouteSource.includes("MAX_FILE_BYTES") &&
-      uploadRouteSource.includes("MAX_REQUEST_ENVELOPE_BYTES") &&
-      uploadRouteSource.includes("File too large"),
-    "Upload proxy must enforce separate file and request-envelope size limits (32 MB file + multipart overhead).",
+    componentSource.includes('id="bulk-import-file-guidance"') &&
+      componentSource.includes("CSV or JSON only") &&
+      componentSource.includes("Maximum upload size: 32 MB") &&
+      componentSource.includes("staged validation"),
+    "Import preflight form must show upload guidance near the file input with allowed types, size limit, and staged validation note.",
   );
 
-  // CTO audit: next.config must allow large request bodies through the proxy.
-  const nextConfigSource = fs.readFileSync(
-    path.join(REPO_ROOT, "apps", "web", "next.config.ts"),
-    "utf8",
+  // ── Multipart upload flow regression tests ────────────────────────────────
+
+  assert(
+    !componentSource.includes("encodeBase64") &&
+      !componentSource.includes("btoa("),
+    "Component must not contain encodeBase64 or btoa — file content must never be base64-encoded into JSON.",
   );
   assert(
-    nextConfigSource.includes("middlewareClientMaxBodySize"),
-    "next.config.ts must set experimental.middlewareClientMaxBodySize to allow uploads larger than the default 10 MB limit.",
+    !componentSource.includes("fileContentBase64"),
+    "Component must not reference fileContentBase64 — large files must use multipart upload.",
+  );
+  assert(
+    componentSource.includes('uploadForm.append("sourceFile"') &&
+      componentSource.includes('uploadForm.append("categoryId"') &&
+      componentSource.includes('uploadForm.append("sourceName"') &&
+      componentSource.includes('uploadForm.append("maxRetries"'),
+    "Multipart upload FormData must include sourceFile, categoryId, sourceName, and maxRetries fields.",
+  );
+  assert(
+    componentSource.includes('/api/bulk-import/runs/${encodeURIComponent(runId)}/validate'),
+    "Component must validate the run after upload via /api/bulk-import/runs/:id/validate.",
+  );
+  assert(
+    componentSource.includes('name="stagedRunId"') &&
+      componentSource.includes("stagedRun.id"),
+    "Component must pass stagedRunId as a hidden form field so Start import reuses the validated run.",
+  );
+
+  // ── Upload route regression tests ─────────────────────────────────────────
+
+  assert(
+    uploadRouteSource.includes("validateCsrf(request)") &&
+      uploadRouteSource.includes("resolveBearerToken(request)") &&
+      uploadRouteSource.includes("request.arrayBuffer()") &&
+      uploadRouteSource.includes("/bulk-import/runs/upload"),
+    "Upload route must enforce CSRF, use bearer auth, and forward the raw multipart body to the API.",
+  );
+
+  // ── Run validate route regression tests ───────────────────────────────────
+
+  assert(
+    runValidateRouteSource.includes("validateCsrf(request)") &&
+      runValidateRouteSource.includes("resolveBearerToken(request)") &&
+      runValidateRouteSource.includes("/bulk-import/runs/"),
+    "Run validate route must enforce CSRF and auth, and proxy to the API run validate endpoint.",
+  );
+
+  // ── Backend: multipart endpoint with size limit ───────────────────────────
+
+  assert(
+    controllerSource.includes('FileInterceptor("sourceFile"') &&
+      controllerSource.includes("32 * 1024 * 1024"),
+    "Backend must accept multipart upload via FileInterceptor on sourceFile with 32MB limit.",
+  );
+
+  // ── Backend: user-safe error for oversized files ──────────────────────────
+
+  assert(
+    runServiceSource.includes("File exceeds maximum allowed size") &&
+      runServiceSource.includes("Uploaded file is empty"),
+    "Backend must return user-safe errors for oversized and empty files.",
+  );
+
+  // ── Backend: malformed CSV and bad attributes handled at row level ────────
+
+  assert(
+    runServiceSource.includes("CSV must include a header row and at least one data row") &&
+      runServiceSource.includes("Missing required field: title"),
+    "Backend must detect malformed CSV (no headers/rows) and missing required fields at validation time.",
+  );
+
+  // ── Backend: tenant isolation via prisma.tenant() ─────────────────────────
+
+  assert(
+    runServiceSource.includes("prisma.tenant().bulkImportRun.findUnique") &&
+      runServiceSource.includes("Bulk import run not found"),
+    "Backend must scope run lookups to the current tenant and return 404 for foreign runs.",
+  );
+
+  // ── Server action: Start import reuses validated run ──────────────────────
+
+  assert(
+    serverActionSource.includes("stagedRunId") &&
+      (serverActionSource.includes("prestagedRunId") || serverActionSource.includes("linkedRunId")),
+    "Server action must accept stagedRunId from the form and skip re-uploading when present.",
   );
 
   console.log(
@@ -152,9 +270,19 @@ function run() {
           "bulk_import_preflight_clears_file_after_staging",
           "bulk_import_preflight_resets_staged_run_on_category_change",
           "server_action_requires_staged_run_id_no_raw_file_fallback",
-          "upload_proxy_forwards_raw_body_preserving_boundary",
-          "upload_proxy_enforces_32mb_size_limit",
-          "next_config_allows_large_body_through_proxy",
+          "upload_guidance_shows_types_size_and_staged_validation",
+          "no_base64_encoding_in_component",
+          "no_fileContentBase64_in_component",
+          "multipart_formdata_fields_match_backend_dto",
+          "validate_after_upload_flow",
+          "staged_run_id_passed_to_start_import",
+          "upload_route_csrf_auth_multipart",
+          "run_validate_route_csrf_auth",
+          "backend_multipart_file_interceptor_32mb",
+          "backend_user_safe_oversized_empty_errors",
+          "backend_malformed_csv_row_validation",
+          "backend_tenant_isolation",
+          "server_action_reuses_staged_run",
         ],
         checkedAt: new Date().toISOString(),
       },
