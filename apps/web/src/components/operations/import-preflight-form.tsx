@@ -222,7 +222,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
   return canWrite ? (
     <form ref={formRef} action={submitAction} className="space-y-4" suppressHydrationWarning>
       <input type="hidden" name="mapping" value={DEFAULT_MAPPING} />
-      {stagedRun?.id ? <input type="hidden" name="stagedRunId" value={stagedRun.id} /> : null}
+      <input type="hidden" name="stagedRunId" value={stagedRun?.id ?? ""} />
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm text-slate-700">
           <span className="font-medium">Category</span>
