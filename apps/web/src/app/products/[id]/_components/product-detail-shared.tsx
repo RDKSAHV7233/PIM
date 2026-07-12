@@ -16,7 +16,7 @@ const BLOCKER_MESSAGES: Record<string, string> = {
   product_blocking_issues_open:
     "Product has blocking quality issues - fix them on the Quality tab before queuing.",
   fallback_ack_required:
-    "A fallback mapping is in use. Select 'Acknowledge fallback usage' in the form below.",
+    "A fallback mapping is in use. Check 'Acknowledge fallback mapping usage' in the export form below before queuing.",
   no_mapping_for_category:
     "No channel mapping exists for this category. Visit Channel Mappings to configure one.",
   product_not_approved: "Product must be approved before it can be queued for export.",

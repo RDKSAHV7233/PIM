@@ -6,7 +6,6 @@ import { StepUpGuard } from "../auth/step-up.guard";
 import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
@@ -27,6 +26,7 @@ import {
 } from "./dto/connector-mapping.dto";
 import { CreateExportJobAliasDto } from "./dto/create-export-job-alias.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
+import { ListExportJobsQueryDto } from "./dto/list-export-jobs-query.dto";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
 import { SimulateMarketplaceDto } from "./dto/simulate-marketplace.dto";
 import { ConfirmCatalogLinksDto } from "./dto/confirm-catalog-links.dto";
@@ -351,14 +351,10 @@ export class MarketplaceController {
   @Roles("admin")
   @ApiOperation({ summary: "List export jobs" })
   @ApiResponse({ status: 200, description: "Export jobs fetched" })
-  listExportJobs(
-    @Query("productId") productId?: string,
-    @Query() pagination?: CursorPaginationDto,
-    @Query("templateSummary") templateSummary?: string,
-  ) {
+  listExportJobs(@Query() query: ListExportJobsQueryDto) {
     // Full template payload remains available for legacy callers; prefer ?templateSummary=true for job lists.
-    return this.marketplaceService.listExportJobs(productId, pagination, {
-      templateSummary: templateSummary === "true",
+    return this.marketplaceService.listExportJobs(query.productId, query, {
+      templateSummary: query.templateSummary === "true",
     });
   }
 
@@ -422,7 +418,11 @@ export class MarketplaceController {
 
   @Post("connectors/shopify/:installationId/products/:productId/preview-changes")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin", "editor")
+  // Read-only diff ahead of publish: roles that can queue exports (admin,
+  // publisher, channel_manager per docs/security/rbac-permissions-matrix.md
+  // "Channels — publish / queue export") must be able to preview what the
+  // export will change; editor keeps access for the sync/recovery surfaces.
+  @Roles("admin", "editor", "publisher", "channel_manager")
   @HttpCode(200)
   previewShopifyProductChanges(
     @Param("installationId") installationId: string,

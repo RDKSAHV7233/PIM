@@ -459,7 +459,27 @@ export class ConnectorFrameworkService {
     };
   }
 
-  private buildContext(installation: ConnectorInstallationRecord): ConnectorContext {
+  /**
+   * Build a fully wired ConnectorContext (credential-backed getAccessToken +
+   * rate-limited fetch) for callers outside this service, e.g. the
+   * marketplace preview-changes path. Prefer this over hand-rolling a ctx —
+   * connectors assume ctx.fetch and a real access token are present.
+   */
+  buildContextForInstallation(
+    installation: Pick<
+      ConnectorInstallationRecord,
+      "id" | "tenantKey" | "connectorId" | "slug" | "metadata"
+    >,
+  ): ConnectorContext {
+    return this.buildContext(installation);
+  }
+
+  private buildContext(
+    installation: Pick<
+      ConnectorInstallationRecord,
+      "id" | "tenantKey" | "connectorId" | "slug" | "metadata"
+    >,
+  ): ConnectorContext {
     const metadata = installation.metadata;
 
     // ── Marketplace context ───────────────────────────────────────────────────
