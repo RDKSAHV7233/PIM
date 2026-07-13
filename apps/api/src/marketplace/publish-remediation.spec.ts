@@ -171,6 +171,24 @@ describe("Phase 2: explicit installation enforcement", () => {
       expect(findWhere?.installationId).toBe("inst-shopify-1");
     }
   });
+
+  it("rejects installation without PUBLISH capability", async () => {
+    const { svc } = makePublishService({
+      installation: { id: "inst-no-pub", slug: "shopify", capabilities: ["SYNC"] },
+    });
+    await expect(
+      svc.createExportJob("prod1", { ...baseDto, installationId: "inst-no-pub" } as never),
+    ).rejects.toThrow(/PUBLISH/i);
+  });
+
+  it("rejects unresolvable installation ID", async () => {
+    const { svc } = makePublishService({
+      requireInstallationError: new Error("Installation not found"),
+    });
+    await expect(
+      svc.createExportJob("prod1", { ...baseDto, installationId: "nonexistent" } as never),
+    ).rejects.toThrow();
+  });
 });
 
 // ===========================================================================
@@ -567,6 +585,28 @@ describe("Phase 8: submission retry role verification (code inspection)", () => 
       source.indexOf("retrySubmissionAction") + 50,
     );
     expect(retryButtonArea).not.toContain("canWrite");
+  });
+
+  it("submissions grid requires canRetrySubmission prop for retry button", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../../..", "apps/web/src/app/channels/submissions/_components/submissions-grid.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("canRetrySubmission");
+    expect(source).toContain("canRetrySubmission && canRetry");
+  });
+
+  it("submissions page passes canPublishToChannels as canRetrySubmission", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../../..", "apps/web/src/app/channels/submissions/page.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("canPublishToChannels");
+    expect(source).toContain("canRetrySubmission={canPublishToChannels(actorRole)}");
   });
 });
 
