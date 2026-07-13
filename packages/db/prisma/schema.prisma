@@ -409,11 +409,9 @@ model MarketplaceExportJob {
   // Composite indexes for multi-tenant job worker polling (filter: tenantKey + status)
   @@index([tenantKey, status, channel])
   @@index([tenantKey, status, updatedAt])
-  // Partial unique index for delta-sync idempotency: one pending/processing job per
-  // product per installation.  installationId IS NOT NULL rows only (enforced in the
-  // raw-SQL migration via a WHERE clause); manual export jobs (installationId=NULL)
-  // are unaffected.  Enables upsert semantics in queueDeltaSync.
-  @@unique([tenantKey, productId, installationId], map: "uq_export_job_product_installation")
+  // Partial unique index (active states only) — managed by raw SQL migration
+  // 20260713000001_active_export_job_partial_unique.  Prisma cannot express WHERE
+  // clauses on indexes, so the constraint lives outside the schema DSL.
 }
 
 model BulkImportJob {
