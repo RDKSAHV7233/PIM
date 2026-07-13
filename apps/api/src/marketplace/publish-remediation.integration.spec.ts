@@ -285,4 +285,189 @@ describeIntegration("BullMQ: job ID correctness with real Redis", () => {
     expect(found).toBeTruthy();
     expect(found!.id).toBe(id);
   });
+
+  it("ambiguous enqueue: job present after connection reset can be detected", async () => {
+    const id = "ambiguous_0";
+    await queue.add("test", { data: "delivered" }, { jobId: id });
+
+    const present = await queue.getJob(id);
+    expect(present).toBeTruthy();
+    expect(present!.id).toBe(id);
+
+    const absent = await queue.getJob("ambiguous_never_sent_99");
+    expect(absent).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PostgreSQL + BullMQ: combined enqueue-DB consistency
+// ---------------------------------------------------------------------------
+
+describeIntegration("Combined: DB state matches queue delivery outcome", () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Queue } = require("bullmq") as typeof import("bullmq");
+  let prisma: PrismaClient;
+  let queue: InstanceType<typeof Queue>;
+  const TENANT = "combined-test-" + Date.now();
+  const QUEUE_NAME = "pim1-combined-test-" + Date.now();
+
+  beforeAll(async () => {
+    prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
+    queue = new Queue(QUEUE_NAME, { connection: { host: REDIS_HOST, port: REDIS_PORT } });
+    await prisma.$executeRaw`
+      INSERT INTO "Category" (id, "tenantKey", name, slug, path, "createdAt", "updatedAt")
+      VALUES (${TENANT + "-cat"}, ${TENANT}, 'CombTest', 'comb-test', '/comb-test', NOW(), NOW())
+      ON CONFLICT DO NOTHING
+    `;
+    await prisma.$executeRaw`
+      INSERT INTO "Product" (id, "tenantKey", title, "categoryId", status, "createdAt", "updatedAt")
+      VALUES (${TENANT + "-prod"}, ${TENANT}, 'CombTest Prod', ${TENANT + "-cat"}, 'draft', NOW(), NOW())
+      ON CONFLICT DO NOTHING
+    `;
+  });
+
+  afterAll(async () => {
+    await prisma.$executeRaw`DELETE FROM "MarketplaceExportJob" WHERE "tenantKey" = ${TENANT}`;
+    await prisma.$executeRaw`DELETE FROM "Product" WHERE "tenantKey" = ${TENANT}`;
+    await prisma.$executeRaw`DELETE FROM "Category" WHERE "tenantKey" = ${TENANT}`;
+    await prisma.$disconnect();
+    await queue.obliterate({ force: true });
+    await queue.close();
+  });
+
+  afterEach(async () => {
+    await prisma.$executeRaw`DELETE FROM "MarketplaceExportJob" WHERE "tenantKey" = ${TENANT}`;
+  });
+
+  it("DB job stays queued when queue enqueue succeeds", async () => {
+    const job = await prisma.marketplaceExportJob.create({
+      data: {
+        tenantKey: TENANT,
+        productId: TENANT + "-prod",
+        categoryId: TENANT + "-cat",
+        channel: "shopify",
+        status: "queued",
+        installationId: "inst-combined-1",
+      },
+    });
+
+    const queueJobId = `${job.id}_0`;
+    await queue.add("connector-submission", { jobId: job.id }, { jobId: queueJobId });
+
+    const queueJob = await queue.getJob(queueJobId);
+    expect(queueJob).toBeTruthy();
+
+    const dbJob = await prisma.marketplaceExportJob.findUnique({ where: { id: job.id } });
+    expect(dbJob!.status).toBe("queued");
+  });
+
+  it("DB job reverts to failed when queue is unreachable and job absent", async () => {
+    const job = await prisma.marketplaceExportJob.create({
+      data: {
+        tenantKey: TENANT,
+        productId: TENANT + "-prod",
+        categoryId: TENANT + "-cat",
+        channel: "shopify",
+        status: "queued",
+        installationId: "inst-combined-2",
+      },
+    });
+
+    const queueJobId = `${job.id}_0`;
+    const notPresent = await queue.getJob(queueJobId);
+    expect(notPresent).toBeUndefined();
+
+    await prisma.marketplaceExportJob.update({
+      where: { id: job.id },
+      data: { status: "failed", failureReason: "Queue enqueue failed" },
+    });
+
+    const dbJob = await prisma.marketplaceExportJob.findUnique({ where: { id: job.id } });
+    expect(dbJob!.status).toBe("failed");
+    expect(dbJob!.failureReason).toBe("Queue enqueue failed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PostgreSQL: pre-existing duplicate migration safety
+// ---------------------------------------------------------------------------
+
+describeIntegration("PostgreSQL: partial unique index rejects pre-existing duplicates", () => {
+  let prisma: PrismaClient;
+  const TENANT = "dup-safety-test-" + Date.now();
+
+  beforeAll(async () => {
+    prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
+    await prisma.$executeRaw`
+      INSERT INTO "Category" (id, "tenantKey", name, slug, path, "createdAt", "updatedAt")
+      VALUES (${TENANT + "-cat"}, ${TENANT}, 'DupTest', 'dup-test', '/dup-test', NOW(), NOW())
+      ON CONFLICT DO NOTHING
+    `;
+    await prisma.$executeRaw`
+      INSERT INTO "Product" (id, "tenantKey", title, "categoryId", status, "createdAt", "updatedAt")
+      VALUES (${TENANT + "-prod"}, ${TENANT}, 'DupTest Prod', ${TENANT + "-cat"}, 'draft', NOW(), NOW())
+      ON CONFLICT DO NOTHING
+    `;
+  });
+
+  afterAll(async () => {
+    await prisma.$executeRaw`DELETE FROM "MarketplaceExportJob" WHERE "tenantKey" = ${TENANT}`;
+    await prisma.$executeRaw`DELETE FROM "Product" WHERE "tenantKey" = ${TENANT}`;
+    await prisma.$executeRaw`DELETE FROM "Category" WHERE "tenantKey" = ${TENANT}`;
+    await prisma.$disconnect();
+  });
+
+  afterEach(async () => {
+    await prisma.$executeRaw`DELETE FROM "MarketplaceExportJob" WHERE "tenantKey" = ${TENANT}`;
+  });
+
+  it("index prevents inserting a second active job even across different active statuses", async () => {
+    await prisma.marketplaceExportJob.create({
+      data: {
+        tenantKey: TENANT,
+        productId: TENANT + "-prod",
+        categoryId: TENANT + "-cat",
+        channel: "shopify",
+        status: "processing",
+        installationId: "inst-dup-1",
+      },
+    });
+
+    await expect(
+      prisma.marketplaceExportJob.create({
+        data: {
+          tenantKey: TENANT,
+          productId: TENANT + "-prod",
+          categoryId: TENANT + "-cat",
+          channel: "shopify",
+          status: "retrying",
+          installationId: "inst-dup-1",
+        },
+      }),
+    ).rejects.toThrow(/Unique constraint/i);
+  });
+
+  it("preflight query correctly identifies pre-existing duplicates", async () => {
+    await prisma.marketplaceExportJob.create({
+      data: {
+        tenantKey: TENANT,
+        productId: TENANT + "-prod",
+        categoryId: TENANT + "-cat",
+        channel: "shopify",
+        status: "queued",
+        installationId: "inst-dup-2",
+      },
+    });
+
+    const duplicates: Array<{ active_count: bigint }> = await prisma.$queryRaw`
+      SELECT "tenantKey", "productId", installation_id, COUNT(*) AS active_count
+      FROM "MarketplaceExportJob"
+      WHERE "tenantKey" = ${TENANT}
+        AND installation_id IS NOT NULL
+        AND status IN ('queued', 'processing', 'retrying')
+      GROUP BY "tenantKey", "productId", installation_id
+      HAVING COUNT(*) > 1
+    `;
+    expect(duplicates).toHaveLength(0);
+  });
 });
