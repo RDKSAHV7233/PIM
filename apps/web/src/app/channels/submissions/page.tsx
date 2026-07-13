@@ -14,6 +14,7 @@ import { getInstalledConnectors } from "@/lib/api/connectors";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
+import { canPublishToChannels } from "@/lib/role-capabilities";
 import { SubmissionsGrid } from "./_components/submissions-grid";
 
 export const dynamic = "force-dynamic";
@@ -271,7 +272,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
           <CardTitle>Latest Channel Submissions</CardTitle>
           <p className="mt-1 text-xs text-slate-500">Click any row to open the submission detail drawer and view channel errors with field-level repair links.</p>
           <div className="mt-3 overflow-x-auto">
-            <SubmissionsGrid submissions={submissions} />
+            <SubmissionsGrid submissions={submissions} canRetrySubmission={canPublishToChannels(actorRole)} />
           </div>
           <div className="mt-3">
             <DataGrid
