@@ -770,7 +770,7 @@ export class MarketplaceService implements OnModuleInit {
     await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId: job.id,
       connectorSlug: simulation.channel,
-    }, { jobId: `${job.id}:${job.retryCount}` });
+    }, { jobId: `${job.id}_${job.retryCount}` });
     return job;
   }
 
@@ -1669,9 +1669,9 @@ export class MarketplaceService implements OnModuleInit {
       await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
         jobId,
         connectorSlug: updated!.channel,
-      }, { jobId: `${jobId}:${updated!.retryCount}` });
+      }, { jobId: `${jobId}_${updated!.retryCount}` });
     } catch (enqueueError) {
-      const queueJobId = `${jobId}:${updated!.retryCount}`;
+      const queueJobId = `${jobId}_${updated!.retryCount}`;
       const delivered = await this.queueService.isJobPresent(QUEUE_NAMES.CONNECTOR_SUBMISSION, queueJobId).catch(() => false);
       if (!delivered) {
         await this.prisma.tenant().marketplaceExportJob.update({
@@ -3173,7 +3173,7 @@ export class MarketplaceService implements OnModuleInit {
         await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
           jobId: job.id,
           connectorSlug,
-        } satisfies ConnectorWorkerPayload, { jobId: `${job.id}:${job.retryCount}` });
+        } satisfies ConnectorWorkerPayload, { jobId: `${job.id}_${job.retryCount}` });
       }),
     );
 

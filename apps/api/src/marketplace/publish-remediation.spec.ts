@@ -394,7 +394,7 @@ describe("Phase 6: queue ID correctness", () => {
     }
     if (queueService.enqueue.mock.calls.length > 0) {
       const opts = queueService.enqueue.mock.calls[0][2];
-      expect(opts?.jobId).toBe("job-new:0");
+      expect(opts?.jobId).toBe("job-new_0");
     }
   });
 
@@ -411,7 +411,7 @@ describe("Phase 6: queue ID correctness", () => {
     }
     if (queueService.enqueue.mock.calls.length > 0) {
       const opts = queueService.enqueue.mock.calls[0][2];
-      expect(opts?.jobId).toBe("job-1:3");
+      expect(opts?.jobId).toBe("job-1_3");
     }
   });
 
@@ -419,7 +419,7 @@ describe("Phase 6: queue ID correctness", () => {
     const ids = new Set<string>();
     const jobId = "job-1";
     for (let retry = 0; retry < 10; retry++) {
-      const queueId = `${jobId}:${retry}`;
+      const queueId = `${jobId}_${retry}`;
       expect(ids.has(queueId)).toBe(false);
       ids.add(queueId);
     }
