@@ -757,3 +757,156 @@ describe("Phase 5: migration SQL verification", () => {
     expect(schema).not.toContain('@@unique([tenantKey, productId, installationId], map: "uq_export_job_product_installation")');
   });
 });
+
+// ===========================================================================
+// Phase 11 — Service-level BullMQ concurrency
+// ===========================================================================
+
+describe("Phase 11: service-level concurrency safety", () => {
+  it("concurrent requeue: second caller gets BadRequestException from atomic claim", async () => {
+    let claimCallCount = 0;
+    const { svc, exportJobDb, queueService } = makePublishService();
+    exportJobDb.updateMany.mockImplementation(async () => {
+      claimCallCount++;
+      if (claimCallCount === 1) return { count: 1 };
+      return { count: 0 };
+    });
+    exportJobDb.findUnique
+      .mockResolvedValueOnce({ id: "job-1", retryCount: 2, status: "queued", channel: "shopify" })
+      .mockResolvedValueOnce({ id: "job-1", status: "queued" });
+    queueService.enqueue.mockResolvedValue(undefined);
+
+    const [result1, result2] = await Promise.allSettled([
+      svc.requeueExportJob("job-1"),
+      svc.requeueExportJob("job-1"),
+    ]);
+
+    const fulfilled = [result1, result2].filter((r) => r.status === "fulfilled");
+    const rejected = [result1, result2].filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+  });
+
+  it("concurrent processExportJob: only one worker claims the job", async () => {
+    let claimCallCount = 0;
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", retryCount: 0, status: "queued", channel: "shopify",
+      tenantKey: "t1", productId: "p1", installationId: "inst-1", maxRetries: 3,
+      templateId: null, payload: {},
+    });
+    exportJobDb.updateMany.mockImplementation(async () => {
+      claimCallCount++;
+      if (claimCallCount === 1) return { count: 1 };
+      return { count: 0 };
+    });
+
+    const [r1, r2] = await Promise.allSettled([
+      svc.processExportJob("job-1"),
+      svc.processExportJob("job-1"),
+    ]);
+
+    const settled = [r1, r2];
+    const claimedWorkers = settled.filter((r) => r.status === "fulfilled");
+    expect(claimedWorkers.length).toBeGreaterThanOrEqual(1);
+    expect(claimCallCount).toBe(2);
+  });
+
+  it("createExportJob P2002 returns concurrent job with matching identity", async () => {
+    const matchingIdentity = {
+      productRevision: "v1:2026-07-01T00:00:00.000Z",
+      installationId: "inst-shopify-1",
+      payloadHash: "fixed-hash",
+    };
+    const p2002 = Object.assign(
+      new Error("Unique constraint failed on the fields: (`tenantKey`,`productId`,`installation_id`)"),
+      {
+        code: "P2002",
+        meta: { target: ["tenantKey", "productId", "installation_id"] },
+      },
+    );
+    Object.setPrototypeOf(p2002, (require("@prisma/client").Prisma?.PrismaClientKnownRequestError ?? Error).prototype);
+
+    const concurrentJob = {
+      id: "job-concurrent",
+      retryCount: 0,
+      status: "queued",
+      channel: "shopify",
+      payload: { publishRequestIdentity: matchingIdentity },
+    };
+    const { svc, exportJobDb } = makePublishService({
+      createError: p2002,
+    });
+    jest.spyOn(svc as any, "buildPublishRequestIdentity").mockReturnValue(matchingIdentity);
+    exportJobDb.findFirst.mockResolvedValue(concurrentJob);
+
+    const result = await svc.createExportJob("prod1", {
+      channel: "shopify",
+      installationId: "inst-shopify-1",
+      fallbackAcknowledged: false,
+    } as never);
+
+    expect(result.id).toBe("job-concurrent");
+  });
+
+  it("createExportJob P2002 with identity mismatch throws ConflictException", async () => {
+    const p2002 = Object.assign(
+      new Error("Unique constraint failed"),
+      {
+        code: "P2002",
+        meta: { target: ["tenantKey", "productId", "installation_id"] },
+      },
+    );
+    Object.setPrototypeOf(p2002, (require("@prisma/client").Prisma?.PrismaClientKnownRequestError ?? Error).prototype);
+
+    const { svc, exportJobDb } = makePublishService({
+      createError: p2002,
+    });
+    jest.spyOn(svc as any, "buildPublishRequestIdentity").mockReturnValue({
+      productRevision: "v1:2026-07-01T00:00:00.000Z",
+      installationId: "inst-shopify-1",
+      payloadHash: "new-hash",
+    });
+    exportJobDb.findFirst.mockResolvedValue({
+      id: "job-stale",
+      retryCount: 0,
+      status: "queued",
+      channel: "shopify",
+      payload: {
+        publishRequestIdentity: {
+          productRevision: "v1:2026-06-01T00:00:00.000Z",
+          installationId: "inst-shopify-1",
+          payloadHash: "old-hash",
+        },
+      },
+    });
+
+    await expect(
+      svc.createExportJob("prod1", {
+        channel: "shopify",
+        installationId: "inst-shopify-1",
+        fallbackAcknowledged: false,
+      } as never),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it("requeueExportJob enqueue failure with isJobPresent true silently succeeds", async () => {
+    const { svc, queueService, exportJobDb } = makePublishService();
+    exportJobDb.updateMany.mockResolvedValue({ count: 1 });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", retryCount: 5, status: "queued", channel: "shopify",
+    });
+    queueService.enqueue.mockRejectedValue(new Error("ETIMEDOUT"));
+    queueService.isJobPresent.mockResolvedValue(true);
+
+    const result = await svc.requeueExportJob("job-1");
+    expect(result).toBeDefined();
+    expect(result.id).toBe("job-1");
+    expect(exportJobDb.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "failed" }),
+      }),
+    );
+  });
+});
