@@ -313,9 +313,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     await Promise.all(closeTasks);
   }
 
-  async enqueue<T>(queueName: QueueName, payload: T, options?: { delayMs?: number }): Promise<void> {
+  async enqueue<T>(queueName: QueueName, payload: T, options?: { delayMs?: number; jobId?: string }): Promise<void> {
     const name = String(queueName);
     const delayMs = Math.max(0, Math.floor(Number(options?.delayMs ?? 0)));
+    const jobId = options?.jobId ? String(options.jobId).trim() : undefined;
     const registration = this.registrations.get(name);
     if (!registration) {
       const queue = this.pending.get(name) ?? [];
@@ -327,7 +328,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       this.enqueueToMemoryLane(registration, payload, delayMs);
       return;
     }
-    await this.enqueueToBullLane(name, registration, payload, delayMs);
+    await this.enqueueToBullLane(name, registration, payload, delayMs, jobId);
   }
 
   process<T>(queueName: QueueName, handler: QueueHandler<T>): void {
@@ -340,6 +341,25 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     handler: QueueHandler<T>,
   ): void {
     this.register(queueName, handler, options);
+  }
+
+  async isJobPresent(queueName: QueueName, jobId: string): Promise<boolean> {
+    const name = String(queueName);
+    const registration = this.registrations.get(name);
+    if (!registration) return false;
+    if (registration.kind === "memory") {
+      // Memory enqueue is synchronous: if we're checking after an enqueue
+      // throw, the payload was never pushed — return false (genuinely absent).
+      // Memory queue does not use jobId dedup, so we cannot look up by ID;
+      // returning false is semantically correct because the enqueue either
+      // fully succeeded (no throw, no inspection needed) or fully failed.
+      return false;
+    }
+    for (const [, lane] of registration.lanes) {
+      const job = await lane.queue.getJob(jobId);
+      if (job) return true;
+    }
+    return false;
   }
 
   async getMetrics(): Promise<Record<string, QueueMetrics>> {
@@ -675,11 +695,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     registration: BullQueueRegistration,
     payload: unknown,
     delayMs = 0,
+    jobId?: string,
   ): Promise<void> {
     const laneKey = this.resolveLaneKey(registration.options, payload);
     await this.rememberBullLane(queueName, laneKey);
     const lane = await this.getOrCreateBullLane(queueName, registration, laneKey);
     await lane.queue.add(`${queueName}:${laneKey}`, payload, {
+      ...(jobId ? { jobId } : {}),
       attempts: 3,
       backoff: {
         type: "exponential",
