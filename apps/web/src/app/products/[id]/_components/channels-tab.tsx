@@ -325,7 +325,26 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 <input type="hidden" name="productId" value={data.productId} />
                 <input type="hidden" name="channel" value={data.defaultExportChannel} />
                 <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
+                {data.shopifyInstallations.length === 1 ? (
+                  <>
+                    <input type="hidden" name="installationId" value={data.shopifyInstallations[0].id} />
+                    <p className="text-sm text-slate-600">Store: <span className="font-medium text-slate-800">{data.shopifyInstallations[0].accountAlias || data.shopifyInstallations[0].id}</span></p>
+                  </>
+                ) : null}
                 {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
+                {data.shopifyInstallations.length > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-slate-700" htmlFor="quick-export-installation-id">Store: <span className="text-red-500">*</span></label>
+                    <Select id="quick-export-installation-id" name="installationId" defaultValue="" required className="w-auto">
+                      <option value="" disabled>Select a store</option>
+                      {data.shopifyInstallations.map((inst) => (
+                        <option key={inst.id} value={inst.id}>
+                          {inst.accountAlias || inst.id}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
                 {data.fallbackAckRequired ? (
                   <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-700">
                     <input
@@ -365,6 +384,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 fallbackAckRequired={data.fallbackAckRequired}
                 canQueueExportWithAck={data.canQueueExportWithAck}
                 shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
+                shopifyInstallations={data.shopifyInstallations}
               />
             </>
           ) : data.canPublish ? (

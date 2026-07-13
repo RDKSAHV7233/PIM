@@ -84,6 +84,7 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
   const [loadingAttributes, setLoadingAttributes] = useState(false);
   const [attributeFetchError, setAttributeFetchError] = useState<string>("");
   const [submitError, setSubmitError] = useState<string>("");
+  const [planLimitUpgradeUrl, setPlanLimitUpgradeUrl] = useState<string>("");
   const [mrp, setMrp] = useState<string>("");
   const [sellingPrice, setSellingPrice] = useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -162,10 +163,14 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
   const submitAction = async (formData: FormData) => {
     startTransition(async () => {
       setSubmitError("");
+      setPlanLimitUpgradeUrl("");
       try {
         const result = await createProductAction(formData);
         if (result && "error" in result) {
           setSubmitError(result.error);
+          if (result.planLimitExceeded && result.upgradeUrl) {
+            setPlanLimitUpgradeUrl(result.upgradeUrl);
+          }
           return;
         }
         const productId = result && "productId" in result ? result.productId : undefined;
@@ -428,7 +433,19 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
       </div>
 
       <div className="md:col-span-2">
-        {submitError ? <p className="mb-2 text-sm text-red-700">{submitError}</p> : null}
+        {submitError ? (
+          <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+            <p className="text-sm text-red-700">{submitError}</p>
+            {planLimitUpgradeUrl ? (
+              <a
+                href={planLimitUpgradeUrl}
+                className="mt-1 inline-block text-sm font-medium text-red-800 underline hover:text-red-900"
+              >
+                Upgrade your plan
+              </a>
+            ) : null}
+          </div>
+        ) : null}
         <Button type="submit" disabled={isPending}>
           {isPending ? "Creating..." : "Create product"}
         </Button>

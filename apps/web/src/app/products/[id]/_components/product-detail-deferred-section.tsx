@@ -29,6 +29,7 @@ import type { DetailTab, ProductDetailPageData } from "./product-detail-types";
 import { QualityTab } from "./quality-tab";
 import { VariantsTab } from "./variants-tab";
 import { PricingTab } from "./pricing-tab";
+import { canEditPricing } from "@/lib/role-capabilities";
 
 interface ProductDetailDeferredSectionProps {
   productId: string;
@@ -175,6 +176,7 @@ export async function ProductDetailDeferredSection({
     actorRole,
     canWrite,
     canPublish,
+    canEditPricing: canEditPricing(actorRole),
     activeTab,
     showChannelDiagnostics,
     selectedChannel,

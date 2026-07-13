@@ -43,7 +43,7 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
       header: "MRP",
       render: (variant) => {
         const editFormId = `variant-edit-${variant.id}`;
-        return data.canWrite ? (
+        return data.canEditPricing ? (
           <Input form={editFormId} name="mrp" type="number" min={0} step="0.01" defaultValue={variant.mrp ?? ""} />
         ) : (
           formatINR(variant.mrp)
@@ -55,7 +55,7 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
       header: "Selling Price",
       render: (variant) => {
         const editFormId = `variant-edit-${variant.id}`;
-        return data.canWrite ? (
+        return data.canEditPricing ? (
           <Input form={editFormId} name="sellingPrice" type="number" min={0} step="0.01" defaultValue={variant.sellingPrice ?? ""} />
         ) : (
           formatINR(variant.sellingPrice)
@@ -156,18 +156,22 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
               </label>
               <Input id="variant-inventory-qty" name="inventoryQty" type="number" min={0} defaultValue={0} required />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-mrp">
-                MRP
-              </label>
-              <Input id="variant-mrp" name="mrp" type="number" min={0} step="0.01" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-selling-price">
-                Selling Price
-              </label>
-              <Input id="variant-selling-price" name="sellingPrice" type="number" min={0} step="0.01" />
-            </div>
+            {data.canEditPricing ? (
+              <>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-mrp">
+                    MRP
+                  </label>
+                  <Input id="variant-mrp" name="mrp" type="number" min={0} step="0.01" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-selling-price">
+                    Selling Price
+                  </label>
+                  <Input id="variant-selling-price" name="sellingPrice" type="number" min={0} step="0.01" />
+                </div>
+              </>
+            ) : null}
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="variant-status">
                 Status

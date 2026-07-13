@@ -617,7 +617,7 @@ export async function addApprovalCommentAction(formData: FormData) {
 
 export async function createProductAction(
   formData: FormData,
-): Promise<{ error: string } | { productId: string } | undefined> {
+): Promise<{ error: string; planLimitExceeded?: true; upgradeUrl?: string } | { productId: string } | undefined> {
   const title = String(formData.get("title") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   if (!title || !categoryId) {
@@ -675,9 +675,13 @@ export async function createProductAction(
     revalidatePath("/dashboard");
     return { productId: created?.id };
   } catch (error: unknown) {
-    const redirectPath = withPlanLimitQuery("/catalog/products", error);
-    if (redirectPath) {
-      redirect(redirectPath);
+    const planPayload = getPlanLimitExceededPayload(error);
+    if (planPayload) {
+      return {
+        error: `Plan limit reached: you have ${planPayload.current} of ${planPayload.limit} allowed ${planPayload.resource}.`,
+        planLimitExceeded: true,
+        upgradeUrl: planPayload.upgrade_url,
+      };
     }
     const message =
       error instanceof ApiHttpError
@@ -947,6 +951,9 @@ export async function createVariantAction(formData: FormData) {
     if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
       redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
     }
+    if (message.includes("FIELD_WRITE_RESTRICTED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", error: "FIELD_WRITE_RESTRICTED" }));
+    }
     redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
   }
 }
@@ -976,6 +983,9 @@ export async function updateVariantAction(formData: FormData) {
     const message = error instanceof Error ? error.message : String(error ?? "");
     if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
       redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
+    }
+    if (message.includes("FIELD_WRITE_RESTRICTED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", error: "FIELD_WRITE_RESTRICTED" }));
     }
     redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
   }

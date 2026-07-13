@@ -43,6 +43,7 @@ export type ProductDetailPageData = {
   actorRole: AppRole;
   canWrite: boolean;
   canPublish: boolean;
+  canEditPricing: boolean;
   activeTab: DetailTab;
   showChannelDiagnostics: boolean;
   selectedChannel: MarketplaceChannel;

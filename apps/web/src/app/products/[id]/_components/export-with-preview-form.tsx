@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition, useState, useRef } from "react";
+import { useTransition, useState, useRef, useCallback } from "react";
 import { createExportJobAction } from "@/app/actions";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ interface ExportWithPreviewFormProps {
   canQueueExportWithAck: boolean;
   /** installationId of the Shopify installation — enables change preview when present */
   shopifyInstallationId: string | null;
+  shopifyInstallations: Array<{ id: string; accountAlias: string }>;
 }
 
 export function ExportWithPreviewForm({
@@ -44,6 +45,7 @@ export function ExportWithPreviewForm({
   fallbackAckRequired,
   canQueueExportWithAck,
   shopifyInstallationId,
+  shopifyInstallations,
 }: ExportWithPreviewFormProps) {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -53,23 +55,55 @@ export function ExportWithPreviewForm({
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [publishAnyway, setPublishAnyway] = useState(false);
 
-  const channelValue = (): string => {
-    const form = formRef.current;
-    if (!form) return defaultExportChannel;
-    const fd = new FormData(form);
-    return String(fd.get("channel") ?? defaultExportChannel);
-  };
+  const [destinationKey, setDestinationKey] = useState(0);
+
+  // Stale-response protection: monotonic generation counter + abort controller.
+  // When the destination changes, the generation increments and any in-flight
+  // request is aborted.  Responses whose generation differs from the current
+  // generation are silently discarded.
+  const previewGenerationRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const resetPreviewState = useCallback(() => {
+    // Abort any in-flight preview fetch
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    // Increment generation so any response that still arrives is stale
+    previewGenerationRef.current += 1;
+    setPreview(null);
+    setPendingFormData(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+    setPublishAnyway(false);
+    setDestinationKey((k) => k + 1);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
 
-    // Only run preview for Shopify with a known installation
     const isShopify = String(fd.get("channel") ?? "").toLowerCase() === "shopify";
-    if (!shopifyInstallationId || !isShopify) {
+    const formInstallationId = String(fd.get("installationId") ?? "").trim();
+    const effectiveInstallationId = formInstallationId || shopifyInstallationId;
+    if (!effectiveInstallationId || !isShopify) {
       startTransition(() => createExportJobAction(fd));
       return;
     }
+
+    // Abort previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Snapshot the generation at request time
+    previewGenerationRef.current += 1;
+    const requestGeneration = previewGenerationRef.current;
+    const requestChannel = String(fd.get("channel") ?? "");
+    const requestInstallationId = effectiveInstallationId;
 
     setPreviewLoading(true);
     setPreviewError(null);
@@ -77,27 +111,58 @@ export function ExportWithPreviewForm({
 
     try {
       const res = await fetch(
-        `/api/marketplace/preview-changes?installationId=${encodeURIComponent(shopifyInstallationId)}&productId=${encodeURIComponent(productId)}`,
-        { method: "POST" },
+        `/api/marketplace/preview-changes?installationId=${encodeURIComponent(effectiveInstallationId)}&productId=${encodeURIComponent(productId)}`,
+        { method: "POST", signal: controller.signal },
       );
+
+      // Stale-response guard: discard if destination changed while awaiting
+      if (requestGeneration !== previewGenerationRef.current) {
+        return;
+      }
+
       if (!res.ok) {
-        // If preview fails (e.g. no prior submission), proceed directly
         startTransition(() => createExportJobAction(fd));
         return;
       }
       const data = (await res.json()) as ShopifyProductPreview;
-      // If this is a new product (no existing Shopify listing), skip preview
+
+      // Second stale guard after JSON parse
+      if (requestGeneration !== previewGenerationRef.current) {
+        return;
+      }
+
       if (!data.hasExistingProduct) {
         startTransition(() => createExportJobAction(fd));
         return;
       }
+
+      // Verify the response matches the current destination
+      const form = formRef.current;
+      if (form) {
+        const currentFd = new FormData(form);
+        const currentChannel = String(currentFd.get("channel") ?? "");
+        const currentInstId = String(currentFd.get("installationId") ?? "").trim() || shopifyInstallationId;
+        if (currentChannel !== requestChannel || currentInstId !== requestInstallationId) {
+          return;
+        }
+      }
+
       setPreview(data);
       setPublishAnyway(false);
-    } catch {
-      // Network error — proceed without preview
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      // Stale guard in catch path
+      if (requestGeneration !== previewGenerationRef.current) {
+        return;
+      }
       startTransition(() => createExportJobAction(fd));
     } finally {
-      setPreviewLoading(false);
+      // Only clear loading if this request is still current
+      if (requestGeneration === previewGenerationRef.current) {
+        setPreviewLoading(false);
+      }
     }
   };
 
@@ -121,11 +186,35 @@ export function ExportWithPreviewForm({
         <input type="hidden" name="role" value={actorRole} />
         <input type="hidden" name="productId" value={productId} />
         {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
+        {shopifyInstallations.length === 1 ? (
+          <>
+            <input type="hidden" name="installationId" value={shopifyInstallations[0].id} />
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Store</span>
+              <p className="text-sm text-slate-700">{shopifyInstallations[0].accountAlias || shopifyInstallations[0].id}</p>
+            </div>
+          </>
+        ) : null}
+        {shopifyInstallations.length > 1 ? (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-installation-id">
+              Store <span className="text-red-500">*</span>
+            </label>
+            <Select id="epf-installation-id" name="installationId" defaultValue="" required onChange={resetPreviewState}>
+              <option value="" disabled>Select a store</option>
+              {shopifyInstallations.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.accountAlias || inst.id}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-channel">
             Channel
           </label>
-          <Select id="epf-channel" name="channel" defaultValue={defaultExportChannel}>
+          <Select id="epf-channel" name="channel" defaultValue={defaultExportChannel} onChange={resetPreviewState}>
             {publishableChannels.map((ch) => (
               <option key={ch.channel} value={ch.channel}>
                 {ch.displayName}
@@ -156,7 +245,7 @@ export function ExportWithPreviewForm({
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-fallback-ack">
             Fallback confirmation
           </label>
-          <Select id="epf-fallback-ack" name="fallbackAcknowledged" defaultValue={fallbackAckRequired ? "false" : "true"}>
+          <Select key={destinationKey} id="epf-fallback-ack" name="fallbackAcknowledged" defaultValue={fallbackAckRequired ? "false" : "true"}>
             <option value="false">Not acknowledged</option>
             <option value="true">Acknowledge fallback usage</option>
           </Select>
