@@ -515,18 +515,22 @@ describe("Phase 8: retry authorization", () => {
 // ===========================================================================
 
 describe("Phase 8: submission retry role verification (code inspection)", () => {
-  it("retrySubmission endpoint includes publisher and channel_manager", () => {
-    // This verifies the Roles decorator includes the required roles
-    // by reading the actual controller source
+  it("retrySubmission endpoint includes publisher and channel_manager but excludes editor", () => {
     const fs = require("fs");
     const path = require("path");
     const controllerSource = fs.readFileSync(
       path.join(__dirname, "submissions.controller.ts"),
       "utf8",
     );
-    expect(controllerSource).toContain('"publisher"');
-    expect(controllerSource).toContain('"channel_manager"');
-    expect(controllerSource).toMatch(/@Roles\([^)]*"publisher"[^)]*\)/);
+    // Find the retry endpoint Roles decorator specifically
+    const retryIdx = controllerSource.indexOf(":id/retry");
+    const retrySection = controllerSource.slice(Math.max(0, retryIdx - 200), retryIdx + 200);
+    expect(retrySection).toContain('"publisher"');
+    expect(retrySection).toContain('"channel_manager"');
+    // Editor must NOT be in the retry Roles decorator
+    const rolesMatch = retrySection.match(/@Roles\(([^)]+)\)/);
+    expect(rolesMatch).toBeTruthy();
+    expect(rolesMatch![1]).not.toContain('"editor"');
   });
 
   it("requeueExportJob endpoint is admin-only", () => {
@@ -545,6 +549,24 @@ describe("Phase 8: submission retry role verification (code inspection)", () => 
     expect(requeueBlock).toContain('"admin"');
     expect(requeueBlock).not.toContain('"publisher"');
     expect(requeueBlock).not.toContain('"channel_manager"');
+  });
+
+  it("operations/jobs page gates retry button on canPublishToChannels, not canWrite", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../../..", "apps/web/src/app/operations/jobs/page.tsx"),
+      "utf8",
+    );
+    // Retry button visibility must use canPublishToChannels, NOT canWrite/canEditWorkspace
+    const retrySection = source.slice(source.indexOf("retrySubmissionAction"));
+    expect(retrySection).toContain("canPublishToChannels");
+    // canWrite should NOT gate the retry button area
+    const retryButtonArea = source.slice(
+      Math.max(0, source.indexOf("retrySubmissionAction") - 100),
+      source.indexOf("retrySubmissionAction") + 50,
+    );
+    expect(retryButtonArea).not.toContain("canWrite");
   });
 });
 
