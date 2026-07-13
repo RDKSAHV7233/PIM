@@ -84,6 +84,17 @@ export class ConnectorPermissionService {
       return { allowed: true, reason: null };
     }
 
+    const CONNECTOR_ADMIN_ACTIONS: ConnectorPermissionAction[] = ["install", "reconnect", "uninstall"];
+    if (actor.actorRole === "connector_admin" && CONNECTOR_ADMIN_ACTIONS.includes(options.action)) {
+      if (options.action === "install") {
+        const planRule = await this.evaluateInstallPlanRule(options.connectorSlug);
+        if (!planRule.allowed) {
+          return { allowed: false, reason: planRule.reason };
+        }
+      }
+      return { allowed: true, reason: null };
+    }
+
     if (options.action === "install") {
       const planRule = await this.evaluateInstallPlanRule(options.connectorSlug);
       if (!planRule.allowed) {
@@ -184,7 +195,7 @@ export class ConnectorPermissionService {
     // Single batch plan check: 2 shared queries + N parallel account-count queries
     const planResults = await this.planUsageService.checkInstallLimitBatch(normalizedSlugs, tenantKey);
 
-    if (actor.actorRole === "admin") {
+    if (actor.actorRole === "admin" || actor.actorRole === "connector_admin") {
       for (let i = 0; i < slugs.length; i++) {
         const planRule = planResults.get(normalizedSlugs[i]) ?? { allowed: true, reason: null };
         result.set(slugs[i], {
@@ -196,7 +207,7 @@ export class ConnectorPermissionService {
       return result;
     }
 
-    // Non-admin: one batch query for all install permissions across all slugs
+    // Non-admin/non-connector_admin: one batch query for all install permissions across all slugs
     const permittedSlugs = await this.batchFetchInstallPermittedSlugs(tenantKey, actor, normalizedSlugs);
 
     for (let i = 0; i < slugs.length; i++) {
