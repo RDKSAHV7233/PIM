@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { AttributeDefinition, Category } from "@/lib/api";
 import type { AppRole } from "@/lib/api/core";
 import { formatINR } from "@/lib/format";
-import { canEditPricing } from "@/lib/role-capabilities";
+import { canEditPricing, canViewPricing } from "@/lib/role-capabilities";
 
 interface CreateProductFormProps {
   categories: Category[];
@@ -286,6 +286,11 @@ export function CreateProductForm({ categories, actorRole, onCreated }: CreatePr
             </div>
           </div>
         </>
+      ) : canViewPricing(actorRole) ? (
+        <div className="space-y-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Pricing</span>
+          <p className="text-sm text-slate-500">Pricing will be set after product creation.</p>
+        </div>
       ) : null}
 
       <div className="space-y-1">

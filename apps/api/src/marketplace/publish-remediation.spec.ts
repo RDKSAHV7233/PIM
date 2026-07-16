@@ -666,7 +666,7 @@ describe("Phase 10: connector admin scoping (code inspection)", () => {
 // ===========================================================================
 
 describe("Phase 10: editor pricing enforcement (code inspection)", () => {
-  it("canEditPricing returns true only for admin", () => {
+  it("canEditPricing returns true for admin and editor", () => {
     const fs = require("fs");
     const path = require("path");
     const source = fs.readFileSync(
@@ -674,11 +674,29 @@ describe("Phase 10: editor pricing enforcement (code inspection)", () => {
       "utf8",
     );
     expect(source).toContain('canEditPricing');
-    // Verify the function body restricts to admin
     const fnMatch = source.match(/canEditPricing[^{]*\{([^}]+)\}/);
     expect(fnMatch).toBeTruthy();
     expect(fnMatch![1]).toContain('"admin"');
-    expect(fnMatch![1]).not.toContain('"editor"');
+    expect(fnMatch![1]).toContain('"editor"');
+  });
+
+  it("canViewPricing returns true for business roles, false for connector_admin", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../../..", "apps/web/src/lib/role-capabilities.ts"),
+      "utf8",
+    );
+    expect(source).toContain('canViewPricing');
+    const fnMatch = source.match(/canViewPricing[^{]*\{([^}]+)\}/);
+    expect(fnMatch).toBeTruthy();
+    expect(fnMatch![1]).toContain('"admin"');
+    expect(fnMatch![1]).toContain('"editor"');
+    expect(fnMatch![1]).toContain('"approver"');
+    expect(fnMatch![1]).toContain('"publisher"');
+    expect(fnMatch![1]).toContain('"channel_manager"');
+    expect(fnMatch![1]).toContain('"viewer"');
+    expect(fnMatch![1]).not.toContain('"connector_admin"');
   });
 });
 
@@ -2086,13 +2104,13 @@ describe("Pricing authorization (code inspection)", () => {
     );
   });
 
-  it("1. admin can create a product with pricing (UI renders pricing fields)", () => {
+  it("1. admin and editor can create a product with pricing (UI renders pricing fields)", () => {
     expect(formSource).toContain("canEditPricing(actorRole)");
     expect(formSource).toContain('name="mrp"');
     expect(formSource).toContain('name="sellingPrice"');
   });
 
-  it("2. non-admin can create a product without pricing (no hidden pricing default)", () => {
+  it("2. view-only roles see pricing placeholder, no hidden pricing default", () => {
     expect(formSource).not.toContain('name="sellingPrice" value="0"');
     expect(formSource).not.toContain('name="mrp" value="0"');
     const pricingGateSection = formSource.substring(
@@ -2101,9 +2119,11 @@ describe("Pricing authorization (code inspection)", () => {
     );
     expect(pricingGateSection).not.toContain('type="hidden" name="sellingPrice"');
     expect(formSource).toContain("canEditPricing(actorRole)");
+    expect(formSource).toContain("canViewPricing(actorRole)");
+    expect(formSource).toContain("Pricing will be set after product creation");
   });
 
-  it("3. non-admin forged pricing fields are rejected server-side", () => {
+  it("3. unauthorized role forged pricing fields are rejected server-side", () => {
     const createActionSection = actionsSource.substring(
       actionsSource.indexOf("async function createProductAction"),
       actionsSource.indexOf("async function createProductAction") + 2000,
@@ -2130,7 +2150,7 @@ describe("Pricing authorization (code inspection)", () => {
     expect(createActionSection).toContain("attributes.pricing = pricing");
   });
 
-  it("6. editor cannot bypass via direct Server Action (role checked from session)", () => {
+  it("6. unauthorized role cannot bypass via direct Server Action (role checked from session)", () => {
     const createActionSection = actionsSource.substring(
       actionsSource.indexOf("async function createProductAction"),
       actionsSource.indexOf("async function createProductAction") + 1000,

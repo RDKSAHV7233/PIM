@@ -12,8 +12,12 @@ export function canPublishToChannels(role: AppRole): boolean {
   return role === "admin" || role === "publisher" || role === "channel_manager";
 }
 
+export function canViewPricing(role: AppRole): boolean {
+  return ["admin", "editor", "approver", "publisher", "channel_manager", "viewer"].includes(role);
+}
+
 export function canEditPricing(role: AppRole): boolean {
-  return role === "admin";
+  return role === "admin" || role === "editor";
 }
 
 export function canManageConnectors(role: AppRole): boolean {
