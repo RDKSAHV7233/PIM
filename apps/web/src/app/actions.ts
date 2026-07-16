@@ -27,7 +27,7 @@ import {
   isChannelInDevelopment,
   isMarketplaceChannel,
 } from "@/lib/marketplace-channels";
-import { canEditPricing, canManageConnectors } from "@/lib/role-capabilities";
+import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -2142,8 +2142,8 @@ export async function importShopifyConfigAction(
 
 export async function queueConnectorDeltaSyncAction(formData: FormData) {
   const { actorRole } = await getServerSession();
-  if (!canManageConnectors(actorRole)) {
-    throw new Error("Forbidden: connector management role required.");
+  if (!canPublishToChannels(actorRole)) {
+    throw new Error("Forbidden: publishing role required.");
   }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const returnTo =
@@ -2218,8 +2218,8 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
 export async function triggerBulkPublishAction(formData: FormData) {
   "use server";
   const { actorRole } = await getServerSession();
-  if (!canManageConnectors(actorRole)) {
-    throw new Error("Forbidden: connector management role required.");
+  if (!canPublishToChannels(actorRole)) {
+    throw new Error("Forbidden: publishing role required.");
   }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const productIdsRaw = String(formData.get("productIds") ?? "").trim();

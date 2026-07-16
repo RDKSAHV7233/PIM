@@ -36,7 +36,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
-import { canManageConnectors } from "@/lib/role-capabilities";
+import { canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime as fmtDT } from "@/lib/format";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
@@ -2332,22 +2332,26 @@ export default async function ChannelConnectorDetailPage({
                   All products are up to date. No delta sync candidates found.
                 </div>
               ) : null}
-              <form action={queueConnectorDeltaSyncAction} className="flex flex-wrap items-center gap-3">
-                <input type="hidden" name="installationId" value={installation.id} />
-                <input
-                  type="hidden"
-                  name="returnTo"
-                  value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
-                />
-                <PendingSubmitButton idleLabel="Queue delta sync" />
-                <Link
-                  href="/operations/jobs"
-                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  View sync jobs →
-                </Link>
-              </form>
-              {installation.capabilities.includes("BULK_PUBLISH") ? (
+              {canPublishToChannels(actorRole) ? (
+                <form action={queueConnectorDeltaSyncAction} className="flex flex-wrap items-center gap-3">
+                  <input type="hidden" name="installationId" value={installation.id} />
+                  <input
+                    type="hidden"
+                    name="returnTo"
+                    value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
+                  />
+                  <PendingSubmitButton idleLabel="Queue delta sync" />
+                  <Link
+                    href="/operations/jobs"
+                    className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    View sync jobs →
+                  </Link>
+                </form>
+              ) : (
+                <p className="text-sm text-slate-500">You do not have permission to trigger syncs. Contact an admin or publisher.</p>
+              )}
+              {canPublishToChannels(actorRole) && installation.capabilities.includes("BULK_PUBLISH") ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
                   <p className="text-sm font-medium text-amber-900">Amazon Feeds API — Bulk publish</p>
                   <p className="mt-1 text-xs text-amber-700">

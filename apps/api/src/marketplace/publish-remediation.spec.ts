@@ -2172,3 +2172,86 @@ describe("Pricing authorization (code inspection)", () => {
     expect(createActionSection).not.toMatch(/if \(sellingPrice === undefined\)/);
   });
 });
+
+// ===========================================================================
+// RBAC alignment: bulk-publish and delta-sync across all layers
+// ===========================================================================
+
+describe("bulk-publish and delta-sync RBAC alignment across layers", () => {
+  let actionsSource: string;
+  let connectorPageSource: string;
+
+  beforeAll(() => {
+    const fs = require("fs");
+    const path = require("path");
+    actionsSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/app/actions.ts"),
+      "utf8",
+    );
+    connectorPageSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/app/channels/connectors/[installationId]/page.tsx"),
+      "utf8",
+    );
+  });
+
+  it("queueConnectorDeltaSyncAction uses canPublishToChannels, not canManageConnectors", () => {
+    const actionSection = actionsSource.substring(
+      actionsSource.indexOf("async function queueConnectorDeltaSyncAction"),
+      actionsSource.indexOf("async function queueConnectorDeltaSyncAction") + 500,
+    );
+    expect(actionSection).toContain("canPublishToChannels(actorRole)");
+    expect(actionSection).not.toContain("canManageConnectors");
+  });
+
+  it("triggerBulkPublishAction uses canPublishToChannels, not canManageConnectors", () => {
+    const actionSection = actionsSource.substring(
+      actionsSource.indexOf("async function triggerBulkPublishAction"),
+      actionsSource.indexOf("async function triggerBulkPublishAction") + 500,
+    );
+    expect(actionSection).toContain("canPublishToChannels(actorRole)");
+    expect(actionSection).not.toContain("canManageConnectors");
+  });
+
+  it("connector detail page gates delta-sync form with canPublishToChannels", () => {
+    const syncSection = connectorPageSource.substring(
+      connectorPageSource.indexOf("Queue delta sync") - 1000,
+      connectorPageSource.indexOf("Queue delta sync") + 100,
+    );
+    expect(syncSection).toContain("canPublishToChannels(actorRole)");
+  });
+
+  it("connector detail page gates bulk-publish with canPublishToChannels", () => {
+    const marker = 'capabilities.includes("BULK_PUBLISH")';
+    const bulkIdx = connectorPageSource.indexOf(marker);
+    expect(bulkIdx).toBeGreaterThan(-1);
+    const bulkSection = connectorPageSource.substring(
+      bulkIdx - 200,
+      bulkIdx + marker.length + 100,
+    );
+    expect(bulkSection).toContain("canPublishToChannels(actorRole)");
+  });
+
+  it("editor cannot trigger delta-sync or bulk-publish at any layer", () => {
+    const controllerSource = require("fs").readFileSync(
+      require("path").resolve(__dirname, "marketplace.controller.ts"),
+      "utf8",
+    );
+    const deltaSyncDecorator = controllerSource.substring(
+      controllerSource.indexOf('@Post("connectors/:installationId/sync/delta")'),
+      controllerSource.indexOf('@Post("connectors/:installationId/sync/delta")') + 300,
+    );
+    const rolesStart = deltaSyncDecorator.indexOf("@Roles(");
+    const rolesLine = deltaSyncDecorator.substring(rolesStart, deltaSyncDecorator.indexOf(")", rolesStart) + 1);
+    expect(rolesLine).not.toContain('"editor"');
+
+    const roleCapSource = require("fs").readFileSync(
+      require("path").resolve(__dirname, "../../../web/src/lib/role-capabilities.ts"),
+      "utf8",
+    );
+    const publishSection = roleCapSource.substring(
+      roleCapSource.indexOf("canPublishToChannels"),
+      roleCapSource.indexOf("canPublishToChannels") + 200,
+    );
+    expect(publishSection).not.toContain('"editor"');
+  });
+});
