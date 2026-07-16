@@ -16,7 +16,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const preview = await previewShopifyProductChanges(installationId, productId, { role, authHeader });
-    return NextResponse.json(preview);
+    return NextResponse.json({
+      ...preview,
+      resolvedInstallationId: preview.resolvedInstallationId ?? installationId,
+    });
   } catch (error) {
     if (error instanceof ApiHttpError) {
       return NextResponse.json({ error: "PREVIEW_UPSTREAM_FAILED" }, { status: error.status });

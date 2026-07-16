@@ -630,17 +630,9 @@ export class MarketplaceService implements OnModuleInit {
     const channel = this.parseChannel(dto.channel);
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "export", channel, "MarketplaceExportJob", productId);
     const connectorSlug = this.mapChannelToConnectorSlug(channel);
-    if (!dto.installationId?.trim()) {
-      throw new BadRequestException("DESTINATION_INSTALLATION_REQUIRED");
-    }
     let resolvedInstallationId: string;
     try {
-      const tenantKey = this.connectorFramework.getCurrentTenantKey();
-      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, dto.installationId);
-      if (!installation.capabilities.includes("PUBLISH")) {
-        throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
-      }
-      resolvedInstallationId = installation.id;
+      resolvedInstallationId = await this.resolvePublishingDestination(connectorSlug, dto.installationId);
     } catch (error: unknown) {
       if (
         error instanceof InstallationNotFoundError ||
@@ -1202,7 +1194,7 @@ export class MarketplaceService implements OnModuleInit {
       throw new BadRequestException("Submission cannot be synced because no external reference is stored.");
     }
 
-    const installation = await this.connectorFramework.requireInstallation(tenantKey, submission.connectorSlug);
+    const installation = await this.connectorFramework.requireInstallation(tenantKey, submission.connectorSlug, submission.installationId);
     const statusLookupRef = await this.buildSubmissionStatusLookupRef(
       submission.productId,
       submission.externalRef,
@@ -1334,10 +1326,14 @@ export class MarketplaceService implements OnModuleInit {
     }
     const jobId = idempotencyKey.slice(0, delimiter);
 
+    const submissionInstallationId = String(submission.installationId ?? "").trim();
+    if (!submissionInstallationId) {
+      throw new BadRequestException("Submission cannot be retried: no installation ID on record.");
+    }
     const installation = await this.connectorFramework.requireInstallation(
       tenantKey,
       String(submission.connectorSlug ?? "").toLowerCase(),
-      String(submission.installationId ?? "").trim() || undefined,   // P3-5: route to the correct store
+      submissionInstallationId,
     );
     const productPayload = await this.buildConnectorProductPayload(String(submission.productId));
     const payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
@@ -1455,19 +1451,82 @@ export class MarketplaceService implements OnModuleInit {
       return current ?? existing;
     }
 
-    // P3-4: declare before try so the catch path can also write sync state for legacy jobs
     let effectiveInstallationId: string | null = existing.installationId ?? null;
+    const connectorSlug = this.mapChannelToConnectorSlug(existing.channel);
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+
+    if (!existing.installationId) {
+      try {
+        effectiveInstallationId = await this.resolvePublishingDestination(connectorSlug, null);
+        const persisted = await this.prisma.tenant().marketplaceExportJob.updateMany({
+          where: {
+            id: jobId,
+            installationId: null,
+            status: ExportJobStatus.processing,
+          },
+          data: { installationId: effectiveInstallationId },
+        });
+        if (persisted.count === 0) {
+          const reloaded = await this.prisma.tenant().marketplaceExportJob.findUnique({
+            where: { id: jobId },
+            include: { template: true },
+          });
+          if (reloaded?.installationId) {
+            effectiveInstallationId = reloaded.installationId;
+          } else {
+            await this.emitExportThroughputMetric(existing.channel, startedAtMs, "failed");
+            throw new ConflictException("Concurrent destination write detected");
+          }
+        }
+      } catch (resolveError) {
+        if (resolveError instanceof ConflictException) throw resolveError;
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.dead_letter,
+            failureReason: "DESTINATION_AMBIGUOUS",
+            dlqReason: "Historical job has no installationId and cannot auto-resolve destination",
+          },
+          include: { template: true },
+        });
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
+    } else {
+      try {
+        const installation = await this.connectorFramework.requireInstallation(
+          tenantKey, connectorSlug, existing.installationId,
+        );
+        if (!installation.capabilities.includes("PUBLISH")) {
+          throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+        }
+      } catch {
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.failed,
+            failureReason: "DESTINATION_UNAVAILABLE",
+          },
+          include: { template: true },
+        });
+        await this.notificationsService.emitPublishStatus(updated.id, "failed");
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
+    }
 
     try {
       const simulation = await this.simulateProduct(
         existing.productId,
         existing.channel,
         existing.templateId ?? undefined,
-        existing.installationId ?? undefined,  // bridge: ConnectorMappingVersion 5-level lookup
+        effectiveInstallationId ?? undefined,
       );
-      // P3-4: update with resolved installationId in case job.installationId was null
-      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(existing, simulation);
-      effectiveInstallationId = existing.installationId ?? resolvedInstallationId ?? null;
+      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(
+        { ...existing, installationId: effectiveInstallationId },
+        simulation,
+      );
+      effectiveInstallationId = effectiveInstallationId ?? resolvedInstallationId ?? null;
 
       if (simulation.exportReady) {
         const updated = await this.prisma.tenant().marketplaceExportJob.update({
@@ -1664,25 +1723,28 @@ export class MarketplaceService implements OnModuleInit {
       where: { id: jobId },
       include: { template: true },
     });
+    if (!updated) {
+      throw new NotFoundException("Export job not found after status claim");
+    }
 
     try {
       await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
         jobId,
-        connectorSlug: updated!.channel,
-      }, { jobId: `${jobId}_${updated!.retryCount}` });
+        connectorSlug: updated.channel,
+      }, { jobId: `${jobId}_${updated.retryCount}` });
     } catch (enqueueError) {
-      const queueJobId = `${jobId}_${updated!.retryCount}`;
+      const queueJobId = `${jobId}_${updated.retryCount}`;
       const delivered = await this.queueService.isJobPresent(QUEUE_NAMES.CONNECTOR_SUBMISSION, queueJobId).catch(() => false);
       if (!delivered) {
-        await this.prisma.tenant().marketplaceExportJob.update({
-          where: { id: jobId },
+        await this.prisma.tenant().marketplaceExportJob.updateMany({
+          where: { id: jobId, status: ExportJobStatus.queued },
           data: { status: ExportJobStatus.failed, failureReason: "Queue enqueue failed" },
         });
         throw enqueueError;
       }
     }
 
-    return updated!;
+    return updated;
   }
 
   async simulateProduct(productId: string, channelInput: string, templateId?: string, installationId?: string | null) {
@@ -2099,6 +2161,131 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
+  async resolvePublishingDestination(
+    connectorSlug: string,
+    installationId?: string | null,
+  ): Promise<string> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+
+    if (installationId?.trim()) {
+      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, installationId);
+      if (!installation.capabilities.includes("PUBLISH")) {
+        throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+      }
+      return installation.id;
+    }
+
+    const connectorDef = await this.prisma.tenant().connectorDefinition.findFirst({
+      where: { slug: connectorSlug },
+      select: { id: true },
+    });
+    if (!connectorDef) {
+      throw new BadRequestException("DESTINATION_NOT_FOUND");
+    }
+
+    const activeInstallations = await this.prisma.tenant().connectorInstallation.findMany({
+      where: { connectorId: connectorDef.id, status: "ACTIVE" },
+      select: { id: true },
+      orderBy: [{ installedAt: "desc" }],
+    });
+
+    if (activeInstallations.length === 0) {
+      throw new BadRequestException("DESTINATION_NOT_FOUND");
+    }
+    if (activeInstallations.length > 1) {
+      throw new BadRequestException("DESTINATION_INSTALLATION_REQUIRED");
+    }
+
+    const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, activeInstallations[0].id);
+    if (!installation.capabilities.includes("PUBLISH")) {
+      throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+    }
+    return installation.id;
+  }
+
+  async listPublishingDestinations(
+    channel: string,
+  ): Promise<Array<{
+    installationId: string;
+    connectorSlug: string;
+    channel: string;
+    displayLabel: string;
+    status: "eligible" | "unavailable";
+    unavailableReason?: string | null;
+  }>> {
+    const connectorSlug = this.mapChannelToConnectorSlug(channel);
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+
+    const connectorDef = await this.prisma.tenant().connectorDefinition.findFirst({
+      where: { slug: connectorSlug },
+      select: { id: true },
+    });
+    if (!connectorDef) return [];
+
+    const installations = await this.prisma.tenant().connectorInstallation.findMany({
+      where: { connectorId: connectorDef.id },
+      select: { id: true, status: true, accountAlias: true },
+      orderBy: [{ installedAt: "desc" }],
+    });
+
+    const results: Array<{
+      installationId: string;
+      connectorSlug: string;
+      channel: string;
+      displayLabel: string;
+      status: "eligible" | "unavailable";
+      unavailableReason?: string | null;
+    }> = [];
+
+    for (const inst of installations) {
+      if (inst.status !== "ACTIVE") {
+        results.push({
+          installationId: inst.id,
+          connectorSlug,
+          channel,
+          displayLabel: inst.accountAlias || inst.id,
+          status: "unavailable",
+          unavailableReason: `Installation status: ${inst.status}`,
+        });
+        continue;
+      }
+
+      try {
+        const resolved = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, inst.id);
+        if (!resolved.capabilities.includes("PUBLISH")) {
+          results.push({
+            installationId: inst.id,
+            connectorSlug,
+            channel,
+            displayLabel: inst.accountAlias || inst.id,
+            status: "unavailable",
+            unavailableReason: "PUBLISH capability not available",
+          });
+          continue;
+        }
+        results.push({
+          installationId: inst.id,
+          connectorSlug,
+          channel,
+          displayLabel: inst.accountAlias || inst.id,
+          status: "eligible",
+          unavailableReason: null,
+        });
+      } catch {
+        results.push({
+          installationId: inst.id,
+          connectorSlug,
+          channel,
+          displayLabel: inst.accountAlias || inst.id,
+          status: "unavailable",
+          unavailableReason: "Credential validation failed",
+        });
+      }
+    }
+
+    return results;
+  }
+
   private async runWithConcurrency<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
     const results = new Array<T>(tasks.length);
     let nextIndex = 0;
@@ -2505,12 +2692,15 @@ export class MarketplaceService implements OnModuleInit {
   ): Promise<string | null> {
     const connectorSlug = this.mapChannelToConnectorSlug(job.channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    if (!job.installationId) {
+      return null;
+    }
     let installation;
     try {
       installation = await this.connectorFramework.requireInstallation(
         tenantKey,
         connectorSlug,
-        job.installationId ?? undefined,
+        job.installationId,
       );
     } catch (error) {
       if (error instanceof InstallationNotFoundError) {
@@ -3164,6 +3354,7 @@ export class MarketplaceService implements OnModuleInit {
             productId,
             categoryId,
             channel,
+            installationId,
             status: ExportJobStatus.queued,
             retryCount: 0,
             maxRetries: 3,
@@ -3181,18 +3372,30 @@ export class MarketplaceService implements OnModuleInit {
     return { queued };
   }
 
-  async previewProductChanges(installationId: string, productId: string): Promise<ShopifyProductPreview> {
+  async previewProductChanges(
+    installationId: string,
+    productId: string,
+  ): Promise<ShopifyProductPreview & { resolvedInstallationId: string }> {
     const db = this.prisma.tenant();
-    const installation = await db.connectorInstallation.findFirst({
+
+    const connectorDef = await db.connectorInstallation.findFirst({
       where: { id: installationId },
       select: { id: true, connectorId: true, tenantKey: true, externalAccountRef: true, metadata: true },
     });
-    if (!installation) {
+    if (!connectorDef) {
       throw new NotFoundException("Connector installation not found.");
     }
 
+    const defRow = await db.connectorDefinition.findUnique({
+      where: { id: connectorDef.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = defRow?.slug ?? "shopify";
+
+    const resolvedInstallationId = await this.resolvePublishingDestination(connectorSlug, installationId);
+
     const latestSubmission = await db.connectorSubmission.findFirst({
-      where: { installationId, productId, status: "SUCCESS" },
+      where: { installationId: resolvedInstallationId, productId, status: "SUCCESS" },
       orderBy: { submittedAt: "desc" },
       select: { externalRef: true },
     });
@@ -3204,14 +3407,8 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     if (!shopifyGid) {
-      return { hasExistingProduct: false, noChanges: false, changes: [] };
+      return { hasExistingProduct: false, noChanges: false, changes: [], resolvedInstallationId };
     }
-
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true },
-    });
-    const connectorSlug = connectorDef?.slug ?? "shopify";
 
     const payload = await this.buildConnectorProductPayload(productId);
 
@@ -3220,14 +3417,15 @@ export class MarketplaceService implements OnModuleInit {
     };
 
     const ctx = this.connectorFramework.buildContextForInstallation({
-      id: installation.id,
-      tenantKey: installation.tenantKey,
-      connectorId: installation.connectorId,
+      id: resolvedInstallationId,
+      tenantKey: connectorDef.tenantKey,
+      connectorId: connectorDef.connectorId,
       slug: connectorSlug,
-      metadata: (installation.metadata ?? {}) as Record<string, unknown>,
+      metadata: (connectorDef.metadata ?? {}) as Record<string, unknown>,
     });
 
-    return connector.previewChanges(ctx, payload, shopifyGid);
+    const preview = await connector.previewChanges(ctx, payload, shopifyGid);
+    return { ...preview, resolvedInstallationId };
   }
 
   // ─── Sprint 2: Shopify config import ──────────────────────────────────────

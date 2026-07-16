@@ -1695,6 +1695,7 @@ export interface ShopifyProductPreview {
   hasExistingProduct: boolean;
   noChanges: boolean;
   changes: ShopifyProductChangeItem[];
+  resolvedInstallationId?: string;
 }
 
 export interface ConnectorRecoveryGroup {

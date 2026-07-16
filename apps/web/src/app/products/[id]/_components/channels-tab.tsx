@@ -21,6 +21,7 @@ import {
   translateReadinessBlocker,
 } from "./product-detail-shared";
 import { formatDateTime } from "@/lib/format";
+import { mapMarketplaceChannelToConnectorSlug } from "@/lib/marketplace-channels";
 import type { ProductDetailPageData } from "./product-detail-types";
 import { ExportWithPreviewForm } from "./export-with-preview-form";
 
@@ -108,6 +109,8 @@ function submissionStatusTone(status: string): "neutral" | "success" | "warning"
 }
 
 export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
+  const defaultSlug = mapMarketplaceChannelToConnectorSlug(data.defaultExportChannel);
+  const quickExportInstallations = data.publishableInstallations.filter(i => i.slug === defaultSlug);
   const latestExportJob = data.exportJobs[0] ?? null;
   const hasInFlightExportJobs = data.exportJobs.some((job) => {
     const normalized = String(job.status ?? "").trim().toLowerCase();
@@ -325,19 +328,19 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 <input type="hidden" name="productId" value={data.productId} />
                 <input type="hidden" name="channel" value={data.defaultExportChannel} />
                 <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
-                {data.shopifyInstallations.length === 1 ? (
+                {quickExportInstallations.length === 1 ? (
                   <>
-                    <input type="hidden" name="installationId" value={data.shopifyInstallations[0].id} />
-                    <p className="text-sm text-slate-600">Store: <span className="font-medium text-slate-800">{data.shopifyInstallations[0].accountAlias || data.shopifyInstallations[0].id}</span></p>
+                    <input type="hidden" name="installationId" value={quickExportInstallations[0].id} />
+                    <p className="text-sm text-slate-600">Destination: <span className="font-medium text-slate-800">{quickExportInstallations[0].accountAlias || quickExportInstallations[0].id}</span></p>
                   </>
                 ) : null}
                 {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
-                {data.shopifyInstallations.length > 1 ? (
+                {quickExportInstallations.length > 1 ? (
                   <div className="flex items-center gap-2">
-                    <label className="text-sm text-slate-700" htmlFor="quick-export-installation-id">Store: <span className="text-red-500">*</span></label>
+                    <label className="text-sm text-slate-700" htmlFor="quick-export-installation-id">Destination: <span className="text-red-500">*</span></label>
                     <Select id="quick-export-installation-id" name="installationId" defaultValue="" required className="w-auto">
-                      <option value="" disabled>Select a store</option>
-                      {data.shopifyInstallations.map((inst) => (
+                      <option value="" disabled>Select a destination</option>
+                      {quickExportInstallations.map((inst) => (
                         <option key={inst.id} value={inst.id}>
                           {inst.accountAlias || inst.id}
                         </option>
@@ -383,8 +386,8 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 returnTo={data.returnTo}
                 fallbackAckRequired={data.fallbackAckRequired}
                 canQueueExportWithAck={data.canQueueExportWithAck}
-                shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
-                shopifyInstallations={data.shopifyInstallations}
+                previewInstallationId={data.mappingManagerInstallation?.id ?? null}
+                publishableInstallations={data.publishableInstallations}
               />
             </>
           ) : data.canPublish ? (

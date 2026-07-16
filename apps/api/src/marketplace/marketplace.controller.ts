@@ -61,6 +61,15 @@ export class MarketplaceController {
     return this.marketplaceService.listChannels();
   }
 
+  @Get("channels/:channel/destinations")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "publisher", "channel_manager")
+  @ApiOperation({ summary: "List safe publishing destinations for a marketplace channel" })
+  @ApiResponse({ status: 200, description: "Publishing destinations returned (no credentials)" })
+  listPublishingDestinations(@Param("channel") channel: string) {
+    return this.marketplaceService.listPublishingDestinations(channel);
+  }
+
   @Get("connectors/:connectorSlug/mappings/versions")
   @Roles("admin", "editor", "channel_manager")
   listConnectorMappingVersions(

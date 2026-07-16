@@ -6,6 +6,7 @@ import { AppDrawer } from "@/components/ui/app-drawer";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { MarketplaceChannelConfig, ShopifyProductPreview, ShopifyProductChangeItem } from "@/lib/api";
+import { mapMarketplaceChannelToConnectorSlug, type MarketplaceChannel } from "@/lib/marketplace-channels";
 
 const RISK_COLORS: Record<ShopifyProductChangeItem["riskLevel"], string> = {
   low:    "bg-slate-50 text-slate-700",
@@ -29,9 +30,8 @@ interface ExportWithPreviewFormProps {
   returnTo: string;
   fallbackAckRequired: boolean;
   canQueueExportWithAck: boolean;
-  /** installationId of the Shopify installation — enables change preview when present */
-  shopifyInstallationId: string | null;
-  shopifyInstallations: Array<{ id: string; accountAlias: string }>;
+  previewInstallationId: string | null;
+  publishableInstallations: Array<{ id: string; accountAlias: string; slug: string }>;
 }
 
 export function ExportWithPreviewForm({
@@ -44,18 +44,23 @@ export function ExportWithPreviewForm({
   returnTo,
   fallbackAckRequired,
   canQueueExportWithAck,
-  shopifyInstallationId,
-  shopifyInstallations,
+  previewInstallationId,
+  publishableInstallations,
 }: ExportWithPreviewFormProps) {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [selectedChannel, setSelectedChannel] = useState(defaultExportChannel);
   const [preview, setPreview] = useState<ShopifyProductPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [publishAnyway, setPublishAnyway] = useState(false);
+  const [canonicalInstallationId, setCanonicalInstallationId] = useState<string | null>(null);
 
   const [destinationKey, setDestinationKey] = useState(0);
+
+  const channelSlug = mapMarketplaceChannelToConnectorSlug(selectedChannel as MarketplaceChannel);
+  const channelInstallations = publishableInstallations.filter(i => i.slug === channelSlug);
 
   // Stale-response protection: monotonic generation counter + abort controller.
   // When the destination changes, the generation increments and any in-flight
@@ -77,6 +82,7 @@ export function ExportWithPreviewForm({
     setPreviewError(null);
     setPreviewLoading(false);
     setPublishAnyway(false);
+    setCanonicalInstallationId(null);
     setDestinationKey((k) => k + 1);
   }, []);
 
@@ -86,7 +92,7 @@ export function ExportWithPreviewForm({
 
     const isShopify = String(fd.get("channel") ?? "").toLowerCase() === "shopify";
     const formInstallationId = String(fd.get("installationId") ?? "").trim();
-    const effectiveInstallationId = formInstallationId || shopifyInstallationId;
+    const effectiveInstallationId = formInstallationId || previewInstallationId;
     if (!effectiveInstallationId || !isShopify) {
       startTransition(() => createExportJobAction(fd));
       return;
@@ -141,12 +147,13 @@ export function ExportWithPreviewForm({
       if (form) {
         const currentFd = new FormData(form);
         const currentChannel = String(currentFd.get("channel") ?? "");
-        const currentInstId = String(currentFd.get("installationId") ?? "").trim() || shopifyInstallationId;
+        const currentInstId = String(currentFd.get("installationId") ?? "").trim() || previewInstallationId;
         if (currentChannel !== requestChannel || currentInstId !== requestInstallationId) {
           return;
         }
       }
 
+      setCanonicalInstallationId(data.resolvedInstallationId ?? requestInstallationId);
       setPreview(data);
       setPublishAnyway(false);
     } catch (err: unknown) {
@@ -168,6 +175,9 @@ export function ExportWithPreviewForm({
 
   const handleConfirm = () => {
     if (!pendingFormData) return;
+    if (canonicalInstallationId) {
+      pendingFormData.set("installationId", canonicalInstallationId);
+    }
     setPreview(null);
     startTransition(() => createExportJobAction(pendingFormData));
   };
@@ -186,35 +196,11 @@ export function ExportWithPreviewForm({
         <input type="hidden" name="role" value={actorRole} />
         <input type="hidden" name="productId" value={productId} />
         {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
-        {shopifyInstallations.length === 1 ? (
-          <>
-            <input type="hidden" name="installationId" value={shopifyInstallations[0].id} />
-            <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Store</span>
-              <p className="text-sm text-slate-700">{shopifyInstallations[0].accountAlias || shopifyInstallations[0].id}</p>
-            </div>
-          </>
-        ) : null}
-        {shopifyInstallations.length > 1 ? (
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-installation-id">
-              Store <span className="text-red-500">*</span>
-            </label>
-            <Select id="epf-installation-id" name="installationId" defaultValue="" required onChange={resetPreviewState}>
-              <option value="" disabled>Select a store</option>
-              {shopifyInstallations.map((inst) => (
-                <option key={inst.id} value={inst.id}>
-                  {inst.accountAlias || inst.id}
-                </option>
-              ))}
-            </Select>
-          </div>
-        ) : null}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-channel">
             Channel
           </label>
-          <Select id="epf-channel" name="channel" defaultValue={defaultExportChannel} onChange={resetPreviewState}>
+          <Select id="epf-channel" name="channel" defaultValue={defaultExportChannel} onChange={(e) => { setSelectedChannel(e.target.value); resetPreviewState(); }}>
             {publishableChannels.map((ch) => (
               <option key={ch.channel} value={ch.channel}>
                 {ch.displayName}
@@ -222,6 +208,30 @@ export function ExportWithPreviewForm({
             ))}
           </Select>
         </div>
+        {channelInstallations.length === 1 ? (
+          <>
+            <input type="hidden" name="installationId" value={channelInstallations[0].id} />
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Destination</span>
+              <p className="text-sm text-slate-700">{channelInstallations[0].accountAlias || channelInstallations[0].id}</p>
+            </div>
+          </>
+        ) : null}
+        {channelInstallations.length > 1 ? (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-installation-id">
+              Destination <span className="text-red-500">*</span>
+            </label>
+            <Select key={destinationKey} id="epf-installation-id" name="installationId" defaultValue="" required onChange={resetPreviewState}>
+              <option value="" disabled>Select a destination</option>
+              {channelInstallations.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.accountAlias || inst.id}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-template-id">
             Mapping
