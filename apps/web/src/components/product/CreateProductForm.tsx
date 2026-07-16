@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { AttributeDefinition, Category } from "@/lib/api";
+import type { AppRole } from "@/lib/api/core";
 import { formatINR } from "@/lib/format";
+import { canEditPricing } from "@/lib/role-capabilities";
 
 interface CreateProductFormProps {
   categories: Category[];
+  actorRole: AppRole;
   onCreated?: () => void;
 }
 
@@ -76,7 +79,7 @@ function isRedirectErrorLike(error: unknown): boolean {
   return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
 }
 
-export function CreateProductForm({ categories, onCreated }: CreateProductFormProps) {
+export function CreateProductForm({ categories, actorRole, onCreated }: CreateProductFormProps) {
   const router = useRouter();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
@@ -239,47 +242,53 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
         <Input id={fieldId("gstRate")} name="gstRate" type="number" min={0} step="0.01" placeholder="e.g. 18" />
       </div>
 
-      <div className="space-y-1">
-        <label htmlFor={fieldId("mrp")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          MRP
-        </label>
-        <div className="flex items-center gap-3">
-          <Input
-            id={fieldId("mrp")}
-            name="mrp"
-            type="number"
-            min={0}
-            step="1"
-            value={mrp}
-            onChange={(event) => setMrp(event.target.value)}
-            placeholder="e.g. 2499"
-          />
-          <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedMrp)}</span>
-        </div>
-      </div>
+      {canEditPricing(actorRole) ? (
+        <>
+          <div className="space-y-1">
+            <label htmlFor={fieldId("mrp")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              MRP
+            </label>
+            <div className="flex items-center gap-3">
+              <Input
+                id={fieldId("mrp")}
+                name="mrp"
+                type="number"
+                min={0}
+                step="1"
+                value={mrp}
+                onChange={(event) => setMrp(event.target.value)}
+                placeholder="e.g. 2499"
+              />
+              <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedMrp)}</span>
+            </div>
+          </div>
 
-      <div className="space-y-1">
-        <label
-          htmlFor={fieldId("sellingPrice")}
-          className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-        >
-          Selling Price <span className="text-red-500">*</span>
-        </label>
-        <div className="flex items-center gap-3">
-          <Input
-            id={fieldId("sellingPrice")}
-            name="sellingPrice"
-            type="number"
-            min={0}
-            step="1"
-            required
-            value={sellingPrice}
-            onChange={(event) => setSellingPrice(event.target.value)}
-            placeholder="e.g. 1999"
-          />
-          <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedSellingPrice)}</span>
-        </div>
-      </div>
+          <div className="space-y-1">
+            <label
+              htmlFor={fieldId("sellingPrice")}
+              className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+            >
+              Selling Price <span className="text-red-500">*</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <Input
+                id={fieldId("sellingPrice")}
+                name="sellingPrice"
+                type="number"
+                min={0}
+                step="1"
+                required
+                value={sellingPrice}
+                onChange={(event) => setSellingPrice(event.target.value)}
+                placeholder="e.g. 1999"
+              />
+              <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedSellingPrice)}</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <input type="hidden" name="sellingPrice" value="0" />
+      )}
 
       <div className="space-y-1">
         <label

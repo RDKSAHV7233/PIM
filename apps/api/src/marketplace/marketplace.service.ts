@@ -2161,61 +2161,15 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async resolvePublishingDestination(
+  private async findPublishingInstallations(
     connectorSlug: string,
-    installationId?: string | null,
-  ): Promise<string> {
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-
-    if (installationId?.trim()) {
-      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, installationId);
-      if (!installation.capabilities.includes("PUBLISH")) {
-        throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
-      }
-      return installation.id;
-    }
-
-    const connectorDef = await this.prisma.tenant().connectorDefinition.findFirst({
-      where: { slug: connectorSlug },
-      select: { id: true },
-    });
-    if (!connectorDef) {
-      throw new BadRequestException("DESTINATION_NOT_FOUND");
-    }
-
-    const activeInstallations = await this.prisma.tenant().connectorInstallation.findMany({
-      where: { connectorId: connectorDef.id, status: "ACTIVE" },
-      select: { id: true },
-      orderBy: [{ installedAt: "desc" }],
-    });
-
-    if (activeInstallations.length === 0) {
-      throw new BadRequestException("DESTINATION_NOT_FOUND");
-    }
-    if (activeInstallations.length > 1) {
-      throw new BadRequestException("DESTINATION_INSTALLATION_REQUIRED");
-    }
-
-    const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, activeInstallations[0].id);
-    if (!installation.capabilities.includes("PUBLISH")) {
-      throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
-    }
-    return installation.id;
-  }
-
-  async listPublishingDestinations(
-    channel: string,
   ): Promise<Array<{
     installationId: string;
-    connectorSlug: string;
-    channel: string;
     displayLabel: string;
-    status: "eligible" | "unavailable";
-    unavailableReason?: string | null;
+    eligible: boolean;
+    unavailableReason: string | null;
   }>> {
-    const connectorSlug = this.mapChannelToConnectorSlug(channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-
     const connectorDef = await this.prisma.tenant().connectorDefinition.findFirst({
       where: { slug: connectorSlug },
       select: { id: true },
@@ -2230,21 +2184,17 @@ export class MarketplaceService implements OnModuleInit {
 
     const results: Array<{
       installationId: string;
-      connectorSlug: string;
-      channel: string;
       displayLabel: string;
-      status: "eligible" | "unavailable";
-      unavailableReason?: string | null;
+      eligible: boolean;
+      unavailableReason: string | null;
     }> = [];
 
     for (const inst of installations) {
       if (inst.status !== "ACTIVE") {
         results.push({
           installationId: inst.id,
-          connectorSlug,
-          channel,
           displayLabel: inst.accountAlias || inst.id,
-          status: "unavailable",
+          eligible: false,
           unavailableReason: `Installation status: ${inst.status}`,
         });
         continue;
@@ -2255,35 +2205,78 @@ export class MarketplaceService implements OnModuleInit {
         if (!resolved.capabilities.includes("PUBLISH")) {
           results.push({
             installationId: inst.id,
-            connectorSlug,
-            channel,
             displayLabel: inst.accountAlias || inst.id,
-            status: "unavailable",
+            eligible: false,
             unavailableReason: "PUBLISH capability not available",
           });
           continue;
         }
         results.push({
           installationId: inst.id,
-          connectorSlug,
-          channel,
           displayLabel: inst.accountAlias || inst.id,
-          status: "eligible",
+          eligible: true,
           unavailableReason: null,
         });
       } catch {
         results.push({
           installationId: inst.id,
-          connectorSlug,
-          channel,
           displayLabel: inst.accountAlias || inst.id,
-          status: "unavailable",
+          eligible: false,
           unavailableReason: "Credential validation failed",
         });
       }
     }
 
     return results;
+  }
+
+  async resolvePublishingDestination(
+    connectorSlug: string,
+    installationId?: string | null,
+  ): Promise<string> {
+    if (installationId?.trim()) {
+      const tenantKey = this.connectorFramework.getCurrentTenantKey();
+      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, installationId);
+      if (!installation.capabilities.includes("PUBLISH")) {
+        throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+      }
+      return installation.id;
+    }
+
+    const candidates = await this.findPublishingInstallations(connectorSlug);
+    const eligible = candidates.filter(c => c.eligible);
+
+    if (eligible.length === 0) {
+      throw new BadRequestException("DESTINATION_NOT_FOUND");
+    }
+    if (eligible.length > 1) {
+      throw new BadRequestException("DESTINATION_INSTALLATION_REQUIRED");
+    }
+
+    return eligible[0].installationId;
+  }
+
+  async listPublishingDestinations(
+    channel: string,
+  ): Promise<Array<{
+    installationId: string;
+    connectorSlug: string;
+    channel: string;
+    displayLabel: string;
+    status: "eligible" | "unavailable";
+    unavailableReason?: string | null;
+  }>> {
+    const connectorSlug = this.mapChannelToConnectorSlug(channel);
+    const candidates = await this.findPublishingInstallations(connectorSlug);
+
+    return candidates.map(c => ({
+      installationId: c.installationId,
+      connectorSlug,
+      channel,
+      displayLabel: c.displayLabel,
+      status: c.eligible ? "eligible" as const : "unavailable" as const,
+      unavailableReason: c.unavailableReason,
+    }));
   }
 
   private async runWithConcurrency<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {

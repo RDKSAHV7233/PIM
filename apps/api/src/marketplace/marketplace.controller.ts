@@ -460,7 +460,7 @@ export class MarketplaceController {
 
   @Post("connectors/shopify/:installationId/sync/delta")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin", "editor")
+  @Roles("admin", "publisher", "channel_manager")
   @HttpCode(200)
   queueDeltaSync(
     @Param("installationId") installationId: string,
@@ -533,7 +533,7 @@ export class MarketplaceController {
 
   @Post("connectors/:installationId/sync/delta")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin", "editor")
+  @Roles("admin", "publisher", "channel_manager")
   @HttpCode(200)
   queueConnectorDeltaSync(
     @Param("installationId") installationId: string,
@@ -587,7 +587,7 @@ export class MarketplaceController {
 
   @Post("connectors/:installationId/bulk-publish")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin", "editor")
+  @Roles("admin", "publisher", "channel_manager")
   @HttpCode(200)
   triggerBulkPublish(
     @Param("installationId") installationId: string,

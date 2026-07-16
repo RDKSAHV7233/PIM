@@ -15,7 +15,7 @@ function makePublishService(overrides?: {
   installationCount?: number;
   connectorDef?: Record<string, unknown> | null;
   requireInstallationError?: Error;
-  activeInstallations?: Array<{ id: string }>;
+  activeInstallations?: Array<{ id: string; status?: string; accountAlias?: string | null }>;
 }) {
   const opts = overrides ?? {};
   const product = opts.product === undefined
@@ -54,7 +54,7 @@ function makePublishService(overrides?: {
       },
       connectorInstallation: {
         count: jest.fn().mockResolvedValue(opts.installationCount ?? 1),
-        findMany: jest.fn().mockResolvedValue(opts.activeInstallations ?? [{ id: "inst-shopify-1" }]),
+        findMany: jest.fn().mockResolvedValue(opts.activeInstallations ?? [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }]),
       },
       connectorSubmission: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -126,7 +126,7 @@ describe("Phase 2: explicit installation enforcement", () => {
 
   it("rejects missing installationId with DESTINATION_INSTALLATION_REQUIRED when 2+ installations", async () => {
     const { svc } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     await expect(svc.createExportJob("prod1", { ...baseDto } as never))
       .rejects.toThrow(/DESTINATION_INSTALLATION_REQUIRED/);
@@ -134,7 +134,7 @@ describe("Phase 2: explicit installation enforcement", () => {
 
   it("rejects empty-string installationId when 2+ installations", async () => {
     const { svc } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     await expect(svc.createExportJob("prod1", { ...baseDto, installationId: "" } as never))
       .rejects.toThrow(/DESTINATION_INSTALLATION_REQUIRED/);
@@ -142,7 +142,7 @@ describe("Phase 2: explicit installation enforcement", () => {
 
   it("rejects whitespace-only installationId when 2+ installations", async () => {
     const { svc } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     await expect(svc.createExportJob("prod1", { ...baseDto, installationId: "   " } as never))
       .rejects.toThrow(/DESTINATION_INSTALLATION_REQUIRED/);
@@ -150,7 +150,7 @@ describe("Phase 2: explicit installation enforcement", () => {
 
   it("rejects null installationId when 2+ installations", async () => {
     const { svc } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     await expect(svc.createExportJob("prod1", { ...baseDto, installationId: null } as never))
       .rejects.toThrow(/DESTINATION_INSTALLATION_REQUIRED/);
@@ -928,7 +928,7 @@ describe("Phase 11: service-level concurrency safety", () => {
 describe("Publishing destination resolver", () => {
   it("auto-selects single active installation when no installationId provided", async () => {
     const { svc, exportJobDb } = makePublishService({
-      activeInstallations: [{ id: "inst-shopify-1" }],
+      activeInstallations: [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }],
     });
     try {
       await svc.createExportJob("prod1", { channel: "shopify", fallbackAcknowledged: false } as never);
@@ -961,7 +961,7 @@ describe("Publishing destination resolver", () => {
 
   it("rejects DESTINATION_INSTALLATION_REQUIRED when 2+ active installations and no installationId", async () => {
     const { svc } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     await expect(
       svc.createExportJob("prod1", { channel: "shopify", fallbackAcknowledged: false } as never),
@@ -970,7 +970,7 @@ describe("Publishing destination resolver", () => {
 
   it("explicit installationId bypasses auto-select even with multiple installations", async () => {
     const { svc, exportJobDb } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     try {
       await svc.createExportJob("prod1", {
@@ -989,7 +989,7 @@ describe("Publishing destination resolver", () => {
 
   it("resolver works for non-Shopify channels (amazon)", async () => {
     const { svc } = makePublishService({
-      activeInstallations: [{ id: "inst-amazon-1" }],
+      activeInstallations: [{ id: "inst-amazon-1", status: "ACTIVE", accountAlias: null }],
       installation: { id: "inst-amazon-1", slug: "amazon-in", capabilities: ["PUBLISH"] },
     });
     try {
@@ -1239,7 +1239,7 @@ describe("Retry behavior: never silently switch installation", () => {
 describe("Atomic persistence of historical auto-resolved destinations", () => {
   it("uses updateMany with installationId:null + status:processing filter", async () => {
     const { svc, exportJobDb } = makePublishService({
-      activeInstallations: [{ id: "inst-shopify-1" }],
+      activeInstallations: [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }],
     });
     exportJobDb.findUnique.mockResolvedValue({
       id: "job-1", status: "queued", installationId: null, channel: "shopify",
@@ -1275,7 +1275,7 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
 
   it("connector execution receives the persisted installationId", async () => {
     const { svc, exportJobDb, connectorFramework } = makePublishService({
-      activeInstallations: [{ id: "inst-shopify-1" }],
+      activeInstallations: [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }],
     });
     exportJobDb.findUnique.mockResolvedValue({
       id: "job-1", status: "queued", installationId: null, channel: "shopify",
@@ -1304,7 +1304,7 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
 
   it("concurrent destination write is not overwritten (updateMany count=0 reloads)", async () => {
     const { svc, exportJobDb } = makePublishService({
-      activeInstallations: [{ id: "inst-shopify-1" }],
+      activeInstallations: [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }],
     });
     exportJobDb.findUnique
       .mockResolvedValueOnce({
@@ -1334,7 +1334,7 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
 
   it("multiple eligible destinations dead-letter the job without modifying installationId", async () => {
     const { svc, exportJobDb } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     exportJobDb.findUnique.mockResolvedValue({
       id: "job-1", status: "queued", installationId: null, channel: "shopify",
@@ -1497,7 +1497,7 @@ describe("Preview-to-publish canonical destination consistency", () => {
     expect(source).toContain("currentChannel !== requestChannel || currentInstId !== requestInstallationId");
   });
 
-  it("Next.js preview route passes through resolvedInstallationId", () => {
+  it("Next.js preview route rejects when resolvedInstallationId is missing", () => {
     const fs = require("fs");
     const path = require("path");
     const source = fs.readFileSync(
@@ -1505,7 +1505,8 @@ describe("Preview-to-publish canonical destination consistency", () => {
       "utf8",
     );
     expect(source).toContain("resolvedInstallationId");
-    expect(source).toContain("preview.resolvedInstallationId ?? installationId");
+    expect(source).toContain("PREVIEW_DESTINATION_NOT_RESOLVED");
+    expect(source).not.toContain("?? installationId");
   });
 });
 
@@ -1536,19 +1537,30 @@ describe("Backend-owned destination discovery service", () => {
     expect(discoverySection).not.toContain("credential");
   });
 
-  it("discovery uses requireInstallation for eligibility (same predicate as resolver)", () => {
+  it("discovery and resolver share the same eligibility predicate (findPublishingInstallations)", () => {
     const fs = require("fs");
     const path = require("path");
     const source = fs.readFileSync(
       path.resolve(__dirname, "marketplace.service.ts"),
       "utf8",
     );
-    const discoverySection = source.substring(
-      source.indexOf("async listPublishingDestinations"),
-      source.indexOf("async listPublishingDestinations") + 3000,
+    expect(source).toContain("findPublishingInstallations");
+    const predicateSection = source.substring(
+      source.indexOf("findPublishingInstallations"),
+      source.indexOf("findPublishingInstallations") + 2000,
     );
-    expect(discoverySection).toContain("requireInstallation");
-    expect(discoverySection).toContain('capabilities.includes("PUBLISH")');
+    expect(predicateSection).toContain("requireInstallation");
+    expect(predicateSection).toContain('capabilities.includes("PUBLISH")');
+    const resolverSection = source.substring(
+      source.indexOf("async resolvePublishingDestination"),
+      source.indexOf("async resolvePublishingDestination") + 1000,
+    );
+    expect(resolverSection).toContain("findPublishingInstallations");
+    const listSection = source.substring(
+      source.indexOf("async listPublishingDestinations"),
+      source.indexOf("async listPublishingDestinations") + 500,
+    );
+    expect(listSection).toContain("findPublishingInstallations");
   });
 
   it("discovery controller endpoint exists with correct RBAC", () => {
@@ -1585,7 +1597,7 @@ describe("Backend-owned destination discovery service", () => {
 
   it("listPublishingDestinations returns eligible and unavailable statuses", async () => {
     const { svc, connectorFramework } = makePublishService({
-      activeInstallations: [{ id: "inst-1" }, { id: "inst-2" }],
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
     });
     const prismaResult = [
       { id: "inst-1", status: "ACTIVE", accountAlias: "Store A" },
@@ -1911,5 +1923,166 @@ describe("All publishing entry points: no arbitrary installation fallback", () =
     expect(deltaRouteIdx).toBeGreaterThan(-1);
     const deltaSection = source.substring(deltaRouteIdx, deltaRouteIdx + 300);
     expect(deltaSection).toContain(":installationId");
+  });
+});
+
+// ===========================================================================
+// Gap E — bulkPublish and queueDeltaSync exclude editor role
+// ===========================================================================
+
+describe("bulkPublish and queueDeltaSync RBAC excludes editor", () => {
+  it("bulkPublish endpoint restricts to admin, publisher, channel_manager", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "marketplace.controller.ts"),
+      "utf8",
+    );
+    const postIdx = source.indexOf('@Post("connectors/:installationId/bulk-publish")');
+    expect(postIdx).toBeGreaterThan(-1);
+    const afterPost = source.substring(postIdx, postIdx + 300);
+    const rolesStart = afterPost.indexOf("@Roles(");
+    expect(rolesStart).toBeGreaterThan(-1);
+    const rolesLine = afterPost.substring(rolesStart, afterPost.indexOf(")", rolesStart) + 1);
+    expect(rolesLine).toContain('"admin"');
+    expect(rolesLine).toContain('"publisher"');
+    expect(rolesLine).toContain('"channel_manager"');
+    expect(rolesLine).not.toContain('"editor"');
+  });
+
+  it("shopify delta sync endpoint restricts to admin, publisher, channel_manager", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "marketplace.controller.ts"),
+      "utf8",
+    );
+    const postIdx = source.indexOf('@Post("connectors/shopify/:installationId/sync/delta")');
+    expect(postIdx).toBeGreaterThan(-1);
+    const afterPost = source.substring(postIdx, postIdx + 300);
+    const rolesStart = afterPost.indexOf("@Roles(");
+    expect(rolesStart).toBeGreaterThan(-1);
+    const rolesLine = afterPost.substring(rolesStart, afterPost.indexOf(")", rolesStart) + 1);
+    expect(rolesLine).toContain('"admin"');
+    expect(rolesLine).toContain('"publisher"');
+    expect(rolesLine).toContain('"channel_manager"');
+    expect(rolesLine).not.toContain('"editor"');
+  });
+
+  it("generic delta sync endpoint restricts to admin, publisher, channel_manager", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "marketplace.controller.ts"),
+      "utf8",
+    );
+    const postIdx = source.indexOf('@Post("connectors/:installationId/sync/delta")');
+    expect(postIdx).toBeGreaterThan(-1);
+    const afterPost = source.substring(postIdx, postIdx + 300);
+    const rolesStart = afterPost.indexOf("@Roles(");
+    expect(rolesStart).toBeGreaterThan(-1);
+    const rolesLine = afterPost.substring(rolesStart, afterPost.indexOf(")", rolesStart) + 1);
+    expect(rolesLine).toContain('"admin"');
+    expect(rolesLine).toContain('"publisher"');
+    expect(rolesLine).toContain('"channel_manager"');
+    expect(rolesLine).not.toContain('"editor"');
+  });
+});
+
+// ===========================================================================
+// Gap A — shared eligibility predicate (resolve and list agree)
+// ===========================================================================
+
+describe("shared eligibility predicate", () => {
+  it("resolvePublishingDestination and listPublishingDestinations agree on single eligible", async () => {
+    const svc = makePublishService({
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }],
+    }).svc;
+    const resolved = await svc.resolvePublishingDestination("shopify");
+    expect(resolved).toBe("inst-1");
+  });
+
+  it("resolvePublishingDestination rejects when no connector definition exists", async () => {
+    const svc = makePublishService({ connectorDef: null }).svc;
+    await expect(svc.resolvePublishingDestination("nonexistent")).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it("resolvePublishingDestination rejects when no eligible installations", async () => {
+    const svc = makePublishService({
+      activeInstallations: [],
+    }).svc;
+    await expect(svc.resolvePublishingDestination("shopify")).rejects.toThrow(
+      "DESTINATION_NOT_FOUND",
+    );
+  });
+
+  it("resolvePublishingDestination rejects when multiple eligible installations", async () => {
+    const svc = makePublishService({
+      activeInstallations: [{ id: "inst-1", status: "ACTIVE", accountAlias: null }, { id: "inst-2", status: "ACTIVE", accountAlias: null }],
+    }).svc;
+    await expect(svc.resolvePublishingDestination("shopify")).rejects.toThrow(
+      "DESTINATION_INSTALLATION_REQUIRED",
+    );
+  });
+});
+
+// ===========================================================================
+// Gap B — preview API route rejects missing resolvedInstallationId
+// ===========================================================================
+
+describe("preview API proxy rejects missing resolvedInstallationId (code inspection)", () => {
+  it("route.ts does not use ?? installationId fallback", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const routeSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/app/api/marketplace/preview-changes/route.ts"),
+      "utf8",
+    );
+    expect(routeSource).not.toContain("?? installationId");
+    expect(routeSource).toContain("PREVIEW_DESTINATION_NOT_RESOLVED");
+  });
+
+  it("frontend type declares resolvedInstallationId as required", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const coreSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/lib/api/core.ts"),
+      "utf8",
+    );
+    const previewInterface = coreSource.substring(
+      coreSource.indexOf("interface ShopifyProductPreview"),
+      coreSource.indexOf("}", coreSource.indexOf("interface ShopifyProductPreview")) + 1,
+    );
+    expect(previewInterface).toContain("resolvedInstallationId: string");
+    expect(previewInterface).not.toContain("resolvedInstallationId?");
+  });
+});
+
+// ===========================================================================
+// Gap G — CreateProductForm pricing gate (code inspection)
+// ===========================================================================
+
+describe("CreateProductForm pricing gate (code inspection)", () => {
+  it("CreateProductForm gates pricing fields with canEditPricing", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/components/product/CreateProductForm.tsx"),
+      "utf8",
+    );
+    expect(formSource).toContain("canEditPricing");
+    expect(formSource).toContain("actorRole");
+  });
+
+  it("products-tab passes actorRole to CreateProductForm", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const tabSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/components/product/products-tab.tsx"),
+      "utf8",
+    );
+    expect(tabSource).toContain("actorRole={role}");
   });
 });
