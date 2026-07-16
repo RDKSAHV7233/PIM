@@ -2061,28 +2061,114 @@ describe("preview API proxy rejects missing resolvedInstallationId (code inspect
 });
 
 // ===========================================================================
-// Gap G — CreateProductForm pricing gate (code inspection)
+// Gap G — Pricing authorization (UI + server-side enforcement)
 // ===========================================================================
 
-describe("CreateProductForm pricing gate (code inspection)", () => {
-  it("CreateProductForm gates pricing fields with canEditPricing", () => {
+describe("Pricing authorization (code inspection)", () => {
+  let formSource: string;
+  let actionsSource: string;
+  let tabSource: string;
+
+  beforeAll(() => {
     const fs = require("fs");
     const path = require("path");
-    const formSource = fs.readFileSync(
+    formSource = fs.readFileSync(
       path.resolve(__dirname, "../../../web/src/components/product/CreateProductForm.tsx"),
       "utf8",
     );
-    expect(formSource).toContain("canEditPricing");
-    expect(formSource).toContain("actorRole");
-  });
-
-  it("products-tab passes actorRole to CreateProductForm", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const tabSource = fs.readFileSync(
+    actionsSource = fs.readFileSync(
+      path.resolve(__dirname, "../../../web/src/app/actions.ts"),
+      "utf8",
+    );
+    tabSource = fs.readFileSync(
       path.resolve(__dirname, "../../../web/src/components/product/products-tab.tsx"),
       "utf8",
     );
+  });
+
+  it("1. admin can create a product with pricing (UI renders pricing fields)", () => {
+    expect(formSource).toContain("canEditPricing(actorRole)");
+    expect(formSource).toContain('name="mrp"');
+    expect(formSource).toContain('name="sellingPrice"');
+  });
+
+  it("2. non-admin can create a product without pricing (no hidden pricing default)", () => {
+    expect(formSource).not.toContain('name="sellingPrice" value="0"');
+    expect(formSource).not.toContain('name="mrp" value="0"');
+    const pricingGateSection = formSource.substring(
+      formSource.indexOf("canEditPricing(actorRole)"),
+      formSource.indexOf("canEditPricing(actorRole)") + 2000,
+    );
+    expect(pricingGateSection).not.toContain('type="hidden" name="sellingPrice"');
+    expect(formSource).toContain("canEditPricing(actorRole)");
+  });
+
+  it("3. non-admin forged pricing fields are rejected server-side", () => {
+    const createActionSection = actionsSource.substring(
+      actionsSource.indexOf("async function createProductAction"),
+      actionsSource.indexOf("async function createProductAction") + 2000,
+    );
+    expect(createActionSection).toContain("canEditPricing");
+    expect(createActionSection).toContain("You do not have permission to set pricing");
+  });
+
+  it("4. non-admin creation does not persist zero pricing", () => {
+    expect(formSource).not.toContain('value="0"');
+    const createActionSection = actionsSource.substring(
+      actionsSource.indexOf("async function createProductAction"),
+      actionsSource.indexOf("async function createProductAction") + 2000,
+    );
+    expect(createActionSection).toContain("pricingAllowed ? rawSellingPrice : undefined");
+  });
+
+  it("5. pricing is only included in attributes when pricingAllowed and sellingPrice defined", () => {
+    const createActionSection = actionsSource.substring(
+      actionsSource.indexOf("async function createProductAction"),
+      actionsSource.indexOf("async function createProductAction") + 2500,
+    );
+    expect(createActionSection).toContain("if (pricingAllowed && sellingPrice !== undefined)");
+    expect(createActionSection).toContain("attributes.pricing = pricing");
+  });
+
+  it("6. editor cannot bypass via direct Server Action (role checked from session)", () => {
+    const createActionSection = actionsSource.substring(
+      actionsSource.indexOf("async function createProductAction"),
+      actionsSource.indexOf("async function createProductAction") + 1000,
+    );
+    expect(createActionSection).toContain("getServerSession");
+    expect(createActionSection).toContain("canEditPricing(actorRole)");
+    expect(createActionSection).not.toContain("formData.get(\"role\")");
+  });
+
+  it("7. server-side enforcement is independent of UI (actionsSource checks before persistence)", () => {
+    const pricingCheckIdx = actionsSource.indexOf("You do not have permission to set pricing");
+    const postJsonIdx = actionsSource.indexOf('postJsonForAction<{ id: string }>(formData, "/catalog/products"');
+    expect(pricingCheckIdx).toBeGreaterThan(-1);
+    expect(postJsonIdx).toBeGreaterThan(-1);
+    expect(pricingCheckIdx).toBeLessThan(postJsonIdx);
+  });
+
+  it("8. no artificial zero price is ever submitted (form omits, action strips)", () => {
+    const createActionSection = actionsSource.substring(
+      actionsSource.indexOf("async function createProductAction"),
+      actionsSource.indexOf("async function createProductAction") + 2500,
+    );
+    expect(createActionSection).not.toContain("sellingPrice: 0");
+    expect(createActionSection).not.toContain("sellingPrice = 0");
+    expect(createActionSection).toContain("pricingAllowed ? rawMrp : undefined");
+    expect(createActionSection).toContain("pricingAllowed ? rawSellingPrice : undefined");
+  });
+
+  it("products-tab passes actorRole to CreateProductForm", () => {
     expect(tabSource).toContain("actorRole={role}");
+  });
+
+  it("sellingPrice required validation only applies to admin", () => {
+    const createActionSection = actionsSource.substring(
+      actionsSource.indexOf("async function createProductAction"),
+      actionsSource.indexOf("async function createProductAction") + 2000,
+    );
+    expect(createActionSection).toContain("pricingAllowed && sellingPrice === undefined");
+    expect(createActionSection).not.toMatch(/if \(sellingPrice === undefined\)/);
   });
 });

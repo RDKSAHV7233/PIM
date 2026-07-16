@@ -286,9 +286,7 @@ export function CreateProductForm({ categories, actorRole, onCreated }: CreatePr
             </div>
           </div>
         </>
-      ) : (
-        <input type="hidden" name="sellingPrice" value="0" />
-      )}
+      ) : null}
 
       <div className="space-y-1">
         <label
