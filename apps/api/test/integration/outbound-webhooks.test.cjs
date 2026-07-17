@@ -327,6 +327,22 @@ async function waitForWebhook(state, timeoutMs) {
   throw new Error(`Timed out waiting for outbound webhook after ${timeoutMs}ms`);
 }
 
+async function waitForExportJobTerminalStatus(baseUrl, token, jobId, expectedStatuses, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = "";
+  while (Date.now() < deadline) {
+    const response = await apiRequest(baseUrl, "GET", `/marketplace/export-jobs/${jobId}`, token);
+    if (response.status === 200) {
+      lastStatus = String(response.payload?.status ?? "");
+      if (expectedStatuses.includes(lastStatus)) {
+        return response.payload;
+      }
+    }
+    await sleep(200);
+  }
+  throw new Error(`Timed out waiting for export job ${jobId} to reach ${expectedStatuses.join("/")} (last seen: ${lastStatus})`);
+}
+
 async function waitForBulkImportJobStatus(baseUrl, token, jobId, expectedStatus, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastStatus = "";
@@ -746,11 +762,12 @@ async function run() {
     assertStatus(exportJob, 201, "create export job");
 
     webhookState.received = null;
-    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, adminToken);
-    assertStatus(processedExport, 201, "process export job");
+    const processedExport = await waitForExportJobTerminalStatus(
+      baseUrl, adminToken, exportJob.payload.id, ["dead_letter", "failed"], 15_000,
+    );
     assert(
-      ["dead_letter", "failed"].includes(String(processedExport.payload?.status ?? "")),
-      `expected failed or dead_letter export job, got ${String(processedExport.payload?.status)}`,
+      ["dead_letter", "failed"].includes(String(processedExport?.status ?? "")),
+      `expected failed or dead_letter export job, got ${String(processedExport?.status)}`,
     );
 
     const publishReceived = await waitForWebhook(webhookState, 15_000);
@@ -917,16 +934,12 @@ async function run() {
     assertStatus(successExportJob, 201, "create successful export job");
 
     webhookState.received = null;
-    const processedSuccessExport = await apiRequest(
-      baseUrl,
-      "POST",
-      `/marketplace/export-jobs/${successExportJob.payload.id}/process`,
-      adminToken,
+    const processedSuccessExport = await waitForExportJobTerminalStatus(
+      baseUrl, adminToken, successExportJob.payload.id, ["completed"], 15_000,
     );
-    assertStatus(processedSuccessExport, 201, "process successful export job");
     assert(
-      String(processedSuccessExport.payload?.status ?? "") === "completed",
-      `expected completed successful export job, got ${String(processedSuccessExport.payload?.status ?? "")}`,
+      String(processedSuccessExport?.status ?? "") === "completed",
+      `expected completed successful export job, got ${String(processedSuccessExport?.status ?? "")}`,
     );
 
     const publishSucceededReceived = await waitForWebhook(webhookState, 15_000);
