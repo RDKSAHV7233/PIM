@@ -2275,3 +2275,4 @@ describe("bulk-publish and delta-sync RBAC alignment across layers", () => {
     expect(publishSection).not.toContain('"editor"');
   });
 });
+
