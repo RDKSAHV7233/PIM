@@ -836,6 +836,7 @@ export function ProductsTab({
           <section className="rounded-lg border border-slate-200 bg-white p-4">
             <CreateProductForm
               categories={filteredCategories}
+              actorRole={role}
               onCreated={() => setShowCreateProduct(false)}
             />
           </section>

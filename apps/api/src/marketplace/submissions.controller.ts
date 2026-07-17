@@ -92,7 +92,7 @@ export class SubmissionsController {
   }
 
   @Post(":id/retry")
-  @Roles("admin", "editor")
+  @Roles("admin", "publisher", "channel_manager")
   @ApiOperation({ summary: "Retry submission by requeuing underlying export job" })
   @ApiResponse({ status: 201, description: "Submission retry queued" })
   retrySubmission(@Param("id") submissionId: string) {

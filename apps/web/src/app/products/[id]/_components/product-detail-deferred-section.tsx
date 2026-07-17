@@ -29,6 +29,7 @@ import type { DetailTab, ProductDetailPageData } from "./product-detail-types";
 import { QualityTab } from "./quality-tab";
 import { VariantsTab } from "./variants-tab";
 import { PricingTab } from "./pricing-tab";
+import { canEditPricing } from "@/lib/role-capabilities";
 
 interface ProductDetailDeferredSectionProps {
   productId: string;
@@ -151,12 +152,9 @@ export async function ProductDetailDeferredSection({
         connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel),
     ) ?? null;
 
-  // All active Shopify installations — passed to the export form store selector.
-  // When the tenant has more than one active Shopify installation, the form renders
-  // a dropdown so the user can choose which store to export to.
-  const shopifyInstallations = installedConnectors
-    .filter(c => c.status === "ACTIVE" && c.slug === "shopify")
-    .map(c => ({ id: c.id, accountAlias: c.accountAlias }));
+  const publishableInstallations = installedConnectors
+    .filter(c => c.status === "ACTIVE" && c.capabilities.some(cap => cap === "PUBLISH"))
+    .map(c => ({ id: c.id, accountAlias: c.accountAlias, slug: c.slug }));
 
   const pageData: ProductDetailPageData = {
     productId,
@@ -175,6 +173,7 @@ export async function ProductDetailDeferredSection({
     actorRole,
     canWrite,
     canPublish,
+    canEditPricing: canEditPricing(actorRole),
     activeTab,
     showChannelDiagnostics,
     selectedChannel,
@@ -186,7 +185,7 @@ export async function ProductDetailDeferredSection({
     publishableChannels,
     defaultExportChannel,
     mappingManagerInstallation,
-    shopifyInstallations,
+    publishableInstallations,
     requiredFieldsDefault: JSON.stringify(mapping.requiredFields, null, 2),
     fieldMapDefault: JSON.stringify(mapping.fieldMap, null, 2),
     blockingIssueCount:

@@ -27,7 +27,7 @@ import {
   isChannelInDevelopment,
   isMarketplaceChannel,
 } from "@/lib/marketplace-channels";
-import { canManageConnectors } from "@/lib/role-capabilities";
+import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -617,15 +617,25 @@ export async function addApprovalCommentAction(formData: FormData) {
 
 export async function createProductAction(
   formData: FormData,
-): Promise<{ error: string } | { productId: string } | undefined> {
+): Promise<{ error: string; planLimitExceeded?: true; upgradeUrl?: string } | { productId: string } | undefined> {
   const title = String(formData.get("title") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   if (!title || !categoryId) {
     return { error: "Product title and category are required." };
   }
+  const { actorRole } = await getServerSession();
+  const pricingAllowed = canEditPricing(actorRole);
+
   const baseAttributes = parseJsonObject(formData.get("attributes"), "Product attributes");
-  const mrp = parseNumber(formData.get("mrp"));
-  const sellingPrice = parseNumber(formData.get("sellingPrice"));
+  const rawMrp = parseNumber(formData.get("mrp"));
+  const rawSellingPrice = parseNumber(formData.get("sellingPrice"));
+
+  if (!pricingAllowed && (rawMrp !== undefined || rawSellingPrice !== undefined)) {
+    return { error: "You do not have permission to set pricing." };
+  }
+
+  const mrp = pricingAllowed ? rawMrp : undefined;
+  const sellingPrice = pricingAllowed ? rawSellingPrice : undefined;
 
   if (mrp !== undefined && mrp < 0) {
     return { error: "MRP cannot be negative." };
@@ -633,10 +643,10 @@ export async function createProductAction(
   if (sellingPrice !== undefined && sellingPrice < 0) {
     return { error: "Selling Price cannot be negative." };
   }
-  if (sellingPrice === undefined) {
+  if (pricingAllowed && sellingPrice === undefined) {
     return { error: "Selling Price is required." };
   }
-  if (mrp !== undefined && sellingPrice > mrp) {
+  if (mrp !== undefined && sellingPrice !== undefined && sellingPrice > mrp) {
     return { error: "Selling Price cannot exceed MRP." };
   }
 
@@ -645,20 +655,22 @@ export async function createProductAction(
   delete attributes.sellingPrice;
   delete attributes.selling_price;
 
-  const existingPricing =
-    baseAttributes.pricing && typeof baseAttributes.pricing === "object" && !Array.isArray(baseAttributes.pricing)
-      ? (baseAttributes.pricing as Record<string, unknown>)
-      : {};
-  const pricing: Record<string, unknown> = {
-    ...existingPricing,
-    sellingPrice,
-  };
-  if (mrp !== undefined) {
-    pricing.mrp = mrp;
-  } else {
-    delete pricing.mrp;
+  if (pricingAllowed && sellingPrice !== undefined) {
+    const existingPricing =
+      baseAttributes.pricing && typeof baseAttributes.pricing === "object" && !Array.isArray(baseAttributes.pricing)
+        ? (baseAttributes.pricing as Record<string, unknown>)
+        : {};
+    const pricing: Record<string, unknown> = {
+      ...existingPricing,
+      sellingPrice,
+    };
+    if (mrp !== undefined) {
+      pricing.mrp = mrp;
+    } else {
+      delete pricing.mrp;
+    }
+    attributes.pricing = pricing;
   }
-  attributes.pricing = pricing;
 
   try {
     const created = await postJsonForAction<{ id: string }>(formData, "/catalog/products", {
@@ -675,9 +687,13 @@ export async function createProductAction(
     revalidatePath("/dashboard");
     return { productId: created?.id };
   } catch (error: unknown) {
-    const redirectPath = withPlanLimitQuery("/catalog/products", error);
-    if (redirectPath) {
-      redirect(redirectPath);
+    const planPayload = getPlanLimitExceededPayload(error);
+    if (planPayload) {
+      return {
+        error: `Plan limit reached: you have ${planPayload.current} of ${planPayload.limit} allowed ${planPayload.resource}.`,
+        planLimitExceeded: true,
+        upgradeUrl: planPayload.upgrade_url,
+      };
     }
     const message =
       error instanceof ApiHttpError
@@ -947,6 +963,9 @@ export async function createVariantAction(formData: FormData) {
     if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
       redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
     }
+    if (message.includes("FIELD_WRITE_RESTRICTED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", error: "FIELD_WRITE_RESTRICTED" }));
+    }
     redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
   }
 }
@@ -976,6 +995,9 @@ export async function updateVariantAction(formData: FormData) {
     const message = error instanceof Error ? error.message : String(error ?? "");
     if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
       redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
+    }
+    if (message.includes("FIELD_WRITE_RESTRICTED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", error: "FIELD_WRITE_RESTRICTED" }));
     }
     redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
   }
@@ -2120,8 +2142,8 @@ export async function importShopifyConfigAction(
 
 export async function queueConnectorDeltaSyncAction(formData: FormData) {
   const { actorRole } = await getServerSession();
-  if (!canManageConnectors(actorRole)) {
-    throw new Error("Forbidden: connector management role required.");
+  if (!canPublishToChannels(actorRole)) {
+    throw new Error("Forbidden: publishing role required.");
   }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const returnTo =
@@ -2196,8 +2218,8 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
 export async function triggerBulkPublishAction(formData: FormData) {
   "use server";
   const { actorRole } = await getServerSession();
-  if (!canManageConnectors(actorRole)) {
-    throw new Error("Forbidden: connector management role required.");
+  if (!canPublishToChannels(actorRole)) {
+    throw new Error("Forbidden: publishing role required.");
   }
   const installationId = String(formData.get("installationId") ?? "").trim();
   const productIdsRaw = String(formData.get("productIds") ?? "").trim();

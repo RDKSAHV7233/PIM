@@ -15,7 +15,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { ApiHttpError, getDeadLetterSubmissions, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { canEditWorkspace } from "@/lib/role-capabilities";
+import { canEditWorkspace, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 
@@ -387,7 +387,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
             >
               View detail
             </Link>
-            {canWrite && (normalizeStatus(submission.status) === "REJECTED" || normalizeStatus(submission.status) === "ERROR") ? (
+            {canPublishToChannels(actorRole) && (normalizeStatus(submission.status) === "REJECTED" || normalizeStatus(submission.status) === "ERROR") ? (
               <form action={retrySubmissionAction}>
                 <input type="hidden" name="submissionId" value={submission.id} />
                 <input type="hidden" name="submissionStatus" value={statusFilter} />

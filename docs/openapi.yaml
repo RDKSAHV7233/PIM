@@ -1182,6 +1182,20 @@ paths:
           description: ""
       tags: &a14
         - Marketplace
+  /api/v1/marketplace/channels/{channel}/destinations:
+    get:
+      operationId: MarketplaceController_listPublishingDestinations
+      parameters:
+        - name: channel
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Publishing destinations returned (no credentials)
+      summary: List safe publishing destinations for a marketplace channel
+      tags: *a14
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions:
     get:
       operationId: MarketplaceController_listConnectorMappingVersions

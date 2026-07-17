@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import {
   ExportJobStatus,
@@ -630,12 +630,9 @@ export class MarketplaceService implements OnModuleInit {
     const channel = this.parseChannel(dto.channel);
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "export", channel, "MarketplaceExportJob", productId);
     const connectorSlug = this.mapChannelToConnectorSlug(channel);
+    let resolvedInstallationId: string;
     try {
-      const tenantKey = this.connectorFramework.getCurrentTenantKey();
-      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, dto.installationId);
-      if (!installation.capabilities.includes("PUBLISH")) {
-        throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
-      }
+      resolvedInstallationId = await this.resolvePublishingDestination(connectorSlug, dto.installationId);
     } catch (error: unknown) {
       if (
         error instanceof InstallationNotFoundError ||
@@ -647,38 +644,125 @@ export class MarketplaceService implements OnModuleInit {
       throw error;
     }
 
-    const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId, dto.installationId ?? undefined);
+    const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId, resolvedInstallationId);
     await this.connectorMappingService.assertPublishReadyForExport({
       connectorSlug,
       categoryScope: product.categoryId,
-      installationId: dto.installationId ?? undefined,
+      installationId: resolvedInstallationId,
       fallbackAcknowledged: dto.fallbackAcknowledged,
       productId,
     });
-    const job = await this.prisma.tenant().marketplaceExportJob.create({
-      data: {
-        createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
+    const requestIdentity = this.buildPublishRequestIdentity(
+      product.version,
+      product.updatedAt,
+      resolvedInstallationId,
+      simulation.mappedPayload,
+    );
+
+    const activeStatuses: ExportJobStatus[] = [ExportJobStatus.queued, ExportJobStatus.processing, ExportJobStatus.retrying];
+    const activeJob = await this.prisma.tenant().marketplaceExportJob.findFirst({
+      where: {
         productId,
-        categoryId: product.categoryId,
-        channel: simulation.channel,
-        templateId: simulation.templateId ?? null,
-        installationId: dto.installationId ?? null,
-        status: ExportJobStatus.queued,
-        retryCount: 0,
-        maxRetries: dto.maxRetries ?? 3,
-        payload: {
-          mappingSource: simulation.mappingSource,
-          missingFields: simulation.missingFields,
-          complianceSummary: simulation.complianceSummary,
-          mappedPayload: simulation.mappedPayload,
-        } as Prisma.JsonObject,
+        installationId: resolvedInstallationId,
+        status: { in: activeStatuses },
       },
       include: { template: true },
     });
+    if (activeJob) {
+      const existingIdentity = (activeJob.payload as Record<string, unknown>)?.publishRequestIdentity as
+        | { productRevision: string; installationId: string; payloadHash: string }
+        | undefined;
+      if (!existingIdentity) {
+        throw new ConflictException(
+          "PUBLISH_ALREADY_IN_PROGRESS: an active job exists without request identity; wait for it to complete or fail before re-publishing",
+        );
+      }
+      if (
+        existingIdentity.productRevision !== requestIdentity.productRevision ||
+        existingIdentity.payloadHash !== requestIdentity.payloadHash
+      ) {
+        throw new ConflictException(
+          "ACTIVE_JOB_IDENTITY_MISMATCH: product data changed since the active job was queued; wait for it to complete or fail before re-publishing",
+        );
+      }
+      return activeJob;
+    }
+
+    let job;
+    try {
+      job = await this.prisma.tenant().marketplaceExportJob.create({
+        data: {
+          createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
+          productId,
+          categoryId: product.categoryId,
+          channel: simulation.channel,
+          templateId: simulation.templateId ?? null,
+          installationId: resolvedInstallationId,
+          status: ExportJobStatus.queued,
+          retryCount: 0,
+          maxRetries: dto.maxRetries ?? 3,
+          payload: {
+            mappingSource: simulation.mappingSource,
+            missingFields: simulation.missingFields,
+            complianceSummary: simulation.complianceSummary,
+            mappedPayload: simulation.mappedPayload,
+            publishRequestIdentity: requestIdentity,
+          } as Prisma.JsonObject,
+        },
+        include: { template: true },
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const meta = error.meta ?? {};
+        const target = meta.target;
+        const constraintName = typeof meta.constraint === "string" ? meta.constraint : null;
+        const EXPECTED_PRISMA_FIELDS = ["tenantKey", "productId", "installationId"];
+        const EXPECTED_DB_COLUMNS = ["tenantKey", "productId", "installation_id"];
+        const exactFieldMatch = (arr: string[], expected: string[]) =>
+          arr.length === expected.length && expected.every((f) => arr.includes(f));
+        const isExportJobConflict =
+          constraintName === "uq_export_job_product_installation" ||
+          (Array.isArray(target) && exactFieldMatch(target as string[], EXPECTED_PRISMA_FIELDS)) ||
+          (Array.isArray(target) && exactFieldMatch(target as string[], EXPECTED_DB_COLUMNS));
+        if (isExportJobConflict) {
+          const concurrentJob = await this.prisma.tenant().marketplaceExportJob.findFirst({
+            where: { productId, installationId: resolvedInstallationId, status: { in: activeStatuses } },
+            include: { template: true },
+          });
+          if (concurrentJob) {
+            const concurrentIdentity = (concurrentJob.payload as Record<string, unknown>)?.publishRequestIdentity as
+              | { productRevision: string; installationId: string; payloadHash: string }
+              | undefined;
+            if (!concurrentIdentity) {
+              throw new ConflictException(
+                "PUBLISH_ALREADY_IN_PROGRESS: an active job exists without request identity; wait for it to complete or fail before re-publishing",
+              );
+            }
+            if (
+              concurrentIdentity.productRevision !== requestIdentity.productRevision ||
+              concurrentIdentity.payloadHash !== requestIdentity.payloadHash
+            ) {
+              throw new ConflictException(
+                "ACTIVE_JOB_IDENTITY_MISMATCH: product data changed since the active job was queued; wait for it to complete or fail before re-publishing",
+              );
+            }
+            return concurrentJob;
+          }
+        }
+      }
+      throw error;
+    }
+    // Queue dedup: retryCount is monotonically increasing (incremented only on
+    // processing failure, never decremented), so `${id}:${retryCount}` is unique
+    // per attempt.  A dedicated processingAttempt column is cleaner semantically
+    // but adds a schema migration; retryCount satisfies the uniqueness invariant.
     await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId: job.id,
       connectorSlug: simulation.channel,
-    });
+    }, { jobId: `${job.id}_${job.retryCount}` });
     return job;
   }
 
@@ -1110,7 +1194,7 @@ export class MarketplaceService implements OnModuleInit {
       throw new BadRequestException("Submission cannot be synced because no external reference is stored.");
     }
 
-    const installation = await this.connectorFramework.requireInstallation(tenantKey, submission.connectorSlug);
+    const installation = await this.connectorFramework.requireInstallation(tenantKey, submission.connectorSlug, submission.installationId);
     const statusLookupRef = await this.buildSubmissionStatusLookupRef(
       submission.productId,
       submission.externalRef,
@@ -1198,10 +1282,6 @@ export class MarketplaceService implements OnModuleInit {
     }
     const jobId = idempotencyKey.slice(0, delimiter);
     const requeuedJob = await this.requeueExportJob(jobId);
-    await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
-      jobId,
-      connectorSlug: String(submission.connectorSlug ?? "").toLowerCase(),
-    });
     return {
       queued: true,
       submissionId,
@@ -1246,10 +1326,14 @@ export class MarketplaceService implements OnModuleInit {
     }
     const jobId = idempotencyKey.slice(0, delimiter);
 
+    const submissionInstallationId = String(submission.installationId ?? "").trim();
+    if (!submissionInstallationId) {
+      throw new BadRequestException("Submission cannot be retried: no installation ID on record.");
+    }
     const installation = await this.connectorFramework.requireInstallation(
       tenantKey,
       String(submission.connectorSlug ?? "").toLowerCase(),
-      String(submission.installationId ?? "").trim() || undefined,   // P3-5: route to the correct store
+      submissionInstallationId,
     );
     const productPayload = await this.buildConnectorProductPayload(String(submission.productId));
     const payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
@@ -1357,24 +1441,92 @@ export class MarketplaceService implements OnModuleInit {
       return updated;
     }
 
-    await this.prisma.tenant().marketplaceExportJob.update({
-      where: { id: jobId },
+    const processableStatuses: ExportJobStatus[] = [ExportJobStatus.queued, ExportJobStatus.retrying];
+    const claimed = await this.prisma.tenant().marketplaceExportJob.updateMany({
+      where: { id: jobId, status: { in: processableStatuses } },
       data: { status: ExportJobStatus.processing },
     });
+    if (claimed.count === 0) {
+      const current = await this.prisma.tenant().marketplaceExportJob.findUnique({ where: { id: jobId }, include: { template: true } });
+      return current ?? existing;
+    }
 
-    // P3-4: declare before try so the catch path can also write sync state for legacy jobs
     let effectiveInstallationId: string | null = existing.installationId ?? null;
+    const connectorSlug = this.mapChannelToConnectorSlug(existing.channel);
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+
+    if (!existing.installationId) {
+      try {
+        effectiveInstallationId = await this.resolvePublishingDestination(connectorSlug, null);
+        const persisted = await this.prisma.tenant().marketplaceExportJob.updateMany({
+          where: {
+            id: jobId,
+            installationId: null,
+            status: ExportJobStatus.processing,
+          },
+          data: { installationId: effectiveInstallationId },
+        });
+        if (persisted.count === 0) {
+          const reloaded = await this.prisma.tenant().marketplaceExportJob.findUnique({
+            where: { id: jobId },
+            include: { template: true },
+          });
+          if (reloaded?.installationId) {
+            effectiveInstallationId = reloaded.installationId;
+          } else {
+            await this.emitExportThroughputMetric(existing.channel, startedAtMs, "failed");
+            throw new ConflictException("Concurrent destination write detected");
+          }
+        }
+      } catch (resolveError) {
+        if (resolveError instanceof ConflictException) throw resolveError;
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.dead_letter,
+            failureReason: "DESTINATION_AMBIGUOUS",
+            dlqReason: "Historical job has no installationId and cannot auto-resolve destination",
+          },
+          include: { template: true },
+        });
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
+    } else {
+      try {
+        const installation = await this.connectorFramework.requireInstallation(
+          tenantKey, connectorSlug, existing.installationId,
+        );
+        if (!installation.capabilities.includes("PUBLISH")) {
+          throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+        }
+      } catch {
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.failed,
+            failureReason: "DESTINATION_UNAVAILABLE",
+          },
+          include: { template: true },
+        });
+        await this.notificationsService.emitPublishStatus(updated.id, "failed");
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
+    }
 
     try {
       const simulation = await this.simulateProduct(
         existing.productId,
         existing.channel,
         existing.templateId ?? undefined,
-        existing.installationId ?? undefined,  // bridge: ConnectorMappingVersion 5-level lookup
+        effectiveInstallationId ?? undefined,
       );
-      // P3-4: update with resolved installationId in case job.installationId was null
-      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(existing, simulation);
-      effectiveInstallationId = existing.installationId ?? resolvedInstallationId ?? null;
+      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(
+        { ...existing, installationId: effectiveInstallationId },
+        simulation,
+      );
+      effectiveInstallationId = effectiveInstallationId ?? resolvedInstallationId ?? null;
 
       if (simulation.exportReady) {
         const updated = await this.prisma.tenant().marketplaceExportJob.update({
@@ -1549,26 +1701,50 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   async requeueExportJob(jobId: string) {
-    const existing = await this.prisma.tenant().marketplaceExportJob.findUnique({ where: { id: jobId } });
-    if (!existing) {
-      throw new NotFoundException("Export job not found");
-    }
-    if (
-      existing.status !== ExportJobStatus.dead_letter &&
-      existing.status !== ExportJobStatus.retrying &&
-      existing.status !== ExportJobStatus.failed
-    ) {
-      throw new BadRequestException("Only retrying/failed/DLQ jobs can be requeued.");
-    }
-    return this.prisma.tenant().marketplaceExportJob.update({
-      where: { id: jobId },
+    const requeueableStatuses: ExportJobStatus[] = [ExportJobStatus.failed, ExportJobStatus.dead_letter, ExportJobStatus.retrying];
+
+    const claimed = await this.prisma.tenant().marketplaceExportJob.updateMany({
+      where: { id: jobId, status: { in: requeueableStatuses } },
       data: {
         status: ExportJobStatus.queued,
         failureReason: null,
         dlqReason: null,
       },
+    });
+    if (claimed.count === 0) {
+      const existing = await this.prisma.tenant().marketplaceExportJob.findUnique({ where: { id: jobId } });
+      if (!existing) {
+        throw new NotFoundException("Export job not found");
+      }
+      throw new BadRequestException("Only retrying/failed/DLQ jobs can be requeued.");
+    }
+
+    const updated = await this.prisma.tenant().marketplaceExportJob.findUnique({
+      where: { id: jobId },
       include: { template: true },
     });
+    if (!updated) {
+      throw new NotFoundException("Export job not found after status claim");
+    }
+
+    try {
+      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+        jobId,
+        connectorSlug: updated.channel,
+      }, { jobId: `${jobId}_${updated.retryCount}` });
+    } catch (enqueueError) {
+      const queueJobId = `${jobId}_${updated.retryCount}`;
+      const delivered = await this.queueService.isJobPresent(QUEUE_NAMES.CONNECTOR_SUBMISSION, queueJobId).catch(() => false);
+      if (!delivered) {
+        await this.prisma.tenant().marketplaceExportJob.updateMany({
+          where: { id: jobId, status: ExportJobStatus.queued },
+          data: { status: ExportJobStatus.failed, failureReason: "Queue enqueue failed" },
+        });
+        throw enqueueError;
+      }
+    }
+
+    return updated;
   }
 
   async simulateProduct(productId: string, channelInput: string, templateId?: string, installationId?: string | null) {
@@ -1985,6 +2161,124 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
+  private async findPublishingInstallations(
+    connectorSlug: string,
+  ): Promise<Array<{
+    installationId: string;
+    displayLabel: string;
+    eligible: boolean;
+    unavailableReason: string | null;
+  }>> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const connectorDef = await this.prisma.tenant().connectorDefinition.findFirst({
+      where: { slug: connectorSlug },
+      select: { id: true },
+    });
+    if (!connectorDef) return [];
+
+    const installations = await this.prisma.tenant().connectorInstallation.findMany({
+      where: { connectorId: connectorDef.id },
+      select: { id: true, status: true, accountAlias: true },
+      orderBy: [{ installedAt: "desc" }],
+    });
+
+    const results: Array<{
+      installationId: string;
+      displayLabel: string;
+      eligible: boolean;
+      unavailableReason: string | null;
+    }> = [];
+
+    for (const inst of installations) {
+      if (inst.status !== "ACTIVE") {
+        results.push({
+          installationId: inst.id,
+          displayLabel: inst.accountAlias || inst.id,
+          eligible: false,
+          unavailableReason: `Installation status: ${inst.status}`,
+        });
+        continue;
+      }
+
+      try {
+        const resolved = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, inst.id);
+        if (!resolved.capabilities.includes("PUBLISH")) {
+          results.push({
+            installationId: inst.id,
+            displayLabel: inst.accountAlias || inst.id,
+            eligible: false,
+            unavailableReason: "PUBLISH capability not available",
+          });
+          continue;
+        }
+        results.push({
+          installationId: inst.id,
+          displayLabel: inst.accountAlias || inst.id,
+          eligible: true,
+          unavailableReason: null,
+        });
+      } catch {
+        results.push({
+          installationId: inst.id,
+          displayLabel: inst.accountAlias || inst.id,
+          eligible: false,
+          unavailableReason: "Credential validation failed",
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async resolvePublishingDestination(
+    connectorSlug: string,
+    installationId?: string | null,
+  ): Promise<string> {
+    if (installationId?.trim()) {
+      const tenantKey = this.connectorFramework.getCurrentTenantKey();
+      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, installationId);
+      if (!installation.capabilities.includes("PUBLISH")) {
+        throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+      }
+      return installation.id;
+    }
+
+    const candidates = await this.findPublishingInstallations(connectorSlug);
+    const eligible = candidates.filter(c => c.eligible);
+
+    if (eligible.length === 0) {
+      throw new BadRequestException("DESTINATION_NOT_FOUND");
+    }
+    if (eligible.length > 1) {
+      throw new BadRequestException("DESTINATION_INSTALLATION_REQUIRED");
+    }
+
+    return eligible[0].installationId;
+  }
+
+  async listPublishingDestinations(
+    channel: string,
+  ): Promise<Array<{
+    installationId: string;
+    connectorSlug: string;
+    channel: string;
+    displayLabel: string;
+    status: "eligible" | "unavailable";
+    unavailableReason?: string | null;
+  }>> {
+    const connectorSlug = this.mapChannelToConnectorSlug(channel);
+    const candidates = await this.findPublishingInstallations(connectorSlug);
+
+    return candidates.map(c => ({
+      installationId: c.installationId,
+      connectorSlug,
+      channel,
+      displayLabel: c.displayLabel,
+      status: c.eligible ? "eligible" as const : "unavailable" as const,
+      unavailableReason: c.unavailableReason,
+    }));
+  }
+
   private async runWithConcurrency<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
     const results = new Array<T>(tasks.length);
     let nextIndex = 0;
@@ -2000,6 +2294,33 @@ export class MarketplaceService implements OnModuleInit {
     const workerCount = Math.min(Math.max(concurrency, 1), tasks.length);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
     return results;
+  }
+
+  private buildPublishRequestIdentity(
+    productVersion: number,
+    productUpdatedAt: Date,
+    installationId: string | null,
+    mappedPayload: unknown,
+  ): { productRevision: string; installationId: string; payloadHash: string } {
+    const payloadHash = createHash("sha256")
+      .update(this.canonicalJsonSerialize(mappedPayload ?? {}))
+      .digest("hex")
+      .slice(0, 16);
+    return {
+      productRevision: `v${productVersion}:${productUpdatedAt.toISOString()}`,
+      installationId: installationId ?? "",
+      payloadHash,
+    };
+  }
+
+  private canonicalJsonSerialize(value: unknown): string {
+    if (value === null || value === undefined) return "null";
+    if (typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) {
+      return "[" + value.map((v) => this.canonicalJsonSerialize(v)).join(",") + "]";
+    }
+    const sorted = Object.keys(value as Record<string, unknown>).sort();
+    return "{" + sorted.map((k) => JSON.stringify(k) + ":" + this.canonicalJsonSerialize((value as Record<string, unknown>)[k])).join(",") + "}";
   }
 
   private parseChannel(channelInput: string): MarketplaceChannel {
@@ -2364,12 +2685,15 @@ export class MarketplaceService implements OnModuleInit {
   ): Promise<string | null> {
     const connectorSlug = this.mapChannelToConnectorSlug(job.channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    if (!job.installationId) {
+      return null;
+    }
     let installation;
     try {
       installation = await this.connectorFramework.requireInstallation(
         tenantKey,
         connectorSlug,
-        job.installationId ?? undefined,
+        job.installationId,
       );
     } catch (error) {
       if (error instanceof InstallationNotFoundError) {
@@ -2385,7 +2709,28 @@ export class MarketplaceService implements OnModuleInit {
     if (operation === "PUBLISH" && simulation.exportReady) {
       try {
         const productPayload = await this.buildConnectorProductPayload(job.productId);
-        const publishResult = await this.connectorFramework.publish(installation, productPayload);
+
+        // Only look up prior external refs for connectors that support update-in-place.
+        // The installationId filter already prevents cross-connector leakage, but gating
+        // on slug makes the contract explicit: only Shopify uses GID-based productSet updates.
+        let existingGid: string | null = null;
+        if (connectorSlug === "shopify") {
+          const priorSubmission = await this.prisma.tenant().connectorSubmission.findFirst({
+            where: {
+              productId: job.productId,
+              installationId: installation.id,
+              status: "SUCCESS",
+              externalRef: { not: null },
+            },
+            orderBy: { submittedAt: "desc" },
+            select: { externalRef: true },
+          });
+          existingGid = priorSubmission?.externalRef ?? null;
+        }
+
+        const publishResult = existingGid
+          ? await this.connectorFramework.update(installation, productPayload, existingGid)
+          : await this.connectorFramework.publish(installation, productPayload);
 
         // ─── Sprint 14: locale translations (best-effort, warnings only) ─────────
         const localeWarnings: { code: string; fieldPath: string; severity: "warning"; sellerMessage: string }[] = [];
@@ -3002,6 +3347,7 @@ export class MarketplaceService implements OnModuleInit {
             productId,
             categoryId,
             channel,
+            installationId,
             status: ExportJobStatus.queued,
             retryCount: 0,
             maxRetries: 3,
@@ -3011,7 +3357,7 @@ export class MarketplaceService implements OnModuleInit {
         await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
           jobId: job.id,
           connectorSlug,
-        } satisfies ConnectorWorkerPayload);
+        } satisfies ConnectorWorkerPayload, { jobId: `${job.id}_${job.retryCount}` });
       }),
     );
 
@@ -3019,18 +3365,30 @@ export class MarketplaceService implements OnModuleInit {
     return { queued };
   }
 
-  async previewProductChanges(installationId: string, productId: string): Promise<ShopifyProductPreview> {
+  async previewProductChanges(
+    installationId: string,
+    productId: string,
+  ): Promise<ShopifyProductPreview & { resolvedInstallationId: string }> {
     const db = this.prisma.tenant();
-    const installation = await db.connectorInstallation.findFirst({
+
+    const connectorDef = await db.connectorInstallation.findFirst({
       where: { id: installationId },
       select: { id: true, connectorId: true, tenantKey: true, externalAccountRef: true, metadata: true },
     });
-    if (!installation) {
+    if (!connectorDef) {
       throw new NotFoundException("Connector installation not found.");
     }
 
+    const defRow = await db.connectorDefinition.findUnique({
+      where: { id: connectorDef.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = defRow?.slug ?? "shopify";
+
+    const resolvedInstallationId = await this.resolvePublishingDestination(connectorSlug, installationId);
+
     const latestSubmission = await db.connectorSubmission.findFirst({
-      where: { installationId, productId, status: "SUCCESS" },
+      where: { installationId: resolvedInstallationId, productId, status: "SUCCESS" },
       orderBy: { submittedAt: "desc" },
       select: { externalRef: true },
     });
@@ -3042,14 +3400,8 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     if (!shopifyGid) {
-      return { hasExistingProduct: false, noChanges: false, changes: [] };
+      return { hasExistingProduct: false, noChanges: false, changes: [], resolvedInstallationId };
     }
-
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true },
-    });
-    const connectorSlug = connectorDef?.slug ?? "shopify";
 
     const payload = await this.buildConnectorProductPayload(productId);
 
@@ -3058,14 +3410,15 @@ export class MarketplaceService implements OnModuleInit {
     };
 
     const ctx = this.connectorFramework.buildContextForInstallation({
-      id: installation.id,
-      tenantKey: installation.tenantKey,
-      connectorId: installation.connectorId,
+      id: resolvedInstallationId,
+      tenantKey: connectorDef.tenantKey,
+      connectorId: connectorDef.connectorId,
       slug: connectorSlug,
-      metadata: (installation.metadata ?? {}) as Record<string, unknown>,
+      metadata: (connectorDef.metadata ?? {}) as Record<string, unknown>,
     });
 
-    return connector.previewChanges(ctx, payload, shopifyGid);
+    const preview = await connector.previewChanges(ctx, payload, shopifyGid);
+    return { ...preview, resolvedInstallationId };
   }
 
   // ─── Sprint 2: Shopify config import ──────────────────────────────────────
@@ -3258,39 +3611,36 @@ export class MarketplaceService implements OnModuleInit {
 
       // Parallel job creation — Promise.allSettled so one conflict/error doesn't
       // abort the whole batch; each rejection is counted as skipped.
-      // upsert (not create) makes the loop idempotent: a restart after a partial run
-      // won't create duplicate jobs, and previously-failed jobs are automatically
-      // re-queued when the product's version has moved on.
+      // The partial unique index (active states only) prevents duplicate active jobs;
+      // terminal jobs are never mutated — a new row is created instead.
       const results = await Promise.allSettled(
-        page.map(({ product_id: productId, category_id: categoryId }) => {
+        page.map(async ({ product_id: productId, category_id: categoryId }) => {
           if (!categoryId) return Promise.reject(new Error("missing_category"));
-          return db.marketplaceExportJob.upsert({
-            where: {
-              tenantKey_productId_installationId: { tenantKey, productId, installationId },
-            },
-            create: {
-              tenantKey,
-              productId,
-              categoryId,
-              channel,
-              installationId,
-              status: ExportJobStatus.queued,
-              maxRetries: 3,
-              retryCount: 0,
-              createdBy,
-            },
-            update: {
-              // Re-queue if this product previously failed and its version has since
-              // changed (fetchDeltaCandidatesPage already confirmed version > last_synced).
-              // Safe no-op if the job is already queued or processing.
-              status: ExportJobStatus.queued,
-              retryCount: 0,
-              failureReason: null,
-              dlqReason: null,
-              categoryId, // in case the product was re-categorised
-            },
-            select: { id: true },
-          });
+          try {
+            return await db.marketplaceExportJob.create({
+              data: {
+                tenantKey,
+                productId,
+                categoryId,
+                channel,
+                installationId,
+                status: ExportJobStatus.queued,
+                maxRetries: 3,
+                retryCount: 0,
+                createdBy,
+              },
+              select: { id: true },
+            });
+          } catch (err: unknown) {
+            if (
+              err instanceof Prisma.PrismaClientKnownRequestError &&
+              err.code === "P2002"
+            ) {
+              // Active job already exists for this product+installation — skip
+              return { id: "concurrent-active" };
+            }
+            throw err;
+          }
         }),
       );
 

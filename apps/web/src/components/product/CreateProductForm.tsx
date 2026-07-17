@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { AttributeDefinition, Category } from "@/lib/api";
+import type { AppRole } from "@/lib/api/core";
 import { formatINR } from "@/lib/format";
+import { canEditPricing, canViewPricing } from "@/lib/role-capabilities";
 
 interface CreateProductFormProps {
   categories: Category[];
+  actorRole: AppRole;
   onCreated?: () => void;
 }
 
@@ -76,7 +79,7 @@ function isRedirectErrorLike(error: unknown): boolean {
   return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
 }
 
-export function CreateProductForm({ categories, onCreated }: CreateProductFormProps) {
+export function CreateProductForm({ categories, actorRole, onCreated }: CreateProductFormProps) {
   const router = useRouter();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
@@ -84,6 +87,7 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
   const [loadingAttributes, setLoadingAttributes] = useState(false);
   const [attributeFetchError, setAttributeFetchError] = useState<string>("");
   const [submitError, setSubmitError] = useState<string>("");
+  const [planLimitUpgradeUrl, setPlanLimitUpgradeUrl] = useState<string>("");
   const [mrp, setMrp] = useState<string>("");
   const [sellingPrice, setSellingPrice] = useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -162,10 +166,14 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
   const submitAction = async (formData: FormData) => {
     startTransition(async () => {
       setSubmitError("");
+      setPlanLimitUpgradeUrl("");
       try {
         const result = await createProductAction(formData);
         if (result && "error" in result) {
           setSubmitError(result.error);
+          if (result.planLimitExceeded && result.upgradeUrl) {
+            setPlanLimitUpgradeUrl(result.upgradeUrl);
+          }
           return;
         }
         const productId = result && "productId" in result ? result.productId : undefined;
@@ -234,47 +242,56 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
         <Input id={fieldId("gstRate")} name="gstRate" type="number" min={0} step="0.01" placeholder="e.g. 18" />
       </div>
 
-      <div className="space-y-1">
-        <label htmlFor={fieldId("mrp")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          MRP
-        </label>
-        <div className="flex items-center gap-3">
-          <Input
-            id={fieldId("mrp")}
-            name="mrp"
-            type="number"
-            min={0}
-            step="1"
-            value={mrp}
-            onChange={(event) => setMrp(event.target.value)}
-            placeholder="e.g. 2499"
-          />
-          <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedMrp)}</span>
-        </div>
-      </div>
+      {canEditPricing(actorRole) ? (
+        <>
+          <div className="space-y-1">
+            <label htmlFor={fieldId("mrp")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              MRP
+            </label>
+            <div className="flex items-center gap-3">
+              <Input
+                id={fieldId("mrp")}
+                name="mrp"
+                type="number"
+                min={0}
+                step="1"
+                value={mrp}
+                onChange={(event) => setMrp(event.target.value)}
+                placeholder="e.g. 2499"
+              />
+              <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedMrp)}</span>
+            </div>
+          </div>
 
-      <div className="space-y-1">
-        <label
-          htmlFor={fieldId("sellingPrice")}
-          className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-        >
-          Selling Price <span className="text-red-500">*</span>
-        </label>
-        <div className="flex items-center gap-3">
-          <Input
-            id={fieldId("sellingPrice")}
-            name="sellingPrice"
-            type="number"
-            min={0}
-            step="1"
-            required
-            value={sellingPrice}
-            onChange={(event) => setSellingPrice(event.target.value)}
-            placeholder="e.g. 1999"
-          />
-          <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedSellingPrice)}</span>
+          <div className="space-y-1">
+            <label
+              htmlFor={fieldId("sellingPrice")}
+              className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+            >
+              Selling Price <span className="text-red-500">*</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <Input
+                id={fieldId("sellingPrice")}
+                name="sellingPrice"
+                type="number"
+                min={0}
+                step="1"
+                required
+                value={sellingPrice}
+                onChange={(event) => setSellingPrice(event.target.value)}
+                placeholder="e.g. 1999"
+              />
+              <span className="whitespace-nowrap text-xs text-slate-600">{formatINR(parsedSellingPrice)}</span>
+            </div>
+          </div>
+        </>
+      ) : canViewPricing(actorRole) ? (
+        <div className="space-y-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Pricing</span>
+          <p className="text-sm text-slate-500">Pricing will be set after product creation.</p>
         </div>
-      </div>
+      ) : null}
 
       <div className="space-y-1">
         <label
@@ -428,7 +445,19 @@ export function CreateProductForm({ categories, onCreated }: CreateProductFormPr
       </div>
 
       <div className="md:col-span-2">
-        {submitError ? <p className="mb-2 text-sm text-red-700">{submitError}</p> : null}
+        {submitError ? (
+          <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+            <p className="text-sm text-red-700">{submitError}</p>
+            {planLimitUpgradeUrl ? (
+              <a
+                href={planLimitUpgradeUrl}
+                className="mt-1 inline-block text-sm font-medium text-red-800 underline hover:text-red-900"
+              >
+                Upgrade your plan
+              </a>
+            ) : null}
+          </div>
+        ) : null}
         <Button type="submit" disabled={isPending}>
           {isPending ? "Creating..." : "Create product"}
         </Button>

@@ -43,9 +43,10 @@ function fieldPathToEditHref(productId: string, fieldPath: string | null): strin
 
 interface SubmissionsGridProps {
   submissions: ConnectorSubmission[];
+  canRetrySubmission: boolean;
 }
 
-export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
+export function SubmissionsGrid({ submissions, canRetrySubmission }: SubmissionsGridProps) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -227,7 +228,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
 
             {/* Actions */}
             <section className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-              {canRetry(selected.status) ? (
+              {canRetrySubmission && canRetry(selected.status) ? (
                 retrySuccessId === selected.id ? (
                   <span className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
                     ✓ Retry queued — refreshing…

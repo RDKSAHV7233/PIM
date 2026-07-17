@@ -19,6 +19,8 @@ module.exports = {
     "**/connector-framework/connector-http-client.spec.ts",
     "**/bulk-import/bulk-import.service.spec.ts",
     "**/marketplace/marketplace.service.spec.ts",
+    "**/marketplace/publish-remediation.spec.ts",
+    "**/marketplace/publish-remediation.integration.spec.ts",
     "**/connectors/amazon/amazon-validation.spec.ts",
     "**/connectors/amazon/amazon-marketplace-registry.spec.ts",
     "**/connectors/amazon/amazon.connector.spec.ts",
