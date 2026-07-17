@@ -4469,6 +4469,40 @@
           }
         },
         {
+          "name": "List safe publishing destinations for a marketplace channel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/marketplace/channels/:channel/destinations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "marketplace",
+                "channels",
+                ":channel",
+                "destinations"
+              ],
+              "variable": [
+                {
+                  "key": "channel",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": "List safe publishing destinations for a marketplace channel"
+          }
+        },
+        {
           "name": "List mapping versions",
           "request": {
             "method": "GET",
