@@ -251,13 +251,23 @@ async function run() {
       "shopify",
       "shopify.connector.js",
     ));
+    const { ShopifyApiClient } = require(path.join(
+      REPO_ROOT,
+      "apps",
+      "api",
+      "dist",
+      "connectors",
+      "shopify",
+      "shopify-api-client.service.js",
+    ));
 
     prismaDirect = new PrismaDirectService();
     await prismaDirect.onModuleInit();
     const db = prismaDirect.getClient();
     const logger = new LoggerService();
     const encryption = new ConnectorCredentialEncryptionService(prismaDirect, logger);
-    const connector = new ShopifyConnector(prismaDirect, logger);
+    const apiClient = new ShopifyApiClient(logger);
+    const connector = new ShopifyConnector(prismaDirect, logger, apiClient);
 
     await db.$executeRawUnsafe(
       `
@@ -294,6 +304,7 @@ async function run() {
       installationId,
       connectorId: "cdef_shopify",
       getAccessToken: async () => "",
+      fetch: (url, init) => fetch(url, init),
     };
 
     const publications = await connector.listPublications(ctx);
