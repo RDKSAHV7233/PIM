@@ -173,13 +173,15 @@ async function run() {
     const { LoggerService } = require(path.join(REPO_ROOT, "apps", "api", "dist", "common", "logging", "logger.service.js"));
     const { ConnectorCredentialEncryptionService } = require(path.join(REPO_ROOT, "apps", "api", "dist", "connector-installer", "credential-encryption.service.js"));
     const { ShopifyConnector } = require(path.join(REPO_ROOT, "apps", "api", "dist", "connectors", "shopify", "shopify.connector.js"));
+    const { ShopifyApiClient } = require(path.join(REPO_ROOT, "apps", "api", "dist", "connectors", "shopify", "shopify-api-client.service.js"));
 
     prismaDirect = new PrismaDirectService();
     await prismaDirect.onModuleInit();
     const db = prismaDirect.getClient();
     const logger = new LoggerService();
     const encryption = new ConnectorCredentialEncryptionService(prismaDirect, logger);
-    const connector = new ShopifyConnector(prismaDirect, logger);
+    const apiClient = new ShopifyApiClient(logger);
+    const connector = new ShopifyConnector(prismaDirect, logger, apiClient);
 
     await db.$executeRawUnsafe(
       `
@@ -198,7 +200,13 @@ async function run() {
       await encryption.storeCredential({ tenantKey, installationId, credentialType, plainValue });
     }
 
-    const ctx = { tenantId: tenantKey, installationId, connectorId: "cdef_shopify", getAccessToken: async () => "" };
+    const ctx = {
+      tenantId: tenantKey,
+      installationId,
+      connectorId: "cdef_shopify",
+      getAccessToken: async () => "",
+      fetch: (url, init) => fetch(url, init),
+    };
 
     const result = await connector.publishProduct(ctx, {
       sku: "PAYLOAD-001",

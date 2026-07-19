@@ -233,13 +233,23 @@ async function run() {
       "shopify",
       "shopify.connector.js",
     ));
+    const { ShopifyApiClient } = require(path.join(
+      REPO_ROOT,
+      "apps",
+      "api",
+      "dist",
+      "connectors",
+      "shopify",
+      "shopify-api-client.service.js",
+    ));
 
     prismaDirect = new PrismaDirectService();
     await prismaDirect.onModuleInit();
     const db = prismaDirect.getClient();
     const logger = new LoggerService();
     const encryption = new ConnectorCredentialEncryptionService(prismaDirect, logger);
-    const connector = new ShopifyConnector(prismaDirect, logger);
+    const apiClient = new ShopifyApiClient(logger);
+    const connector = new ShopifyConnector(prismaDirect, logger, apiClient);
 
     await db.$executeRawUnsafe(
       `
@@ -258,7 +268,32 @@ async function run() {
       tenantId: tenantKey,
       installationId,
       connectorId: "cdef_shopify",
-      getAccessToken: async () => "",
+      getAccessToken: async () => {
+        const rows = await db.$queryRawUnsafe(
+          `
+          SELECT
+            encrypted_value AS "encryptedValue",
+            key_version AS "keyVersion",
+            expires_at AS "expiresAt"
+          FROM connector_credentials
+          WHERE tenant_key = $1
+            AND installation_id = $2
+            AND credential_type = 'access_token'
+          LIMIT 1
+          `,
+          tenantKey,
+          installationId,
+        );
+        const row = Array.isArray(rows) ? rows[0] : null;
+        if (row?.encryptedValue) {
+          const expiresAt = row.expiresAt ? new Date(row.expiresAt) : null;
+          if (!expiresAt || expiresAt.getTime() - Date.now() > 5 * 60 * 1000) {
+            return encryption.decrypt(String(row.encryptedValue), String(row.keyVersion));
+          }
+        }
+        return connector.refreshAccessToken(ctx);
+      },
+      fetch: (url, init) => fetch(url, init),
     };
 
     await connector.handleOAuthCallback(ctx, {
@@ -267,7 +302,10 @@ async function run() {
     });
 
     assert(stub.calls.length === 1, `Expected one token exchange call, got ${stub.calls.length}`);
-    assert(stub.graphqlCalls.length === 1, `Expected one Shopify GraphQL identity call, got ${stub.graphqlCalls.length}`);
+    assert(
+      stub.graphqlCalls.length === 2,
+      `Expected Shopify identity and market GraphQL calls, got ${stub.graphqlCalls.length}`,
+    );
     assert(
       stub.calls[0].grantType === "urn:ietf:params:oauth:grant-type:token-exchange",
       `Expected token exchange grant, got ${stub.calls[0].grantType}`,
