@@ -21,9 +21,10 @@ import { usePlanUsage } from "@/hooks/use-plan-usage";
 import type { AppRole, CatalogStats, Category, MarketplaceChannel, ProductListItem } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import {
-  aggregateReadinessStatus,
+  bestChannelReadinessStatus,
   buildLoadingReadiness,
   buildUnknownReadiness,
+  readyChannelCount,
   READINESS_CHANNELS,
   type ChannelReadinessResult,
   type ProductReadinessBatchResponse,
@@ -221,18 +222,29 @@ function matchesProductSearch(product: ProductWithCompliance, query: string): bo
   return (product.skuCodes ?? []).some((skuCode) => skuCode.toLowerCase().includes(normalized));
 }
 
-function nextActionLabel(product: ProductWithCompliance, channelStatus: ReadinessStatus): string {
+function nextActionLabel(
+  product: ProductWithCompliance,
+  bestStatus: ReadinessStatus,
+  readyCount: number,
+  totalChannels: number,
+): string {
   if (product.complianceErrorCount > 0) {
     return `Fix ${product.complianceErrorCount} blocking issue${product.complianceErrorCount === 1 ? "" : "s"}`;
   }
-  if (channelStatus === "errors") {
-    return "Fix channel blockers";
+  if (bestStatus === "errors") {
+    return "Fix all channel blockers";
   }
-  if (product.complianceWarningCount > 0 || channelStatus === "warnings") {
+  if (product.complianceWarningCount > 0 || bestStatus === "warnings") {
     return "Review warnings";
   }
   if ((product.completenessScore ?? 0) < 100) {
     return "Complete content";
+  }
+  if (bestStatus === "ready") {
+    if (readyCount >= totalChannels) {
+      return "Ready to publish";
+    }
+    return `${readyCount} of ${totalChannels} channels ready`;
   }
   return "Review product";
 }
@@ -367,7 +379,7 @@ export function ProductsTab({
     return Object.fromEntries(
       searchedProducts.map((product) => [
         product.id,
-        aggregateReadinessStatus(READINESS_CHANNELS.map((channel) => readinessState[product.id]?.[channel])),
+        bestChannelReadinessStatus(READINESS_CHANNELS.map((channel) => readinessState[product.id]?.[channel])),
       ]),
     ) as Record<string, ReadinessStatus>;
   }, [readinessState, searchedProducts]);
@@ -588,11 +600,15 @@ export function ProductsTab({
       {
         key: "nextAction",
         header: "Next Action",
-        render: (product) => (
-          <span className="text-sm text-slate-700">
-            {nextActionLabel(product, readinessMap[product.id] ?? "loading")}
-          </span>
-        ),
+        render: (product) => {
+          const channelResults = READINESS_CHANNELS.map((ch) => readinessState[product.id]?.[ch]);
+          const ready = channelResults.filter((r) => r?.status === "ready").length;
+          return (
+            <span className="text-sm text-slate-700">
+              {nextActionLabel(product, readinessMap[product.id] ?? "loading", ready, READINESS_CHANNELS.length)}
+            </span>
+          );
+        },
       },
       {
         key: "updatedAt",

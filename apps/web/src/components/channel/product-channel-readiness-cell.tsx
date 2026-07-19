@@ -4,8 +4,9 @@ import { memo, useEffect, useMemo } from "react";
 import { ChannelReadinessBadge } from "@/components/channel/channel-readiness-badge";
 import type { MarketplaceChannel } from "@/lib/api";
 import {
-  aggregateReadinessStatus,
+  bestChannelReadinessStatus,
   buildLoadingReadiness,
+  readyChannelCount,
   READINESS_CHANNELS,
   type ChannelReadinessResult,
   type ReadinessStatus,
@@ -20,9 +21,19 @@ export const ProductChannelReadinessCell = memo(function ProductChannelReadiness
   readiness,
   onResolvedStatus,
 }: ProductChannelReadinessCellProps) {
-  const overallStatus = useMemo(
-    () => aggregateReadinessStatus(READINESS_CHANNELS.map((channel) => readiness?.[channel])),
+  const channelResults = useMemo(
+    () => READINESS_CHANNELS.map((channel) => readiness?.[channel]),
     [readiness],
+  );
+
+  const overallStatus = useMemo(
+    () => bestChannelReadinessStatus(channelResults),
+    [channelResults],
+  );
+
+  const readyCount = useMemo(
+    () => readyChannelCount(channelResults),
+    [channelResults],
   );
 
   useEffect(() => {
@@ -49,5 +60,12 @@ export const ProductChannelReadinessCell = memo(function ProductChannelReadiness
     [readiness],
   );
 
-  return <div className="flex flex-wrap gap-1">{badges}</div>;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {badges}
+      {overallStatus !== "loading" && readyCount > 0 ? (
+        <span className="ml-1 text-xs text-emerald-700" aria-label={`${readyCount} of ${READINESS_CHANNELS.length} channels ready`}>{readyCount}/{READINESS_CHANNELS.length}</span>
+      ) : null}
+    </div>
+  );
 });

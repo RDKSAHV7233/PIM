@@ -84,3 +84,24 @@ export function aggregateReadinessStatus(results: Array<ChannelReadinessResult |
   return "ready";
 }
 
+export function bestChannelReadinessStatus(results: Array<ChannelReadinessResult | undefined>): ReadinessStatus {
+  const statuses = results.map((item) => item?.status ?? "loading");
+  if (statuses.some((status) => status === "loading")) {
+    return "loading";
+  }
+  if (statuses.some((status) => status === "ready")) {
+    return "ready";
+  }
+  if (statuses.some((status) => status === "warnings")) {
+    return "warnings";
+  }
+  if (statuses.some((status) => status === "unknown")) {
+    return "unknown";
+  }
+  return "errors";
+}
+
+export function readyChannelCount(results: Array<ChannelReadinessResult | undefined>): number {
+  return results.filter((item) => item?.status === "ready").length;
+}
+
