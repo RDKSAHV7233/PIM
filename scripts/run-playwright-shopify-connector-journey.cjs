@@ -105,6 +105,7 @@ async function main() {
   const apiPort = 4500 + Math.floor(Math.random() * 100);
   const webPort = 3500 + Math.floor(Math.random() * 100);
   const databaseUrl = resolveDatabaseUrl(fileEnv);
+  const runId = `shopify-${Date.now()}`;
   const shopifyHarness = {
     publicationName: "Online Store",
     shopName: "Demo Store",
@@ -127,6 +128,11 @@ async function main() {
     PLAYWRIGHT_PASSWORD: "vexa-pim-demo-password",
     PLAYWRIGHT_ENABLE_SHOPIFY_STUB: "1",
     PLAYWRIGHT_SKIP_PRISMA_GENERATE: "1",
+    PLAYWRIGHT_WORKSPACE: "shopify-e2e",
+    PLAYWRIGHT_TENANT_KEY: "shopify-e2e",
+    PLAYWRIGHT_RUN_ID: runId,
+    PLAYWRIGHT_E2E_ISOLATED_TENANT: "1",
+    PLAYWRIGHT_ALLOW_FULL_TENANT_PURGE: "1",
     CORS_ORIGIN: `http://127.0.0.1:${webPort}`,
     PIM_SHOPIFY_CLIENT_ID: "shopify-client-id",
     PIM_SHOPIFY_CLIENT_SECRET: "shopify-client-secret",
@@ -138,11 +144,12 @@ async function main() {
     PLAYWRIGHT_SHOPIFY_PUBLICATION_COUNT_LABEL: "1 publication target",
   };
 
-  runCommand("npm", ["run", "prisma:generate"], env);
+  console.log(`[shopify-journey] run=${runId} workspace=shopify-e2e tenant=shopify-e2e`);
 
   if (shouldSkipTargetedPrebuild()) {
     assertBuildArtifactsExist();
   } else {
+    runCommand("npm", ["run", "prisma:generate"], env);
     runCommand("npm", ["run", "build", "--workspace", "@pim1/api"], env);
     runCommand("npm", ["run", "build", "--workspace", "@pim1/web"], {
       ...env,
@@ -153,21 +160,38 @@ async function main() {
   env.PLAYWRIGHT_SKIP_API_BUILD = "1";
   env.PLAYWRIGHT_SKIP_WEB_BUILD = "1";
 
-  const invocation = playwrightInvocation("apps/web/test/e2e/shopify-connector-managed-install.spec.js");
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: root,
-    stdio: "inherit",
-    shell: false,
-    env,
-  });
+  const specs = [
+    "apps/web/test/e2e/auth-fingerprint-regression.spec.js",
+    "apps/web/test/e2e/shopify-product-publish-journey.spec.js",
+    "apps/web/test/e2e/shopify-connector-managed-install.spec.js",
+  ];
 
-  if (typeof result.status === "number") {
-    process.exit(result.status);
+  const failures = [];
+  for (const specPath of specs) {
+    const invocation = playwrightInvocation(specPath);
+    const result = spawnSync(invocation.command, invocation.args, {
+      cwd: root,
+      stdio: "inherit",
+      shell: false,
+      env,
+    });
+
+    if (result.error) {
+      failures.push({ spec: specPath, error: result.error.message });
+    } else if (typeof result.status === "number" && result.status !== 0) {
+      failures.push({ spec: specPath, exitCode: result.status });
+    }
   }
-  if (result.error) {
-    throw result.error;
+
+  if (failures.length > 0) {
+    console.error(`\n${failures.length}/${specs.length} spec(s) failed:`);
+    for (const f of failures) {
+      console.error(`  - ${f.spec}${f.exitCode ? ` (exit ${f.exitCode})` : `: ${f.error}`}`);
+    }
+    process.exit(1);
   }
-  process.exit(1);
+
+  process.exit(0);
 }
 
 main().catch((error) => {

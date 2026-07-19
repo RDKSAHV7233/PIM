@@ -46,7 +46,7 @@ async function followCallbackRedirect(page, callbackUrl, redirectedUrlPattern) {
     throw new Error(`Unexpected Shopify callback redirect location ${redirectedPath}`);
   }
 
-  await page.goto(location, { waitUntil: "domcontentloaded" });
+  await page.goto(redirectedPath, { waitUntil: "domcontentloaded" });
 }
 
 test("install with an invalid shop domain is rejected with a domain validation error", async () => {
@@ -97,9 +97,10 @@ test("credential state shows connected after successful OAuth callback", async (
       shopDomain: SHOP_DOMAIN,
     });
 
+    const oauthInit = await apiRequest("POST", `/connectors/${installation.id}/oauth/initiate`, adminToken);
     const callbackUrl =
       `${API_ROOT}/api/v1/connectors/shopify/oauth/callback` +
-      `?state=${encodeURIComponent(installation.id)}` +
+      `?state=${encodeURIComponent(oauthInit.state)}` +
       `&shop=${encodeURIComponent(SHOP_DOMAIN)}` +
       `&session_token=${encodeURIComponent(`session-${installation.id}`)}`;
 
@@ -170,9 +171,10 @@ test("admin can complete Shopify managed install and save publication targets", 
     await expect(page.getByText("Confirm shop identity and publish controls")).toBeVisible();
     await expect(page.getByRole("link", { name: "Refresh credential state" })).toBeVisible();
 
+    const oauthInit = await apiRequest("POST", `/connectors/${installation.id}/oauth/initiate`, adminToken);
     const callbackUrl =
       `${API_ROOT}/api/v1/connectors/shopify/oauth/callback` +
-      `?state=${encodeURIComponent(installation.id)}` +
+      `?state=${encodeURIComponent(oauthInit.state)}` +
       `&shop=${encodeURIComponent(SHOP_DOMAIN)}` +
       `&session_token=${encodeURIComponent(`session-${installation.id}`)}`;
 
@@ -182,7 +184,7 @@ test("admin can complete Shopify managed install and save publication targets", 
       new RegExp(`/channels/connectors/${escapeRegExp(installation.id)}\\?status=oauth_complete$`),
     );
     await expect(page.getByText("Shopify OAuth is not yet complete.")).toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Switch store" })).toContainText(SHOP_NAME);
+    await expect(page.getByText(SHOP_DOMAIN)).toBeVisible();
 
     await page.goto(`/channels/connectors/${installation.id}?tab=credentials&status=oauth_complete`, {
       waitUntil: "domcontentloaded",
