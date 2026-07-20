@@ -15,12 +15,17 @@ export function ProductDirtyNavigationGuard() {
   };
 
   useEffect(() => {
+    let mounted = false;
+    const mountTimer = setTimeout(() => { mounted = true; }, 200);
+
     const isProductEditEvent = (event: Event) => {
       const target = event.target;
       return target instanceof Element && Boolean(target.closest("form[data-product-dirty-form='true']"));
     };
 
     const markDirty = (event: Event) => {
+      if (!mounted) return;
+      if (!event.isTrusted) return;
       if (isProductEditEvent(event)) setDirtyState(true);
     };
 
@@ -57,6 +62,7 @@ export function ProductDirtyNavigationGuard() {
     window.addEventListener("beforeunload", warnBeforeUnload);
 
     return () => {
+      clearTimeout(mountTimer);
       document.removeEventListener("input", markDirty, true);
       document.removeEventListener("change", markDirty, true);
       document.removeEventListener("submit", clearOnSubmit, true);

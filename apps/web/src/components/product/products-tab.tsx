@@ -329,8 +329,13 @@ export function ProductsTab({
     return filteredProducts.filter((product) => matchesProductSearch(product, searchQuery));
   }, [filteredProducts, searchQuery]);
 
+  const productIdKey = useMemo(
+    () => searchedProducts.map((p) => p.id).join(","),
+    [searchedProducts],
+  );
+
   useEffect(() => {
-    const productIds = searchedProducts.map((product) => product.id);
+    const productIds = productIdKey ? productIdKey.split(",") : [];
     if (productIds.length === 0) {
       setReadinessState({});
       return;
@@ -373,7 +378,7 @@ export function ProductsTab({
 
     void loadReadinessBatch();
     return () => controller.abort();
-  }, [role, searchedProducts]);
+  }, [role, productIdKey]);
 
   const readinessMap = useMemo(() => {
     return Object.fromEntries(
