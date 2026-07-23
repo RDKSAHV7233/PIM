@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-06-12T20:10",
+    "lastUpdated": "2026-07-23T18:08",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -3674,6 +3674,98 @@
             "npx tsc -p apps/api/tsconfig.build.json --noEmit",
             "node apps/web/test/integration/woocommerce-install-form.test.cjs"
           ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-55",
+      "name": "Shopify Publish Journey Defect Remediation",
+      "status": "completed",
+      "note": "All three stories verified live per their Definition of Done. Code changes are in the working tree but not yet committed — commit hash and locked:true will be recorded once the user approves the commit, per repo convention that locked stories carry real commit evidence.",
+      "evidence": [
+        "apps/api/src/billing/plan-usage.service.ts",
+        "apps/web/src/app/channels/connectors/[installationId]/page.tsx"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-DASH-SKU-METERING-001",
+          "title": "Active-SKU usage counter reflects Variant rows instead of Product rows in PlanUsageService.recomputeUsage",
+          "status": "completed",
+          "locked": false,
+          "owner": "claude",
+          "commit": null,
+          "scope": [
+            "apps/api/src/billing/plan-usage.service.ts"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npx jest src/billing (apps/api) -- 108/108 passed",
+            "Live browser (role admin, tenant shopify-e2e, http://127.0.0.1:3701/admin/plan): created 1 product with 2 variants + 1 product with 1 variant = 3 variants total across 2 products; rendered Usage meters showed 'SKUs 3 / 100000', matching variant count exactly, not the 2-product count"
+          ],
+          "acceptance": [
+            "recomputeUsage sources activeSkuCount from variant.count() instead of product.count()",
+            "Live-rendered /admin/plan usage number equals variant count, observed not assumed"
+          ]
+        },
+        {
+          "storyId": "ST-CON-SHOPIFY-READINESS-001",
+          "title": "Shopify connector readiness checklist no longer falls back to the full unfiltered publication-target list when nothing is selected",
+          "status": "completed",
+          "locked": false,
+          "owner": "claude",
+          "commit": null,
+          "scope": [
+            "apps/web/src/app/channels/connectors/[installationId]/page.tsx"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/web/tsconfig.json --noEmit",
+            "Live browser (role admin, tenant shopify-e2e, http://127.0.0.1:3701): fresh Shopify connector install (installationId 9fac98f3-c854-41c7-af0d-ad7b38508044) showed readiness checklist '2/4 steps complete -- setup still required', 'Publication targets selected' = needs action, before any target saved",
+            "Live browser: saved one publication target via the real Save publication targets button; checklist flipped to '4/4 steps complete -- publish ready', matching 'Publication targets last updated 23/7/2026, 11:30:53 pm.' in the Publication Targets section -- no more contradiction between the two sections",
+            "Live: queued a real publish for an approved product against this connector via the real Channels-tab Queue channel export button; submission 5e959349-ba4a-4cba-83de-b13b2671edd7 resolved SUCCESS on attemptNumber 1 with externalRef gid://shopify/Product/4242 -- no prior failure, confirming the checklist was truthful from the start",
+            "Confirmed via repo-wide grep before the fix that no other connector has an equivalent readiness array (installation.slug === \"shopify\" gates the whole block) -- no regression surface"
+          ],
+          "acceptance": [
+            "summarizeSelectedPublicationTargets no longer falls back to the unfiltered target list when none are selected",
+            "Readiness checklist and Publication Targets section agree with each other at every point in the flow, observed live",
+            "First real publish attempt succeeds without requiring a prior failed attempt"
+          ]
+        },
+        {
+          "storyId": "ST-CON-ROLE-REGRESSION-001",
+          "title": "Re-confirm publish and admin-only job-management RBAC live after the readiness-checklist fix",
+          "status": "completed",
+          "locked": false,
+          "owner": "claude",
+          "commit": null,
+          "tests_passed": [
+            "Live API calls (tenant shopify-e2e): editor POST /marketplace/products/:id/export-jobs -> 403; publisher -> 201; channel_manager -> 201",
+            "Live API calls: editor POST /marketplace/export-jobs/:id/process -> 403; publisher POST .../process -> 403; admin POST .../process -> 201"
+          ],
+          "acceptance": [
+            "marketplace.controller.ts export-job and process/requeue role gates are unchanged by the Story 2 fix, confirmed with real HTTP status codes, not assumed from a prior test run"
+          ]
+        },
+        {
+          "storyId": "ST-AUTH-LOGOUT-RESILIENCE-001",
+          "title": "Logout clears local session cookies unconditionally instead of only on backend 204/401/403-suspended responses",
+          "status": "completed",
+          "locked": false,
+          "owner": "claude",
+          "commit": null,
+          "scope": [
+            "apps/web/src/app/api/auth/logout/route.ts"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/web/tsconfig.json --noEmit",
+            "Live browser (Claude in Chrome extension, real network-request capture): reproduced the real backend returning 503 for POST /auth/logout (transient, observed twice under the same conditions); before the fix this left pim_access_token intact while the UI navigated to /login, so the user appeared logged out but was not",
+            "Confirmed the real backend logout endpoint itself returns 204 when called directly (apps/api), isolating the bug to the web-edge proxy route's status-code-gated cookie clearing, not the backend",
+            "After the fix, reproduced the same live 503 again and confirmed navigating to /dashboard afterward redirected to /login (session genuinely cleared) instead of rendering the dashboard"
+          ],
+          "acceptance": [
+            "The logout proxy route clears cookies after a best-effort backend call regardless of that call's outcome (success, 4xx, 5xx, timeout, or network error), matching its own stated 'idempotent at the web edge' intent",
+            "Verified live against the real intermittent 503 condition, not a synthetic/mocked failure"
+          ],
+          "regression_evidence": "Investigated as a side-finding during INC-55's live-browser re-verification via the Claude in Chrome extension (not part of the original three stories); a second side-finding from the same pass -- the connector setup wizard appearing to show zero results -- was investigated in parallel and found to be a false alarm caused by a cropped screenshot viewport and a truncated accessibility-tree read during inspection, not a product defect; apps/web/src/app/connectors/setup/page.tsx was confirmed to have zero diff against its pre-investigation state."
         }
       ]
     }
