@@ -96,6 +96,11 @@ type CanonicalRowPayload = {
   attributes?: Record<string, unknown>;
   /** Structured international tax codes; collected from flat CSV columns (gb_commodity_code etc.) or JSON taxCodes array. */
   taxCodes?: TaxCodeEntry[];
+  /** Variant fields — one Variant is created per imported row alongside its Product. */
+  skuCode?: string;
+  mrp?: number;
+  sellingPrice?: number;
+  inventoryQty?: number;
 };
 
 type MappingSuggestion = {
@@ -113,6 +118,10 @@ const CANONICAL_FIELDS = [
   "gstRate",
   "status",
   "attributes",
+  "skuCode",
+  "mrp",
+  "sellingPrice",
+  "inventoryQty",
 ] as const;
 
 const DEFAULT_MAPPING: Record<(typeof CANONICAL_FIELDS)[number], string> = {
@@ -123,6 +132,10 @@ const DEFAULT_MAPPING: Record<(typeof CANONICAL_FIELDS)[number], string> = {
   gstRate: "gstRate",
   status: "status",
   attributes: "attributes",
+  skuCode: "skuCode",
+  mrp: "mrp",
+  sellingPrice: "sellingPrice",
+  inventoryQty: "inventoryQty",
 };
 
 const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
@@ -133,6 +146,10 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
   gstRate: ["gst", "gst_rate", "tax_rate", "gstrate"],
   status: ["status", "state"],
   attributes: ["attributes", "attribute_json", "specs", "specifications"],
+  skuCode: ["sku", "sku_code", "skucode", "product_sku"],
+  mrp: ["mrp", "list_price", "max_retail_price"],
+  sellingPrice: ["selling_price", "sellingprice", "price", "sale_price"],
+  inventoryQty: ["inventory_qty", "inventoryqty", "stock", "quantity", "qty"],
 };
 
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
@@ -197,6 +214,9 @@ type BulkImportTemplateRow = BulkImportTemplateLike & {
 
 /** Single source of truth for the WORKFLOW_ENTRY_INVALID error code. */
 const WORKFLOW_ENTRY_INVALID_CODE = "WORKFLOW_ENTRY_INVALID" as const;
+
+/** A duplicate skuCode is a deterministic, non-retryable failure — retrying would hit the same unique-constraint violation every time. */
+const SKU_DUPLICATE_CODE = "SKU_DUPLICATE" as const;
 
 const SOURCE_DATA_FAILURE_CODES = new Set([
   "NO_ROWS",
@@ -1321,22 +1341,61 @@ export class BulkImportService {
       const existingProduct = row.productId
         ? await this.prisma.tenant().product.findUnique({ where: { id: row.productId }, select: { id: true } })
         : null;
-      const product = existingProduct ?? await this.prisma.tenant().product.create({
-        data: {
-          title,
-          description: (payload.description ?? "").trim(),
-          brand: (payload.brand ?? "").trim(),
-          categoryId: job.categoryId,
-          hsnCode: payload.hsnCode ? payload.hsnCode.trim() : null,
-          gstRate: payload.gstRate ?? null,
-          attributes: (payload.attributes ?? {}) as Prisma.JsonObject,
-          status: RecordStatus.draft,
-        },
-      });
 
-      // Persist productId immediately so a crash after this point won't orphan the product.
-      // On retry the idempotency check above will find it.
-      if (!existingProduct) {
+      let product: { id: string };
+      if (existingProduct) {
+        product = existingProduct;
+      } else {
+        const skuCode = (payload.skuCode ?? "").trim();
+        if (!skuCode) {
+          throw new BadRequestException("skuCode is required");
+        }
+        // Product + Variant are created in one transaction: a SKU-collision failure on
+        // the variant insert must not leave a variant-less Product behind. Without this,
+        // a retry's idempotency check (row.productId, below) would find the already-
+        // persisted product and skip variant creation entirely on every subsequent
+        // attempt — silently reproducing the exact "product with no SKU" bug this
+        // change exists to fix.
+        try {
+          product = await this.prisma.tenant().$transaction(async (tx) => {
+            const createdProduct = await tx.product.create({
+              data: {
+                title,
+                description: (payload.description ?? "").trim(),
+                brand: (payload.brand ?? "").trim(),
+                categoryId: job.categoryId,
+                hsnCode: payload.hsnCode ? payload.hsnCode.trim() : null,
+                gstRate: payload.gstRate ?? null,
+                attributes: (payload.attributes ?? {}) as Prisma.JsonObject,
+                status: RecordStatus.draft,
+              },
+            });
+            await tx.variant.create({
+              data: {
+                productId: createdProduct.id,
+                skuCode,
+                mrp: payload.mrp ?? null,
+                sellingPrice: payload.sellingPrice ?? null,
+                inventoryQty: payload.inventoryQty ?? 0,
+                status: RecordStatus.draft,
+              },
+            });
+            return createdProduct;
+          });
+        } catch (error: unknown) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            // Deterministic: this same row will hit the same unique-constraint violation
+            // on every retry, so it must not be classified as a transient/retryable error.
+            throw new BadRequestException({
+              code: SKU_DUPLICATE_CODE,
+              message: `Duplicate SKU: "${skuCode}" already exists in this catalog.`,
+            });
+          }
+          throw error;
+        }
+
+        // Persist productId immediately so a crash after this point won't orphan the product.
+        // On retry the idempotency check above will find it.
         await this.prisma.tenant().bulkImportRow.update({
           where: { id: row.id },
           data: { productId: product.id },
@@ -1382,8 +1441,8 @@ export class BulkImportService {
         },
       });
     } catch (error: unknown) {
-      const isWorkflowEntryInvalid = this.isWorkflowEntryInvalidError(error);
-      const nextRetry = isWorkflowEntryInvalid ? row.retryCount : row.retryCount + 1;
+      const isNonRetryable = this.isWorkflowEntryInvalidError(error) || this.isSkuDuplicateError(error);
+      const nextRetry = isNonRetryable ? row.retryCount : row.retryCount + 1;
       const message = this.extractErrorMessage(error);
 
       await this.prisma.tenant().bulkImportRow.update({
@@ -1391,7 +1450,7 @@ export class BulkImportService {
         data: {
           retryCount: nextRetry,
           errorMessage: message,
-          status: isWorkflowEntryInvalid
+          status: isNonRetryable
             ? BulkImportRowStatus.failed
             : nextRetry >= job.maxRetries
               ? BulkImportRowStatus.dead_letter
@@ -1664,6 +1723,10 @@ export class BulkImportService {
     const status = this.pickMappedValue(input, mapping.status);
     const attributesRaw = this.pickMappedValue(input, mapping.attributes);
     const taxCodes = this.collectTaxCodes(input);
+    const skuCode = this.pickMappedValue(input, mapping.skuCode);
+    const mrpRaw = this.pickMappedValue(input, mapping.mrp);
+    const sellingPriceRaw = this.pickMappedValue(input, mapping.sellingPrice);
+    const inventoryQtyRaw = this.pickMappedValue(input, mapping.inventoryQty);
 
     return {
       title: this.asTrimmedString(title),
@@ -1674,6 +1737,10 @@ export class BulkImportService {
       status: this.asTrimmedString(status),
       attributes: this.parseAttributes(attributesRaw),
       ...(taxCodes !== undefined ? { taxCodes } : {}),
+      skuCode: this.asTrimmedString(skuCode),
+      mrp: this.asOptionalNumber(mrpRaw),
+      sellingPrice: this.asOptionalNumber(sellingPriceRaw),
+      inventoryQty: this.asOptionalNumber(inventoryQtyRaw),
     };
   }
 
@@ -1847,7 +1914,13 @@ export class BulkImportService {
     return values.map((value) => value.trim());
   }
 
-  private pickMappedValue(row: Record<string, unknown>, key: string) {
+  private pickMappedValue(row: Record<string, unknown>, key: string | undefined) {
+    // key can be undefined for a mapping object persisted before a canonical field was
+    // added (e.g. an existing job's stored `mapping` JSON predating skuCode/mrp/etc.) —
+    // treat a missing mapping entry as "no value for this field", not a crash.
+    if (!key) {
+      return undefined;
+    }
     if (key in row) {
       return row[key];
     }
@@ -1953,6 +2026,57 @@ export class BulkImportService {
         code: "ATTRIBUTES_INVALID",
         message: "Attributes must be a JSON object.",
         fieldPath: "attributes",
+      });
+    }
+    if (!this.asTrimmedString(row.skuCode)) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "SKU_REQUIRED",
+        message: "SKU code is required.",
+        fieldPath: "skuCode",
+      });
+    }
+    if (row.mrp !== undefined && (!Number.isFinite(row.mrp) || row.mrp < 0)) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "MRP_INVALID",
+        message: "MRP must be a non-negative number.",
+        fieldPath: "mrp",
+      });
+    }
+    if (row.sellingPrice !== undefined && (!Number.isFinite(row.sellingPrice) || row.sellingPrice < 0)) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "SELLING_PRICE_INVALID",
+        message: "Selling price must be a non-negative number.",
+        fieldPath: "sellingPrice",
+      });
+    }
+    if (
+      row.mrp !== undefined &&
+      row.sellingPrice !== undefined &&
+      Number.isFinite(row.mrp) &&
+      Number.isFinite(row.sellingPrice) &&
+      row.sellingPrice > row.mrp
+    ) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "SELLING_PRICE_EXCEEDS_MRP",
+        message: "Selling price cannot exceed MRP.",
+        fieldPath: "sellingPrice",
+      });
+    }
+    if (row.inventoryQty !== undefined && (!Number.isFinite(row.inventoryQty) || row.inventoryQty < 0)) {
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "INVENTORY_QTY_INVALID",
+        message: "Inventory quantity must be a non-negative number.",
+        fieldPath: "inventoryQty",
       });
     }
     return issues;
@@ -2311,6 +2435,20 @@ export class BulkImportService {
       }
     }
     return String(error.message).toUpperCase().includes(WORKFLOW_ENTRY_INVALID_CODE);
+  }
+
+  private isSkuDuplicateError(error: unknown) {
+    if (!(error instanceof BadRequestException)) {
+      return false;
+    }
+    const response = error.getResponse();
+    if (response && typeof response === "object" && !Array.isArray(response)) {
+      const code = (response as { code?: unknown }).code;
+      if (typeof code === "string" && code.trim().toUpperCase() === SKU_DUPLICATE_CODE) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private toCsvCell(value: string) {

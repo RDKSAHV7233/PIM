@@ -46,6 +46,10 @@ type BulkImportJobPayload = {
   tenantKey: string;
 };
 
+// NOTE: hand-duplicated from BulkImportService's private CanonicalRowPayload type
+// (bulk-import.service.ts) — both must be kept in sync when a canonical field is
+// added. normalizeCanonicalPayloadForImport() below delegates to the same shared
+// mapping logic, so this is a typing-only duplication, not a second implementation.
 type CanonicalRowPayload = {
   title?: string;
   description?: string;
@@ -56,6 +60,11 @@ type CanonicalRowPayload = {
   attributes?: Record<string, unknown>;
   /** Structured international tax codes — collected by BulkImportService.normalizeCanonicalPayloadForImport(). */
   taxCodes?: Array<{ regimeKey: string; key: string; value: string; rate?: number }>;
+  /** Variant fields — see bulk-import.service.ts's CanonicalRowPayload for details. */
+  skuCode?: string;
+  mrp?: number;
+  sellingPrice?: number;
+  inventoryQty?: number;
 };
 
 @Injectable()

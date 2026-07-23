@@ -666,6 +666,7 @@ async function run() {
           hsnCode: "62046200",
           gstRate: 18,
           attributes: {},
+          skuCode: `WH-${runId}`,
         },
       ],
       maxRetries: 1,

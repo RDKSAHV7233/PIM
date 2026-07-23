@@ -1,15 +1,15 @@
 import { BadRequestException } from "@nestjs/common";
 import { Readable } from "node:stream";
-import { BulkImportRowStatus } from "@prisma/client";
+import { BulkImportRowStatus, Prisma } from "@prisma/client";
 import { BulkImportRunService } from "./bulk-import-run.service";
 import { BulkImportService } from "./bulk-import.service";
 
 const MB = 1024 * 1024;
 
 function buildCsv(rowCount: number) {
-  const lines = ["title,description,brand,hsnCode,gstRate,attributes"];
+  const lines = ["title,description,brand,hsnCode,gstRate,attributes,skuCode"];
   for (let index = 0; index < rowCount; index += 1) {
-    lines.push(`Product ${index},Description ${index},Vexa PIM,62046200,18,{}`);
+    lines.push(`Product ${index},Description ${index},Vexa PIM,62046200,18,{},SKU-${index}`);
   }
   return lines.join("\n");
 }
@@ -310,6 +310,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
     claimCount?: number;
   }) {
     const productCreateMock = jest.fn().mockResolvedValue({ id: "new-product" });
+    const variantCreateMock = jest.fn().mockResolvedValue({ id: "new-variant" });
     const productFindUniqueMock = jest.fn().mockResolvedValue(options.productFindResult ?? null);
     const jobFindUniqueMock = jest.fn().mockResolvedValue({
       id: "job1", status: "queued", categoryId: "cat1", maxRetries: 3, chunkSize: 100,
@@ -317,21 +318,27 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
     });
     const rowUpdateMock = jest.fn().mockResolvedValue({});
     const rowUpdateManyMock = jest.fn().mockResolvedValue({ count: options.claimCount ?? 1 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenantClient: any = {
+      bulkImportJob: { update: jest.fn().mockResolvedValue({ id: "job1", status: "completed", runId: null }), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUnique: jobFindUniqueMock },
+      // findMany must return the rows once then empty on subsequent calls so
+      // processJob()'s while-loop terminates. Real Prisma behavior mirrors
+      // this: after processRow() runs, rows leave "queued"/"retrying" and
+      // stop matching the findMany filter. Without .mockResolvedValueOnce
+      // the mock returns the same "queued" rows forever, spinning the loop
+      // and leaking jest mock.calls until OOM.
+      bulkImportRow: { findMany: jest.fn().mockResolvedValueOnce(options.rows).mockResolvedValue([]), update: rowUpdateMock, updateMany: rowUpdateManyMock, groupBy: jest.fn().mockResolvedValue([]) },
+      product: { create: productCreateMock, findUnique: productFindUniqueMock },
+      variant: { create: variantCreateMock },
+      productTaxCode: { createMany: jest.fn() },
+      taxRegime: { findMany: jest.fn().mockResolvedValue([]) },
+      category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1" }) },
+    };
+    // processRow wraps product+variant creation in $transaction — run the callback
+    // against the same tenantClient so productCreateMock/variantCreateMock still fire.
+    tenantClient.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(tenantClient));
     const prisma = {
-      tenant: jest.fn().mockReturnValue({
-        bulkImportJob: { update: jest.fn().mockResolvedValue({ id: "job1", status: "completed", runId: null }), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUnique: jobFindUniqueMock },
-        // findMany must return the rows once then empty on subsequent calls so
-        // processJob()'s while-loop terminates. Real Prisma behavior mirrors
-        // this: after processRow() runs, rows leave "queued"/"retrying" and
-        // stop matching the findMany filter. Without .mockResolvedValueOnce
-        // the mock returns the same "queued" rows forever, spinning the loop
-        // and leaking jest mock.calls until OOM.
-        bulkImportRow: { findMany: jest.fn().mockResolvedValueOnce(options.rows).mockResolvedValue([]), update: rowUpdateMock, updateMany: rowUpdateManyMock, groupBy: jest.fn().mockResolvedValue([]) },
-        product: { create: productCreateMock, findUnique: productFindUniqueMock },
-        productTaxCode: { createMany: jest.fn() },
-        taxRegime: { findMany: jest.fn().mockResolvedValue([]) },
-        category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1" }) },
-      }),
+      tenant: jest.fn().mockReturnValue(tenantClient),
     };
     const accessPolicy = {
       assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
@@ -345,12 +352,12 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       {} as never,
     );
-    return { svc, productCreateMock, rowUpdateMock, rowUpdateManyMock, productFindUniqueMock };
+    return { svc, productCreateMock, variantCreateMock, rowUpdateMock, rowUpdateManyMock, productFindUniqueMock };
   }
 
   it("reuses existing product when row already has a productId (idempotent retry)", async () => {
     const { svc, productCreateMock, rowUpdateMock } = makeRowProcessService({
-      rows: [{ id: "row1", payload: { title: "Test" }, retryCount: 0, productId: "existing-product", rowNumber: 1, status: "retrying" }],
+      rows: [{ id: "row1", payload: { title: "Test", skuCode: "SKU-TEST-1" }, retryCount: 0, productId: "existing-product", rowNumber: 1, status: "retrying" }],
       productFindResult: { id: "existing-product" },
     });
     await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
@@ -364,7 +371,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
 
   it("creates new product when row.productId points to a deleted product", async () => {
     const { svc, productCreateMock } = makeRowProcessService({
-      rows: [{ id: "row2", payload: { title: "Test" }, retryCount: 0, productId: "deleted-product", rowNumber: 1, status: "retrying" }],
+      rows: [{ id: "row2", payload: { title: "Test", skuCode: "SKU-TEST-1" }, retryCount: 0, productId: "deleted-product", rowNumber: 1, status: "retrying" }],
       productFindResult: null,
     });
     await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
@@ -373,7 +380,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
 
   it("skips row when optimistic claim returns count=0 (concurrent worker already claimed)", async () => {
     const { svc, productCreateMock, rowUpdateMock } = makeRowProcessService({
-      rows: [{ id: "row3", payload: { title: "Test" }, retryCount: 0, productId: null, rowNumber: 1, status: "queued" }],
+      rows: [{ id: "row3", payload: { title: "Test", skuCode: "SKU-TEST-1" }, retryCount: 0, productId: null, rowNumber: 1, status: "queued" }],
       claimCount: 0,
     });
     await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
@@ -386,7 +393,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
 
   it("productId reuse is tenant-safe: cross-tenant ID returns null and creates new product", async () => {
     const { svc, productFindUniqueMock } = makeRowProcessService({
-      rows: [{ id: "row4", payload: { title: "Test" }, retryCount: 0, productId: "cross-tenant-product", rowNumber: 1, status: "retrying" }],
+      rows: [{ id: "row4", payload: { title: "Test", skuCode: "SKU-TEST-1" }, retryCount: 0, productId: "cross-tenant-product", rowNumber: 1, status: "retrying" }],
       productFindResult: null,
     });
     await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
@@ -397,7 +404,7 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
 
   it("persists productId to row immediately after product creation (crash recovery)", async () => {
     const { svc, rowUpdateMock } = makeRowProcessService({
-      rows: [{ id: "row5", payload: { title: "Test" }, retryCount: 0, productId: null, rowNumber: 1, status: "queued" }],
+      rows: [{ id: "row5", payload: { title: "Test", skuCode: "SKU-TEST-1" }, retryCount: 0, productId: null, rowNumber: 1, status: "queued" }],
     });
     await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
     const productIdUpdate = rowUpdateMock.mock.calls.find(
@@ -408,6 +415,163 @@ describe("BulkImportService.processRow — idempotency and concurrency", () => {
     );
     expect(productIdUpdate).toBeDefined();
     expect((productIdUpdate![0] as { data: { productId: string } }).data.productId).toBe("new-product");
+  });
+});
+
+// F-2 regression tests: bulk import must create a Variant (with SKU/price) alongside
+// the Product, in the same transaction, and must classify a SKU collision as a
+// non-retryable failure rather than retrying a deterministic error until dead-letter.
+describe("BulkImportService.processRow — Variant creation (F-2)", () => {
+  function makeRowProcessService(options: {
+    rows: Array<Record<string, unknown>>;
+    productFindResult?: Record<string, unknown> | null;
+    claimCount?: number;
+    variantCreateImpl?: () => Promise<unknown>;
+  }) {
+    const productCreateMock = jest.fn().mockResolvedValue({ id: "new-product" });
+    const variantCreateMock = options.variantCreateImpl
+      ? jest.fn().mockImplementation(options.variantCreateImpl)
+      : jest.fn().mockResolvedValue({ id: "new-variant" });
+    const productFindUniqueMock = jest.fn().mockResolvedValue(options.productFindResult ?? null);
+    const jobFindUniqueMock = jest.fn().mockResolvedValue({
+      id: "job1", status: "queued", categoryId: "cat1", maxRetries: 3, chunkSize: 100,
+      category: { id: "cat1", path: "/cat1" }, rows: [],
+    });
+    const rowUpdateMock = jest.fn().mockResolvedValue({});
+    const rowUpdateManyMock = jest.fn().mockResolvedValue({ count: options.claimCount ?? 1 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenantClient: any = {
+      bulkImportJob: { update: jest.fn().mockResolvedValue({ id: "job1", status: "completed", runId: null }), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUnique: jobFindUniqueMock },
+      bulkImportRow: { findMany: jest.fn().mockResolvedValueOnce(options.rows).mockResolvedValue([]), update: rowUpdateMock, updateMany: rowUpdateManyMock, groupBy: jest.fn().mockResolvedValue([]) },
+      product: { create: productCreateMock, findUnique: productFindUniqueMock },
+      variant: { create: variantCreateMock },
+      productTaxCode: { createMany: jest.fn() },
+      taxRegime: { findMany: jest.fn().mockResolvedValue([]) },
+      category: { findUnique: jest.fn().mockResolvedValue({ id: "cat1" }) },
+    };
+    tenantClient.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(tenantClient));
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
+    };
+    const svc = new BulkImportService(
+      prisma as never, { validateAndPersistProduct: jest.fn().mockResolvedValue(undefined) } as never,
+      { emitImportStatus: jest.fn().mockResolvedValue(undefined) } as never, accessPolicy as never,
+      { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
+      { emit: jest.fn() } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+    );
+    return { svc, productCreateMock, variantCreateMock, rowUpdateMock };
+  }
+
+  it("creates a Variant with skuCode/mrp/sellingPrice alongside the Product", async () => {
+    const { svc, variantCreateMock } = makeRowProcessService({
+      rows: [{
+        id: "row1",
+        payload: { title: "Test Product", skuCode: "SKU-100", mrp: 999, sellingPrice: 799 },
+        retryCount: 0, productId: null, rowNumber: 1, status: "queued",
+      }],
+    });
+
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+
+    expect(variantCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          productId: "new-product",
+          skuCode: "SKU-100",
+          mrp: 999,
+          sellingPrice: 799,
+        }),
+      }),
+    );
+  });
+
+  it("a duplicate skuCode (P2002 on variant.create) fails the row cleanly and is NOT retried", async () => {
+    const p2002 = new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "test",
+    });
+    const { svc, rowUpdateMock } = makeRowProcessService({
+      rows: [{
+        id: "row1",
+        payload: { title: "Test Product", skuCode: "SKU-DUP" },
+        retryCount: 0, productId: null, rowNumber: 1, status: "queued",
+      }],
+      variantCreateImpl: () => Promise.reject(p2002),
+    });
+
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+
+    const failureUpdate = rowUpdateMock.mock.calls.find(
+      (call: unknown[]) => (call[0] as { data?: { status?: string } })?.data?.status !== undefined,
+    );
+    expect(failureUpdate).toBeDefined();
+    const data = (failureUpdate![0] as { data: { status: string; retryCount: number; errorMessage: string } }).data;
+    // Non-retryable: status goes straight to "failed" (never "retrying"/"dead_letter"),
+    // and retryCount is NOT incremented — a real Postgres transaction rollback (see
+    // processRow's $transaction) means this row is left clean, not variant-less.
+    expect(data.status).toBe(BulkImportRowStatus.failed);
+    expect(data.retryCount).toBe(0);
+    expect(data.errorMessage).toMatch(/duplicate sku/i);
+  });
+
+  it("does not persist row.productId when variant creation fails (no orphaned Product on the retry path)", async () => {
+    const { svc, rowUpdateMock } = makeRowProcessService({
+      rows: [{
+        id: "row1",
+        payload: { title: "Test Product", skuCode: "SKU-FAIL" },
+        retryCount: 0, productId: null, rowNumber: 1, status: "queued",
+      }],
+      variantCreateImpl: () => Promise.reject(new Error("simulated transient DB error")),
+    });
+
+    await svc.processJob("job1", 100, { actorId: "u1", actorRole: "admin" as never });
+
+    const productIdPersisted = rowUpdateMock.mock.calls.some(
+      (call: unknown[]) => Boolean((call[0] as { data?: { productId?: unknown } })?.data?.productId),
+    );
+    expect(productIdPersisted).toBe(false);
+  });
+});
+
+describe("BulkImportService.preflightValidateJob — skuCode check (F-2)", () => {
+  function makeService(rows: Array<Record<string, unknown>>) {
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportJob: { findUnique: jest.fn().mockResolvedValue({ id: "job1", categoryId: "cat1" }) },
+        bulkImportRow: { findMany: jest.fn().mockResolvedValue(rows) },
+      }),
+    };
+    const accessPolicy = { assertCategoryAccess: jest.fn().mockResolvedValue(undefined) };
+    return new BulkImportService(
+      prisma as never, {} as never, {} as never, accessPolicy as never,
+      {} as never, {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+    );
+  }
+
+  it("no longer flags a row with a mapped skuCode as missing it, now that normalizeCanonicalPayload persists the field", async () => {
+    const svc = makeService([
+      { rowNumber: 1, payload: { title: "T", skuCode: "SKU-1" } },
+    ]);
+    const result = await svc.preflightValidateJob("job1");
+    expect((result as { blockingErrors: string[] }).blockingErrors).not.toContain(
+      "One or more rows are missing required field: skuCode",
+    );
+  });
+
+  it("still flags a row whose payload genuinely has no skuCode", async () => {
+    const svc = makeService([
+      { rowNumber: 1, payload: { title: "T" } },
+    ]);
+    const result = await svc.preflightValidateJob("job1");
+    expect((result as { blockingErrors: string[] }).blockingErrors).toContain(
+      "One or more rows are missing required field: skuCode",
+    );
   });
 });
 

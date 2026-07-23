@@ -184,6 +184,7 @@ async function run() {
           hsnCode: "62046200",
           gstRate: 18,
           attributes: { material: "Cotton" },
+          skuCode: `SKU-${runId}`,
         },
       ],
       chunkSize: 10,
