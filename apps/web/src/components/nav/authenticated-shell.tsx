@@ -10,17 +10,13 @@ import { GlobalSearch } from "@/components/nav/global-search";
 import { NotificationCenter } from "@/components/nav/notification-center";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { BrandLogo } from "@/components/ui/brand-logo";
-import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { RoleBadge } from "@/components/ui/role-badge";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import type { AppRole } from "@/lib/api";
-import type { PimLocale } from "@/lib/locale";
-
 interface AuthenticatedShellProps {
   children: ReactNode;
   actorRole: AppRole;
   adminBoundaryRoles?: string[];
-  locale: PimLocale;
   showRoleBadge: boolean;
 }
 
@@ -28,7 +24,6 @@ export function AuthenticatedShell({
   children,
   actorRole,
   adminBoundaryRoles = [],
-  locale,
   showRoleBadge,
 }: AuthenticatedShellProps) {
   const pathname = usePathname();
@@ -61,7 +56,6 @@ export function AuthenticatedShell({
             <GlobalSearch />
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <span className="hidden sm:block"><LocaleSwitcher locale={locale} /></span>
             <NotificationCenter />
             {showRoleBadge ? <span className="hidden sm:block"><RoleBadge role={actorRole} /></span> : null}
             <LogoutButton />

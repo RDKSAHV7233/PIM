@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { AuthenticatedShell } from "@/components/nav/authenticated-shell";
 import { BillingStatusBanner } from "@/components/nav/billing-status-banner";
 import { BrandLogo } from "@/components/ui/brand-logo";
-import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
 import { getServerSessionClaims } from "@/lib/server-session";
 import "./globals.css";
 
@@ -23,8 +21,6 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const cookieStore = await cookies();
-  const locale = resolveLocale(cookieStore.get(PIM_LOCALE_COOKIE)?.value);
   const sessionClaims = await getServerSessionClaims();
   const hasAuthToken = Boolean(sessionClaims);
   const actorRole = sessionClaims?.role ?? "viewer";
@@ -39,7 +35,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           Skip to main content
         </a>
         {hasAuthToken ? (
-          <AuthenticatedShell actorRole={actorRole} adminBoundaryRoles={assignedRoles} locale={locale} showRoleBadge={Boolean(sessionClaims)}>
+          <AuthenticatedShell actorRole={actorRole} adminBoundaryRoles={assignedRoles} showRoleBadge={Boolean(sessionClaims)}>
             <BillingStatusBanner />
             {children}
           </AuthenticatedShell>
