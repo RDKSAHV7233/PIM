@@ -40,41 +40,26 @@ export async function POST(request: NextRequest) {
   }
 
   const authHeader = resolveBearerToken(request);
-  if (!authHeader) {
-    return clearAuthCookies(new NextResponse(null, { status: 204 }));
-  }
-
-  const response = await fetch(`${getApiBaseUrl()}/auth/logout`, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      ...(request.headers.get("cookie") ? { Cookie: request.headers.get("cookie") ?? "" } : {}),
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  // Logout is treated as idempotent at the web edge.
-  if (response.status === 204 || response.status === 401) {
-    return clearAuthCookies(new NextResponse(null, { status: 204 }));
-  }
-
-  const contentType = response.headers.get("content-type") ?? "application/json";
-  const payload = await response.text();
-  if (response.status === 403 && contentType.toLowerCase().includes("application/json")) {
+  if (authHeader) {
     try {
-      const parsed = payload ? JSON.parse(payload) : null;
-      if (parsed?.error === "TENANT_SUSPENDED") {
-        return clearAuthCookies(new NextResponse(null, { status: 204 }));
-      }
+      await fetch(`${getApiBaseUrl()}/auth/logout`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          ...(request.headers.get("cookie") ? { Cookie: request.headers.get("cookie") ?? "" } : {}),
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
     } catch {
-      // Preserve the backend response below if parsing fails.
+      // Best-effort server-side invalidation. The local session must still be
+      // cleared below even if the backend call errors, times out, or the
+      // network is unavailable — otherwise the browser silently stays
+      // authenticated after the user believes they logged out.
     }
   }
-  return new NextResponse(payload, {
-    status: response.status,
-    headers: {
-      "Content-Type": contentType,
-    },
-  });
+
+  // Logout is idempotent at the web edge: local cookies are always cleared,
+  // regardless of the backend call's outcome.
+  return clearAuthCookies(new NextResponse(null, { status: 204 }));
 }

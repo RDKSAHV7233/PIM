@@ -1390,8 +1390,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
     const month = options?.month ?? this.getMonthKey();
     const bounds = this.getMonthBounds(month);
-    const [productCount, submissionCount, storageRows, connectorCountsRows, profile] = await Promise.all([
-      this.prisma.tenant(tenantKey).product.count(),
+    const [activeSkuCount, submissionCount, storageRows, connectorCountsRows, profile] = await Promise.all([
+      this.prisma.tenant(tenantKey).variant.count(),
       this.prisma.tenant(tenantKey).marketplaceExportJob.count({
         where: {
           createdAt: {
@@ -1456,7 +1456,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           ${tenantKey},
           ${month},
           ${profile.planTier},
-          ${productCount},
+          ${activeSkuCount},
           ${submissionCount},
           ${storageGb},
           ${connectorCounts.installationCount},
