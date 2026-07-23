@@ -49,7 +49,7 @@
 | # | Step | Expected | Pass? |
 |---|------|----------|-------|
 | 2.1 | Enter credentials, submit | Authenticated, redirect to `/dashboard` | |
-| 2.2 | Check billing status banner | "Trial — 14 days remaining" or similar banner visible | |
+| 2.2 | Check billing status banner | "Trial — 90 days remaining" or similar banner visible | |
 
 ### Page 3: `/dashboard`
 | # | Step | Expected | Pass? |
@@ -356,7 +356,7 @@
 ### Billing Status Transitions
 | # | Step | Expected | Pass? |
 |---|------|----------|-------|
-| X-12 | Trial expires (14 days) | Status → "expired", access hard-blocked | |
+| X-12 | Trial expires (90 days) | Status → "expired", access hard-blocked | |
 | X-13 | Navigate to any page | Redirect to `/account-suspended` or billing banner | |
 | X-14 | Payment fails on paid plan | Status → "past_due", 7-day grace period starts | |
 | X-15 | Grace period banner | "Payment failed. Update payment method within X days" | |

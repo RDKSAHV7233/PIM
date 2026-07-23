@@ -62,7 +62,7 @@ Use this document when setting up a new environment, debugging a misconfigured s
 | `PIM_COMMERCIAL_OPS_TOKEN` | Staging/Prod | — | Bearer token for internal billing ops endpoints (`/billing/internal/*`). Required to set plan tiers manually |
 | `PIM_COMMERCIAL_CONTACT_URL` | No | — | URL shown to sellers when plan limit is exceeded or workspace is suspended |
 | `PIM_COMMERCIAL_CONTACT_EMAIL` | No | — | Fallback email for commercial contact when URL is not set |
-| `PIM_COMMERCIAL_TRIAL_DAYS` | No | `14` | Default trial length when creating a new tenant |
+| `PIM_COMMERCIAL_TRIAL_DAYS` | No | `90` | Default trial length when creating a new tenant |
 | `PIM_PLAN_TIER_OVERRIDE` | No | — | **Dev only** — set to `ENTERPRISE` to bypass quota checks in load tests. Ignored in staging/production |
 
 ### Email Brand Assets

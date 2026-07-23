@@ -1,221 +1,92 @@
 ---
-title: Pricing Page / Tier Definitions
+title: Public Plans And No-Public-Pricing Policy
 audience: sellers
-status: approved — PO sign-off 2026-05-27 (Atharva); Pricing ladder revised 2026-06-11 (CTO); Legal review pending before public publish
-last_updated: 2026-06-11
-owner: Product + Legal
+status: active - no public pricing
+last_updated: 2026-07-23
+owner: Product + Marketing + Legal
+supersedes: "Pricing Page / Tier Definitions, 2026-06-11"
 ---
 
-> **Status:** Price points and tier limits approved by PO (Atharva, 2026-05-27). Pricing ladder revised by CTO 2026-06-11: added BUSINESS tier, updated STARTER/GROWTH/ENTERPRISE prices and setup fees. Remaining sign-offs: CFO (LTV/CAC model), GTM (annual discount depth). Legal must review before any public-facing copy goes live.
+# Public Plans
 
----
+Vexa does not publish plan prices, setup fees, implementation ranges, add-on prices,
+discounts, annual contract values, or minimum contract values on public surfaces.
 
-## Plan Tiers
+Public plan content must stay outcome-led. Exact commercial terms are confirmed
+privately through Sales/RevOps using the approved internal price book.
 
-Vexa PIM offers five plans. All paid plans include core catalog management, bulk import, and quality management features. Every new workspace starts on a free 14-day TRIAL tier.
+## Public Plan Cards
 
-### TRIAL
+### Trial
 
-**Free** · 14-day timer · No credit card required
+**Start Free Trial**
 
-| Limit | Value |
-|-------|-------|
-| Products (SKUs) | 100 |
-| Users | 2 |
-| Bulk import rows per job | 500 |
-| API keys | 0 |
-| Outbound webhooks | 0 |
+Evaluate Vexa for 90 days with representative product data, catalogue-quality
+checks, and controlled connector exploration.
 
-Included:
-- Catalog management (draft → in review → approved → published workflow)
-- Bulk CSV import (up to 500 rows per job)
-- Quality rules and basic validation
-- Amazon India connector (1 installation)
-- 8-role RBAC (admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer)
+Restriction: the Free Trial claim must not imply free production use, free
+implementation, unlimited support, a production SLA, or permanent free access.
+No production SLA.
 
-Trial limits and expiry:
-- After 14 days without an active commercial plan, the workspace is **suspended** (`billingStatus: expired`). All write operations return an upgrade-required error until a paid plan is activated.
-- All catalog data is retained for 90 days after suspension before permanent deletion.
-- Upgrade to any paid plan to restore full access immediately.
+### Starter
 
-Not included:
-- API key access (GROWTH and above)
-- Outbound webhooks (GROWTH and above)
-- Auth policy configuration (GROWTH and above)
-- Bulk import above 500 rows per job
-- Shopify, Meesho, and additional connectors
+**Contact Sales**
 
----
+For small catalogue teams moving product-data governance, ownership, and review
+steps out of spreadsheets.
 
-### STARTER
+### Growth
 
-**₹9,999 / month** · Setup fee: ₹15,000–₹25,000 (optional)
+**Book a Demo**
 
-| Limit | Value |
-|-------|-------|
-| Products (SKUs) | 500 |
-| Users | 3 |
-| Bulk submissions / month | 500 |
-| Storage | 5 GB |
-| Connector installations | 2 |
-| Accounts per connector | 1 |
-| Bulk import rows per job | 2,000 |
-| API keys | 0 |
-| Outbound webhooks | 0 |
-| API rate limit | 300 req / min |
+For growing multichannel teams that need repeatable product-data workflows,
+approvals, and coordination across contributors.
 
-Included:
-- Catalog management (draft → in review → approved → published workflow)
-- Bulk CSV import (up to 2,000 rows per job)
-- Quality rules, validation, and rejection intelligence
-- Amazon India and Flipkart connectors
-- Meesho connector (Excel export)
-- 8-role RBAC (admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer)
+### Business
 
-Not included:
-- API key access (GROWTH and above)
-- Outbound webhooks (GROWTH and above)
-- Auth policy configuration (GROWTH and above)
-- Shopify connector (GROWTH and above)
-- Advanced analytics
-- Priority support
-- Custom SLA
-- OIDC SSO
+**Talk to Sales**
 
----
+For larger catalogue operations that need stronger governance, collaboration,
+workflow visibility, and commercial support.
 
-### GROWTH
+### Enterprise
 
-**₹29,999 / month** · Setup fee: ₹75,000–₹1,50,000
+**Contact Sales**
 
-Everything in STARTER, plus:
+For organisations with custom scale, advanced governance, integration planning,
+security review, and contractual requirements.
 
-| Limit | Value |
-|-------|-------|
-| Products (SKUs) | 10,000 |
-| Users | 20 |
-| Bulk submissions / month | 10,000 |
-| Storage | 50 GB |
-| Connector installations | 10 |
-| Accounts per connector | 3 |
-| Bulk import rows per job | 10,000 |
-| API keys | 3 |
-| Outbound webhooks | 3 |
+## Public Claim Rules
 
-Additional features:
-- Shopify connector
-- API key access (machine credentials + REST API)
-- Outbound webhooks (import / publish events)
-- Auth policy configuration — session timeout setting
-- MFA support — TOTP available, optional enrollment (enforcement on ENTERPRISE)
-- AI-assisted product enrichment (Smart Suggestions)
-- ONDC expansion tools (when generally available)
-- Standard support — 2 business day response
+Allowed public surfaces may show:
 
----
+- Plan names.
+- Outcome-led descriptions.
+- Non-numeric scale signals such as small catalogue, growing multichannel team,
+  larger catalogue, multiple brands or accounts, and custom enterprise scale.
+- Approved CTAs.
+- The restricted Free Trial claim.
 
-### BUSINESS
+Public surfaces must not show:
 
-**₹69,999 / month** · Setup fee: ₹1,50,000–₹3,00,000
+- Currency amounts or "from" price language.
+- Annual contract values.
+- Setup fees.
+- Implementation ranges.
+- Add-on prices.
+- Discount percentages.
+- Minimum contract values.
+- Exact SKU, user, connector, import, storage, or audit-retention limits unless
+  separately approved in the Claim Register.
+- Unsupported SLA, SSO, connector, retention, automation, or enterprise-readiness
+  claims.
 
-Everything in GROWTH, plus:
+## Current Public Status
 
-| Limit | Value |
-|-------|-------|
-| Products (SKUs) | 50,000 |
-| Users | 100 |
-| Bulk submissions / month | 50,000 |
-| Storage | 200 GB |
-| Connector installations | 50 |
-| Accounts per connector | 10 |
-| Bulk import rows per job | 20,000 |
-| API keys | 20 |
-| Outbound webhooks | 20 |
+Public no-price packaging may proceed only after Product, Marketing, Legal, and
+QA verify that public pages, metadata, schema, downloads, emails, and redirected
+pricing URLs contain no price leakage or unapproved numeric limits.
 
-Additional features:
-- All 8 RBAC roles (admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer)
-- 50 connector installations with 10 accounts each
-- 20 API keys & outbound webhooks
-- Bulk import up to 20K rows per job
-- 200 GB storage
-- Dedicated support
-
----
-
-### ENTERPRISE
-
-**Custom pricing — from ₹1,49,999 / month** · [Contact Vexa sales](mailto:sales@vexa.in)
-
-Everything in BUSINESS, plus:
-
-| Limit | Value |
-|-------|-------|
-| Products (SKUs) | 100,000 (custom above) |
-| Users | Up to 999 (custom above) |
-| Bulk submissions / month | 100,000 (custom above) |
-| Storage | Up to 500 GB (custom above) |
-| Connector installations | Up to 100 (custom above) |
-| Accounts per connector | Up to 20 (custom above) |
-| Bulk import rows per job | 30,000 |
-| API keys | 50 (custom above) |
-| Outbound webhooks | 50 (custom above) |
-
-Additional features:
-- Full auth policy configuration (session timeout, MFA enforcement, external identity mode, allowed sign-in methods)
-- MFA enforcement — TOTP required for all users, configurable grace period
-- OIDC SSO (self-serve IdP configuration — Enterprise configuration, available where implemented and verified)
-- Custom SLA agreement
-- Dedicated onboarding and implementation support
-- MSA / custom data processing agreement available
-- Priority support — 4-hour response (business hours)
-- VAPT report available on request
-- SOC 2 Type II report available on request (in progress)
-- Custom connector development (scoped separately)
-
----
-
-## Frequently Asked Questions
-
-**What currency is pricing in?**
-All prices are in Indian Rupees (INR) and include GST. USD billing available for international customers on request.
-
-**Is there an annual billing discount?**
-Annual billing discounts to be confirmed by GTM. Annual plans are billed upfront.
-
-**Can I change plans?**
-Upgrades take effect immediately; the new plan limits apply from the next billing cycle. Downgrades take effect at the end of the current billing period. Plan changes are managed through the Vexa commercial ops workflow — submit a request from the Plan & Usage page.
-
-**What is the TRIAL tier?**
-Every new Vexa workspace starts on a free 14-day TRIAL. The TRIAL tier includes 100 SKUs, 2 users, 1 connector installation, and up to 500 bulk import rows per job — no credit card required. API key access and outbound webhooks are not available on TRIAL. Upgrade to any paid plan at any time to access full features.
-
-**What happens when my trial ends?**
-At the end of your 14-day TRIAL, your workspace is suspended if no commercial plan is active. All catalog data is retained for 90 days before permanent deletion. Upgrade to STARTER, GROWTH, BUSINESS, or ENTERPRISE to restore access immediately.
-
-**What payment methods do you accept?**
-Credit and debit cards via Stripe (Visa, Mastercard, RuPay). Bank transfer / NEFT available for annual Enterprise plans.
-
-**Is ONDC included?**
-ONDC expansion tools are included in GROWTH and above as a preview feature, subject to availability and feature-flag activation. General availability TBD.
-
-**Is there a free tier?**
-There is no permanent free tier. Every new workspace starts with a 14-day TRIAL (100 SKUs, 2 users, no credit card required). After the trial period, a paid plan is required to continue. Upgrade at any time during or after the trial to avoid suspension.
-
-**What auth policy controls are available?**
-GROWTH plans can configure session timeout. ENTERPRISE plans have full auth policy controls: session timeout, MFA enforcement (TOTP), external identity mode, and allowed sign-in methods (password / OIDC). Auth policy configuration is not available on TRIAL or STARTER.
-
----
-
-## Key Decisions — Remaining Sign-offs
-
-| Decision | Owner | Status |
-|----------|-------|--------|
-| Price points (STARTER, GROWTH, BUSINESS, ENTERPRISE) | PO (Atharva) + CTO | ✅ Original PO approval 2026-05-27; Pricing ladder revised by CTO 2026-06-11 |
-| Tier limits (SKUs, users, storage) | Engineering | ✅ Set — see plan-limits.seed.ts |
-| TRIAL tier definition | Product + Engineering | ✅ Approved 2026-06-10 — 100 SKUs, 2 users, 14-day, non-billable |
-| Annual discount depth | GTM | ⏳ Pending |
-| CTO infra cost validation | CTO | ⏳ Pending |
-| CFO LTV/CAC model | CFO | ⏳ Pending |
-| Legal review of public copy | Legal | ⏳ Pending before publish |
-| Stripe product + price IDs | Ops | ⏳ BACKLOG-04 — create products in Stripe dashboard at approved price points |
-| Trial expiry policy (data retention period) | Product | ✅ 90 days defined above — confirm with Legal |
-| USD pricing for international | Product | ⏳ Pending |
+Self-service paid checkout, automatic paid-plan activation, permanent public
+pricing, unsupported contractual claims, and unverified connector certification
+remain blocked.

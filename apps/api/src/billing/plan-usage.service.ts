@@ -370,7 +370,7 @@ export interface UpdateCommercialStateInput {
 @Injectable()
 export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PlanUsageService.name);
-  private readonly commercialTrialDays = this.resolvePositiveIntegerEnv(process.env.PIM_COMMERCIAL_TRIAL_DAYS, 14);
+  private readonly commercialTrialDays = this.resolvePositiveIntegerEnv(process.env.PIM_COMMERCIAL_TRIAL_DAYS, 90);
   private rollupTimeout: NodeJS.Timeout | null = null;
   private rollupInterval: NodeJS.Timeout | null = null;
 

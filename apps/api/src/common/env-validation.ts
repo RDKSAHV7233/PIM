@@ -130,7 +130,7 @@ const EnvSchema = z.object({
   PIM_EMAIL_SUPPORT_URL: z.string().url().optional(),
   PIM_EMAIL_SUPPORT_EMAIL: z.string().email().optional(),
   PIM_COMMERCIAL_OPS_TOKEN: z.string().optional(),
-  PIM_COMMERCIAL_TRIAL_DAYS: z.coerce.number().int().min(1).default(14),
+  PIM_COMMERCIAL_TRIAL_DAYS: z.coerce.number().int().min(1).default(90),
   CORS_ORIGIN: z.string().optional(),
   PORT: z.coerce.number().int().min(1).default(4000),
   PIM_WEB_BASE_URL: z.string().url().optional(),

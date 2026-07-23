@@ -27,9 +27,9 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
     tagline: "Explore Vexa PIM before you commit",
     features: [
       "Product catalog management",
-      "Bulk import up to 500 rows",
+      "Controlled bulk import",
       "Quality validation",
-      "1 marketplace connector",
+      "Limited marketplace connector access",
     ],
   },
   STARTER: {
@@ -38,9 +38,9 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
     tagline: "Small serious seller",
     features: [
       "Product catalog management",
-      "Bulk import and repair up to 2K rows",
+      "Bulk import and repair",
       "Quality validation",
-      "2 marketplace connectors",
+      "Core marketplace connectors",
       "Community support",
     ],
   },
@@ -52,7 +52,7 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
       "Everything in Starter",
       "Approval workflow",
       "API keys and outbound webhooks",
-      "Bulk import up to 10K rows",
+      "Expanded bulk import",
       "Multi-account connectors",
       "Priority support",
       "Bulk edit operations",
@@ -65,11 +65,11 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
     tagline: "Large catalog operations at scale",
     features: [
       "Everything in Growth",
-      "50K SKUs and submissions",
-      "100 users, all 8 roles",
-      "20 API keys and webhooks",
-      "Bulk import up to 20K rows",
-      "200 GB storage",
+      "Larger catalog and submission capacity",
+      "Expanded team access",
+      "Expanded API keys and webhooks",
+      "Expanded bulk import",
+      "Higher storage allowance",
       "Dedicated support",
     ],
   },
@@ -79,23 +79,23 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
     tagline: "Dedicated scale with white-glove support",
     features: [
       "Everything in Business",
-      "100K SKUs and submissions",
-      "50 API keys and outbound webhooks",
-      "Bulk import up to 30K rows",
+      "Custom catalog and submission capacity",
+      "Custom API keys and outbound webhooks",
+      "Expanded bulk import",
       "Dedicated account manager",
-      "Custom SLA and onboarding",
+      "Contractual support and onboarding review",
       "SSO / OIDC integration",
-      "White-glove data migration",
+      "Data migration planning",
     ],
   },
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  TRIAL: "3 (admin, editor, viewer)",
-  STARTER: "3 (admin, editor, viewer)",
-  GROWTH: "6 (+reviewer, approver, publisher)",
-  BUSINESS: "8 (all roles)",
-  ENTERPRISE: "8 (all roles)",
+  TRIAL: "Core roles",
+  STARTER: "Core roles",
+  GROWTH: "Workflow roles",
+  BUSINESS: "All roles",
+  ENTERPRISE: "All roles",
 };
 
 export function getPlanMetadata(): PlanMetadata[] {

@@ -95,7 +95,7 @@ export class StripeService implements OnModuleInit {
         const subscription = await stripe.subscriptions.create({
           customer: customerId,
           items: [{ price: priceId }],
-          trial_period_days: Number(process.env.PIM_COMMERCIAL_TRIAL_DAYS ?? "14"),
+          trial_period_days: Number(process.env.PIM_COMMERCIAL_TRIAL_DAYS ?? "90"),
           metadata: { tenantKey },
         });
         subscriptionId = subscription.id;

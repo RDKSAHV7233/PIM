@@ -508,9 +508,9 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
               defaultValue={currentUsage.planTier}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             >
-              <option value="STARTER">STARTER — 500 SKUs, 3 users</option>
-              <option value="GROWTH">GROWTH — 10,000 SKUs, 20 users</option>
-              <option value="BUSINESS">BUSINESS — 50,000 SKUs, 100 users</option>
+              <option value="STARTER">STARTER — 2,500 SKUs, 5 users</option>
+              <option value="GROWTH">GROWTH — 10,000 SKUs, 15 users</option>
+              <option value="BUSINESS">BUSINESS — 50,000 SKUs, 50 users</option>
               <option value="ENTERPRISE">ENTERPRISE — 100,000 SKUs, 999 users</option>
             </select>
             <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">

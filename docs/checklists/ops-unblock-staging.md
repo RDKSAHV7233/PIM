@@ -87,6 +87,12 @@ re-triggered run (27322336923) passed all tests including signup smoke check.
 
 ## 4. Create Stripe products and set price ID env vars (45 min — UPDATED 2026-06-11)
 
+> **⚠ STALE — price figures below predate the 2026-07-23 no-public-pricing / internal commercial policy.**
+> Do not create Stripe products from the numbers in this section. Get current approved
+> prices from `docs/product/commercial-policy.md` § Internal Price Book (Finance-owned,
+> version-controlled) before touching the Stripe dashboard. This runbook's steps for
+> *where* to set env vars are still valid — only the price amounts are outdated.
+
 **Update 2026-06-11**: PR #249 added BUSINESS tier. New price ladder is STARTER ₹9,999, GROWTH ₹29,999, BUSINESS ₹69,999, ENTERPRISE custom.
 
 **Why**: `GracePeriodEscalationService` and checkout flows are blocked until Stripe products exist. StripeService now warns on startup if these are missing.
@@ -275,14 +281,14 @@ values are correct.
    FROM "PlanLimits"
    ORDER BY "planTier";
    ```
-   Expected rows (updated 2026-06-11 — added BUSINESS tier):
+   Expected rows (updated 2026-07-23 — no-public-pricing internal baseline):
    | planTier   | maxSkus | maxUsers | maxApiKeys | maxOutboundWebhooks | maxImportRowsPerJob |
    |------------|---------|----------|------------|---------------------|---------------------|
-   | BUSINESS   | 50000   | 100      | 20         | 20                  | 20000               |
+   | BUSINESS   | 50000   | 50       | 20         | 20                  | 30000               |
    | ENTERPRISE | 100000  | 999      | 50         | 50                  | 30000               |
-   | GROWTH     | 10000   | 20       | 3          | 3                   | 10000               |
-   | STARTER    | 500     | 3        | 0          | 0                   | 2000                |
-   | TRIAL      | 100     | 2        | 0          | 0                   | 500                 |
+   | GROWTH     | 10000   | 15       | 3          | 3                   | 30000               |
+   | STARTER    | 2500    | 5        | 0          | 0                   | 10000               |
+   | TRIAL      | 500     | 3        | 0          | 0                   | 2000                |
 
 3. Confirm new tenants default to TRIAL:
    ```sql
@@ -291,7 +297,7 @@ values are correct.
    ```
    Expected: `'TRIAL'`
 
-**Verify**: The 4 rows above match. Any new signup lands on TRIAL (not STARTER).
+**Verify**: The 5 rows above match. Any new signup lands on TRIAL (not STARTER).
 
 ---
 

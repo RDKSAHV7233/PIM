@@ -91,6 +91,11 @@ Over 3 weeks, all 6 phases of the CTO execution plan were completed:
 ## What Still Needs Manual Action
 
 ### Ops (Stripe setup) — 30 min
+
+> **⚠ STALE — price figures below predate the 2026-07-23 no-public-pricing / internal commercial policy
+> and the later BUSINESS-tier addition.** Get current approved prices from
+> `docs/product/commercial-policy.md` § Internal Price Book before creating Stripe products.
+
 1. Create 3 products in Stripe dashboard (test mode):
    - STARTER ₹4,499/mo
    - GROWTH ₹11,999/mo

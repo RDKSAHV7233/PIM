@@ -21,13 +21,13 @@ const BASE_LIMITS = {
   planTier: "GROWTH",
   maxSkus: 10000,
   maxSubmissionsPerMonth: 10000,
-  maxUsers: 20,
-  maxStorageGb: 100,
-  maxConnectorInstallations: 10,
+  maxUsers: 15,
+  maxStorageGb: 75,
+  maxConnectorInstallations: 5,
   maxAccountsPerConnector: 10,
   maxApiKeys: 3,
   maxOutboundWebhooks: 3,
-  maxImportRowsPerJob: 10000,
+  maxImportRowsPerJob: 30000,
 };
 
 function makeService(options: {
@@ -261,52 +261,63 @@ describe("PlanUsageService.checkLimit — expired billingStatus", () => {
 // PLAN_LIMITS seed — tier values (migration smoke substitute for unit layer)
 // ---------------------------------------------------------------------------
 
-describe("PLAN_LIMITS seed — correct values for all five tiers", () => {
+describe("PLAN_LIMITS seed — no-public-pricing target values", () => {
   function tierLimits(planTier: string) {
     const row = PLAN_LIMITS.find((r) => r.planTier === planTier);
     if (!row) throw new Error(`No seed row for tier: ${planTier}`);
     return row;
   }
 
-  it("TRIAL: 100 SKUs, 2 users, 0 API keys, 0 webhooks, 500 import rows", () => {
+  it("TRIAL: 500 SKUs, 3 users, 0 API keys, 0 webhooks, 2000 import rows", () => {
     const t = tierLimits("TRIAL");
-    expect(t.maxSkus).toBe(100);
-    expect(t.maxUsers).toBe(2);
-    expect(t.maxApiKeys).toBe(0);
-    expect(t.maxOutboundWebhooks).toBe(0);
-    expect(t.maxImportRowsPerJob).toBe(500);
-  });
-
-  it("STARTER: 500 SKUs, 3 users, 0 API keys, 0 webhooks, 2000 import rows", () => {
-    const t = tierLimits("STARTER");
     expect(t.maxSkus).toBe(500);
     expect(t.maxUsers).toBe(3);
+    expect(t.maxStorageGb).toBe(2);
+    expect(t.maxConnectorInstallations).toBe(1);
     expect(t.maxApiKeys).toBe(0);
     expect(t.maxOutboundWebhooks).toBe(0);
     expect(t.maxImportRowsPerJob).toBe(2000);
   });
 
-  it("GROWTH: 10000 SKUs, 20 users, 3 API keys, 3 webhooks, 10000 import rows", () => {
-    const t = tierLimits("GROWTH");
-    expect(t.maxSkus).toBe(10000);
-    expect(t.maxUsers).toBe(20);
-    expect(t.maxApiKeys).toBe(3);
-    expect(t.maxOutboundWebhooks).toBe(3);
+  it("STARTER: 2500 SKUs, 5 users, 0 API keys, 0 webhooks, 10000 import rows", () => {
+    const t = tierLimits("STARTER");
+    expect(t.maxSkus).toBe(2500);
+    expect(t.maxUsers).toBe(5);
+    expect(t.maxStorageGb).toBe(15);
+    expect(t.maxConnectorInstallations).toBe(2);
+    expect(t.maxApiKeys).toBe(0);
+    expect(t.maxOutboundWebhooks).toBe(0);
     expect(t.maxImportRowsPerJob).toBe(10000);
   });
 
-  it("BUSINESS: 50000 SKUs, 100 users, 20 API keys, 20 webhooks, 20000 import rows", () => {
-    const t = tierLimits("BUSINESS");
-    expect(t.maxSkus).toBe(50000);
-    expect(t.maxUsers).toBe(100);
-    expect(t.maxApiKeys).toBe(20);
-    expect(t.maxOutboundWebhooks).toBe(20);
-    expect(t.maxImportRowsPerJob).toBe(20000);
+  it("GROWTH: 10000 SKUs, 15 users, 3 API keys, 3 webhooks, 30000 import rows", () => {
+    const t = tierLimits("GROWTH");
+    expect(t.maxSkus).toBe(10000);
+    expect(t.maxUsers).toBe(15);
+    expect(t.maxStorageGb).toBe(75);
+    expect(t.maxConnectorInstallations).toBe(5);
+    expect(t.maxApiKeys).toBe(3);
+    expect(t.maxOutboundWebhooks).toBe(3);
+    expect(t.maxImportRowsPerJob).toBe(30000);
   });
 
-  it("ENTERPRISE: 100000 SKUs, 50 API keys, 50 webhooks, 30000 import rows", () => {
+  it("BUSINESS: 50000 SKUs, 50 users, 20 API keys, 20 webhooks, 30000 import rows", () => {
+    const t = tierLimits("BUSINESS");
+    expect(t.maxSkus).toBe(50000);
+    expect(t.maxUsers).toBe(50);
+    expect(t.maxStorageGb).toBe(250);
+    expect(t.maxConnectorInstallations).toBe(15);
+    expect(t.maxApiKeys).toBe(20);
+    expect(t.maxOutboundWebhooks).toBe(20);
+    expect(t.maxImportRowsPerJob).toBe(30000);
+  });
+
+  it("ENTERPRISE: 100000 SKUs, 999 users, 50 API keys, 50 webhooks, 30000 import rows", () => {
     const t = tierLimits("ENTERPRISE");
     expect(t.maxSkus).toBe(100000);
+    expect(t.maxUsers).toBe(999);
+    expect(t.maxStorageGb).toBe(500);
+    expect(t.maxConnectorInstallations).toBe(100);
     expect(t.maxApiKeys).toBe(50);
     expect(t.maxOutboundWebhooks).toBe(50);
     expect(t.maxImportRowsPerJob).toBe(30000);
