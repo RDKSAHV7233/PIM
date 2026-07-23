@@ -283,6 +283,120 @@ describe("MarketplaceService.triggerConnectorExport", () => {
   });
 });
 
+// ─── MarketplaceService.triggerBulkPublish — F-4 approval/readiness gate ──────
+
+describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", () => {
+  const MOCK_RESOLVED_ROW = {
+    id: "inst_1",
+    connectorId: "conn_1",
+    tenantKey: "tenant1",
+    connectorSlug: "amazon",
+    capabilities: [],
+  };
+
+  function makeBulkPublishService(productsById: Record<string, { status: string; categoryId: string }>) {
+    const tenantDb = {
+      $queryRaw: jest.fn().mockResolvedValue([MOCK_RESOLVED_ROW]),
+      product: {
+        findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
+          Promise.resolve(productsById[id] ? { id, ...productsById[id] } : null),
+        ),
+      },
+      connectorSubmission: {
+        upsert: jest.fn(({ create }: { create: { id?: string } }) =>
+          Promise.resolve({ id: `sub_${create.id ?? Math.random()}` }),
+        ),
+      },
+    };
+
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
+
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireInstallation: jest.fn().mockResolvedValue({ id: "inst_1", slug: "amazon", capabilities: ["BULK_PUBLISH"] }),
+      publishBulk: jest.fn().mockImplementation((_installation: unknown, products: unknown[]) =>
+        Promise.resolve({
+          feedId: "feed_1",
+          feedDocumentId: "doc_1",
+          productCount: products.length,
+          skus: products.map((_p, i) => `SKU-${i}`),
+        }),
+      ),
+    };
+
+    const connectorMappingService = {
+      evaluatePublishReadiness: jest.fn().mockResolvedValue({ ok: true, blockers: [], warnings: [] }),
+    };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      connectorMappingService as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+    );
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
+      .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
+
+    return { svc, connectorFramework, connectorMappingService, tenantDb };
+  }
+
+  it("excludes a draft product and only submits the approved, ready one", async () => {
+    const { svc, connectorFramework, connectorMappingService } = makeBulkPublishService({
+      "draft-1": { status: "draft", categoryId: "cat1" },
+      "approved-1": { status: "approved", categoryId: "cat1" },
+    });
+    connectorMappingService.evaluatePublishReadiness.mockResolvedValue({ ok: true, blockers: [], warnings: [] });
+
+    const result = await svc.triggerBulkPublish("inst_1", ["draft-1", "approved-1"]);
+
+    expect(result.submissionIds).toHaveLength(1);
+    expect(result.excluded).toHaveLength(1);
+    expect(result.excluded[0].productId).toBe("draft-1");
+    expect(result.excluded[0].reason).toMatch(/must be approved/i);
+    expect(connectorFramework.publishBulk).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([expect.objectContaining({ sku: "SKU-approved-1" })]),
+    );
+    // the draft product's payload must never have been built or submitted
+    expect(connectorFramework.publishBulk.mock.calls[0][1]).toHaveLength(1);
+  });
+
+  it("excludes an approved product that fails destination readiness", async () => {
+    const { svc, connectorMappingService } = makeBulkPublishService({
+      "approved-not-ready": { status: "approved", categoryId: "cat1" },
+    });
+    connectorMappingService.evaluatePublishReadiness.mockResolvedValue({
+      ok: false,
+      blockers: ["required_attribute_mapping_missing"],
+      warnings: [],
+    });
+
+    await expect(svc.triggerBulkPublish("inst_1", ["approved-not-ready"])).rejects.toMatchObject({
+      response: expect.objectContaining({ error: "no_eligible_products" }),
+    });
+  });
+
+  it("submits all products when every one is approved and ready", async () => {
+    const { svc, connectorFramework } = makeBulkPublishService({
+      "a1": { status: "approved", categoryId: "cat1" },
+      "a2": { status: "active", categoryId: "cat1" },
+    });
+
+    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"]);
+
+    expect(result.excluded).toHaveLength(0);
+    expect(result.submissionIds).toHaveLength(2);
+    expect(connectorFramework.publishBulk.mock.calls[0][1]).toHaveLength(2);
+  });
+});
+
 describe("MarketplaceService.getBatchReadiness", () => {
   function mockResolvedMapping() {
     return {

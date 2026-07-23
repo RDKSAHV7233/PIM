@@ -3940,7 +3940,13 @@ export class MarketplaceService implements OnModuleInit {
   async triggerBulkPublish(
     installationId: string,
     productIds: string[],
-  ): Promise<{ feedId: string; feedDocumentId: string; productCount: number; submissionIds: string[] }> {
+  ): Promise<{
+    feedId: string;
+    feedDocumentId: string;
+    productCount: number;
+    submissionIds: string[];
+    excluded: Array<{ productId: string; reason: string }>;
+  }> {
     if (!productIds.length) {
       throw new BadRequestException("productIds must contain at least one product.");
     }
@@ -3953,9 +3959,53 @@ export class MarketplaceService implements OnModuleInit {
       throw new NotFoundException("Connector installation not found.");
     }
 
+    // Bulk-publish previously skipped both the internal-approval-status check and the
+    // destination-readiness check that the single-product path (createExportJob, above)
+    // enforces — a product could reach a live marketplace feed without ever being
+    // approved or without a valid mapping/credentials. Gate each product independently
+    // here rather than failing the whole batch for one ineligible product.
+    const excluded: Array<{ productId: string; reason: string }> = [];
+    const eligibleProductIds: string[] = [];
+    for (const productId of productIds) {
+      const product = await db.product.findUnique({
+        where: { id: productId },
+        select: { id: true, status: true, categoryId: true },
+      });
+      if (!product) {
+        excluded.push({ productId, reason: "Product not found." });
+        continue;
+      }
+      if (product.status !== "approved" && product.status !== "active") {
+        excluded.push({
+          productId,
+          reason: `Product must be approved before publishing. Current status: ${product.status}.`,
+        });
+        continue;
+      }
+      const readiness = await this.connectorMappingService.evaluatePublishReadiness({
+        connectorSlug: installationRow.connectorSlug,
+        categoryScope: product.categoryId,
+        installationId,
+        productId,
+      });
+      if (!readiness.ok) {
+        excluded.push({ productId, reason: readiness.blockers.join("; ") || "Not ready for this destination." });
+        continue;
+      }
+      eligibleProductIds.push(productId);
+    }
+
+    if (!eligibleProductIds.length) {
+      throw new BadRequestException({
+        error: "no_eligible_products",
+        message: "No products in this batch are approved and publish-ready.",
+        excluded,
+      });
+    }
+
     const [installation, products] = await Promise.all([
       this.connectorFramework.requireInstallation(tenantKey, installationRow.connectorSlug, installationId),
-      Promise.all(productIds.map((id) => this.buildConnectorProductPayload(id))),
+      Promise.all(eligibleProductIds.map((id) => this.buildConnectorProductPayload(id))),
     ]);
 
     const bulkRef = await this.connectorFramework.publishBulk(installation, products);
@@ -3963,7 +4013,7 @@ export class MarketplaceService implements OnModuleInit {
     const submissionIds: string[] = [];
     for (let i = 0; i < bulkRef.skus.length; i++) {
       const sku = bulkRef.skus[i];
-      const productId = productIds[i] ?? productIds[0];
+      const productId = eligibleProductIds[i] ?? eligibleProductIds[0];
       const externalRef = `feed::${bulkRef.feedId}::${i + 1}::${sku}`;
       const idempotencyKey = `bulk:${bulkRef.feedId}:${i + 1}`;
 
@@ -4002,6 +4052,7 @@ export class MarketplaceService implements OnModuleInit {
       installationId,
       feedId: bulkRef.feedId,
       productCount: bulkRef.productCount,
+      excludedCount: excluded.length,
     });
 
     return {
@@ -4009,6 +4060,7 @@ export class MarketplaceService implements OnModuleInit {
       feedDocumentId: bulkRef.feedDocumentId,
       productCount: bulkRef.productCount,
       submissionIds,
+      excluded,
     };
   }
 
