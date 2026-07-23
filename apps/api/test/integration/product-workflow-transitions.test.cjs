@@ -217,6 +217,8 @@ async function run() {
       description: "Workflow transition test",
       categoryId: category.payload.id,
       status: "draft",
+      hsnCode: "610910",
+      gstRate: 12,
     });
     assertStatus(product, 201, "create product");
 
@@ -257,6 +259,43 @@ async function run() {
     assert(
       Number(statsInReview.payload?.pendingApprovals ?? 0) === 1,
       `expected pendingApprovals=1 after in_review, got ${JSON.stringify(statsInReview.payload)}`,
+    );
+
+    // F-1 regression test: an editor must NOT be able to self-approve via the generic
+    // PATCH endpoint (only POST .../review-decision, restricted to admin/approver/
+    // reviewer, is the intended gate). This is the exact live-reproduced bypass the
+    // audit found — verify it stays closed.
+    const editorSelfApprove = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, editorToken, {
+      expectedVersion: toReview.payload.version,
+      title: toReview.payload.title,
+      description: toReview.payload.description,
+      brand: toReview.payload.brand,
+      categoryId: toReview.payload.categoryId,
+      hsnCode: toReview.payload.hsnCode,
+      gstRate: toReview.payload.gstRate,
+      attributes: toReview.payload.attributes,
+      status: "approved",
+    });
+    assertStatus(editorSelfApprove, 403, "editor self-approval via generic PATCH is rejected");
+
+    // Also verify the "sneak a content change through alongside the approval" variant
+    // is rejected before any role/blocking-issue check, even for an otherwise-privileged
+    // admin actor — this closes the stale-validation hole found during plan review.
+    const adminApproveWithContentChange = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
+      expectedVersion: toReview.payload.version,
+      title: `${toReview.payload.title} sneaked-in edit`,
+      description: toReview.payload.description,
+      brand: toReview.payload.brand,
+      categoryId: toReview.payload.categoryId,
+      hsnCode: toReview.payload.hsnCode,
+      gstRate: toReview.payload.gstRate,
+      attributes: toReview.payload.attributes,
+      status: "approved",
+    });
+    assertStatus(adminApproveWithContentChange, 400, "admin approval combined with a content change is rejected");
+    assert(
+      String(adminApproveWithContentChange.payload?.code ?? "") === "APPROVAL_CONTENT_CHANGE_CONFLICT",
+      `expected APPROVAL_CONTENT_CHANGE_CONFLICT, got ${JSON.stringify(adminApproveWithContentChange.payload)}`,
     );
 
     const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
@@ -447,6 +486,8 @@ async function run() {
           validated: [
             "workflow_transition_invalid_direct_draft_to_approved_rejected",
             "workflow_transition_draft_to_in_review_allowed",
+            "editor_self_approve_via_generic_patch_rejected",
+            "admin_approval_with_content_change_rejected",
             "workflow_transition_in_review_to_approved_allowed",
             "editor_content_edit_blocked_for_approved_product",
             "admin_content_edit_blocked_for_approved_product",

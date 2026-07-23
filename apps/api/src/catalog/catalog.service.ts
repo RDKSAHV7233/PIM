@@ -876,6 +876,53 @@ export class CatalogService {
       ? this.normalizeProductAttributes(dto.attributes)
       : this.asRecord(current.attributes);
 
+    // A transition into approved/rejected via this generic endpoint is the intended
+    // gate's bypass vector: `decideProductReview` (POST .../review-decision) is the
+    // only endpoint meant to make that decision, restricted to admin/approver/reviewer
+    // and blocked while open error-severity ValidationIssues exist. Close both gaps here
+    // without duplicating decideProductReview's own request shape (no content fields):
+    // reject any request that also changes content in the same call (a compliance
+    // check run here would otherwise validate the stale pre-edit row, since
+    // countBlockingValidationIssues persists compliance state from the CURRENT DB row,
+    // not this request's not-yet-committed merged values), and require the same
+    // privileged-role + blocking-issue checks decideProductReview enforces.
+    const nextCanonicalStatus = this.canonicalWorkflowStatus(nextStatus);
+    const currentCanonicalStatus = this.canonicalWorkflowStatus(current.status);
+    const isTerminalReviewTransition =
+      (nextCanonicalStatus === RecordStatus.approved || nextCanonicalStatus === RecordStatus.rejected) &&
+      nextCanonicalStatus !== currentCanonicalStatus;
+    if (isTerminalReviewTransition) {
+      const contentFieldsChanged = this.collectChangedProductFields(current, {
+        title: mergedTitle.trim(),
+        description: mergedDescription.trim(),
+        brand: mergedBrand.trim(),
+        categoryId: mergedCategoryId,
+        vendorScopeKey: requestedVendorScopeKey,
+        hsnCode: mergedHsnCode,
+        gstRate: mergedGstRate,
+        attributes: mergedAttributes,
+        status: current.status,
+      }).some((field) => field.path !== "status");
+      if (contentFieldsChanged || dto.taxCodes !== undefined) {
+        throw new BadRequestException({
+          code: "APPROVAL_CONTENT_CHANGE_CONFLICT",
+          message: "Submit content changes separately from an approval or rejection decision.",
+        });
+      }
+      const REVIEW_DECISION_ROLES: readonly AppRole[] = ["admin", "approver", "reviewer"];
+      if (!actor || !REVIEW_DECISION_ROLES.includes(actor.role)) {
+        throw new ForbiddenException("Only admin, approver, or reviewer roles may approve or reject a product.");
+      }
+      const blockingIssues = await this.countBlockingValidationIssues(productId);
+      if (blockingIssues > 0) {
+        throw new BadRequestException({
+          code: "APPROVAL_BLOCKED",
+          message: "Product still has blocking issues and cannot be approved.",
+          blockingIssues,
+        });
+      }
+    }
+
     // Resolve SLA deadline when transitioning to in_review.
     let slaDeadlineAt: Date | null = null;
     if (nextStatus === RecordStatus.in_review && current.status !== RecordStatus.in_review) {
@@ -1004,14 +1051,7 @@ export class CatalogService {
 
     const nextStatus = dto.status === "approved" ? RecordStatus.approved : RecordStatus.rejected;
     if (nextStatus === RecordStatus.approved) {
-      await this.complianceService.validateAndPersistProduct(productId);
-      const blockingIssues = await this.prisma.tenant().validationIssue.count({
-        where: {
-          productId,
-          status: ValidationIssueStatus.open,
-          severity: RuleSeverity.error,
-        },
-      });
+      const blockingIssues = await this.countBlockingValidationIssues(productId);
       if (blockingIssues > 0) {
         throw new BadRequestException({
           code: "APPROVAL_BLOCKED",
@@ -1589,6 +1629,22 @@ export class CatalogService {
       return "approved";
     }
     return status as WorkflowStatus;
+  }
+
+  /**
+   * Re-runs compliance validation against the product's current persisted state and
+   * counts open, error-severity ValidationIssues. Shared by decideProductReview and
+   * updateProduct's approval-transition guard so both enforce the identical gate.
+   */
+  private async countBlockingValidationIssues(productId: string): Promise<number> {
+    await this.complianceService.validateAndPersistProduct(productId);
+    return this.prisma.tenant().validationIssue.count({
+      where: {
+        productId,
+        status: ValidationIssueStatus.open,
+        severity: RuleSeverity.error,
+      },
+    });
   }
 
   private isValidWorkflowTransition(currentStatus: RecordStatus, nextStatus: RecordStatus): boolean {
