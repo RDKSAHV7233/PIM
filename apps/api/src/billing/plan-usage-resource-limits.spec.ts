@@ -261,7 +261,7 @@ describe("PlanUsageService.checkLimit — expired billingStatus", () => {
 // PLAN_LIMITS seed — tier values (migration smoke substitute for unit layer)
 // ---------------------------------------------------------------------------
 
-describe("PLAN_LIMITS seed — correct values for all four tiers", () => {
+describe("PLAN_LIMITS seed — correct values for all five tiers", () => {
   function tierLimits(planTier: string) {
     const row = PLAN_LIMITS.find((r) => r.planTier === planTier);
     if (!row) throw new Error(`No seed row for tier: ${planTier}`);
@@ -295,6 +295,15 @@ describe("PLAN_LIMITS seed — correct values for all four tiers", () => {
     expect(t.maxImportRowsPerJob).toBe(10000);
   });
 
+  it("BUSINESS: 50000 SKUs, 100 users, 20 API keys, 20 webhooks, 20000 import rows", () => {
+    const t = tierLimits("BUSINESS");
+    expect(t.maxSkus).toBe(50000);
+    expect(t.maxUsers).toBe(100);
+    expect(t.maxApiKeys).toBe(20);
+    expect(t.maxOutboundWebhooks).toBe(20);
+    expect(t.maxImportRowsPerJob).toBe(20000);
+  });
+
   it("ENTERPRISE: 100000 SKUs, 50 API keys, 50 webhooks, 30000 import rows", () => {
     const t = tierLimits("ENTERPRISE");
     expect(t.maxSkus).toBe(100000);
@@ -303,8 +312,8 @@ describe("PLAN_LIMITS seed — correct values for all four tiers", () => {
     expect(t.maxImportRowsPerJob).toBe(30000);
   });
 
-  it("all four tiers are present — no tier is missing from seed", () => {
+  it("all five tiers are present — no tier is missing from seed", () => {
     const tiers = PLAN_LIMITS.map((r) => r.planTier).sort();
-    expect(tiers).toEqual(["ENTERPRISE", "GROWTH", "STARTER", "TRIAL"]);
+    expect(tiers).toEqual(["BUSINESS", "ENTERPRISE", "GROWTH", "STARTER", "TRIAL"]);
   });
 });

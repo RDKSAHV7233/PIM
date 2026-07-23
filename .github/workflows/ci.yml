@@ -113,6 +113,15 @@ jobs:
       - name: Catalog completeness integration test
         run: npm run test:integration:catalog-completeness
 
+      - name: Shopify productSet payload integration test
+        run: npm run test:integration:shopify-product-set-payload
+
+      - name: Shopify publication webhook integration test
+        run: npm run test:integration:shopify-publication-webhook
+
+      - name: Shopify runtime foundation integration test
+        run: npm run test:integration:shopify-runtime-foundation
+
       - name: Outbound webhook integration test
         run: node apps/api/test/integration/outbound-webhooks.test.cjs
 
