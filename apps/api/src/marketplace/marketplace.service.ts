@@ -659,11 +659,13 @@ export class MarketplaceService implements OnModuleInit {
       const productPayload = await this.buildConnectorProductPayload(productId);
       const validationResult = await this.connectorFramework.validate(installation, productPayload);
       if (!validationResult.isValid) {
-        const errorMessages = validationResult.errors.map((e) => e.sellerMessage).join("; ");
-        throw new BadRequestException(`Product fails connector validation: ${errorMessages}`);
+        this.logger.warn("pre-flight connector validation failed — job will proceed to async processing", {
+          productId,
+          connectorSlug,
+          errors: validationResult.errors.map((e) => e.sellerMessage),
+        });
       }
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
       this.logger.warn("pre-flight connector validation skipped", {
         productId,
         connectorSlug,
