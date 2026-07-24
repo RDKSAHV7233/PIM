@@ -1269,6 +1269,9 @@ export class ConnectorMappingService {
         if (product.status === "archived") {
           blockers.push("product_archived");
         }
+        if (product.status !== "approved" && product.status !== "active" && product.status !== "archived") {
+          blockers.push("product_not_approved");
+        }
         openErrors = await this.prisma.tenant(tenantKey).validationIssue.count({
           where: {
             productId: product.id,

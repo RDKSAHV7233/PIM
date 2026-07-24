@@ -652,6 +652,27 @@ export class MarketplaceService implements OnModuleInit {
       fallbackAcknowledged: dto.fallbackAcknowledged,
       productId,
     });
+
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    try {
+      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, resolvedInstallationId);
+      const productPayload = await this.buildConnectorProductPayload(productId);
+      const validationResult = await this.connectorFramework.validate(installation, productPayload);
+      if (!validationResult.isValid) {
+        this.logger.warn("pre-flight connector validation failed — job will proceed to async processing", {
+          productId,
+          connectorSlug,
+          errors: validationResult.errors.map((e) => e.sellerMessage),
+        });
+      }
+    } catch (error) {
+      this.logger.warn("pre-flight connector validation skipped", {
+        productId,
+        connectorSlug,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     const requestIdentity = this.buildPublishRequestIdentity(
       product.version,
       product.updatedAt,
