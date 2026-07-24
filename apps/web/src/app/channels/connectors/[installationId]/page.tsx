@@ -960,7 +960,9 @@ export default async function ChannelConnectorDetailPage({
               detail:
                 metadataShopDomain && metadataShopId && selectedPublicationTargetSummary.count > 0
                   ? `${metadataShopName || metadataShopDomain} is connected and ${selectedPublicationTargetSummary.label.toLowerCase()} configured.`
-                  : "Return here after the handoff to verify shop identity and choose the publication targets Vexa should publish to.",
+                  : metadataShopDomain && metadataShopId
+                    ? `${metadataShopName || metadataShopDomain} is connected. Select publication targets below to finish setup.`
+                    : "Return here after the handoff to verify shop identity and choose the publication targets Vexa should publish to.",
             },
           ]
         : [];
