@@ -67,6 +67,11 @@ export class UpdateProductDto {
   @IsIn(PRODUCT_STATUSES)
   status!: (typeof PRODUCT_STATUSES)[number];
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  statusChangeNote?: string;
+
   /**
    * Structured tax codes for one or more tax regimes.
    * - undefined: existing tax codes are PRESERVED (no-op)

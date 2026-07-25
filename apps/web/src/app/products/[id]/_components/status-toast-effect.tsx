@@ -11,14 +11,19 @@ const EPHEMERAL_PARAMS = [
   "currentVersion",
   "deleteStatus",
   "deleteError",
+  "error",
+  "errorMessage",
 ] as const;
 
 interface StatusToastEffectProps {
   updateStatus: string;
+  actionError?: string;
+  actionErrorMessage?: string;
 }
 
-export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
+export function StatusToastEffect({ updateStatus, actionError, actionErrorMessage }: StatusToastEffectProps) {
   const lastStatusRef = useRef("");
+  const lastErrorRef = useRef("");
 
   useEffect(() => {
     // Strip all ephemeral params from the URL without triggering a navigation.
@@ -34,6 +39,11 @@ export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
       window.history.replaceState({}, "", url.toString());
     }
 
+    if (actionError && lastErrorRef.current !== actionError) {
+      lastErrorRef.current = actionError;
+      toast.error(actionErrorMessage || "Action failed");
+    }
+
     if (!updateStatus || lastStatusRef.current === updateStatus) {
       return;
     }
@@ -45,6 +55,10 @@ export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
     }
     if (updateStatus === "validated") {
       toast.success("Validation complete");
+      return;
+    }
+    if (updateStatus === "reverted-to-draft") {
+      toast.success("Product reverted to draft");
       return;
     }
     if (updateStatus === "export-queued") {
@@ -63,14 +77,18 @@ export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
       toast.error("Your role does not have permission to publish to channels.");
       return;
     }
-    if (updateStatus === "error" || updateStatus === "conflict") {
+    if (updateStatus === "error") {
+      toast.error(actionErrorMessage || "Update failed");
+      return;
+    }
+    if (updateStatus === "conflict") {
       toast.error("Update failed");
       return;
     }
     if (updateStatus === "validate-error") {
       toast.error("Validation failed");
     }
-  }, [updateStatus]);
+  }, [updateStatus, actionError, actionErrorMessage]);
 
   return null;
 }

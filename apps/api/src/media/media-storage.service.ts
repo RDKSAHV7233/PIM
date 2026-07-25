@@ -92,6 +92,11 @@ export class MediaStorageService {
     }
   }
 
+  /** Reads a local-filesystem-stored asset back into memory. Only meaningful when isLocalMode() is true. */
+  async readLocalFile(storagePath: string): Promise<Buffer> {
+    return fs.readFile(storagePath);
+  }
+
   async delete(storagePath: string): Promise<void> {
     if (!storagePath) return;
 

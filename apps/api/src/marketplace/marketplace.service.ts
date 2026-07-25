@@ -16,6 +16,7 @@ import {
 } from "../connector-framework/connector.errors";
 import { MarketPrice, ProductPayload } from "../connector-framework/connector.interface";
 import { PriceResolutionService } from "./price-resolution.service";
+import { MediaStorageService } from "../media/media-storage.service";
 import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import {
@@ -291,6 +292,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly logger: LoggerService,
     private readonly accessPolicy: AccessPolicyService,
     private readonly priceResolution: PriceResolutionService,
+    private readonly mediaStorage: MediaStorageService,
   ) {}
 
   onModuleInit() {
@@ -1946,7 +1948,16 @@ export class MarketplaceService implements OnModuleInit {
       mappingCache,
       installationId,
     );
-    const attributes = this.asRecord(product.attributes);
+    const rawAttributes = this.asRecord(product.attributes);
+    // `asRecord` returns the same object reference (not a copy) — never mutate it directly here,
+    // it may be a shared/cached product object reused across other calls.
+    let attributes = rawAttributes;
+    if (this.isEmpty(rawAttributes.mainImageUrl)) {
+      const resolvedImageUrl = await this.resolveConnectorImageUrl(product.id, rawAttributes);
+      if (resolvedImageUrl) {
+        attributes = { ...rawAttributes, mainImageUrl: resolvedImageUrl };
+      }
+    }
     const mappedPayload: Record<string, unknown> = {};
     for (const [sourceField, targetField] of Object.entries(mapping.fieldMap)) {
       const value = this.getFieldValue(sourceField, product, attributes);
@@ -3127,16 +3138,35 @@ export class MarketplaceService implements OnModuleInit {
       return attributeUrl;
     }
 
-    const asset = await this.prisma.tenant().mediaAsset.findFirst({
-      where: { productId },
+    const mainAsset = await this.prisma.tenant().mediaAsset.findFirst({
+      where: { productId, metadata: { path: ["isMain"], equals: true } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { storagePath: true },
+      select: { id: true, storagePath: true },
     });
+    const asset =
+      mainAsset ??
+      (await this.prisma.tenant().mediaAsset.findFirst({
+        where: { productId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, storagePath: true },
+      }));
     const storagePath = String(asset?.storagePath ?? "").trim();
-    const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
-    if (!storagePath) {
+    if (!asset || !storagePath) {
       return "";
     }
+
+    if (this.mediaStorage.isLocalMode()) {
+      const apiBase = String(process.env.PIM_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+      if (!apiBase) {
+        this.logger.warn("PIM_API_BASE_URL is not configured; local media asset cannot be resolved for connector payload.", {
+          productId,
+        });
+        return "";
+      }
+      return `${apiBase}/media/assets/${asset.id}/file`;
+    }
+
+    const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
     if (!publicBase) {
       this.logger.warn("R2_PUBLIC_URL is not configured; media asset image URL cannot be resolved for connector payload.", {
         productId,

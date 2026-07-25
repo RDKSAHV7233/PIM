@@ -36,7 +36,7 @@ type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archive
 const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
   draft: ["in_review", "archived"],
   in_review: ["approved", "rejected", "draft", "archived"],
-  approved: ["archived"],
+  approved: ["archived", "draft"],
   rejected: ["draft", "in_review", "archived"],
   archived: ["draft", "in_review"],
 };
@@ -865,6 +865,23 @@ export class CatalogService {
     if (!this.isValidWorkflowTransition(current.status, nextStatus)) {
       throw new BadRequestException(`Invalid workflow transition from ${current.status} to ${nextStatus}.`);
     }
+    if (nextStatus === RecordStatus.draft && this.canonicalWorkflowStatus(current.status) === "approved") {
+      if (current.status === RecordStatus.active) {
+        // `active` canonicalizes to "approved" for transition-table purposes, but a live/published
+        // product reverting to draft is a materially bigger decision than un-approving a draft-stage
+        // review — deliberately out of scope here (archive first, then re-draft).
+        throw new BadRequestException(
+          "Active products cannot be reverted to draft directly. Archive the product first.",
+        );
+      }
+      const allowedRevertRoles: AppRole[] = ["admin", "approver", "reviewer"];
+      if (!actor || !allowedRevertRoles.includes(actor.role)) {
+        throw new ForbiddenException({
+          code: "APPROVED_REVERT_FORBIDDEN",
+          message: "Reverting an approved product to draft requires approver, reviewer, or admin role.",
+        });
+      }
+    }
     this.assertProductContentMutationAllowed(current, dto);
     await this.accessPolicy.assertProductAttributeWriteAllowed(this.toPolicyActor(actor), {
         resourceId: productId,
@@ -1023,6 +1040,7 @@ export class CatalogService {
           model: "Product",
           fromStatus: current.status,
           toStatus: nextStatus,
+          statusChangeNote: dto.statusChangeNote?.trim() || null,
         },
       });
     }

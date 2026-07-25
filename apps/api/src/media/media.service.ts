@@ -411,6 +411,31 @@ export class MediaService {
     return this.presentAsset(asset);
   }
 
+  /**
+   * Serves the raw bytes (or a redirect) for an asset by id. Deliberately unauthenticated
+   * (@Public route) so external systems like Shopify can fetch product images — same exposure
+   * profile as a public R2 bucket URL. Never returns metadata beyond what's needed to serve
+   * the file; use getAsset() for the governed, actor-scoped read path.
+   */
+  async getAssetFile(assetId: string): Promise<{ buffer?: Buffer; redirectUrl?: string; mimeType: string; fileName: string }> {
+    const asset = await this.prisma.tenant().mediaAsset.findUnique({
+      where: { id: assetId },
+      select: { storagePath: true, mimeType: true, fileName: true },
+    });
+    if (!asset) {
+      throw new NotFoundException("Media asset not found");
+    }
+    if (this.mediaStorage.isLocalMode()) {
+      const buffer = await this.mediaStorage.readLocalFile(asset.storagePath);
+      return { buffer, mimeType: asset.mimeType, fileName: asset.fileName };
+    }
+    const redirectUrl = await this.mediaStorage.resolveDownloadUrl(asset.storagePath, asset.fileName);
+    if (!redirectUrl) {
+      throw new NotFoundException("Media asset file is not available");
+    }
+    return { redirectUrl, mimeType: asset.mimeType, fileName: asset.fileName };
+  }
+
   async validateAsset(assetId: string, channelInput: string, actor?: PolicyActor) {
     const channel = this.parseChannel(channelInput);
     const asset = (await this.getAsset(assetId, actor)) as {

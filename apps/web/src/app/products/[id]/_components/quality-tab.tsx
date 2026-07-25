@@ -1,4 +1,9 @@
-import { decideProductReviewAction, updateProductAction, validateProductAction } from "@/app/actions";
+import {
+  decideProductReviewAction,
+  revertProductToDraftAction,
+  updateProductAction,
+  validateProductAction,
+} from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -73,6 +78,36 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
                 variant="secondary"
                 idleLabel="Reject"
                 pendingLabel="Rejecting…"
+              />
+            </form>
+          </div>
+        </Card>
+      ) : null}
+
+      {status === "approved" && canDecide ? (
+        <Card hidden={data.activeTab !== "quality"}>
+          <CardTitle>Revert to draft</CardTitle>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              This undoes the approval and re-opens the product for editing. It does not affect anything
+              already published to a channel.
+            </p>
+            <form action={revertProductToDraftAction} className="space-y-2">
+              <input type="hidden" name="productId" value={data.productId} />
+              <input type="hidden" name="expectedVersion" value={data.product.version} />
+              <label className="block space-y-1 text-xs text-slate-600">
+                <span className="font-medium text-slate-700">Reason (optional)</span>
+                <textarea
+                  name="statusChangeNote"
+                  rows={2}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Why is this product being reverted to draft?"
+                />
+              </label>
+              <PendingSubmitButton
+                variant="secondary"
+                idleLabel="Revert to draft"
+                pendingLabel="Reverting…"
               />
             </form>
           </div>

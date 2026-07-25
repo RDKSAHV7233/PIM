@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
-import type { Request } from "express";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, StreamableFile, UseGuards } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { IsOptional, IsString, MaxLength } from "class-validator";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
@@ -9,6 +9,7 @@ import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.deco
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole } from "../common/rbac/roles";
 import { DEFAULT_MARKETPLACE_CHANNEL } from "../marketplace/marketplace-channels";
+import { Public } from "../auth/public.decorator";
 import { BulkMediaAssociationDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { MediaService } from "./media.service";
@@ -77,6 +78,25 @@ export class MediaController {
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.getAsset(id, this.resolveActor(request));
+  }
+
+  /**
+   * Deliberately public/unauthenticated — this is what makes an uploaded asset fetchable by
+   * external systems (e.g. Shopify pulling attributes.mainImageUrl). Same exposure profile as
+   * a public R2 bucket URL: unguessable cuid id, no listing endpoint. See media.service.ts
+   * getAssetFile() for the governed vs. ungoverned read-path split.
+   */
+  @Get("assets/:id/file")
+  @Public()
+  async getAssetFile(@Param("id") id: string, @Res({ passthrough: true }) response: Response) {
+    const file = await this.mediaService.getAssetFile(id);
+    if (file.redirectUrl) {
+      response.redirect(302, file.redirectUrl);
+      return undefined;
+    }
+    response.header("Content-Type", file.mimeType);
+    response.header("Content-Disposition", `inline; filename="${file.fileName}"`);
+    return new StreamableFile(file.buffer!);
   }
 
   @Get("assets/:id/validation")
