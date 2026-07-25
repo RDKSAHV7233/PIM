@@ -7,6 +7,9 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "page.tsx");
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "actions.ts");
 const WEBHOOK_EVENTS = path.join(REPO_ROOT, "apps", "web", "src", "lib", "constants", "webhook-events.ts");
+const WEB_API = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api", "admin.ts");
+const API_CONTROLLER = path.join(REPO_ROOT, "apps", "api", "src", "outbound-webhooks", "outbound-webhooks.controller.ts");
+const API_SERVICE = path.join(REPO_ROOT, "apps", "api", "src", "outbound-webhooks", "outbound-webhooks.service.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -18,6 +21,11 @@ function run() {
   const source = fs.readFileSync(PAGE, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS, "utf8");
   const eventsSource = fs.readFileSync(WEBHOOK_EVENTS, "utf8");
+  const webApiSource = fs.readFileSync(WEB_API, "utf8");
+  const apiControllerSource = fs.readFileSync(API_CONTROLLER, "utf8");
+  const apiServiceSource = fs.readFileSync(API_SERVICE, "utf8");
+  const retryMethodMatch = apiServiceSource.match(/async retryFailedDelivery[\s\S]*?\n  async enqueueNotificationEvent/);
+  const retryMethodSource = retryMethodMatch ? retryMethodMatch[0] : "";
 
   assert(
     source.includes("await getServerSession();") &&
@@ -28,8 +36,10 @@ function run() {
   assert(
     source.includes("const [endpoints, deliveries, planProfile] = await Promise.all([") &&
       source.includes("getOutboundWebhookEndpoints({ role, authHeader })") &&
-      source.includes("getOutboundWebhookDeliveries({ limit: 20 }, { role, authHeader })"),
-    "Admin webhooks must load configured endpoints and recent deliveries together from the shared auth context.",
+      source.includes("limit: 200") &&
+      source.includes("endpointId: deliveryEndpointFilter || undefined") &&
+      source.includes('status: deliveryStatusFilter === "all" ? undefined : deliveryStatusFilter'),
+    "Admin webhooks must load configured endpoints and filterable recent deliveries from the shared auth context.",
   );
   assert(
     eventsSource.includes("WEBHOOK_EVENT_LABELS") &&
@@ -45,8 +55,10 @@ function run() {
       source.includes('status === "webhook-paused"') &&
       source.includes('status === "webhook-resumed"') &&
       source.includes('status === "webhook-test-queued"') &&
+      source.includes('status === "webhook-secret-rotated"') &&
+      source.includes('status === "webhook-retry-queued"') &&
       source.includes('status === "webhook-deleted"'),
-    "Admin webhooks must surface create, error, pause, resume, test, and delete state banners at the page level.",
+    "Admin webhooks must surface create, error, pause, resume, test, rotation, retry, and delete state banners at the page level.",
   );
   assert(
     source.includes("CardTitle>Delivery health guide</CardTitle>") &&
@@ -70,10 +82,51 @@ function run() {
       source.includes("form action={createOutboundWebhookAction}") &&
       source.includes("form action={sendTestOutboundWebhookAction}") &&
       source.includes("form action={toggleOutboundWebhookAction}") &&
+      source.includes("form action={rotateOutboundWebhookSecretAction}") &&
+      source.includes("form action={retryOutboundWebhookDeliveryAction}") &&
       source.includes("form action={deleteOutboundWebhookAction}") &&
       source.includes("<CardTitle>Webhook Management</CardTitle>") &&
-      source.includes("Admin role is required to create, test, pause, resume, or delete webhook endpoints. You can still review configured endpoints and recent deliveries below."),
-    "Admin webhooks must keep create, test, toggle, and delete actions explicitly admin-only while explaining the read-only fallback at the page contract level.",
+      source.includes("Admin role is required to create, test, rotate, pause, resume, retry, or delete webhook endpoints. You can still review configured endpoints and recent deliveries below."),
+    "Admin webhooks must keep create, test, rotate, retry, toggle, and delete actions explicitly admin-only while explaining the read-only fallback at the page contract level.",
+  );
+  assert(
+    source.includes('const WEBHOOK_DELIVERY_STATUS_FILTERS = ["all", "queued", "delivered", "failed", "skipped"] as const') &&
+      source.includes('name="endpointId"') &&
+      source.includes('name="deliveryStatus"') &&
+      source.includes("No deliveries match the selected filters.") &&
+      webApiSource.includes("endpointId?: string; status?: OutboundWebhookDelivery[\"status\"]; limit?: number"),
+    "Admin webhooks must expose endpoint/status delivery filters backed by the existing API client query support.",
+  );
+  assert(
+    actionsSource.includes("rotateOutboundWebhookSecretAction") &&
+      actionsSource.includes("signingSecret.length < 16") &&
+      actionsSource.includes("updateOutboundWebhookEndpoint(endpointId, { signingSecret }") &&
+      actionsSource.includes('redirectWithStatus("webhook-secret-rotated"'),
+    "Admin webhooks must rotate signing secrets through the existing endpoint update path with validation and banners.",
+  );
+  assert(
+    webApiSource.includes("retryOutboundWebhookDelivery") &&
+      webApiSource.includes('/admin/webhooks/deliveries/${encodeURIComponent(deliveryId)}/retry') &&
+      apiControllerSource.includes('@Post("deliveries/:id/retry")') &&
+      apiControllerSource.includes("retryFailedDelivery("),
+    "Admin webhooks must expose a tenant-scoped failed-delivery retry API route and web API helper.",
+  );
+  assert(
+    retryMethodSource.includes('existing.status !== "failed"') &&
+      retryMethodSource.includes("Only failed webhook deliveries can be retried.") &&
+      retryMethodSource.includes("!endpoint.isActive") &&
+      retryMethodSource.includes("Resume the webhook endpoint before retrying this delivery.") &&
+      retryMethodSource.includes("this.createQueuedDelivery(") &&
+      retryMethodSource.includes("existing.eventId") &&
+      retryMethodSource.includes("originalDeliveryId: existing.id") &&
+      !retryMethodSource.includes("outboundWebhookDelivery.update("),
+    "Admin webhooks retry must clone failed deliveries into a new queued delivery while preserving the original failed row.",
+  );
+  assert(
+    source.includes('delivery.status === "failed"') &&
+      source.includes("Retry") &&
+      source.includes('name="deliveryId" value={delivery.id}'),
+    "Admin webhooks must show retry only for failed delivery rows.",
   );
   assert(
     source.includes('x-pim1-webhook-signature') &&
@@ -91,8 +144,9 @@ function run() {
   assert(
     source.includes('const errorMessage = String(query.message ?? "").trim();') &&
       actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to create webhook endpoint.");') &&
-      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update webhook endpoint.");') &&
-      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to delete webhook endpoint.");'),
+      actionsSource.includes('"Unable to update webhook endpoint.", redirectTo') &&
+      actionsSource.includes('"Unable to delete webhook endpoint.", redirectTo') &&
+      actionsSource.includes('"Unable to retry webhook delivery.", redirectTo'),
     "Admin webhooks must keep action failures inline instead of surfacing opaque server-action errors.",
   );
   assert(
@@ -118,6 +172,9 @@ function run() {
           "admin_webhooks_route_surfaces_status_banners",
           "admin_webhooks_route_keeps_error_feedback_inline",
           "admin_webhooks_route_keeps_mutations_admin_only",
+          "admin_webhooks_route_supports_endpoint_status_delivery_filters",
+          "admin_webhooks_route_supports_secret_rotation",
+          "admin_webhooks_route_supports_failed_delivery_retry",
           "admin_webhooks_route_documents_signing_and_empty_states",
           "admin_webhooks_route_surfaces_endpoint_and_delivery_status",
           "admin_webhooks_route_links_audit_and_redirects_auth_failures",

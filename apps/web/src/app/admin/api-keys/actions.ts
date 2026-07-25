@@ -55,6 +55,13 @@ export async function createApiAccessKeyAction(
         createdKey: null,
       };
     }
+    if (scopes.length === 0) {
+      return {
+        status: "error",
+        message: "Select at least one API scope.",
+        createdKey: null,
+      };
+    }
     const created = await createApiAccessKey(
       {
         label,

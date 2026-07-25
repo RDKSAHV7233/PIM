@@ -94,6 +94,18 @@ export class OutboundWebhooksController {
     );
   }
 
+  @Post("deliveries/:id/retry")
+  @HttpCode(200)
+  retryFailedDelivery(@Req() request: AuthenticatedRequest, @Param("id") deliveryId: string) {
+    const actor = this.requireActor(request);
+    return this.outboundWebhooksService.retryFailedDelivery(
+      actor.tenantId,
+      actor.userId,
+      actor.role,
+      decodeURIComponent(deliveryId),
+    );
+  }
+
   @Delete(":id")
   @HttpCode(200)
   deleteEndpoint(@Req() request: AuthenticatedRequest, @Param("id") endpointId: string) {
