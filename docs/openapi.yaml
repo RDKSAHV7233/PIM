@@ -2275,6 +2275,19 @@ paths:
         "200":
           description: ""
       tags: *a17
+  /api/v1/admin/webhooks/deliveries/{id}/retry:
+    post:
+      operationId: OutboundWebhooksController_retryFailedDelivery
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a17
   /api/v1/media/assets:
     post:
       operationId: MediaController_createAsset
