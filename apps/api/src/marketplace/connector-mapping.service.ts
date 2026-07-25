@@ -474,17 +474,18 @@ export class ConnectorMappingService {
       });
     }
 
+    const connectorDef = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
+      where: { slug: input.connectorSlug },
+      select: { id: true },
+    });
+    if (!connectorDef) {
+      throw new NotFoundException("connector_not_found");
+    }
+    if (input.connectorDefinitionId && input.connectorDefinitionId !== connectorDef.id) {
+      throw new BadRequestException("connector_definition_id_mismatch");
+    }
+
     if (input.installationId) {
-      const connectorDef = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
-        where: { slug: input.connectorSlug },
-        select: { id: true },
-      });
-      if (!connectorDef) {
-        throw new NotFoundException("connector_not_found");
-      }
-      if (input.connectorDefinitionId && input.connectorDefinitionId !== connectorDef.id) {
-        throw new BadRequestException("connector_definition_id_mismatch");
-      }
       const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
         where: { id: input.installationId, connectorId: connectorDef.id },
         select: { id: true },
