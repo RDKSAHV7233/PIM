@@ -420,7 +420,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       ? await Promise.all([
           getMarketplaceChannelMapping(selectedChannel as MarketplaceChannel, selectedCategoryId, undefined, { role: actorRole, authHeader }),
           getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-          resolveConnectorMapping(connectorSlug, selectedCategoryId, { role: actorRole, authHeader }),
+          resolveConnectorMapping(connectorSlug, selectedCategoryId, selectedInstallationId || undefined, { role: actorRole, authHeader }),
           shouldFetchTaxonomy
             ? searchConnectorTaxonomy(connectorSlug, { q: wizardQuery.taxonomyQ || undefined, limit: 25 }, { role: actorRole, authHeader })
             : Promise.resolve([]),
@@ -428,7 +428,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             ? getUnmappedConnectorTaxonomy(connectorSlug, { role: actorRole, authHeader })
             : Promise.resolve([]),
           shouldFetchVersions
-            ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId, includeArchived: true }, { role: actorRole, authHeader })
+            ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, includeArchived: true }, { role: actorRole, authHeader })
             : Promise.resolve([]),
           shouldFetchReview
             ? evaluateConnectorMappingPreflight(
@@ -718,6 +718,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 advancedJson: "Advanced tools",
                 mappingRulesPlaceholder: viewModel.mappingDraftRulesDefault,
               }}
+              installationId={selectedInstallationId || undefined}
             />
             <AdvancedDrawer
               open={wizardQuery.showAdvanced}
@@ -773,6 +774,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
               actorRole={actorRole}
               canWrite={canWrite}
               connectorSlug={connectorSlug}
+              installationId={selectedInstallationId || undefined}
               versions={versions}
               redirectTo={viewModel.redirectTo}
               stepUpAction={stepUpAction}

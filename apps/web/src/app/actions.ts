@@ -1465,6 +1465,7 @@ export async function createConnectorMappingVersionAction(formData: FormData) {
   const connectorDefinitionId = String(formData.get("connectorDefinitionId") ?? "").trim();
   const connectorDefinitionVersion = String(formData.get("connectorDefinitionVersion") ?? "").trim();
   const compatibilityState = String(formData.get("compatibilityState") ?? "").trim();
+  const installationId = String(formData.get("installationId") ?? "").trim();
   if (!connectorSlug || !categoryScope || !mappingLevel || !connectorDefinitionId || !connectorDefinitionVersion) {
     throw new Error("Connector slug, category scope, mapping level and connector definition are required.");
   }
@@ -1489,6 +1490,7 @@ export async function createConnectorMappingVersionAction(formData: FormData) {
     mappingRules,
     fallbackPolicy,
     fallbackAckRequired,
+    installationId: installationId || undefined,
   });
   revalidatePath("/channels/mappings");
   redirect(redirectTo);
@@ -1526,10 +1528,11 @@ export async function setMappingFallbackAcknowledgementAction(formData: FormData
 export async function publishConnectorMappingVersionAction(formData: FormData) {
   const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
   const versionId = String(formData.get("versionId") ?? "").trim();
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "/channels/mappings");
   const confirm = String(formData.get("confirm") ?? "").trim() === "true";
   const fallbackAckRequired = String(formData.get("fallbackAckRequired") ?? "").trim() === "true";
   const fallbackAcknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
+  const installationId = String(formData.get("installationId") ?? "").trim();
   if (!connectorSlug || !versionId || !confirm) {
     throw new Error("Connector slug, version id, and explicit confirmation are required.");
   }
@@ -1547,7 +1550,7 @@ export async function publishConnectorMappingVersionAction(formData: FormData) {
     await postJsonForAction(
       formData,
       `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
-      { confirm: true },
+      { confirm: true, installationId: installationId || undefined },
       { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
     );
   } catch (error: unknown) {
@@ -1565,7 +1568,7 @@ export async function archiveConnectorMappingVersionAction(formData: FormData) {
   const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
   const versionId = String(formData.get("versionId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "/channels/mappings");
   if (!connectorSlug || !versionId || !reason) {
     throw new Error("Connector slug, version id, and archive reason are required.");
   }
@@ -1592,7 +1595,7 @@ export async function rollbackConnectorMappingVersionAction(formData: FormData) 
   const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
   const versionId = String(formData.get("versionId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "/channels/mappings");
   const confirm = String(formData.get("confirm") ?? "").trim() === "true";
   if (!connectorSlug || !versionId || !reason || !confirm) {
     throw new Error("Connector slug, version id, rollback reason, and confirmation are required.");

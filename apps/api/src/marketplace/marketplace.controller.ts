@@ -79,6 +79,7 @@ export class MarketplaceController {
     return this.connectorMappingService.listVersions({
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
       categoryScope: query.categoryScope,
+      installationId: query.installationId,
       includeArchived: query.includeArchived,
     });
   }
@@ -185,6 +186,7 @@ export class MarketplaceController {
     return this.connectorMappingService.resolveEffectiveMapping({
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
       categoryScope: query.categoryScope,
+      installationId: query.installationId,
     });
   }
 

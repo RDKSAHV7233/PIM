@@ -303,6 +303,7 @@ export function MappingEditorCard({
   fieldMapping,
   sampleProduct,
   labels,
+  installationId,
 }: {
   actorRole: AppRole;
   canWrite: boolean;
@@ -315,6 +316,7 @@ export function MappingEditorCard({
   fieldMapping: MappingEditorFieldMapping;
   sampleProduct: MappingEditorSampleProduct;
   labels: MappingEditorLabels;
+  installationId?: string;
 }) {
   const { slug: connectorSlug, definitionId, definitionVersion } = connector;
   const { matches: taxonomyMatches, unmapped: unmappedCategories, defaults: taxonomyDefaults, categoryOptions: targetCategoryOptions } = taxonomy;
@@ -371,7 +373,7 @@ export function MappingEditorCard({
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category-scope">
                 Category scope
               </label>
-              <Input id="mapping-category-scope" name="categoryScope" defaultValue={selectedCategoryId || "*"} required />
+              <Input id="mapping-category-scope" name="categoryScope" defaultValue={selectedCategoryId || "*"} readOnly required />
             </div>
           </div>
 
@@ -487,6 +489,7 @@ export function MappingEditorCard({
           <input type="hidden" name="connectorSlug" value={connectorSlug} />
           <input type="hidden" name="connectorDefinitionId" value={definitionId} />
           <input type="hidden" name="connectorDefinitionVersion" value={definitionVersion} />
+          {installationId ? <input type="hidden" name="installationId" value={installationId} /> : null}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
               Save the draft here, then continue to the review step to validate and publish it.

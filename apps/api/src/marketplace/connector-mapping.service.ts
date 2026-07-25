@@ -387,6 +387,7 @@ export class ConnectorMappingService {
   async listVersions(input: {
     connectorSlug: string;
     categoryScope?: string;
+    installationId?: string;
     includeArchived?: boolean;
   }): Promise<ConnectorMappingVersion[]> {
     const tenantKey = this.getTenantKey();
@@ -394,6 +395,9 @@ export class ConnectorMappingService {
       where: {
         connectorSlug: input.connectorSlug,
         ...(input.categoryScope ? { categoryScope: input.categoryScope } : {}),
+        ...(input.installationId
+          ? { OR: [{ installationId: input.installationId }, { installationId: null }] }
+          : {}),
         ...(input.includeArchived ? {} : { lifecycleState: { not: "archived" } }),
       },
       orderBy: { createdAt: "desc" },
@@ -470,6 +474,31 @@ export class ConnectorMappingService {
       });
     }
 
+    const connectorDef = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
+      where: { slug: input.connectorSlug },
+      select: { id: true, slug: true },
+    });
+    if (!connectorDef) {
+      throw new NotFoundException("connector_not_found");
+    }
+    if (
+      input.connectorDefinitionId &&
+      input.connectorDefinitionId !== connectorDef.id &&
+      input.connectorDefinitionId !== connectorDef.slug
+    ) {
+      throw new BadRequestException("connector_definition_id_mismatch");
+    }
+
+    if (input.installationId) {
+      const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
+        where: { id: input.installationId, connectorId: connectorDef.id },
+        select: { id: true },
+      });
+      if (!installation) {
+        throw new BadRequestException("installation_not_found_for_connector");
+      }
+    }
+
     const created = await this.prisma.tenant(tenantKey).connectorMappingVersion.create({
       data: {
         id: randomUUID(),
@@ -483,6 +512,7 @@ export class ConnectorMappingService {
         mappingRules: (input.mappingRules ?? {}) as Prisma.InputJsonValue,
         fallbackPolicy: (input.fallbackPolicy ?? {}) as Prisma.InputJsonValue,
         fallbackAckRequired: Boolean(input.fallbackAckRequired),
+        installationId: input.installationId ?? null,
         draftInstallationId: input.installationId ?? null,
         createdBy: input.actorId ?? null,
       },
@@ -640,6 +670,7 @@ export class ConnectorMappingService {
           lifecycleState: "published",
           publishedAt: new Date(),
           supersededBy: null,
+          ...(selected.draftInstallationId ? { installationId: selected.draftInstallationId } : {}),
         },
       });
       if (publishUpdate.count !== 1) {

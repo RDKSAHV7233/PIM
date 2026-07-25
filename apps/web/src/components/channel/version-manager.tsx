@@ -89,6 +89,7 @@ function ProtectedMappingActionForm({
   connectorSlug,
   description,
   disabled,
+  installationId,
   label,
   open,
   pendingLabel,
@@ -101,6 +102,7 @@ function ProtectedMappingActionForm({
   connectorSlug: string;
   description: string;
   disabled: boolean;
+  installationId?: string;
   label: string;
   open?: boolean;
   pendingLabel: string;
@@ -123,6 +125,7 @@ function ProtectedMappingActionForm({
         <input type="hidden" name="connectorSlug" value={connectorSlug} />
         <input type="hidden" name="versionId" value={versionId} />
         <input type="hidden" name="redirectTo" value={redirectTo} />
+        {installationId ? <input type="hidden" name="installationId" value={installationId} /> : null}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`${label}-${versionId}`}>
             Step-up re-authentication
@@ -148,6 +151,7 @@ export function VersionManagerCard({
   actorRole,
   canWrite,
   connectorSlug,
+  installationId,
   versions,
   redirectTo,
   stepUpAction,
@@ -159,6 +163,7 @@ export function VersionManagerCard({
   actorRole: AppRole;
   canWrite: boolean;
   connectorSlug: string;
+  installationId?: string;
   versions: ConnectorMappingVersion[];
   redirectTo: string;
   stepUpAction: ProtectedMappingActionKind | "";
@@ -343,6 +348,7 @@ export function VersionManagerCard({
                 ? "Publishing this default mapping will affect all categories that do not have a category-specific override. Confirm your password to proceed."
                 : "Publishing is a high-risk action. Confirm your password before promoting this version."}
               disabled={version.lifecycleState !== "validated" || (version.fallbackAckRequired && !(fallbackAcknowledged && fallbackAckVersionId === version.id))}
+              installationId={installationId}
               label="Publish"
               open={stepUpAction === "publish" && stepUpVersionId === version.id}
               pendingLabel="Publishing..."
@@ -372,6 +378,7 @@ export function VersionManagerCard({
               connectorSlug={connectorSlug}
               description="Archiving changes the active mapping history. Confirm your password before continuing."
               disabled={version.lifecycleState === "archived"}
+              installationId={installationId}
               label="Archive"
               open={stepUpAction === "archive" && stepUpVersionId === version.id}
               pendingLabel="Archiving..."
@@ -392,6 +399,7 @@ export function VersionManagerCard({
                 connectorSlug={connectorSlug}
                 description="Rollback restores this prior published mapping as a new published version."
                 disabled={false}
+                installationId={installationId}
                 label="Rollback"
                 open={stepUpAction === "rollback" && stepUpVersionId === version.id}
                 pendingLabel="Rolling back..."
