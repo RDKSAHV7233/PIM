@@ -1736,6 +1736,35 @@ export async function retrySubmissionAction(formData: FormData) {
   redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
 
+/**
+ * Same retry as retrySubmissionAction, but for the Submission Log drawer
+ * (submissions-grid.tsx), which stays on /channels/submissions and refreshes
+ * in place rather than navigating to /operations/jobs. Callable directly from
+ * a client component — this is what actually attaches the auth header;
+ * calling the API client's retrySubmission() straight from the browser has
+ * no session to attach and 401s.
+ */
+export async function retrySubmissionInlineAction(
+  submissionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmedId = submissionId.trim();
+  if (!trimmedId) {
+    return { ok: false, error: "Submission id is required." };
+  }
+  try {
+    await postJson(`/submissions/${encodeURIComponent(trimmedId)}/retry`, {}, {
+      tenantKey: String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim() || "default",
+      authHeader: await getServerAuthHeader(),
+    });
+    revalidatePath("/channels/submissions");
+    return { ok: true };
+  } catch (error: unknown) {
+    const message =
+      error instanceof ApiHttpError ? extractApiErrorMessage(error) : error instanceof Error ? error.message : "Retry request failed.";
+    return { ok: false, error: message };
+  }
+}
+
 async function getBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {
   return getJsonForAction<{ id: string; status: string; effectiveMode: string | null }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}`);
 }
