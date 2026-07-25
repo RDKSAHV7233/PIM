@@ -50,3 +50,10 @@ Open:
 - Local development can run with `AUTH_MODE=local`.
 - Staging and production must use `AUTH_MODE=db`.
 - Public signup is feature-gated and may be absent unless `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`, or `FEATURE_PUBLIC_SIGNUP_ENABLED=true` when the public flag is unset.
+- `.env.example` ships `PIM_AUTH_IDENTITIES_JSON=""` on purpose — it's gitignored, per-developer state, not something the repo can seed for you. To sign in as a role other than the bootstrap admin (e.g. to manually QA viewer/editor/approver/publisher/connector_admin/reviewer/channel_manager restrictions), add one entry per role to your local `.env`:
+
+  ```
+  PIM_AUTH_IDENTITIES_JSON={"admin@vexa-pim.local":{"tenantId":"default","workspaceSlug":"default","role":"admin"},"editor@vexa-pim.local":{"tenantId":"default","workspaceSlug":"default","role":"editor"},"viewer@vexa-pim.local":{"tenantId":"default","workspaceSlug":"default","role":"viewer"}}
+  ```
+
+  Add the remaining roles (`publisher`, `approver`, `connector_admin`, `reviewer`, `channel_manager`) the same way as you need them — see `AppRole` in `apps/api/src/common/rbac/roles.ts` for the full list. All identities share `PIM_AUTH_PASSWORD`. For automated Playwright E2E instead of manual QA, the equivalent identities already live in the tracked `.env.playwright`.
