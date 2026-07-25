@@ -144,6 +144,10 @@ function run() {
     service.includes("connectorId: connectorDef.id"),
     "createDraft installation ownership check must join on connectorDefinition.id.",
   );
+  assert(
+    service.includes('"connector_definition_id_mismatch"'),
+    "createDraft must reject when connectorDefinitionId does not match the slug-resolved connector.",
+  );
 
   // ── 8. Page passes installationId through key data flows ───────────────
   assert(
@@ -170,6 +174,7 @@ function run() {
           "category_scope_locked_after_step_1",
           "version_history_or_filter_includes_fallbacks",
           "create_draft_validates_installation_ownership",
+          "create_draft_rejects_definition_id_mismatch",
           "page_passes_installation_id_through_data_flows",
         ],
         checkedAt: new Date().toISOString(),
