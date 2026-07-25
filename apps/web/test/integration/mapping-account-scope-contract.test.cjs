@@ -120,7 +120,7 @@ function run() {
     "MappingEditorCard categoryScope input must be readOnly to prevent drift after Step 1.",
   );
 
-  // ── 7. Version history filtered by installationId ──────────────────────
+  // ── 7. Version history filtered by installationId (includes slug-scoped fallbacks) ─
   assert(
     /ListConnectorMappingVersionsQueryDto[\s\S]*?installationId\?: string/.test(dto),
     "ListConnectorMappingVersionsQueryDto must include optional installationId filter.",
@@ -130,8 +130,19 @@ function run() {
     "listVersions service method must accept installationId filter.",
   );
   assert(
-    service.includes("input.installationId ? { installationId: input.installationId }"),
-    "listVersions must apply installationId filter in the Prisma where clause.",
+    service.includes("{ installationId: input.installationId }, { installationId: null }"),
+    "listVersions must use OR filter to include both installation-scoped and slug-scoped " +
+    "(null installationId) fallback versions in the history list.",
+  );
+
+  // ── 7b. createDraft validates installation ownership ──────────────────
+  assert(
+    service.includes('"installation_not_found_for_connector"'),
+    "createDraft must reject installationId values that do not belong to the connector.",
+  );
+  assert(
+    service.includes("connectorId: connectorDef.id"),
+    "createDraft installation ownership check must join on connectorDefinition.id.",
   );
 
   // ── 8. Page passes installationId through key data flows ───────────────
@@ -157,7 +168,8 @@ function run() {
           "resolve_api_accepts_installation_id",
           "redirect_sanitization_on_high_risk_actions",
           "category_scope_locked_after_step_1",
-          "version_history_filtered_by_installation_id",
+          "version_history_or_filter_includes_fallbacks",
+          "create_draft_validates_installation_ownership",
           "page_passes_installation_id_through_data_flows",
         ],
         checkedAt: new Date().toISOString(),

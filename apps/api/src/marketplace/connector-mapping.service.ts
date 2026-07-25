@@ -395,7 +395,9 @@ export class ConnectorMappingService {
       where: {
         connectorSlug: input.connectorSlug,
         ...(input.categoryScope ? { categoryScope: input.categoryScope } : {}),
-        ...(input.installationId ? { installationId: input.installationId } : {}),
+        ...(input.installationId
+          ? { OR: [{ installationId: input.installationId }, { installationId: null }] }
+          : {}),
         ...(input.includeArchived ? {} : { lifecycleState: { not: "archived" } }),
       },
       orderBy: { createdAt: "desc" },
@@ -470,6 +472,23 @@ export class ConnectorMappingService {
         error: "invalid_mapping",
         details: validation.errors,
       });
+    }
+
+    if (input.installationId) {
+      const connectorDef = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
+        where: { slug: input.connectorSlug },
+        select: { id: true },
+      });
+      if (!connectorDef) {
+        throw new NotFoundException("connector_not_found");
+      }
+      const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
+        where: { id: input.installationId, connectorId: connectorDef.id },
+        select: { id: true },
+      });
+      if (!installation) {
+        throw new BadRequestException("installation_not_found_for_connector");
+      }
     }
 
     const created = await this.prisma.tenant(tenantKey).connectorMappingVersion.create({
