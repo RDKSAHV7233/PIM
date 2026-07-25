@@ -564,7 +564,7 @@ function summarizeSelectedPublicationTargets(
     selected?: boolean;
   }>,
 ): { count: number; label: string } {
-  const activeTargets = targets.filter((target) => target.selected !== false);
+  const activeTargets = targets.filter((target) => target.selected === true);
   if (activeTargets.length === 0) {
     return { count: 0, label: "No publication targets selected" };
   }

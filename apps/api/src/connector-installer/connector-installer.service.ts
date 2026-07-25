@@ -991,7 +991,7 @@ export class ConnectorInstallerService {
       const scopes = String(process.env.PIM_SHOPIFY_SCOPES ?? "write_products,read_products").trim();
       const redirectUri = String(
         process.env.PIM_SHOPIFY_REDIRECT_URI ??
-        `${String(process.env.CORS_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "").replace(/:3000$/, ":4000")}/connectors/shopify/oauth/callback`,
+        `${String(process.env.CORS_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "").replace(/:3000$/, ":4000")}/api/v1/connectors/shopify/oauth/callback`,
       ).trim();
 
       const params = new URLSearchParams({

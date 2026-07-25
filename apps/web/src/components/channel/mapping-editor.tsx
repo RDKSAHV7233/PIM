@@ -8,6 +8,7 @@ import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
+import { MappingFieldRowControls } from "@/components/channel/mapping-field-row";
 import type {
   AppRole,
   ConnectorMappingPreflight,
@@ -110,77 +111,24 @@ function renderFieldRows(
           <div>Status</div>
         </div>
         <div className="space-y-3 p-3">
-          {group.rows.map((row) => {
-            const selectedOption =
-              sourceFieldOptions.find((option) => option.value === row.selectedSource) ?? null;
-            const samplePreview = row.selectedSource
-              ? selectedOption?.preview ?? "No value on sample product"
-              : "Select a PIM field to preview sample value.";
-            const samplePreviewId = `${fieldInputPrefix}${row.targetField}-sample-preview`;
-            const mappingStatusId = `${fieldInputPrefix}${row.targetField}-mapping-status`;
-
-            return (
-              <div
-                key={row.targetField}
-                className="overflow-hidden rounded-lg border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto_auto] lg:items-start lg:gap-3"
-              >
-                <div className="flex items-baseline gap-1.5 lg:block">
-                  <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Channel field:
-                  </p>
-                  <p className="text-sm font-medium text-slate-900">{row.targetField}</p>
-                </div>
-                <div className="mt-3 min-w-0 lg:mt-0">
-                  <label
-                    className="text-xs font-semibold uppercase tracking-wide text-slate-600 lg:hidden"
-                    htmlFor={`${fieldInputPrefix}${row.targetField}-field`}
-                  >
-                    PIM field
-                  </label>
-                  <Select
-                    id={`${fieldInputPrefix}${row.targetField}-field`}
-                    name={`${fieldInputPrefix}${row.targetField}`}
-                    defaultValue={row.selectedSource}
-                    aria-describedby={`${samplePreviewId} ${mappingStatusId}`}
-                    className="max-w-full"
-                  >
-                    <option value="">Select PIM field</option>
-                    {sourceFieldOptions.map((option) => (
-                      <option key={`${row.targetField}:${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="mt-3 lg:mt-0">
-                  <p className="flex items-baseline gap-1.5 text-xs text-slate-600 lg:block">
-                    <span className="shrink-0 font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                      Sample:
-                    </span>
-                    <span id={samplePreviewId}>{samplePreview}</span>
-                  </p>
-                </div>
-                <div className="mt-3 flex items-center gap-2 lg:mt-0 lg:block">
-                  <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Required:
-                  </p>
-                  <StatusChip
-                    label={row.required ? "Required" : "Optional"}
-                    tone={row.required ? "warning" : "neutral"}
-                  />
-                </div>
-                <div className="mt-3 flex items-center gap-2 lg:mt-0 lg:block" id={mappingStatusId}>
-                  <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Status:
-                  </p>
-                  <StatusChip
-                    label={row.selectedSource ? "Mapped" : "Missing"}
-                    tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
-                  />
-                </div>
+          {group.rows.map((row) => (
+            <div
+              key={row.targetField}
+              className="overflow-hidden rounded-lg border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto_auto] lg:items-start lg:gap-3"
+            >
+              <div className="flex items-baseline gap-1.5 lg:block">
+                <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                  Channel field:
+                </p>
+                <p className="text-sm font-medium text-slate-900">{row.targetField}</p>
               </div>
-            );
-          })}
+              <MappingFieldRowControls
+                row={row}
+                fieldInputPrefix={fieldInputPrefix}
+                sourceFieldOptions={sourceFieldOptions}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>
