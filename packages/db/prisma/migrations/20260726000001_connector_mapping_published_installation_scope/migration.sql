@@ -1,0 +1,96 @@
+-- Widen the "one published mapping" constraint to be installation-aware.
+--
+-- BACKGROUND
+-- ==========
+-- idx_connector_mapping_versions_one_published (added 2026-03-06, before
+-- installation_id existed) enforces at most one published row per
+-- (tenant_key, connector_slug, category_scope) — with no regard for
+-- installation_id at all. installation_id was added 2026-05-14 and
+-- draft_installation_id 2026-06-16 to support per-connector-account mapping
+-- overrides, but this index was never widened to match. The result: the
+-- database still allows only ONE published mapping per category, globally,
+-- across every installation of a connector — silently defeating the entire
+-- point of installation-scoped overrides. Publishing an installation-scoped
+-- mapping for any category that already has a published mapping (slug-scoped
+-- or another installation) fails with P2002 ("Unique constraint failed on
+-- the fields: (tenant_key, connector_slug, category_scope)"), surfaced to
+-- the operator as a bare 500.
+--
+-- FIX
+-- ===
+-- Replace the index with one keyed on
+-- (tenant_key, connector_slug, category_scope, COALESCE(installation_id, ''))
+-- so that:
+--   - at most one published row per category with installation_id = NULL
+--     (the slug-scoped / all-accounts default) — same guarantee as before
+--   - at most one published row per category PER installation_id — the new
+--     guarantee this migration adds
+--   - a slug-scoped row and an installation-scoped row for the same category
+--     can coexist as published simultaneously (they resolve at different
+--     precedence levels; see resolveEffectiveMapping in
+--     connector-mapping.service.ts)
+--
+-- A COALESCE expression index is used instead of `NULLS NOT DISTINCT`
+-- (Postgres 15+) for portability — this does not assume every deployment
+-- target has been upgraded past 15. If the team confirms all environments
+-- are on Postgres 15+, this can be simplified to a plain NULLS NOT DISTINCT
+-- unique index in a follow-up.
+--
+-- DATA SAFETY
+-- ===========
+-- This is a pure *relaxation* of the old constraint, not a tightening: any
+-- set of rows that satisfied the old (looser-grouping) unique index also
+-- satisfies the new (finer-grained) one. It is not possible for existing
+-- data to violate this migration — the old index already guaranteed at
+-- most one published row per (tenant_key, connector_slug, category_scope)
+-- combination, which is a superset of what the new index checks per
+-- installation_id value. Run the query below anyway as defense-in-depth
+-- before applying in any environment:
+--
+--   SELECT tenant_key, connector_slug, category_scope,
+--          COALESCE(installation_id, '') AS install_key, COUNT(*)
+--   FROM connector_mapping_versions
+--   WHERE lifecycle_state = 'published'
+--   GROUP BY tenant_key, connector_slug, category_scope, COALESCE(installation_id, '')
+--   HAVING COUNT(*) > 1;
+--
+--   Expected: zero rows.
+--
+-- LOCK BEHAVIOR
+-- =============
+--   DROP INDEX IF EXISTS: AccessExclusiveLock on the index only (not the
+--   table); sub-millisecond.
+--
+--   CREATE UNIQUE INDEX (non-CONCURRENTLY, inside this Prisma migration
+--   transaction): ShareLock on the table — reads continue, writes block
+--   until the index build completes. Fine at current table size (<10K rows
+--   across environments as of this migration).
+--
+-- ROLLBACK
+-- ========
+--   DROP INDEX IF EXISTS "idx_connector_mapping_versions_one_published";
+--   CREATE UNIQUE INDEX "idx_connector_mapping_versions_one_published"
+--       ON "connector_mapping_versions" ("tenant_key", "connector_slug", "category_scope")
+--       WHERE "lifecycle_state" = 'published';
+--   (Restores the original — tighter, pre-installation-scoping — behavior.)
+--
+-- For zero-downtime on a large table, run outside this Prisma migration:
+--   DROP INDEX IF EXISTS "idx_connector_mapping_versions_one_published";
+--   CREATE UNIQUE INDEX CONCURRENTLY "idx_connector_mapping_versions_one_published"
+--       ON "connector_mapping_versions" (
+--         "tenant_key", "connector_slug", "category_scope",
+--         (COALESCE("installation_id", ''))
+--       )
+--       WHERE "lifecycle_state" = 'published';
+--   Then mark the migration as applied:
+--     INSERT INTO "_prisma_migrations" (id, checksum, migration_name, applied_steps_count, finished_at)
+--     VALUES (gen_random_uuid(), '<checksum>', '20260726000001_connector_mapping_published_installation_scope', 1, NOW());
+
+DROP INDEX IF EXISTS "idx_connector_mapping_versions_one_published";
+
+CREATE UNIQUE INDEX "idx_connector_mapping_versions_one_published"
+    ON "connector_mapping_versions" (
+      "tenant_key", "connector_slug", "category_scope",
+      (COALESCE("installation_id", ''))
+    )
+    WHERE "lifecycle_state" = 'published';

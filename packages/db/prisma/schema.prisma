@@ -930,6 +930,15 @@ model ConnectorMappingVersion {
   @@index([tenantKey, connectorSlug, categoryScope, lifecycleState, createdAt(sort: Desc)], map: "idx_connector_mapping_versions_lookup")
   @@index([tenantKey, connectorSlug, compatibilityState, lifecycleState, createdAt(sort: Desc)], map: "idx_connector_mapping_versions_compat")
   @@index([tenantKey, installationId, categoryScope, lifecycleState], map: "idx_connector_mapping_versions_installation")
+  // idx_connector_mapping_versions_one_published: DB-only, not representable here.
+  // It's a partial unique index on (tenantKey, connectorSlug, categoryScope,
+  // COALESCE(installationId, '')) WHERE lifecycleState = 'published' — Prisma's
+  // @@unique can't express a COALESCE key or a WHERE predicate. Defined in
+  // migration 20260726000001_connector_mapping_published_installation_scope.
+  // Enforces: at most one published mapping per category for the slug-scoped
+  // default (installationId = NULL), and at most one per installationId — a
+  // slug-scoped and an installation-scoped row for the same category may both
+  // be published at once (they resolve at different precedence levels).
   @@map("connector_mapping_versions")
 }
 
