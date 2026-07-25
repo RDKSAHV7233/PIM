@@ -25,12 +25,12 @@ function run() {
     source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
       source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
       source.includes("const [healthResult, usageResult, operationsSummaryResult, productsResult, signupTrendsResult, pricingCoverageResult] = await Promise.all([") &&
-      source.includes("loadSharedRead(getDashboardHealth({ role: actorRole, authHeader }))") &&
-      source.includes("loadSharedRead(getBillingUsage({ role: actorRole, authHeader }))") &&
-      source.includes("loadSharedRead(getDashboardOperationsSummary({ role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getDashboardHealth({ role: actorRole, authHeader") &&
+      source.includes("loadSharedRead(getBillingUsage({ role: actorRole, authHeader") &&
+      source.includes("loadSharedRead(getDashboardOperationsSummary({ role: actorRole, authHeader") &&
       source.includes("loadSharedRead(getProductList({ slim: true }, { role: actorRole, authHeader }))") &&
-      source.includes("loadSharedRead(getKpiTrends({ days: 30 }, { role: actorRole, authHeader }))") &&
-      source.includes("loadSharedRead(getPricingCoverage({ role: actorRole, authHeader }))"),
+      source.includes("loadSharedRead(getKpiTrends({ days: 30 }, { role: actorRole, authHeader") &&
+      source.includes("loadSharedRead(getPricingCoverage({ role: actorRole, authHeader"),
     "Dashboard must load health, billing usage, operations data, product work queue, signup trends, and pricing through explicit shared-read wrappers.",
   );
   assert(

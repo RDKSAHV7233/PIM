@@ -150,8 +150,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     title: "Catalog",
     items: [
       { label: "Products", href: "/catalog/products", icon: "box" },
-      { label: "Categories", href: "/catalog/categories", icon: "folder" },
-      { label: "Attributes", href: "/catalog/attributes", icon: "sliders" },
+      { label: "Categories", href: "/catalog/categories", icon: "folder", visibility: "admin" },
+      { label: "Attributes", href: "/catalog/attributes", icon: "sliders", visibility: "admin" },
       { label: "Media", href: "/catalog/media", icon: "image" },
     ],
   },
@@ -160,7 +160,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { label: "Overview", href: "/channels", icon: "grid" },
       { label: "Connections", href: "/channels/connectors", icon: "plug" },
-      { label: "Mappings", href: "/channels/mappings", icon: "branch" },
+      { label: "Mappings", href: "/channels/mappings", icon: "branch", visibility: "channel_manager_plus" },
       { label: "Issues", href: "/channels/health", icon: "pulse" },
       { label: "Submission Log", href: "/channels/submissions", icon: "send" },
       { label: "Governance", href: "/admin/connectors", icon: "shield", visibility: "connector_admin_plus" },
@@ -175,17 +175,17 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Validation", href: "/quality/validation", icon: "check" },
       { label: "Rejection Insights", href: "/rejection", icon: "chart" },
       { label: "Completeness", href: "/quality/completeness", icon: "pie" },
-      { label: "Approval Queue", href: "/quality/approvals", icon: "clipboard" },
+      { label: "Approval Queue", href: "/quality/approvals", icon: "clipboard", visibility: "approval_decider" },
     ],
   },
   {
     title: "Operate",
     badgeKey: "operations",
     items: [
-      { label: "Imports", href: "/operations/imports", icon: "upload" },
-      { label: "Bulk Edit", href: "/operations/bulk-edit", icon: "spark" },
-      { label: "Jobs", href: "/operations/jobs", icon: "clock" },
-      { label: "Repair Center", href: "/operations/repair", icon: "wrench" },
+      { label: "Imports", href: "/operations/imports", icon: "upload", visibility: "editor_plus" },
+      { label: "Bulk Edit", href: "/operations/bulk-edit", icon: "spark", visibility: "editor_plus" },
+      { label: "Jobs", href: "/operations/jobs", icon: "clock", visibility: "editor_plus" },
+      { label: "Repair Center", href: "/operations/repair", icon: "wrench", visibility: "editor_plus" },
     ],
   },
   {

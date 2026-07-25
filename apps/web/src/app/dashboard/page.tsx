@@ -16,7 +16,12 @@ import {
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { canEditWorkspace } from "@/lib/role-capabilities";
+import {
+  canDecideApproval,
+  canEditWorkspace,
+  canManageChannels,
+  canResolveIssueInboxWarnings,
+} from "@/lib/role-capabilities";
 import { cn } from "@/lib/utils";
 import { getServerSession } from "@/lib/server-session";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -296,6 +301,11 @@ export default async function DashboardPage() {
   const canViewOperationsSummary = canEditWorkspace(actorRole);
   const canViewBillingUsage = canViewOperationsSummary;
   const canViewSignupAnalytics = hasSignupAnalyticsAccess(adminBoundaryRoles);
+  const canCreateProducts = canEditWorkspace(actorRole);
+  const canFixIssues = canResolveIssueInboxWarnings(actorRole);
+  const canImportCatalog = canEditWorkspace(actorRole);
+  const canOpenApprovalQueue = canDecideApproval(actorRole);
+  const canOpenMappingManager = canManageChannels(actorRole);
 
   try {
     const [healthResult, usageResult, operationsSummaryResult, productsResult, signupTrendsResult, pricingCoverageResult] = await Promise.all([
@@ -510,24 +520,30 @@ export default async function DashboardPage() {
           description="Start with catalog health, then review channel readiness and operational follow-up."
           actions={
             <>
-              <Link
-                href="/catalog/products?create=1"
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                New Product
-              </Link>
-              <Link
-                href="/quality/issues"
-                className={cn(buttonVariants({ variant: "dark" }))}
-              >
-                Fix Issues
-              </Link>
-              <Link
-                href="/operations/imports"
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Import Catalog
-              </Link>
+              {canCreateProducts ? (
+                <Link
+                  href="/catalog/products?create=1"
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  New Product
+                </Link>
+              ) : null}
+              {canFixIssues ? (
+                <Link
+                  href="/quality/issues"
+                  className={cn(buttonVariants({ variant: "dark" }))}
+                >
+                  Fix Issues
+                </Link>
+              ) : null}
+              {canImportCatalog ? (
+                <Link
+                  href="/operations/imports"
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Import Catalog
+                </Link>
+              ) : null}
             </>
           }
         />
@@ -1067,18 +1083,22 @@ export default async function DashboardPage() {
               >
                 Open issue inbox
               </Link>
-              <Link
-                href="/quality/approvals"
-                className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Review approval queue
-              </Link>
-              <Link
-                href="/channels/mappings"
-                className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Review channel mappings
-              </Link>
+              {canOpenApprovalQueue ? (
+                <Link
+                  href="/quality/approvals"
+                  className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Review approval queue
+                </Link>
+              ) : null}
+              {canOpenMappingManager ? (
+                <Link
+                  href="/channels/mappings"
+                  className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Review channel mappings
+                </Link>
+              ) : null}
             </div>
           </div>
         </section>
@@ -1137,9 +1157,11 @@ export default async function DashboardPage() {
               <Link href="/quality/issues" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Issue Inbox
               </Link>
-              <Link href="/quality/approvals" className="text-sm font-medium text-blue-700 hover:underline">
-                Open Approval Queue
-              </Link>
+              {canOpenApprovalQueue ? (
+                <Link href="/quality/approvals" className="text-sm font-medium text-blue-700 hover:underline">
+                  Open Approval Queue
+                </Link>
+              ) : null}
             </div>
           </div>
 

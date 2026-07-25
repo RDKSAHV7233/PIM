@@ -979,6 +979,9 @@ export async function purgeProductAction(formData: FormData) {
  */
 function resolveVariantErrorParams(error: unknown): { error: string; errorMessage?: string } {
   const message = error instanceof Error ? error.message : String(error ?? "");
+  if (message.includes("must be valid JSON object")) {
+    return { error: "VARIANT_ATTRIBUTES_INVALID", errorMessage: message };
+  }
   if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
     return { error: "WORKFLOW_CONTENT_LOCKED" };
   }
@@ -995,10 +998,10 @@ export async function createVariantAction(formData: FormData) {
   if (!productId || !skuCode) {
     throw new Error("Product and SKU are required.");
   }
-  const attributes = parseJsonObject(formData.get("variantAttributes"), "Attributes");
   const basePath = `/products/${encodeURIComponent(productId)}`;
 
   try {
+    const attributes = parseJsonObject(formData.get("variantAttributes"), "Attributes");
     await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
       skuCode,
       attributes,
@@ -1021,10 +1024,10 @@ export async function updateVariantAction(formData: FormData) {
   if (!productId || !variantId || !skuCode) {
     throw new Error("Product, variant, and SKU are required.");
   }
-  const attributes = parseJsonObject(formData.get("variantAttributes"), "Attributes");
   const basePath = `/products/${encodeURIComponent(productId)}`;
 
   try {
+    const attributes = parseJsonObject(formData.get("variantAttributes"), "Attributes");
     await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
       skuCode,
       attributes,

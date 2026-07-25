@@ -31,6 +31,11 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "This field cannot be edited with your current role or the product's access policy.",
     action: "Ask a workspace admin for access, or check the product's category/brand/vendor scope.",
   },
+  VARIANT_ATTRIBUTES_INVALID: {
+    title: "Variant attributes need valid JSON",
+    description: "Variant attributes must be a JSON object, such as {\"color\":\"blue\"}.",
+    action: "Clear the field or enter object-shaped JSON, then save the variant again.",
+  },
   APPROVED_REVERT_FORBIDDEN: {
     title: "Cannot revert to draft",
     description: "Reverting an approved product to draft requires the approver, reviewer, or admin role.",

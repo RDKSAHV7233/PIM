@@ -1578,7 +1578,7 @@ export class AccessPolicyService {
       return false;
     }
     const role = normalizeRole(actor.actorRole);
-    return role === "admin" || role === "editor" || role === "reviewer";
+    return role === "admin" || role === "editor" || role === "approver" || role === "reviewer";
   }
 
   private canReadGovernanceProvenance(actor: PolicyActor): boolean {

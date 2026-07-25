@@ -3,7 +3,9 @@ import type { AppRole } from "@/lib/api";
 export type AdminNavigationAudience =
   | "all"
   | "editor_plus"
+  | "channel_manager_plus"
   | "connector_admin_plus"
+  | "approval_decider"
   | "admin"
   | "system_admin_gated";
 
@@ -22,8 +24,14 @@ export function canViewAdminNavigationItem(
   if (audience === "editor_plus") {
     return role === "admin" || role === "editor" || isSystemAdmin || isProductAdmin;
   }
+  if (audience === "channel_manager_plus") {
+    return role === "admin" || role === "editor" || role === "channel_manager" || isSystemAdmin || isProductAdmin;
+  }
   if (audience === "connector_admin_plus") {
     return role === "admin" || role === "editor" || role === "connector_admin" || isSystemAdmin || isProductAdmin;
+  }
+  if (audience === "approval_decider") {
+    return role === "admin" || role === "approver" || role === "reviewer" || isSystemAdmin || isProductAdmin;
   }
   if (audience === "system_admin_gated") {
     return isSystemAdmin;
