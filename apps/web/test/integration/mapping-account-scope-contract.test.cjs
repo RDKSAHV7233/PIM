@@ -56,10 +56,32 @@ function run() {
     "publishConnectorMappingVersionAction must send installationId to the API.",
   );
 
-  // ── 3. Publish promotes draftInstallationId to installationId ──────────
+  // ── 3a. createDraft writes installationId so drafts are visible in filtered lists ─
+  assert(
+    service.includes("installationId: input.installationId ?? null,") &&
+    service.includes("draftInstallationId: input.installationId ?? null,"),
+    "createDraft must write both installationId and draftInstallationId so account-scoped " +
+    "drafts appear in version history filtered by installationId.",
+  );
+
+  // ── 3b. Publish promotes draftInstallationId for legacy drafts ────────
   assert(
     service.includes("selected.draftInstallationId ? { installationId: selected.draftInstallationId }"),
-    "publishVersion must promote draftInstallationId to installationId in the publish update.",
+    "publishVersion must promote draftInstallationId to installationId in the publish update " +
+    "(backfill for legacy drafts created before installationId was set at draft creation).",
+  );
+
+  // ── 3c. Archive/rollback are version-id scoped, not installation scoped ─
+  // The hidden installationId field exists in the form for UI context, but the
+  // server actions for archive and rollback do not send installationId to the API.
+  // This is correct: those operations target a specific version id.
+  assert(
+    !/archiveConnectorMappingVersionAction[\s\S]*?installationId: installationId/.test(actions),
+    "archiveConnectorMappingVersionAction must NOT send installationId to the API (version-id scoped).",
+  );
+  assert(
+    !/rollbackConnectorMappingVersionAction[\s\S]*?installationId: installationId/.test(actions),
+    "rollbackConnectorMappingVersionAction must NOT send installationId to the API (version-id scoped).",
   );
 
   // ── 4. Resolve API accepts installationId ──────────────────────────────
@@ -129,7 +151,9 @@ function run() {
         validated: [
           "ui_create_draft_carries_installation_id",
           "ui_publish_carries_installation_id",
-          "publish_promotes_draft_installation_id",
+          "create_draft_writes_installation_id_for_list_visibility",
+          "publish_promotes_draft_installation_id_for_legacy_backfill",
+          "archive_rollback_do_not_send_installation_id_to_api",
           "resolve_api_accepts_installation_id",
           "redirect_sanitization_on_high_risk_actions",
           "category_scope_locked_after_step_1",

@@ -485,6 +485,7 @@ export class ConnectorMappingService {
         mappingRules: (input.mappingRules ?? {}) as Prisma.InputJsonValue,
         fallbackPolicy: (input.fallbackPolicy ?? {}) as Prisma.InputJsonValue,
         fallbackAckRequired: Boolean(input.fallbackAckRequired),
+        installationId: input.installationId ?? null,
         draftInstallationId: input.installationId ?? null,
         createdBy: input.actorId ?? null,
       },
