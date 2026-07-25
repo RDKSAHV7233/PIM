@@ -93,6 +93,7 @@ function makePublishService(overrides?: {
     { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
     { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined), assertProductAccess: jest.fn().mockResolvedValue(undefined), assertChannelAccess: jest.fn().mockResolvedValue(undefined) } as never,
     { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+    { isLocalMode: jest.fn().mockReturnValue(false) } as never,
   );
 
   // Mock simulateProduct to return a valid simulation
@@ -1068,6 +1069,7 @@ describe("retryRecoveryGroup installationId persistence", () => {
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined), assertProductAccess: jest.fn().mockResolvedValue(undefined), assertChannelAccess: jest.fn().mockResolvedValue(undefined) } as never,
       { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
     );
 
     await svc.retryRecoveryGroup("inst-1", "INVALID_PRICE");
