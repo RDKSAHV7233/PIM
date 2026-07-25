@@ -67,6 +67,10 @@ function makeService(productOverride?: Record<string, unknown>) {
     assertChannelAccess: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mediaStorage = {
+    isLocalMode: jest.fn().mockReturnValue(false),
+  };
+
   return new MarketplaceService(
     prisma as never,
     connectorFramework as never,
@@ -79,6 +83,7 @@ function makeService(productOverride?: Record<string, unknown>) {
     logger as never,
     accessPolicy as never,
     { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+    mediaStorage as never,
   );
 }
 
@@ -147,6 +152,7 @@ describe("MarketplaceService.createExportJob — approval gate", () => {
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
       { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
     );
     await expect(svc.createExportJob("missing-id", dto as never)).rejects.toThrow(NotFoundException);
   });
@@ -235,6 +241,7 @@ describe("MarketplaceService.triggerConnectorExport", () => {
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
       { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
     );
 
     return { svc, prisma, connectorFramework, tenantDb };
@@ -340,6 +347,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
       { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
     );
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
       .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));

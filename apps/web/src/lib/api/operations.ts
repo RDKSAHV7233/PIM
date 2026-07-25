@@ -108,17 +108,6 @@ export async function getSubmissionIssues(submissionId: string, options?: ApiReq
   );
 }
 
-export async function retrySubmission(
-  submissionId: string,
-  options?: ApiRequestOptions,
-) {
-  return postJson<{ queued: boolean; submissionId: string; mode?: string }>(
-    `/submissions/${encodeURIComponent(submissionId)}/retry`,
-    {},
-    options,
-  );
-}
-
 export async function getBulkImportJobs(options?: ApiRequestOptions) {
   const response = await fetchJson<BulkImportJob[] | { items: BulkImportJob[] }>(
     "/bulk-import/jobs",

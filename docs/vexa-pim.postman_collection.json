@@ -2998,6 +2998,40 @@
           }
         },
         {
+          "name": "MediaController_getAssetFile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/media/assets/:id/file",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "media",
+                "assets",
+                ":id",
+                "file"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "Validate media asset",
           "request": {
             "method": "GET",

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { retrySubmissionInlineAction } from "@/app/actions";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { ConnectorSubmission } from "@/lib/api";
-import { retrySubmission } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 
 function normalizeStatus(status: string): string {
@@ -65,7 +65,11 @@ export function SubmissionsGrid({ submissions, canRetrySubmission }: Submissions
     setRetrySuccessId(null);
     setRetryError(null);
     try {
-      await retrySubmission(submissionId);
+      const result = await retrySubmissionInlineAction(submissionId);
+      if (!result.ok) {
+        setRetryError(result.error);
+        return;
+      }
       setRetrySuccessId(submissionId);
       // Refresh server-rendered data after a short delay so the status change is visible
       setTimeout(() => router.refresh(), 1000);

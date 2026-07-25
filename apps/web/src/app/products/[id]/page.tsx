@@ -38,7 +38,7 @@ import type { DetailTab } from "./_components/product-detail-types";
 import { StatusToastEffect } from "./_components/status-toast-effect";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 
-interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; focus?: string; returnTo?: string; updateStatus?: string; statusAt?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; planContact?: string; deleteStatus?: string; deleteError?: string; }>; }
+interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; focus?: string; returnTo?: string; updateStatus?: string; statusAt?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; planContact?: string; deleteStatus?: string; deleteError?: string; error?: string; errorMessage?: string; }>; }
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +58,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const conflictVersion = String(query.currentVersion ?? "").trim();
   const deleteStatus = String(query.deleteStatus ?? "").trim();
   const deleteError = String(query.deleteError ?? "").trim();
+  const actionError = String(query.error ?? "").trim();
+  const actionErrorMessage = String(query.errorMessage ?? "").trim();
   const showSaveAction = canWrite && (activeTab === "content" || activeTab === "attributes");
   const showValidateAction = canWrite && activeTab === "quality";
   const showPlanLimitModal = String(query.planLimit ?? "").trim() === "1" && String(query.planResource ?? "").trim().length > 0 && Number.isFinite(Number(query.planLimitValue)) && Number.isFinite(Number(query.planCurrent)) && String(query.planUpgrade ?? "").trim().length > 0;
@@ -537,12 +539,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         actions={<>{returnTo ? <Link href={returnTo} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Back to inbox</Link> : null}<StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} /><StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />{showSaveAction ? <button type="submit" form="product-edit-form" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save</button> : null}{showValidateAction ? <button type="submit" form="product-validate-form" className={cn(buttonVariants({ variant: "dark" }))}>Run validation</button> : null}{canPublish ? <Link href={tabHref("channels")} data-product-tab-link="true" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Open publish & export</Link> : null}</>}
       />
       <nav aria-label="Product detail tabs" className="overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} data-product-tab-link="true" aria-current={activeTab === tab.key ? "page" : undefined} className={`inline-flex w-full justify-center rounded-md px-3 py-2 text-sm font-medium transition sm:w-auto ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
-      <StatusToastEffect updateStatus={updateStatus} />
+      <StatusToastEffect updateStatus={updateStatus} actionError={actionError} actionErrorMessage={actionErrorMessage} />
       <ProductDetailStatusAlerts
         updateStatus={updateStatus}
         conflictVersion={conflictVersion}
         deleteStatus={deleteStatus}
         deleteError={deleteError}
+        actionError={actionError}
+        actionErrorMessage={actionErrorMessage}
         degradedSections={degradedSections}
       />
       {activeTab === "overview" && nextAction ? (

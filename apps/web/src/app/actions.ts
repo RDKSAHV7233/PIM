@@ -28,6 +28,7 @@ import {
   isMarketplaceChannel,
 } from "@/lib/marketplace-channels";
 import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
+import { extractErrorCode } from "@/lib/errors";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -781,8 +782,38 @@ export async function updateProductAction(formData: FormData) {
         tab: currentTab,
         returnTo,
         updateStatus: "error",
+        errorMessage: error instanceof ApiHttpError ? extractApiErrorMessage(error) : undefined,
       }),
     );
+  }
+}
+
+export async function revertProductToDraftAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const expectedVersion = parseNumber(formData.get("expectedVersion"));
+  if (!productId || !expectedVersion) {
+    throw new Error("Product id and expected version are required.");
+  }
+  const note = String(formData.get("statusChangeNote") ?? "").trim();
+  const basePath = `/products/${encodeURIComponent(productId)}`;
+
+  try {
+    await patchJsonForAction(formData, `/catalog/products/${productId}`, {
+      expectedVersion,
+      status: "draft",
+      ...(note ? { statusChangeNote: note } : {}),
+    });
+    revalidatePath(basePath);
+    redirect(appendQueryParams(basePath, { tab: "quality", updateStatus: "reverted-to-draft" }));
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    const errorMessage =
+      error instanceof ApiHttpError
+        ? extractApiErrorMessage(error)
+        : error instanceof Error
+          ? error.message
+          : undefined;
+    redirect(appendQueryParams(basePath, { tab: "quality", updateStatus: "error", errorMessage }));
   }
 }
 
@@ -938,6 +969,26 @@ export async function purgeProductAction(formData: FormData) {
   }
 }
 
+/**
+ * Shared by createVariantAction/updateVariantAction: maps a caught error to the query params
+ * their catch blocks redirect with. Known governance codes pass through as-is (they already
+ * have entries in lib/errors.ts ERROR_MAP); anything else runs through extractErrorCode() so a
+ * generic backend message like "SKU code already exists" resolves to a real, informative code
+ * (e.g. SKU_DUPLICATE) instead of an opaque bucket — and the raw message is always included too,
+ * so the UI never has to guess when a code isn't precise enough.
+ */
+function resolveVariantErrorParams(error: unknown): { error: string; errorMessage?: string } {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
+    return { error: "WORKFLOW_CONTENT_LOCKED" };
+  }
+  if (message.includes("FIELD_WRITE_RESTRICTED")) {
+    return { error: "FIELD_WRITE_RESTRICTED" };
+  }
+  const rawMessage = error instanceof ApiHttpError ? extractApiErrorMessage(error) : message;
+  return { error: extractErrorCode(rawMessage), errorMessage: rawMessage || undefined };
+}
+
 export async function createVariantAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "").trim();
   const skuCode = String(formData.get("skuCode") ?? "").trim();
@@ -959,14 +1010,7 @@ export async function createVariantAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
-    const message = error instanceof Error ? error.message : String(error ?? "");
-    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
-      redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
-    }
-    if (message.includes("FIELD_WRITE_RESTRICTED")) {
-      redirect(appendQueryParams(basePath, { tab: "variants", error: "FIELD_WRITE_RESTRICTED" }));
-    }
-    redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
+    redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
   }
 }
 
@@ -992,14 +1036,7 @@ export async function updateVariantAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
-    const message = error instanceof Error ? error.message : String(error ?? "");
-    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
-      redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
-    }
-    if (message.includes("FIELD_WRITE_RESTRICTED")) {
-      redirect(appendQueryParams(basePath, { tab: "variants", error: "FIELD_WRITE_RESTRICTED" }));
-    }
-    redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
+    redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
   }
 }
 
@@ -1697,6 +1734,35 @@ export async function retrySubmissionAction(formData: FormData) {
   keepToJobs("connectorSlug", "submissionConnector");
   keepToJobs("status", "submissionStatus");
   redirect(`/operations/jobs?${jobsParams.toString()}`);
+}
+
+/**
+ * Same retry as retrySubmissionAction, but for the Submission Log drawer
+ * (submissions-grid.tsx), which stays on /channels/submissions and refreshes
+ * in place rather than navigating to /operations/jobs. Callable directly from
+ * a client component — this is what actually attaches the auth header;
+ * calling the API client's retrySubmission() straight from the browser has
+ * no session to attach and 401s.
+ */
+export async function retrySubmissionInlineAction(
+  submissionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmedId = submissionId.trim();
+  if (!trimmedId) {
+    return { ok: false, error: "Submission id is required." };
+  }
+  try {
+    await postJson(`/submissions/${encodeURIComponent(trimmedId)}/retry`, {}, {
+      tenantKey: String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim() || "default",
+      authHeader: await getServerAuthHeader(),
+    });
+    revalidatePath("/channels/submissions");
+    return { ok: true };
+  } catch (error: unknown) {
+    const message =
+      error instanceof ApiHttpError ? extractApiErrorMessage(error) : error instanceof Error ? error.message : "Retry request failed.";
+    return { ok: false, error: message };
+  }
 }
 
 async function getBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {

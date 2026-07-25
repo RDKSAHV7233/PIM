@@ -3870,6 +3870,168 @@
         ]
       }
     },
+    "/api/v1/media/assets": {
+      "post": {
+        "operationId": "MediaController_createAsset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMediaAssetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      },
+      "get": {
+        "operationId": "MediaController_listAssets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/assets/{id}": {
+      "get": {
+        "operationId": "MediaController_getAsset",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/assets/{id}/file": {
+      "get": {
+        "operationId": "MediaController_getAssetFile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/assets/{id}/validation": {
+      "get": {
+        "operationId": "MediaController_validateAsset",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/assets/{id}/governance": {
+      "patch": {
+        "operationId": "MediaController_updateGovernance",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMediaAssetGovernanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/bulk-associations": {
+      "post": {
+        "operationId": "MediaController_bulkAssociate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMediaAssociationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
     "/api/v1/bulk-import/validate": {
       "post": {
         "operationId": "BulkImportController_validateJobInput",
@@ -5461,145 +5623,6 @@
         "summary": "Get product revision history",
         "tags": [
           "Products"
-        ]
-      }
-    },
-    "/api/v1/media/assets": {
-      "post": {
-        "operationId": "MediaController_createAsset",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMediaAssetDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Media"
-        ]
-      },
-      "get": {
-        "operationId": "MediaController_listAssets",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Media"
-        ]
-      }
-    },
-    "/api/v1/media/assets/{id}": {
-      "get": {
-        "operationId": "MediaController_getAsset",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Media"
-        ]
-      }
-    },
-    "/api/v1/media/assets/{id}/validation": {
-      "get": {
-        "operationId": "MediaController_validateAsset",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Media"
-        ]
-      }
-    },
-    "/api/v1/media/assets/{id}/governance": {
-      "patch": {
-        "operationId": "MediaController_updateGovernance",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMediaAssetGovernanceDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Media"
-        ]
-      }
-    },
-    "/api/v1/media/bulk-associations": {
-      "post": {
-        "operationId": "MediaController_bulkAssociate",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkMediaAssociationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Media"
         ]
       }
     },
@@ -7342,6 +7365,18 @@
         "type": "object",
         "properties": {}
       },
+      "CreateMediaAssetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateMediaAssetGovernanceDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BulkMediaAssociationDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateBulkImportJobDto": {
         "type": "object",
         "properties": {}
@@ -7419,18 +7454,6 @@
         "properties": {}
       },
       "CreateProductRelationshipDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CreateMediaAssetDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "UpdateMediaAssetGovernanceDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "BulkMediaAssociationDto": {
         "type": "object",
         "properties": {}
       },

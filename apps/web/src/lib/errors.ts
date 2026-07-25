@@ -26,6 +26,16 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "This product cannot move to the requested workflow state from its current state.",
     action: "Check the current product status and choose a valid next step.",
   },
+  FIELD_WRITE_RESTRICTED: {
+    title: "Field is restricted",
+    description: "This field cannot be edited with your current role or the product's access policy.",
+    action: "Ask a workspace admin for access, or check the product's category/brand/vendor scope.",
+  },
+  APPROVED_REVERT_FORBIDDEN: {
+    title: "Cannot revert to draft",
+    description: "Reverting an approved product to draft requires the approver, reviewer, or admin role.",
+    action: "Ask an approver, reviewer, or admin to revert this product.",
+  },
 
   // ── Bulk import ─────────────────────────────────────────────────────────────
   NO_ROWS: {
@@ -680,6 +690,8 @@ export function extractErrorCode(input: string | undefined | null): string {
     "APPROVAL_BLOCKED",
     "WORKFLOW_CONTENT_LOCKED",
     "WORKFLOW_ENTRY_INVALID",
+    "FIELD_WRITE_RESTRICTED",
+    "APPROVED_REVERT_FORBIDDEN",
     "NO_ROWS",
     "ROW_LIMIT_EXCEEDED",
     "UNMAPPED_FIELDS",

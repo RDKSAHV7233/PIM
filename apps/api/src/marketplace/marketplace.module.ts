@@ -3,6 +3,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AccessPolicyModule } from "../common/access-policy/access-policy.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConnectorFrameworkModule } from "../connector-framework/connector-framework.module";
+import { MediaModule } from "../media/media.module";
 import { MetricsModule } from "../metrics/metrics.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { QueueModule } from "../queue/queue.module";
@@ -13,7 +14,7 @@ import { PriceResolutionService } from "./price-resolution.service";
 import { SubmissionsController } from "./submissions.controller";
 
 @Module({
-  imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule, NotificationsModule, AccessPolicyModule],
+  imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule, NotificationsModule, AccessPolicyModule, MediaModule],
   controllers: [MarketplaceController, SubmissionsController],
   providers: [MarketplaceService, ConnectorMappingService, PriceResolutionService],
   exports: [MarketplaceService, ConnectorMappingService, PriceResolutionService],
