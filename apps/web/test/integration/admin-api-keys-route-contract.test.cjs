@@ -5,6 +5,8 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "api-keys", "page.tsx");
+const PANEL = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "api-keys", "api-key-create-panel.tsx");
+const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "api-keys", "actions.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,6 +16,8 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(PAGE, "utf8");
+  const panelSource = fs.readFileSync(PANEL, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS, "utf8");
 
   assert(
     source.includes("await getServerSession();") &&
@@ -60,6 +64,30 @@ function run() {
     "Admin API keys must show read-only/revoked fallback actions and link operators into the webhook surface.",
   );
   assert(
+    panelSource.includes('type ApiKeyAssignableRole = Exclude<AppRole, "admin">') &&
+      !panelSource.includes('value: "admin"') &&
+      panelSource.includes("Human admin access is not issued as an API key"),
+    "Admin API key creation UI must not offer impossible admin machine credentials.",
+  );
+  assert(
+    actionsSource.includes('role === "admin"') &&
+      actionsSource.includes("Admin API keys are intentionally disabled.") &&
+      actionsSource.includes("scopes.length === 0") &&
+      actionsSource.includes("Select at least one API scope."),
+    "Admin API key creation must preserve server-side admin rejection and reject empty scope submissions.",
+  );
+  assert(
+    source.includes('const API_KEY_STATUS_FILTERS = ["all", "active", "expired", "revoked"] as const') &&
+      source.includes("function resolveFilterStatus(key: ApiAccessKey)") &&
+      source.includes('name="keyStatus"') &&
+      source.includes('name="q"') &&
+      source.includes("key.label.toLowerCase().includes(normalizedSearch)") &&
+      source.includes("key.keyPrefix.toLowerCase().includes(normalizedSearch)") &&
+      source.includes("rows={filteredKeys}") &&
+      source.includes("No API keys match the selected filters."),
+    "Admin API keys must support status filtering and label/prefix search over fetched tenant keys.",
+  );
+  assert(
     source.includes("Machine credential lifecycle") &&
       source.includes("Scope access tightly") &&
       source.includes("Track usage and expiry") &&
@@ -90,6 +118,9 @@ function run() {
           "admin_api_keys_route_derives_key_status_from_live_fields",
           "admin_api_keys_route_surfaces_empty_state_and_timestamps",
           "admin_api_keys_route_shows_read_only_fallbacks_and_links_webhooks",
+          "admin_api_keys_route_removes_admin_role_from_create_ui",
+          "admin_api_keys_route_rejects_empty_scope_submissions",
+          "admin_api_keys_route_filters_by_status_and_search",
           "admin_api_keys_route_guides_machine_credential_lifecycle",
           "admin_api_keys_route_redirects_auth_failures",
         ],

@@ -381,6 +381,76 @@ export class OutboundWebhooksService {
     return this.mapDelivery(delivery, endpoint.name);
   }
 
+  async retryFailedDelivery(
+    tenantKeyInput: string,
+    actorId: string,
+    actorRole: AppRole,
+    deliveryId: string,
+  ): Promise<OutboundWebhookDeliveryRecord> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const existing = await this.prisma.tenant(tenantKey).outboundWebhookDelivery.findUnique({
+      where: { id: deliveryId },
+      select: {
+        id: true,
+        tenantKey: true,
+        endpointId: true,
+        eventType: true,
+        eventId: true,
+        status: true,
+        requestBody: true,
+      },
+    });
+    if (!existing || existing.tenantKey !== tenantKey) {
+      throw new NotFoundException("Outbound webhook delivery not found.");
+    }
+    if (existing.status !== "failed") {
+      throw new BadRequestException("Only failed webhook deliveries can be retried.");
+    }
+
+    const endpoint = await this.prisma.tenant(tenantKey).outboundWebhookEndpoint.findUnique({
+      where: { id: existing.endpointId },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    });
+    if (!endpoint) {
+      throw new NotFoundException("Outbound webhook endpoint not found.");
+    }
+    if (!endpoint.isActive) {
+      throw new BadRequestException("Resume the webhook endpoint before retrying this delivery.");
+    }
+
+    const requestBody = existing.requestBody && typeof existing.requestBody === "object"
+      ? existing.requestBody
+      : {};
+    const retry = await this.createQueuedDelivery(
+      tenantKey,
+      endpoint.id,
+      existing.eventType as NotificationEventType,
+      existing.eventId,
+      requestBody as Prisma.InputJsonValue,
+    );
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "outbound_webhook.delivery_retry_queued",
+      resource: "OutboundWebhookDelivery",
+      resourceId: retry.id,
+      metadata: {
+        originalDeliveryId: existing.id,
+        endpointId: endpoint.id,
+        endpointName: endpoint.name,
+        eventId: existing.eventId,
+        eventType: existing.eventType,
+      },
+    });
+
+    return this.mapDelivery(retry, endpoint.name);
+  }
+
   async enqueueNotificationEvent(input: NotificationWebhookEventInput): Promise<void> {
     const tenantKey = normalizeTenantKey(input.tenantKey);
     const endpoints = await this.prisma.tenant(tenantKey).outboundWebhookEndpoint.findMany({
@@ -627,7 +697,7 @@ export class OutboundWebhooksService {
     endpointId: string,
     eventType: NotificationEventType,
     eventId: string,
-    payload: WebhookPayload,
+    payload: WebhookPayload | Prisma.InputJsonValue,
     options?: { forceDelivery?: boolean },
   ) {
     const delivery = await this.prisma.tenant(tenantKey).outboundWebhookDelivery.create({

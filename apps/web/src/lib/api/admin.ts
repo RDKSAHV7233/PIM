@@ -202,6 +202,10 @@ export async function sendOutboundWebhookTest(endpointId: string, options?: ApiR
   return postJson<OutboundWebhookDelivery>(`/admin/webhooks/${encodeURIComponent(endpointId)}/test`, {}, options);
 }
 
+export async function retryOutboundWebhookDelivery(deliveryId: string, options?: ApiRequestOptions) {
+  return postJson<OutboundWebhookDelivery>(`/admin/webhooks/deliveries/${encodeURIComponent(deliveryId)}/retry`, {}, options);
+}
+
 export async function getOutboundWebhookDeliveries(
   input?: { endpointId?: string; status?: OutboundWebhookDelivery["status"]; limit?: number },
   options?: ApiRequestOptions,

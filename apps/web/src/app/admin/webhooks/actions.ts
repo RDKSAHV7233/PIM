@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   createOutboundWebhookEndpoint,
   deleteOutboundWebhookEndpoint,
+  retryOutboundWebhookDelivery,
   sendOutboundWebhookTest,
   updateOutboundWebhookEndpoint,
 } from "@/lib/api";
@@ -19,14 +20,25 @@ async function requireAdminRequestOptions() {
   return { authHeader, role };
 }
 
-function redirectWithStatus(status: string) {
-  redirect(`/admin/webhooks?status=${encodeURIComponent(status)}`);
+function sanitizeWebhookRedirectPath(value: FormDataEntryValue | null) {
+  const path = String(value ?? "").trim();
+  return path.startsWith("/admin/webhooks") ? path : "/admin/webhooks";
+}
+
+function redirectWithStatus(status: string, redirectTo = "/admin/webhooks") {
+  redirect(buildWebhookRedirect(status, undefined, redirectTo));
 }
 
 function buildWebhookRedirect(status: string, message?: string, path = "/admin/webhooks") {
-  const params = new URLSearchParams({ status });
-  if (message) params.set("message", message);
-  return `${path}?${params.toString()}`;
+  const [basePath, existingQuery = ""] = path.split("?");
+  const params = new URLSearchParams(existingQuery);
+  params.set("status", status);
+  if (message) {
+    params.set("message", message);
+  } else {
+    params.delete("message");
+  }
+  return `${basePath}?${params.toString()}`;
 }
 
 function redirectWithError(message: string, redirectTo = "/admin/webhooks") {
@@ -65,6 +77,7 @@ export async function createOutboundWebhookAction(formData: FormData) {
 export async function toggleOutboundWebhookAction(formData: FormData) {
   const endpointId = String(formData.get("endpointId") ?? "").trim();
   const nextState = String(formData.get("isActive") ?? "").trim().toLowerCase();
+  const redirectTo = sanitizeWebhookRedirectPath(formData.get("redirectTo"));
   try {
     if (!endpointId) {
       throw new Error("Webhook endpoint is required.");
@@ -76,13 +89,14 @@ export async function toggleOutboundWebhookAction(formData: FormData) {
     );
     revalidatePath("/admin/webhooks");
   } catch (error) {
-    redirectWithError(error instanceof Error ? error.message : "Unable to update webhook endpoint.");
+    redirectWithError(error instanceof Error ? error.message : "Unable to update webhook endpoint.", redirectTo);
   }
-  redirectWithStatus(nextState === "true" ? "webhook-resumed" : "webhook-paused");
+  redirectWithStatus(nextState === "true" ? "webhook-resumed" : "webhook-paused", redirectTo);
 }
 
 export async function deleteOutboundWebhookAction(formData: FormData) {
   const endpointId = String(formData.get("endpointId") ?? "").trim();
+  const redirectTo = sanitizeWebhookRedirectPath(formData.get("redirectTo"));
   try {
     if (!endpointId) {
       throw new Error("Webhook endpoint is required.");
@@ -90,13 +104,14 @@ export async function deleteOutboundWebhookAction(formData: FormData) {
     await deleteOutboundWebhookEndpoint(endpointId, await requireAdminRequestOptions());
     revalidatePath("/admin/webhooks");
   } catch (error) {
-    redirectWithError(error instanceof Error ? error.message : "Unable to delete webhook endpoint.");
+    redirectWithError(error instanceof Error ? error.message : "Unable to delete webhook endpoint.", redirectTo);
   }
-  redirectWithStatus("webhook-deleted");
+  redirectWithStatus("webhook-deleted", redirectTo);
 }
 
 export async function sendTestOutboundWebhookAction(formData: FormData) {
   const endpointId = String(formData.get("endpointId") ?? "").trim();
+  const redirectTo = sanitizeWebhookRedirectPath(formData.get("redirectTo"));
   try {
     if (!endpointId) {
       throw new Error("Webhook endpoint is required.");
@@ -104,7 +119,41 @@ export async function sendTestOutboundWebhookAction(formData: FormData) {
     await sendOutboundWebhookTest(endpointId, await requireAdminRequestOptions());
     revalidatePath("/admin/webhooks");
   } catch (error) {
-    redirectWithError(error instanceof Error ? error.message : "Unable to queue webhook test delivery.");
+    redirectWithError(error instanceof Error ? error.message : "Unable to queue webhook test delivery.", redirectTo);
   }
-  redirectWithStatus("webhook-test-queued");
+  redirectWithStatus("webhook-test-queued", redirectTo);
+}
+
+export async function rotateOutboundWebhookSecretAction(formData: FormData) {
+  const endpointId = String(formData.get("endpointId") ?? "").trim();
+  const signingSecret = String(formData.get("signingSecret") ?? "").trim();
+  const redirectTo = sanitizeWebhookRedirectPath(formData.get("redirectTo"));
+  try {
+    if (!endpointId) {
+      throw new Error("Webhook endpoint is required.");
+    }
+    if (signingSecret.length < 16) {
+      throw new Error("Webhook signing secret must be at least 16 characters.");
+    }
+    await updateOutboundWebhookEndpoint(endpointId, { signingSecret }, await requireAdminRequestOptions());
+    revalidatePath("/admin/webhooks");
+  } catch (error) {
+    redirectWithError(error instanceof Error ? error.message : "Unable to rotate webhook signing secret.", redirectTo);
+  }
+  redirectWithStatus("webhook-secret-rotated", redirectTo);
+}
+
+export async function retryOutboundWebhookDeliveryAction(formData: FormData) {
+  const deliveryId = String(formData.get("deliveryId") ?? "").trim();
+  const redirectTo = sanitizeWebhookRedirectPath(formData.get("redirectTo"));
+  try {
+    if (!deliveryId) {
+      throw new Error("Webhook delivery is required.");
+    }
+    await retryOutboundWebhookDelivery(deliveryId, await requireAdminRequestOptions());
+    revalidatePath("/admin/webhooks");
+  } catch (error) {
+    redirectWithError(error instanceof Error ? error.message : "Unable to retry webhook delivery.", redirectTo);
+  }
+  redirectWithStatus("webhook-retry-queued", redirectTo);
 }

@@ -50,6 +50,22 @@ function formatScopes(scopes: ApiAccessKey["scopes"]) {
   return scopes.join(", ");
 }
 
+const API_KEY_STATUS_FILTERS = ["all", "active", "expired", "revoked"] as const;
+type ApiKeyStatusFilter = (typeof API_KEY_STATUS_FILTERS)[number];
+
+function resolveFilterStatus(key: ApiAccessKey): Exclude<ApiKeyStatusFilter, "all"> {
+  if (key.revokedAt) {
+    return "revoked";
+  }
+  if (!key.isActive && key.expiresAt) {
+    return "expired";
+  }
+  return "active";
+}
+
+function normalizeApiKeyStatusFilter(value: string): ApiKeyStatusFilter {
+  return API_KEY_STATUS_FILTERS.includes(value as ApiKeyStatusFilter) ? value as ApiKeyStatusFilter : "all";
+}
 
 export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;
@@ -75,6 +91,8 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   }
   const status = String(query.status ?? "").trim();
   const confirmRevokeKeyId = String(query.confirmRevoke ?? "").trim();
+  const keyStatusFilter = normalizeApiKeyStatusFilter(String(query.keyStatus ?? "all").trim());
+  const keySearchQuery = String(query.q ?? "").trim();
 
   try {
     const [keys, planProfile] = await Promise.all([
@@ -117,6 +135,30 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
         </div>
       );
     }
+
+    const normalizedSearch = keySearchQuery.toLowerCase();
+    const filteredKeys = keys.filter((key) => {
+      const statusMatches = keyStatusFilter === "all" || resolveFilterStatus(key) === keyStatusFilter;
+      const searchMatches =
+        normalizedSearch.length === 0 ||
+        key.label.toLowerCase().includes(normalizedSearch) ||
+        key.keyPrefix.toLowerCase().includes(normalizedSearch);
+      return statusMatches && searchMatches;
+    });
+    const buildApiKeysHref = (next?: { confirmRevoke?: string }) => {
+      const params = new URLSearchParams();
+      if (keyStatusFilter !== "all") {
+        params.set("keyStatus", keyStatusFilter);
+      }
+      if (keySearchQuery) {
+        params.set("q", keySearchQuery);
+      }
+      if (next?.confirmRevoke) {
+        params.set("confirmRevoke", next.confirmRevoke);
+      }
+      const built = params.toString();
+      return `/admin/api-keys${built ? `?${built}` : ""}`;
+    };
 
     return (
       <div className="space-y-5">
@@ -188,6 +230,41 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
 
         <Card>
           <CardTitle>Issued API Keys</CardTitle>
+          <form action="/admin/api-keys" method="get" className="mt-3 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto_auto]">
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Status</span>
+              <select
+                name="keyStatus"
+                defaultValue={keyStatusFilter}
+                className="w-full rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="all">All keys</option>
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="revoked">Revoked</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Search</span>
+              <input
+                type="search"
+                name="q"
+                defaultValue={keySearchQuery}
+                placeholder="Search label or prefix"
+                className="w-full rounded-md border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <div className="flex items-end">
+              <button type="submit" className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+                Apply filters
+              </button>
+            </div>
+            <div className="flex items-end">
+              <Link href="/admin/api-keys" className="w-full rounded-md border border-slate-200 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Clear
+              </Link>
+            </div>
+          </form>
           <div className="mt-3">
             <DataGrid
               columns={[
@@ -255,13 +332,13 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
                           <button type="submit" className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100">
                             Revoke
                           </button>
-                          <Link href="/admin/api-keys" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                          <Link href={buildApiKeysHref()} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
                             Cancel
                           </Link>
                         </form>
                       ) : (
                         <Link
-                          href={`/admin/api-keys?confirmRevoke=${encodeURIComponent(key.id)}`}
+                          href={buildApiKeysHref({ confirmRevoke: key.id })}
                           className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
                         >
                           Revoke
@@ -272,12 +349,14 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
                     ),
                 },
               ]}
-              rows={keys}
+              rows={filteredKeys}
               getRowKey={(key) => key.id}
               rowClassName="align-top"
               caption="Issued API Keys"
               emptyState={
-                <p className="text-sm text-slate-600">No API keys issued for this tenant yet.</p>
+                <p className="text-sm text-slate-600">
+                  {keys.length === 0 ? "No API keys issued for this tenant yet." : "No API keys match the selected filters."}
+                </p>
               }
             />
           </div>

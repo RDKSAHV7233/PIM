@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import {
   createOutboundWebhookAction,
   deleteOutboundWebhookAction,
+  retryOutboundWebhookDeliveryAction,
+  rotateOutboundWebhookSecretAction,
   sendTestOutboundWebhookAction,
   toggleOutboundWebhookAction,
 } from "./actions";
@@ -54,6 +56,15 @@ function isRecentDelivery(value: string | null | undefined, nowMs: number, cutof
   return nowMs - parsed <= cutoffMs;
 }
 
+const WEBHOOK_DELIVERY_STATUS_FILTERS = ["all", "queued", "delivered", "failed", "skipped"] as const;
+type WebhookDeliveryStatusFilter = (typeof WEBHOOK_DELIVERY_STATUS_FILTERS)[number];
+
+function normalizeDeliveryStatusFilter(value: string): WebhookDeliveryStatusFilter {
+  return WEBHOOK_DELIVERY_STATUS_FILTERS.includes(value as WebhookDeliveryStatusFilter)
+    ? value as WebhookDeliveryStatusFilter
+    : "all";
+}
+
 function resolveWebhookFieldErrors(message: string) {
   const normalized = message.toLowerCase();
   return {
@@ -89,12 +100,22 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
   const confirmDeleteEndpointId = String(query.confirmDelete ?? "").trim();
+  const rotateSecretEndpointId = String(query.rotateSecret ?? "").trim();
+  const deliveryEndpointFilter = String(query.endpointId ?? "").trim();
+  const deliveryStatusFilter = normalizeDeliveryStatusFilter(String(query.deliveryStatus ?? "all").trim());
   const webhookFieldErrors = resolveWebhookFieldErrors(errorMessage);
 
   try {
     const [endpoints, deliveries, planProfile] = await Promise.all([
       getOutboundWebhookEndpoints({ role, authHeader }),
-      getOutboundWebhookDeliveries({ limit: 20 }, { role, authHeader }),
+      getOutboundWebhookDeliveries(
+        {
+          limit: 200,
+          endpointId: deliveryEndpointFilter || undefined,
+          status: deliveryStatusFilter === "all" ? undefined : deliveryStatusFilter,
+        },
+        { role, authHeader },
+      ),
       getBillingPlanProfile({ role, authHeader }),
     ]);
     const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
@@ -138,6 +159,26 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
     );
     const failedDeliveries24h = recentDeliveries.filter((delivery) => delivery.status === "failed").length;
 
+    const deliveryFiltersApplied = Boolean(deliveryEndpointFilter) || deliveryStatusFilter !== "all";
+    const buildWebhookHref = (next?: { confirmDelete?: string; rotateSecret?: string }) => {
+      const params = new URLSearchParams();
+      if (deliveryEndpointFilter) {
+        params.set("endpointId", deliveryEndpointFilter);
+      }
+      if (deliveryStatusFilter !== "all") {
+        params.set("deliveryStatus", deliveryStatusFilter);
+      }
+      if (next?.confirmDelete) {
+        params.set("confirmDelete", next.confirmDelete);
+      }
+      if (next?.rotateSecret) {
+        params.set("rotateSecret", next.rotateSecret);
+      }
+      const built = params.toString();
+      return `/admin/webhooks${built ? `?${built}` : ""}`;
+    };
+    const filteredRedirectPath = buildWebhookHref();
+
     return (
       <div className="space-y-5">
         <PageHeader
@@ -156,6 +197,8 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
         {status === "webhook-created" ? <InlineAlert tone="success" message="Webhook endpoint created." /> : null}
         {status === "webhook-paused" ? <InlineAlert tone="info" message="Webhook endpoint paused." /> : null}
         {status === "webhook-resumed" ? <InlineAlert tone="success" message="Webhook endpoint resumed." /> : null}
+        {status === "webhook-secret-rotated" ? <InlineAlert tone="success" message="Webhook signing secret rotated." /> : null}
+        {status === "webhook-retry-queued" ? <InlineAlert tone="success" message="Webhook delivery retry queued." /> : null}
         {status === "webhook-test-queued" ? <InlineAlert tone="success" message="Webhook test delivery queued." /> : null}
         {status === "webhook-deleted" ? <InlineAlert tone="success" message="Webhook endpoint deleted." /> : null}
 
@@ -329,7 +372,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
           <Card>
             <CardTitle>Webhook Management</CardTitle>
             <p className="mt-3 text-sm text-slate-600">
-              Admin role is required to create, test, pause, resume, or delete webhook endpoints. You can still review configured endpoints and recent deliveries below.
+              Admin role is required to create, test, rotate, pause, resume, retry, or delete webhook endpoints. You can still review configured endpoints and recent deliveries below.
             </p>
           </Card>
         )}
@@ -382,6 +425,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                       <div className="flex flex-wrap gap-2">
                         <form action={sendTestOutboundWebhookAction}>
                           <input type="hidden" name="endpointId" value={endpoint.id} />
+                          <input type="hidden" name="redirectTo" value={filteredRedirectPath} />
                           <button type="submit" className="rounded-md border border-sky-200 px-3 py-2 text-sm text-sky-700">
                             Send test
                           </button>
@@ -389,24 +433,54 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                         <form action={toggleOutboundWebhookAction}>
                           <input type="hidden" name="endpointId" value={endpoint.id} />
                           <input type="hidden" name="isActive" value={endpoint.isActive ? "false" : "true"} />
+                          <input type="hidden" name="redirectTo" value={filteredRedirectPath} />
                           <button type="submit" className="rounded-md border border-slate-200 px-3 py-2 text-sm">
                             {endpoint.isActive ? "Pause" : "Resume"}
                           </button>
                         </form>
-                        {confirmDeleteEndpointId === endpoint.id ? (
-                          <form action={deleteOutboundWebhookAction} className="flex items-center gap-2">
+                        {rotateSecretEndpointId === endpoint.id ? (
+                          <form action={rotateOutboundWebhookSecretAction} className="flex flex-wrap items-center gap-2">
                             <input type="hidden" name="endpointId" value={endpoint.id} />
-                            <span className="text-xs text-rose-700">Confirm delete?</span>
-                            <button type="submit" className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100">
-                              Delete
+                            <input type="hidden" name="redirectTo" value={filteredRedirectPath} />
+                            <input
+                              type="password"
+                              name="signingSecret"
+                              required
+                              minLength={16}
+                              placeholder="new signing secret"
+                              className="w-44 rounded-md border border-amber-200 px-3 py-1.5 text-xs"
+                            />
+                            <span className="text-xs text-amber-700">Receiver must use this secret after rotation.</span>
+                            <button type="submit" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100">
+                              Rotate
                             </button>
-                            <Link href="/admin/webhooks" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                            <Link href={buildWebhookHref()} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
                               Cancel
                             </Link>
                           </form>
                         ) : (
                           <Link
-                            href={`/admin/webhooks?confirmDelete=${encodeURIComponent(endpoint.id)}`}
+                            href={buildWebhookHref({ rotateSecret: endpoint.id })}
+                            className="rounded-md border border-amber-200 px-3 py-2 text-sm text-amber-800 hover:bg-amber-50"
+                          >
+                            Rotate secret
+                          </Link>
+                        )}
+                        {confirmDeleteEndpointId === endpoint.id ? (
+                          <form action={deleteOutboundWebhookAction} className="flex items-center gap-2">
+                            <input type="hidden" name="endpointId" value={endpoint.id} />
+                            <input type="hidden" name="redirectTo" value={filteredRedirectPath} />
+                            <span className="text-xs text-rose-700">Confirm delete?</span>
+                            <button type="submit" className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100">
+                              Delete
+                            </button>
+                            <Link href={buildWebhookHref()} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                              Cancel
+                            </Link>
+                          </form>
+                        ) : (
+                          <Link
+                            href={buildWebhookHref({ confirmDelete: endpoint.id })}
                             className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
                           >
                             Delete
@@ -429,6 +503,47 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
 
         <Card>
           <CardTitle>Recent Deliveries</CardTitle>
+          <form action="/admin/webhooks" method="get" className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto_auto]">
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Endpoint</span>
+              <select
+                name="endpointId"
+                defaultValue={deliveryEndpointFilter}
+                className="w-full rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="">All endpoints</option>
+                {endpoints.map((endpoint) => (
+                  <option key={endpoint.id} value={endpoint.id}>
+                    {endpoint.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Status</span>
+              <select
+                name="deliveryStatus"
+                defaultValue={deliveryStatusFilter}
+                className="w-full rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="all">All statuses</option>
+                <option value="queued">Queued</option>
+                <option value="delivered">Delivered</option>
+                <option value="failed">Failed</option>
+                <option value="skipped">Skipped</option>
+              </select>
+            </label>
+            <div className="flex items-end">
+              <button type="submit" className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+                Apply filters
+              </button>
+            </div>
+            <div className="flex items-end">
+              <Link href="/admin/webhooks" className="w-full rounded-md border border-slate-200 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Clear
+              </Link>
+            </div>
+          </form>
           <div className="mt-3">
             <DataGrid
               columns={[
@@ -474,11 +589,31 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                   cellClassName: "text-xs text-slate-600",
                   render: (delivery) => (delivery.attemptedAt ? formatDateTime(delivery.attemptedAt) : "-"),
                 },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (delivery) =>
+                    role === "admin" && delivery.status === "failed" ? (
+                      <form action={retryOutboundWebhookDeliveryAction}>
+                        <input type="hidden" name="deliveryId" value={delivery.id} />
+                        <input type="hidden" name="redirectTo" value={filteredRedirectPath} />
+                        <button type="submit" className="rounded-md border border-sky-200 px-3 py-2 text-sm text-sky-700 hover:bg-sky-50">
+                          Retry
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="text-xs text-slate-500">No action</span>
+                    ),
+                },
               ]}
               rows={deliveries}
               getRowKey={(delivery) => delivery.id}
               caption="Recent Deliveries"
-              emptyState={<p className="text-sm text-slate-600">No deliveries recorded yet.</p>}
+              emptyState={
+                <p className="text-sm text-slate-600">
+                  {deliveryFiltersApplied ? "No deliveries match the selected filters." : "No deliveries recorded yet."}
+                </p>
+              }
             />
           </div>
         </Card>

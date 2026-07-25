@@ -82,8 +82,9 @@ const INITIAL_STATE: ApiKeyCreateActionState = {
   createdKey: null,
 };
 
-const ROLE_OPTIONS: ReadonlyArray<{ value: AppRole; label: string }> = [
-  { value: "admin",           label: "Admin" },
+type ApiKeyAssignableRole = Exclude<AppRole, "admin">;
+
+const ROLE_OPTIONS: ReadonlyArray<{ value: ApiKeyAssignableRole; label: string }> = [
   { value: "editor",          label: "Editor" },
   { value: "publisher",       label: "Publisher" },
   { value: "approver",        label: "Approver" },
@@ -98,8 +99,7 @@ const SCOPES: ReadonlyArray<{ value: ApiClientScope; label: string; description:
   { value: "catalog.write", label: "Catalog write", description: "Allow create and update actions for catalog products." },
 ];
 
-const DEFAULT_SCOPES_BY_ROLE: Record<AppRole, ApiClientScope[]> = {
-  admin:           ["catalog.read", "catalog.write"],
+const DEFAULT_SCOPES_BY_ROLE: Record<ApiKeyAssignableRole, ApiClientScope[]> = {
   editor:          ["catalog.read", "catalog.write"],
   publisher:       ["catalog.read"],
   approver:        ["catalog.read"],
@@ -121,7 +121,7 @@ function resolveApiKeyFieldErrors(message: string | null) {
 export function ApiKeyCreatePanel() {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(createApiAccessKeyAction, INITIAL_STATE);
-  const [role, setRole] = useState<AppRole>("editor");
+  const [role, setRole] = useState<ApiKeyAssignableRole>("editor");
   const [selectedScopes, setSelectedScopes] = useState<ApiClientScope[]>(DEFAULT_SCOPES_BY_ROLE.editor);
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export function ApiKeyCreatePanel() {
   }, [router, state.status]);
   const fieldErrors = resolveApiKeyFieldErrors(state.message);
 
-  function handleRoleChange(nextRole: AppRole) {
+  function handleRoleChange(nextRole: ApiKeyAssignableRole) {
     setRole(nextRole);
     setSelectedScopes(DEFAULT_SCOPES_BY_ROLE[nextRole]);
   }
@@ -147,7 +147,7 @@ export function ApiKeyCreatePanel() {
       <div>
         <h3 className="text-base font-semibold text-slate-900">Create API key</h3>
         <p className="mt-1 text-sm text-slate-600">
-          Use tenant-scoped machine credentials for integrations. We only show the raw key once.
+          Use tenant-scoped service credentials for integrations. Human admin access is not issued as an API key, and we only show the raw key once.
         </p>
       </div>
 
@@ -182,7 +182,7 @@ export function ApiKeyCreatePanel() {
           <select
             name="role"
             value={role}
-            onChange={(event) => handleRoleChange(event.target.value as AppRole)}
+            onChange={(event) => handleRoleChange(event.target.value as ApiKeyAssignableRole)}
             className="w-full rounded-md border border-slate-200 px-3 py-2"
             aria-invalid={state.status === "error" && fieldErrors.role ? "true" : undefined}
             aria-describedby={state.status === "error" && fieldErrors.role ? "api-key-role-error" : undefined}
