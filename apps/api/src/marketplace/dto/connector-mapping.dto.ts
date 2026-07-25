@@ -20,6 +20,12 @@ export class ListConnectorMappingVersionsQueryDto {
   categoryScope?: string;
 
   @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  installationId?: string;
+
+  @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
   includeArchived?: boolean;
@@ -100,6 +106,12 @@ export class ResolveConnectorMappingQueryDto {
   @MinLength(1)
   @MaxLength(255)
   categoryScope!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  installationId?: string;
 }
 
 export class ConnectorMappingPreflightDto {

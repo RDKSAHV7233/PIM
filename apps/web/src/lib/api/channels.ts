@@ -48,12 +48,15 @@ export async function getMarketplaceTemplates(
 
 export async function getConnectorMappingVersions(
   connectorSlug: string,
-  input?: { categoryScope?: string; includeArchived?: boolean },
+  input?: { categoryScope?: string; installationId?: string; includeArchived?: boolean },
   options?: ApiRequestOptions,
 ) {
   const params = new URLSearchParams();
   if (input?.categoryScope) {
     params.set("categoryScope", input.categoryScope);
+  }
+  if (input?.installationId) {
+    params.set("installationId", input.installationId);
   }
   if (typeof input?.includeArchived === "boolean") {
     params.set("includeArchived", String(input.includeArchived));
@@ -77,6 +80,7 @@ export async function createConnectorMappingVersion(
     mappingRules: Record<string, unknown>;
     fallbackPolicy?: Record<string, unknown>;
     fallbackAckRequired?: boolean;
+    installationId?: string;
   },
   options?: ApiRequestOptions,
 ) {
@@ -102,7 +106,7 @@ export async function validateConnectorMappingVersion(
 export async function publishConnectorMappingVersion(
   connectorSlug: string,
   versionId: string,
-  body: { confirm: boolean },
+  body: { confirm: boolean; installationId?: string },
   options?: ApiRequestOptions,
 ) {
   return postJson<ConnectorMappingVersion>(
@@ -145,11 +149,15 @@ export async function rollbackConnectorMappingVersion(
 export async function resolveConnectorMapping(
   connectorSlug: string,
   categoryScope: string,
+  installationId?: string,
   options?: ApiRequestOptions,
 ) {
-  const query = new URLSearchParams({ categoryScope }).toString();
+  const params = new URLSearchParams({ categoryScope });
+  if (installationId) {
+    params.set("installationId", installationId);
+  }
   return fetchJson<ConnectorMappingResolved>(
-    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/resolve?${query}`,
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/resolve?${params.toString()}`,
     undefined,
     options,
   );

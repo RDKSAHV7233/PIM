@@ -387,6 +387,7 @@ export class ConnectorMappingService {
   async listVersions(input: {
     connectorSlug: string;
     categoryScope?: string;
+    installationId?: string;
     includeArchived?: boolean;
   }): Promise<ConnectorMappingVersion[]> {
     const tenantKey = this.getTenantKey();
@@ -394,6 +395,7 @@ export class ConnectorMappingService {
       where: {
         connectorSlug: input.connectorSlug,
         ...(input.categoryScope ? { categoryScope: input.categoryScope } : {}),
+        ...(input.installationId ? { installationId: input.installationId } : {}),
         ...(input.includeArchived ? {} : { lifecycleState: { not: "archived" } }),
       },
       orderBy: { createdAt: "desc" },
@@ -640,6 +642,7 @@ export class ConnectorMappingService {
           lifecycleState: "published",
           publishedAt: new Date(),
           supersededBy: null,
+          ...(selected.draftInstallationId ? { installationId: selected.draftInstallationId } : {}),
         },
       });
       if (publishUpdate.count !== 1) {
