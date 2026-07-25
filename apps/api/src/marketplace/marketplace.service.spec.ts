@@ -347,6 +347,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
       { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
     );
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
       .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
