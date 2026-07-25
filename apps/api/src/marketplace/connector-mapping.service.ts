@@ -476,12 +476,16 @@ export class ConnectorMappingService {
 
     const connectorDef = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
       where: { slug: input.connectorSlug },
-      select: { id: true },
+      select: { id: true, slug: true },
     });
     if (!connectorDef) {
       throw new NotFoundException("connector_not_found");
     }
-    if (input.connectorDefinitionId && input.connectorDefinitionId !== connectorDef.id) {
+    if (
+      input.connectorDefinitionId &&
+      input.connectorDefinitionId !== connectorDef.id &&
+      input.connectorDefinitionId !== connectorDef.slug
+    ) {
       throw new BadRequestException("connector_definition_id_mismatch");
     }
 

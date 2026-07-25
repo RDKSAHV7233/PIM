@@ -148,6 +148,11 @@ function run() {
     service.includes('"connector_definition_id_mismatch"'),
     "createDraft must reject when connectorDefinitionId does not match the slug-resolved connector.",
   );
+  assert(
+    service.includes("input.connectorDefinitionId !== connectorDef.slug"),
+    "createDraft definition mismatch guard must accept both id and slug " +
+    "(callers may send the slug as connectorDefinitionId when definition row is missing).",
+  );
 
   // ── 8. Page passes installationId through key data flows ───────────────
   assert(
