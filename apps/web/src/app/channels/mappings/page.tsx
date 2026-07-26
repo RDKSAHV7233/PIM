@@ -418,7 +418,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       sampleProductsRaw,
     ] = hasBaseScope
       ? await Promise.all([
-          getMarketplaceChannelMapping(selectedChannel as MarketplaceChannel, selectedCategoryId, undefined, { role: actorRole, authHeader }),
+          getMarketplaceChannelMapping(selectedChannel as MarketplaceChannel, selectedCategoryId, undefined, selectedInstallationId || undefined, { role: actorRole, authHeader }),
           getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 }),
           resolveConnectorMapping(connectorSlug, selectedCategoryId, selectedInstallationId || undefined, { role: actorRole, authHeader }),
           shouldFetchTaxonomy

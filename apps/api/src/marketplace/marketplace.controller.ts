@@ -252,9 +252,16 @@ export class MarketplaceController {
     @Param("channel") channel: string,
     @Query("categoryId") categoryId?: string,
     @Query("templateId") templateId?: string,
+    @Query("installationId") installationId?: string,
     @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.marketplaceService.getChannelMapping(channel, categoryId, templateId, this.resolveActor(request ?? {}));
+    return this.marketplaceService.getChannelMapping(
+      channel,
+      categoryId,
+      templateId,
+      this.resolveActor(request ?? {}),
+      installationId,
+    );
   }
 
   @Get("categories/:id/templates")

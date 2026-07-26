@@ -16,6 +16,7 @@ export async function getMarketplaceChannelMapping(
   channel: MarketplaceChannel,
   categoryId?: string,
   templateId?: string,
+  installationId?: string,
   options?: ApiRequestOptions,
 ) {
   const params = new URLSearchParams();
@@ -24,6 +25,9 @@ export async function getMarketplaceChannelMapping(
   }
   if (templateId) {
     params.set("templateId", templateId);
+  }
+  if (installationId) {
+    params.set("installationId", installationId);
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<MarketplaceChannelMapping>(

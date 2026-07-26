@@ -74,7 +74,7 @@ export async function ProductDetailDeferredSection({
     getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }).catch(
       () => [] as Awaited<ReturnType<typeof getMarketplaceTemplates>>,
     ),
-    getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
+    getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, undefined, {
       role: actorRole,
       authHeader,
     }).catch(

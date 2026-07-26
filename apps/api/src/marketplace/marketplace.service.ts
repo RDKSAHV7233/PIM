@@ -311,12 +311,22 @@ export class MarketplaceService implements OnModuleInit {
     });
   }
 
-  async getChannelMapping(channelInput: string, categoryId?: string, templateId?: string, actor?: PolicyActor) {
+  async getChannelMapping(
+    channelInput: string,
+    categoryId?: string,
+    templateId?: string,
+    actor?: PolicyActor,
+    installationId?: string,
+  ) {
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "view", channelInput, "ChannelMappingTemplate");
     if (categoryId) {
       await this.accessPolicy.assertCategoryAccess(actor ?? {}, "view", categoryId, "ChannelMappingTemplate");
     }
-    const mapping = await this.getEffectiveMapping(channelInput, categoryId, templateId);
+    // installationId threads into the ConnectorMappingVersion bridge below (Sprint 11+)
+    // so an operator viewing an account-scoped mapping sees that account's override,
+    // not just the slug-scoped tenant default. Legacy channelMappingTemplate lookups
+    // above are unaffected — they were never installation-aware.
+    const mapping = await this.getEffectiveMapping(channelInput, categoryId, templateId, installationId ?? null);
     return {
       channel: mapping.channel,
       displayName: mapping.displayName,
