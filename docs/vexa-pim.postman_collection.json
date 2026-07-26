@@ -5013,7 +5013,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/marketplace/channels/:channel/mapping?categoryId=&templateId=",
+              "raw": "{{base_url}}/api/v1/marketplace/channels/:channel/mapping?categoryId=&templateId=&installationId=",
               "host": [
                 "{{base_url}}"
               ],
@@ -5034,6 +5034,12 @@
                 },
                 {
                   "key": "templateId",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "installationId",
                   "value": "",
                   "description": "(required)",
                   "disabled": false
