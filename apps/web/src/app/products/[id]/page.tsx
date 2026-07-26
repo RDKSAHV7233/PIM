@@ -80,14 +80,20 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   let exportJobsUnavailable = false;
   let mediaAssetsUnavailable = false;
   let effectiveReadinessUnavailable = false;
+  // Export job history is an admin-only read (apps/api marketplace.controller.ts
+  // GET export-jobs is @Roles("admin")); other roles never had access, so skip
+  // the call instead of surfacing it as a load failure.
+  const exportJobsRestricted = actorRole !== "admin";
 
   // Start product-independent background promises immediately so they run during
   // the sequential product + channel/connector fetches below.
   const variantsPromise = getProductVariants(id, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getProductVariants>>);
-  const exportJobsPromise = getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => {
-    exportJobsUnavailable = true;
-    return [] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>;
-  });
+  const exportJobsPromise = exportJobsRestricted
+    ? Promise.resolve([] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>)
+    : getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => {
+        exportJobsUnavailable = true;
+        return [] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>;
+      });
 
   let product;
   try { product = await getProduct(id, { role: actorRole, authHeader }); } catch (error: unknown) {
@@ -349,11 +355,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           tone: "neutral" as const,
           detail: "Latest export activity could not be loaded right now.",
         }
-      : {
-        label: "Not queued",
-        tone: "neutral" as const,
-        detail: "No export attempt has been queued for this product yet.",
-      };
+      : exportJobsRestricted
+        ? {
+            label: "Admin only",
+            tone: "neutral" as const,
+            detail: "Export history is visible to admin accounts.",
+          }
+        : {
+          label: "Not queued",
+          tone: "neutral" as const,
+          detail: "No export attempt has been queued for this product yet.",
+        };
   const topBlockers = [
     ...(blockingIssueCount > 0
       ? [{ label: `Fix ${blockingIssueCount} quality blocker${blockingIssueCount === 1 ? "" : "s"}`, href: tabHref("quality") }]
