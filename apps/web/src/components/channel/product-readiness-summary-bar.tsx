@@ -149,20 +149,22 @@ export function ProductReadinessSummaryBar({
   );
 
   return (
-    <div className="sticky top-2 z-10 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-slate-800">Channel readiness:</span>
-          {badges}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="secondary" onClick={() => void runCheck()} disabled={checking}>
-            {checking ? "Running..." : "Run Check"}
-          </Button>
-          <span className="text-xs text-slate-500">Last checked {lastCheckedLabel}</span>
+    <div className="space-y-3">
+      <div className="sticky top-2 z-10 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-slate-800">Channel readiness:</span>
+            {badges}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" onClick={() => void runCheck()} disabled={checking}>
+              {checking ? "Running..." : "Run Check"}
+            </Button>
+            <span className="text-xs text-slate-500">Last checked {lastCheckedLabel}</span>
+          </div>
         </div>
       </div>
-      <div className="mt-3 grid gap-3 xl:grid-cols-6">
+      <div className="grid gap-3 xl:grid-cols-6">
         {summary.cards.map((card) => (
           <Link
             key={card.title}
@@ -177,7 +179,7 @@ export function ProductReadinessSummaryBar({
           </Link>
         ))}
       </div>
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div>
           <p className="text-sm font-medium text-slate-900">Top blockers for {summary.currentChannelLabel}</p>
           <p className="mt-1 text-xs text-slate-500">
