@@ -24,6 +24,37 @@ const BLOCKER_MESSAGES: Record<string, string> = {
   category_scope_mismatch: "This product's category does not match the mapping scope.",
 };
 
+// Publish-readiness blocker/warning codes that are genuinely about the channel
+// field mapping itself (apps/api/src/marketplace/connector-mapping.service.ts).
+// Everything else evaluateConnectorPublishReadiness returns — approval status,
+// connector installation/credentials, quality blockers — is already surfaced by
+// its own dedicated readiness card (Approval status, Connector readiness, Product
+// readiness). Without this filter, the "Mapping readiness" card shows "Blocked"
+// for e.g. an unapproved product even though the mapping itself is fine, which
+// sends operators back to fix mapping data that was never actually the problem.
+const MAPPING_BLOCKER_CODES = new Set([
+  "mapping_compatibility_blocked",
+  "mapping_remap_required",
+  "field_mappings_missing",
+  "fallback_ack_required",
+  "required_attribute_mapping_missing",
+  "product_category_scope_mismatch",
+]);
+
+const MAPPING_WARNING_CODES = new Set([
+  "using_system_default_mapping",
+  "mapping_deprecated",
+  "fallback_mapping_applied",
+]);
+
+export function isMappingBlockerCode(code: string): boolean {
+  return MAPPING_BLOCKER_CODES.has(code);
+}
+
+export function isMappingWarningCode(code: string): boolean {
+  return MAPPING_WARNING_CODES.has(code);
+}
+
 export const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "content", label: "Content" },
