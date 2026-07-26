@@ -29,6 +29,8 @@ import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigat
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
 import {
   DETAIL_TABS,
+  isMappingBlockerCode,
+  isMappingWarningCode,
   mapMarketplaceChannelToConnectorSlug,
   normalizeChannel,
   normalizeDetailTab,
@@ -263,20 +265,24 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         detail: "Publish readiness could not be loaded right now. Refresh or check the channel workspace before acting on this state.",
       };
     }
-    const blockers = effectiveReadiness?.blockers ?? [];
-    const warnings = effectiveReadiness?.warnings ?? [];
-    if (blockers.length > 0) {
+    // Only codes that are actually about the field mapping itself — approval,
+    // connector, and quality blockers are already tracked by their own cards
+    // (Approval status, Connector readiness, Product readiness) and must not
+    // make this one say "Blocked" for a mapping that's actually fine.
+    const mappingBlockers = (effectiveReadiness?.blockers ?? []).filter(isMappingBlockerCode);
+    const mappingWarnings = (effectiveReadiness?.warnings ?? []).filter(isMappingWarningCode);
+    if (mappingBlockers.length > 0) {
       return {
         label: "Blocked",
         tone: "danger" as const,
-        detail: `${blockers.length} publish blocker${blockers.length === 1 ? "" : "s"} for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
+        detail: `${mappingBlockers.length} mapping blocker${mappingBlockers.length === 1 ? "" : "s"} for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
       };
     }
-    if (warnings.length > 0) {
+    if (mappingWarnings.length > 0) {
       return {
         label: "Warnings",
         tone: "warning" as const,
-        detail: `${warnings.length} readiness warning${warnings.length === 1 ? "" : "s"} remain.`,
+        detail: `${mappingWarnings.length} mapping warning${mappingWarnings.length === 1 ? "" : "s"} remain.`,
       };
     }
     return {
