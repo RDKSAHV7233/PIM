@@ -4,7 +4,12 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { getAllowedValues } from "./product-detail-shared";
+import {
+  formatAttributeLabel,
+  formatAttributeValue,
+  getAllowedValues,
+  getUndefinedAttributeEntries,
+} from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 /**
@@ -19,6 +24,11 @@ const INTL_TAX_ROWS = [
 ] as const;
 
 export function ContentTab({ data }: { data: ProductDetailPageData }) {
+  const undefinedAttributeEntries = getUndefinedAttributeEntries(
+    data.productAttributes,
+    data.productAttributeDefinitions,
+  );
+
   return (
     <Card hidden={!(data.activeTab === "content" || data.activeTab === "attributes")}>
       <CardTitle>Edit Product (Versioned)</CardTitle>
@@ -161,11 +171,19 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
           <p className="text-xs text-slate-500">Submitting with expected version: {data.product.version}</p>
           <div className="space-y-2 md:col-span-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Additional Attributes</label>
-            {data.productAttributeDefinitions.length === 0 ? (
+            {data.productAttributeDefinitions.length === 0 && undefinedAttributeEntries.length === 0 ? (
               <p className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                 No additional attributes required for this category.
               </p>
-            ) : (
+            ) : null}
+            {data.productAttributeDefinitions.length === 0 && undefinedAttributeEntries.length > 0 ? (
+              <p className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                No attribute schema is configured for {data.product.category?.path ?? data.product.categoryId}, but
+                this product already has attribute values stored. They&apos;re shown below, read-only, until the
+                category&apos;s attribute schema is configured.
+              </p>
+            ) : null}
+            {data.productAttributeDefinitions.length > 0 ? (
               <div className="grid gap-3 md:grid-cols-2">
                 {data.productAttributeDefinitions.map((definition) => {
                   const inputName = `attr__${definition.key}`;
@@ -246,7 +264,22 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
                   );
                 })}
               </div>
-            )}
+            ) : null}
+            {undefinedAttributeEntries.length > 0 ? (
+              <fieldset disabled className="grid gap-3 md:grid-cols-2 opacity-75">
+                <legend className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Stored attributes not in this category&apos;s schema
+                </legend>
+                {undefinedAttributeEntries.map(([key, value]) => (
+                  <div key={key} className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      {formatAttributeLabel(key)}
+                    </label>
+                    <Input value={formatAttributeValue(value)} disabled />
+                  </div>
+                ))}
+              </fieldset>
+            ) : null}
           </div>
           <Button type="submit" className="w-fit">
             Save product changes
@@ -336,6 +369,23 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
                 </div>
               </div>
             )}
+            {undefinedAttributeEntries.length > 0 ? (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Stored attributes not in this category&apos;s schema
+                </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {undefinedAttributeEntries.map(([key, value]) => (
+                    <div key={key} className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {formatAttributeLabel(key)}
+                      </label>
+                      <Input value={formatAttributeValue(value)} disabled />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </fieldset>
         </div>
       )}

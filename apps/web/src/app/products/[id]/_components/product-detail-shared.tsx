@@ -99,3 +99,39 @@ export function getAllowedValues(value: unknown): string[] {
 export function formatDateTime(value: string): string {
   return fmtDT(value);
 }
+
+export function formatAttributeLabel(key: string): string {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (c) => c.toUpperCase())
+    .trim();
+}
+
+export function formatAttributeValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+// Attribute keys already present on the product but not covered by the category's
+// formal attribute schema (e.g. legacy import data, or a category whose attribute
+// definitions haven't been configured yet). Surfaced read-only so existing data is
+// never invisible just because there's no formal type/allowed-values info for it.
+export function getUndefinedAttributeEntries(
+  productAttributes: Record<string, unknown>,
+  definitions: { key: string }[],
+): Array<[string, unknown]> {
+  const definedKeys = new Set(definitions.map((definition) => definition.key));
+  return Object.entries(productAttributes).filter(([key, value]) => {
+    if (definedKeys.has(key)) return false;
+    if (key === "mainImageUrl") return false;
+    if (value === null || value === undefined) return false;
+    if (typeof value === "object") return false;
+    return true;
+  });
+}
