@@ -206,7 +206,7 @@ export function describeMappingSource(resolved: ConnectorMappingResolved | null)
   if (!resolved) {
     return { label: "No mapping configured", description: "Configure a default or category-specific mapping to publish.", tone: "warning" };
   }
-  const matched = resolved.matched ?? [];
+  const matched = resolved.matchedVersions ?? [];
   if (matched.length === 0) {
     return { label: "Using system default", description: "No tenant mapping exists. The system default field map is active.", tone: "neutral" };
   }

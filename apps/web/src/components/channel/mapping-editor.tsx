@@ -195,7 +195,7 @@ export function ResolvedMappingSnapshotCard({
           />
         </p>
         <p>Required fields: {mapping.requiredFields.length}</p>
-        <p>Matched mapping versions: {resolved?.matched?.length ?? 0}</p>
+        <p>Matched mapping versions: {resolved?.matchedVersions?.length ?? 0}</p>
       </div>
       <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
         <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced: resolved mapping JSON</summary>

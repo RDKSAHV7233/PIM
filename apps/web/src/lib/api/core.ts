@@ -892,13 +892,11 @@ export interface ConnectorMappingVersion {
 }
 
 export interface ConnectorMappingResolved {
-  connectorSlug: string;
-  categoryScope: string;
-  matched: ConnectorMappingVersion[];
   resolvedMapping: Record<string, unknown>;
-  fallbackPolicy: Record<string, unknown>;
-  fallbackAckRequired: boolean;
+  matchedVersions: ConnectorMappingVersion[];
   compatibilityState: ConnectorMappingCompatibility;
+  fallbackApplied: boolean;
+  fallbackAckRequired: boolean;
 }
 
 export interface ConnectorMappingPreflight {
