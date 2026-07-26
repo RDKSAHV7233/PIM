@@ -6,6 +6,7 @@
 
 import type { ApiRequestOptions } from "./core";
 import { deleteJson, fetchJson, patchJson, postJson, postFormData } from "./core";
+import { csrfHeaders } from "../csrf";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,43 @@ export interface UpdatePriceListDto {
 
 // ── Market endpoints ───────────────────────────────────────────────────────
 
+function shouldUseBrowserPricingProxy(options?: ApiRequestOptions): boolean {
+  return typeof window !== "undefined" && !options?.authHeader;
+}
+
+async function fetchBrowserPricingJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = String(init?.method ?? "GET").toUpperCase();
+  const hasBody = init?.body !== undefined && init?.body !== null;
+  const response = await fetch(`/api${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...(method === "GET" || method === "HEAD" ? {} : csrfHeaders()),
+      ...(init?.headers ?? {}),
+    },
+    cache: init?.cache ?? "no-store",
+  });
+
+  const rawBody = await response.text();
+  if (!response.ok) {
+    let message = `Pricing request failed with status ${response.status}.`;
+    if (rawBody.trim()) {
+      try {
+        const body = JSON.parse(rawBody) as { message?: unknown };
+        message = typeof body.message === "string" && body.message.trim() ? body.message : message;
+      } catch {
+        // Keep the sanitized status message when the proxy returns non-JSON.
+      }
+    }
+    throw new Error(message);
+  }
+  if (!rawBody.trim()) {
+    return undefined as T;
+  }
+  return JSON.parse(rawBody) as T;
+}
+
 export async function getMarkets(options?: ApiRequestOptions): Promise<Market[]> {
   return fetchJson<Market[]>("/pricing/markets", undefined, options);
 }
@@ -158,6 +196,9 @@ export async function deleteCurrency(id: string, options?: ApiRequestOptions): P
 // ── Price List endpoints ───────────────────────────────────────────────────
 
 export async function getPriceLists(options?: ApiRequestOptions): Promise<PriceList[]> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<PriceList[]>("/pricing/price-lists");
+  }
   return fetchJson<PriceList[]>("/pricing/price-lists", undefined, options);
 }
 
@@ -176,6 +217,9 @@ export async function deletePriceList(id: string, options?: ApiRequestOptions): 
 // ── Product Price endpoints ────────────────────────────────────────────────
 
 export async function getPriceListPrices(priceListId: string, options?: ApiRequestOptions): Promise<ProductPrice[]> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<ProductPrice[]>(`/pricing/price-lists/${priceListId}/prices`);
+  }
   return fetchJson<ProductPrice[]>(`/pricing/price-lists/${priceListId}/prices`, undefined, options);
 }
 
@@ -184,7 +228,17 @@ export async function upsertPriceListPrices(
   prices: Array<{ variantId: string; mrp?: number | null; sellingPrice?: number | null }>,
   options?: ApiRequestOptions,
 ): Promise<{ upserted: number }> {
-  return postJson<{ upserted: number }>(`/pricing/price-lists/${priceListId}/prices`, { prices }, options);
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<{ upserted: number }>(`/pricing/price-lists/${priceListId}/prices`, {
+      method: "PUT",
+      body: JSON.stringify({ prices }),
+    });
+  }
+  return fetchJson<{ upserted: number }>(
+    `/pricing/price-lists/${priceListId}/prices`,
+    { method: "PUT", body: JSON.stringify({ prices }) },
+    options,
+  );
 }
 
 export interface PriceImportError {

@@ -188,7 +188,7 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
                 Variant Attributes
               </label>
               <Textarea id="variant-attributes" name="variantAttributes" rows={4} className="md:col-span-2" />
-              <p className="text-xs text-slate-500">Optional details to describe this variant.</p>
+              <p className="text-xs text-slate-500">Optional JSON object, for example {"{\"color\":\"blue\"}"}.</p>
             </div>
             <Button type="submit" className="w-fit">
               Create variant
