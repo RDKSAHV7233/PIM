@@ -605,114 +605,125 @@ export class ConnectorMappingService {
       throw new BadRequestException("publish_confirmation_required");
     }
     const tenantKey = this.getTenantKey();
-    const result = await this.prisma.tenant(tenantKey).$transaction(async (tx) => {
-      const selectedRow = await tx.connectorMappingVersion.findFirst({
-        where: {
-          id: input.versionId,
-          connectorSlug: input.connectorSlug,
-        },
-      });
-      if (!selectedRow) {
-        throw new NotFoundException("mapping_version_not_found");
-      }
-      const selected = toVersion(selectedRow as unknown as Record<string, unknown>);
-      if (selected.lifecycleState !== "validated") {
-        throw new ConflictException("must_validate_before_publish");
-      }
-
-      // Guard: if this draft was created for a specific account, the publish request must
-      // name the same account. Prevents silent publishes that evaluated readiness under
-      // a different installation than the one used to build the draft.
-      // Both conditions throw:
-      //   (a) publish names a different account — explicit mismatch
-      //   (b) publish omits the account entirely — implicit bypass attempt
-      // Exception: draftInstId null = old draft pre-migration; no guard (unknown original account).
-      const draftInstId = selectedRow.draftInstallationId;
-      if (draftInstId && (!input.installationId || draftInstId !== input.installationId)) {
-        throw new ConflictException("account_mismatch_draft_vs_publish");
-      }
-
-      // Fetch all published rows at same slug+categoryScope, then post-filter by installationId.
-      // Slug-scoped versions (installationId=null) must NOT supersede installation-scoped versions
-      // and vice versa — each scope has its own independent "published" slot.
-      const supersededCandidates = await tx.connectorMappingVersion.findMany({
-        where: {
-          connectorSlug: input.connectorSlug,
-          categoryScope: selected.categoryScope,
-          lifecycleState: "published",
-          NOT: { id: selected.id },
-        },
-        select: { id: true, installationId: true },
-      });
-      const supersededRows = supersededCandidates.filter((row) => {
-        return (row.installationId ?? null) === (selected.installationId ?? null);
-      });
-      const supersededIds = supersededRows.map((row) => row.id);
-      if (supersededIds.length > 0) {
-        await tx.connectorMappingVersion.updateMany({
+    let result: { published: ConnectorMappingVersion; superseded: string[] };
+    try {
+      result = await this.prisma.tenant(tenantKey).$transaction(async (tx) => {
+        const selectedRow = await tx.connectorMappingVersion.findFirst({
           where: {
-            id: { in: supersededIds },
-          },
-          data: {
-            lifecycleState: "superseded",
-            supersededBy: selected.id,
+            id: input.versionId,
+            connectorSlug: input.connectorSlug,
           },
         });
-      }
+        if (!selectedRow) {
+          throw new NotFoundException("mapping_version_not_found");
+        }
+        const selected = toVersion(selectedRow as unknown as Record<string, unknown>);
+        if (selected.lifecycleState !== "validated") {
+          throw new ConflictException("must_validate_before_publish");
+        }
 
-      const publishUpdate = await tx.connectorMappingVersion.updateMany({
-        where: {
-          id: selected.id,
-          connectorSlug: input.connectorSlug,
-          lifecycleState: "validated",
-        },
-        data: {
-          lifecycleState: "published",
-          publishedAt: new Date(),
-          supersededBy: null,
-          ...(selected.draftInstallationId ? { installationId: selected.draftInstallationId } : {}),
-        },
-      });
-      if (publishUpdate.count !== 1) {
-        throw new ConflictException("must_validate_before_publish");
-      }
+        // Guard: if this draft was created for a specific account, the publish request must
+        // name the same account. Prevents silent publishes that evaluated readiness under
+        // a different installation than the one used to build the draft.
+        // Both conditions throw:
+        //   (a) publish names a different account — explicit mismatch
+        //   (b) publish omits the account entirely — implicit bypass attempt
+        // Exception: draftInstId null = old draft pre-migration; no guard (unknown original account).
+        const draftInstId = selectedRow.draftInstallationId;
+        if (draftInstId && (!input.installationId || draftInstId !== input.installationId)) {
+          throw new ConflictException("account_mismatch_draft_vs_publish");
+        }
 
-      const publishedRow = await tx.connectorMappingVersion.findFirst({
-        where: {
-          id: selected.id,
-          connectorSlug: input.connectorSlug,
-        },
-      });
-      if (!publishedRow) {
-        throw new NotFoundException("mapping_version_not_found");
-      }
-      const published = toVersion(publishedRow as unknown as Record<string, unknown>);
-      for (const supersededId of supersededIds) {
+        // Fetch all published rows at same slug+categoryScope, then post-filter by installationId.
+        // Slug-scoped versions (installationId=null) must NOT supersede installation-scoped versions
+        // and vice versa — each scope has its own independent "published" slot.
+        const supersededCandidates = await tx.connectorMappingVersion.findMany({
+          where: {
+            connectorSlug: input.connectorSlug,
+            categoryScope: selected.categoryScope,
+            lifecycleState: "published",
+            NOT: { id: selected.id },
+          },
+          select: { id: true, installationId: true },
+        });
+        const supersededRows = supersededCandidates.filter((row) => {
+          return (row.installationId ?? null) === (selected.installationId ?? null);
+        });
+        const supersededIds = supersededRows.map((row) => row.id);
+        if (supersededIds.length > 0) {
+          await tx.connectorMappingVersion.updateMany({
+            where: {
+              id: { in: supersededIds },
+            },
+            data: {
+              lifecycleState: "superseded",
+              supersededBy: selected.id,
+            },
+          });
+        }
+
+        const publishUpdate = await tx.connectorMappingVersion.updateMany({
+          where: {
+            id: selected.id,
+            connectorSlug: input.connectorSlug,
+            lifecycleState: "validated",
+          },
+          data: {
+            lifecycleState: "published",
+            publishedAt: new Date(),
+            supersededBy: null,
+            ...(selected.draftInstallationId ? { installationId: selected.draftInstallationId } : {}),
+          },
+        });
+        if (publishUpdate.count !== 1) {
+          throw new ConflictException("must_validate_before_publish");
+        }
+
+        const publishedRow = await tx.connectorMappingVersion.findFirst({
+          where: {
+            id: selected.id,
+            connectorSlug: input.connectorSlug,
+          },
+        });
+        if (!publishedRow) {
+          throw new NotFoundException("mapping_version_not_found");
+        }
+        const published = toVersion(publishedRow as unknown as Record<string, unknown>);
+        for (const supersededId of supersededIds) {
+          await tx.connectorMappingEvent.create({
+            data: {
+              id: randomUUID(),
+              mappingVersionId: supersededId,
+              eventType: "superseded",
+              actorId: input.actorId ?? null,
+              metadata: {
+                superseded_by: published.id,
+              } as Prisma.InputJsonValue,
+            },
+          });
+        }
         await tx.connectorMappingEvent.create({
           data: {
             id: randomUUID(),
-            mappingVersionId: supersededId,
-            eventType: "superseded",
+            mappingVersionId: published.id,
+            eventType: "published",
             actorId: input.actorId ?? null,
             metadata: {
-              superseded_by: published.id,
+              superseded_count: supersededIds.length,
             } as Prisma.InputJsonValue,
           },
         });
-      }
-      await tx.connectorMappingEvent.create({
-        data: {
-          id: randomUUID(),
-          mappingVersionId: published.id,
-          eventType: "published",
-          actorId: input.actorId ?? null,
-          metadata: {
-            superseded_count: supersededIds.length,
-          } as Prisma.InputJsonValue,
-        },
+        return { published, superseded: supersededIds };
       });
-      return { published, superseded: supersededIds };
-    });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        // idx_connector_mapping_versions_one_published — another version for this
+        // exact scope (installation included) published concurrently between our
+        // validated-state check and this transaction's commit.
+        throw new ConflictException("mapping_publish_conflict");
+      }
+      throw error;
+    }
     await this.emitMappingCompletionMetric(tenantKey, input.connectorSlug);
     return result;
   }

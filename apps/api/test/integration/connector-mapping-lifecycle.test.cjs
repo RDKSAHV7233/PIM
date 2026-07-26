@@ -186,12 +186,14 @@ async function run() {
   const workspaceSlugB = `mapb-${runId}`.slice(0, 24);
   const userA = `mapping-user-a-${runId}`;
   const userB = `mapping-user-b-${runId}`;
+  const commercialOpsToken = `mapping-lifecycle-commercial-${runId}`;
 
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantA,
+    PIM_COMMERCIAL_OPS_TOKEN: commercialOpsToken,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
       [userA]: { tenantId: tenantA, role: "admin", workspaceSlug: workspaceSlugA },
       [userB]: { tenantId: tenantB, role: "admin", workspaceSlug: workspaceSlugB },
@@ -373,6 +375,140 @@ async function run() {
     assert(Array.isArray(tenantBVersions.payload), "tenant B mapping list must be an array");
     assert(tenantBVersions.payload.length === 0, "tenant B must not see tenant A mapping versions");
 
+    // ── Regression: multiple published mappings per category across installation
+    // scopes must not collide on idx_connector_mapping_versions_one_published.
+    // Before the installation-aware widening of that index (migration
+    // 20260726000001), publishing a second installation-scoped mapping for a
+    // category that already had ANY published mapping (slug-scoped or another
+    // installation) failed with P2002, surfaced as a bare 500 — see
+    // packages/db/prisma/migrations/20260726000001_connector_mapping_published_installation_scope.
+    const upgradePlan = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/plan-tier",
+      null,
+      { tenantKey: tenantA, planTier: "ENTERPRISE" },
+      {
+        "x-pim-commercial-ops-token": commercialOpsToken,
+        "x-pim-operator-id": "integration-test",
+        "x-pim-operator-role": "system",
+      },
+    );
+    assertStatus(upgradePlan, 201, "upgrade tenant A to ENTERPRISE for multi-account test");
+
+    const installB = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", tokenA, {
+      accountAlias: `qa-b-${runId}`,
+      externalAccountRef: `merchant-b-${runId}`,
+    });
+    assertStatus(installB, 201, "install second flipkart connector account");
+    const installationIdA = String(install.payload.id);
+    const installationIdB = String(installB.payload.id);
+
+    async function publishCategoryMapping(installationId, marker) {
+      const draft = await apiRequest(
+        baseUrl,
+        "POST",
+        "/marketplace/connectors/flipkart/mappings/versions",
+        tokenA,
+        {
+          categoryScope: categoryId,
+          mappingLevel: "tenant_connector_category_mapping",
+          connectorDefinitionId: "flipkart",
+          connectorDefinitionVersion: "1.0.0",
+          compatibilityState: "compatible",
+          installationId,
+          mappingRules: {
+            category: { source: categoryId, target: categoryId },
+            field_mappings: { title: "product_title", [`attributes.${marker}`]: marker },
+          },
+          fallbackPolicy: { enabled: true },
+          fallbackAckRequired: false,
+        },
+      );
+      assertStatus(draft, 201, `create ${marker} category mapping draft`);
+      const draftId = String(draft.payload.id);
+
+      const validated = await apiRequest(
+        baseUrl,
+        "POST",
+        `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(draftId)}/validate`,
+        tokenA,
+        {},
+      );
+      assertStatus(validated, 201, `validate ${marker} category mapping draft`);
+
+      const stepUp = await issueStepUp(baseUrl, tokenA);
+      const published = await apiRequest(
+        baseUrl,
+        "POST",
+        `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(draftId)}/publish`,
+        tokenA,
+        { confirm: true, installationId },
+        { [STEP_UP_HEADER]: stepUp },
+      );
+      assertStatus(published, 201, `publish ${marker} category mapping — must not 500 on idx_connector_mapping_versions_one_published`);
+      assert(
+        published.payload?.published?.lifecycleState === "published",
+        `${marker} mapping publish lifecycle mismatch`,
+      );
+      return draftId;
+    }
+
+    // Publish order matters for the regression: slug-scoped first (occupies the
+    // installation_id IS NULL slot), then two distinct installation-scoped
+    // mappings for the SAME category — each must get its own slot.
+    await publishCategoryMapping(undefined, "slugDefault");
+    await publishCategoryMapping(installationIdA, "accountA");
+    await publishCategoryMapping(installationIdB, "accountB");
+
+    const resolveSlug = await apiRequest(
+      baseUrl,
+      "GET",
+      `/marketplace/connectors/flipkart/mappings/resolve?categoryScope=${encodeURIComponent(categoryId)}`,
+      tokenA,
+    );
+    assertStatus(resolveSlug, 200, "resolve without installationId");
+    assert(
+      "attributes.slugDefault" in resolveSlug.payload.resolvedMapping.field_mappings,
+      "resolve without installationId must return the slug-scoped default",
+    );
+    assert(
+      !("attributes.accountA" in resolveSlug.payload.resolvedMapping.field_mappings),
+      "resolve without installationId must not leak installation-scoped overrides",
+    );
+
+    const resolveA = await apiRequest(
+      baseUrl,
+      "GET",
+      `/marketplace/connectors/flipkart/mappings/resolve?categoryScope=${encodeURIComponent(categoryId)}&installationId=${encodeURIComponent(installationIdA)}`,
+      tokenA,
+    );
+    assertStatus(resolveA, 200, "resolve with installationId A");
+    assert(
+      "attributes.accountA" in resolveA.payload.resolvedMapping.field_mappings,
+      "resolve for installation A must include installation A's override",
+    );
+    assert(
+      !("attributes.accountB" in resolveA.payload.resolvedMapping.field_mappings),
+      "resolve for installation A must not include installation B's override",
+    );
+
+    const resolveB = await apiRequest(
+      baseUrl,
+      "GET",
+      `/marketplace/connectors/flipkart/mappings/resolve?categoryScope=${encodeURIComponent(categoryId)}&installationId=${encodeURIComponent(installationIdB)}`,
+      tokenA,
+    );
+    assertStatus(resolveB, 200, "resolve with installationId B");
+    assert(
+      "attributes.accountB" in resolveB.payload.resolvedMapping.field_mappings,
+      "resolve for installation B must include installation B's override",
+    );
+    assert(
+      !("attributes.accountA" in resolveB.payload.resolvedMapping.field_mappings),
+      "resolve for installation B must not include installation A's override",
+    );
+
     console.log(
       JSON.stringify(
         {
@@ -384,6 +520,8 @@ async function run() {
             "mapping_lifecycle_draft_validate_publish",
             "publish_readiness_fallback_ack_gate",
             "tenant_isolation_for_mapping_versions",
+            "multiple_installations_publish_independently_per_category",
+            "resolve_scopes_correctly_by_installation_id",
           ],
           checkedAt: new Date().toISOString(),
         },
