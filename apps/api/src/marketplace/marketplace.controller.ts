@@ -230,7 +230,10 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/publish-readiness")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin", "channel_manager", "publisher")
+  // "Channels — channel readiness" is R for every role per
+  // docs/security/rbac-permissions-matrix.md; the product detail and mapping
+  // wizard pages call this unconditionally regardless of viewer role.
+  @Roles(...APP_ROLES)
   evaluateConnectorPublishReadiness(
     @Param("connectorSlug") connectorSlug: string,
     @Body() dto: ConnectorPublishReadinessDto,
