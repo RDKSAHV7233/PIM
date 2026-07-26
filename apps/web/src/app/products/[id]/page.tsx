@@ -191,7 +191,17 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   const blockingIssueCount = product.validationIssues?.filter((issue) => issue.severity === "error").length ?? 0;
   const warningIssueCount = product.validationIssues?.filter((issue) => issue.severity === "warning").length ?? 0;
-  const imageAssetCount = mediaAssets.filter((asset) => asset.mimeType.startsWith("image/")).length;
+  const imageAssets = mediaAssets.filter((asset) => asset.mimeType.startsWith("image/"));
+  const imageAssetCount = imageAssets.length;
+  // Governance gaps the backend's own per-channel validateAsset() already treats as
+  // real signals (missing alt text = warning; explicit channel exclusion = blocker) —
+  // mirrored here so this summary card doesn't say "Ready" for images the media
+  // library itself would flag as not actually eligible or accessible.
+  const missingAltTextCount = imageAssets.filter((asset) => !asset.altText).length;
+  const channelIneligibleCount = imageAssets.filter(
+    (asset) => asset.channelEligibility.length > 0 && !asset.channelEligibility.includes(effectiveSelectedChannel),
+  ).length;
+  const channelUnconfirmedCount = imageAssets.filter((asset) => asset.channelEligibility.length === 0).length;
   const mediaIssueCount =
     product.validationIssues?.filter((issue) => {
       const fieldPath = String(issue.fieldPath ?? "").toLowerCase();
@@ -295,6 +305,24 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         label: "Warnings",
         tone: "warning" as const,
         detail: `${imageAssetCount} image${imageAssetCount === 1 ? "" : "s"} linked with ${mediaIssueCount} media issue${mediaIssueCount === 1 ? "" : "s"} to review.`,
+      };
+    }
+    if (channelIneligibleCount > 0) {
+      return {
+        label: "Blocked",
+        tone: "danger" as const,
+        detail: `${channelIneligibleCount} image${channelIneligibleCount === 1 ? "" : "s"} not marked eligible for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
+      };
+    }
+    if (missingAltTextCount > 0 || channelUnconfirmedCount > 0) {
+      const gaps = [
+        missingAltTextCount > 0 ? `${missingAltTextCount} image${missingAltTextCount === 1 ? "" : "s"} missing alt text` : null,
+        channelUnconfirmedCount > 0 ? `${channelUnconfirmedCount} image${channelUnconfirmedCount === 1 ? "" : "s"} not yet confirmed eligible for any channel` : null,
+      ].filter((entry): entry is string => entry !== null);
+      return {
+        label: "Warnings",
+        tone: "warning" as const,
+        detail: `${gaps.join("; ")}.`,
       };
     }
     return {
