@@ -532,7 +532,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <PlanLimitModal isOpen={showPlanLimitModal} resource={String(query.planResource ?? "").trim()} limit={Number(query.planLimitValue)} current={Number(query.planCurrent)} upgradeUrl={String(query.planUpgrade ?? "").trim()} contactUrl={planContact} dismissHref={dismissPlanLimitHref} />
       <ProductDirtyNavigationGuard />
       <PageHeader
-        className="sticky top-[4.5rem] z-20"
         title={product.title}
         description={`${sellerSku ? `SKU ${sellerSku}` : product.id.slice(0, 8)} | ${product.category?.path ?? product.categoryId}`}
         breadcrumb={<><Link href="/dashboard" className="hover:underline">Dashboard</Link> / <Link href="/catalog/products" className="hover:underline">Catalog</Link> / <span className="font-semibold text-slate-700">Product Detail</span></>}
