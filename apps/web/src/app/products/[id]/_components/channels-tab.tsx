@@ -47,9 +47,9 @@ function ReadinessScoreWidget({ readiness }: { readiness: ConnectorPublishReadin
     score >= 60 ? "border-amber-200 bg-amber-50" :
     "border-red-200 bg-red-50";
   const statusLabel =
-    score >= 80 && readiness.ok ? "Publish ready" :
-    score >= 60 ? "Ready with warnings" :
-    "Not ready";
+    score >= 80 ? "Excellent" :
+    score >= 60 ? "Needs improvement" :
+    "Low quality";
 
   const breakdown = readiness.breakdown;
 
@@ -61,8 +61,11 @@ function ReadinessScoreWidget({ readiness }: { readiness: ConnectorPublishReadin
           <p className="text-xs text-slate-500">/ 100</p>
         </div>
         <div className="min-w-0 flex-1">
-          <p className={`text-sm font-semibold ${scoreColor}`}>{statusLabel}</p>
-          <p className="text-xs text-slate-500 mt-0.5">Shopify readiness score across content, SEO, media, variants, metafields and compliance</p>
+          <p className={`text-sm font-semibold ${scoreColor}`}>Content quality: {statusLabel}</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Completeness of content, SEO, media, variants, metafields and compliance — this score does not gate
+            export. See &quot;Queue readiness&quot; below for what actually blocks publishing.
+          </p>
         </div>
       </div>
       {breakdown ? (

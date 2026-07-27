@@ -660,7 +660,7 @@ export function ProductsTab({
 
   return (
     <div className="space-y-4">
-      <section className="sticky top-16 z-20 rounded-lg border border-slate-200 bg-white p-4">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 xl:sticky xl:top-16 xl:z-20">
         {hasUnavailableSharedRead || hasRestrictedSharedRead ? (
           <div
             aria-live="polite"

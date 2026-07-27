@@ -301,9 +301,15 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     capabilities: [],
   };
 
-  function makeBulkPublishService(productsById: Record<string, { status: string; categoryId: string }>) {
+  function makeBulkPublishService(
+    productsById: Record<string, { status: string; categoryId: string }>,
+    options: { connectorSlug?: string; capabilities?: string[] } = {},
+  ) {
+    const connectorSlug = options.connectorSlug ?? "amazon";
+    const capabilities = options.capabilities ?? ["BULK_PUBLISH"];
+
     const tenantDb = {
-      $queryRaw: jest.fn().mockResolvedValue([MOCK_RESOLVED_ROW]),
+      $queryRaw: jest.fn().mockResolvedValue([{ ...MOCK_RESOLVED_ROW, connectorSlug }]),
       product: {
         findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
           Promise.resolve(productsById[id] ? { id, ...productsById[id] } : null),
@@ -320,7 +326,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
 
     const connectorFramework = {
       getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
-      requireInstallation: jest.fn().mockResolvedValue({ id: "inst_1", slug: "amazon", capabilities: ["BULK_PUBLISH"] }),
+      requireInstallation: jest.fn().mockResolvedValue({ id: "inst_1", slug: connectorSlug, capabilities }),
       publishBulk: jest.fn().mockImplementation((_installation: unknown, products: unknown[]) =>
         Promise.resolve({
           feedId: "feed_1",
@@ -402,6 +408,59 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(result.excluded).toHaveLength(0);
     expect(result.submissionIds).toHaveLength(2);
     expect(connectorFramework.publishBulk.mock.calls[0][1]).toHaveLength(2);
+  });
+
+  it("falls back to queued per-product export jobs for a connector without BULK_PUBLISH (Shopify)", async () => {
+    const { svc, connectorFramework } = makeBulkPublishService(
+      {
+        "a1": { status: "approved", categoryId: "cat1" },
+        "a2": { status: "active", categoryId: "cat1" },
+      },
+      { connectorSlug: "shopify", capabilities: ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"] },
+    );
+    const createExportJobSpy = jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "createExportJob")
+      .mockImplementation((productId: unknown) => Promise.resolve({ id: `job_${productId as string}` }));
+
+    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"]);
+
+    // the Amazon feed path must never be invoked for a connector lacking BULK_PUBLISH
+    expect(connectorFramework.publishBulk).not.toHaveBeenCalled();
+    expect(createExportJobSpy).toHaveBeenCalledTimes(2);
+    expect(createExportJobSpy).toHaveBeenCalledWith(
+      "a1",
+      expect.objectContaining({ channel: "shopify", installationId: "inst_1" }),
+      undefined,
+    );
+    expect(result.excluded).toHaveLength(0);
+    expect(result.submissionIds.sort()).toEqual(["job_a1", "job_a2"]);
+    expect(result.feedId).toMatch(/^queued-batch:/);
+    expect(result.feedDocumentId).toBe(result.feedId);
+    expect(result.productCount).toBe(2);
+  });
+
+  it("excludes only the product whose queued export job fails, in the Shopify fallback path", async () => {
+    const { svc } = makeBulkPublishService(
+      {
+        "ok-1": { status: "approved", categoryId: "cat1" },
+        "bad-1": { status: "approved", categoryId: "cat1" },
+      },
+      { connectorSlug: "shopify", capabilities: [] },
+    );
+    jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "createExportJob")
+      .mockImplementation((productId: unknown) => {
+        if (productId === "bad-1") {
+          return Promise.reject(new Error("readiness check failed"));
+        }
+        return Promise.resolve({ id: `job_${productId as string}` });
+      });
+
+    const result = await svc.triggerBulkPublish("inst_1", ["ok-1", "bad-1"]);
+
+    expect(result.submissionIds).toEqual(["job_ok-1"]);
+    expect(result.excluded).toHaveLength(1);
+    expect(result.excluded[0]).toMatchObject({ productId: "bad-1", reason: "readiness check failed" });
   });
 });
 

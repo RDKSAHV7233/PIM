@@ -4,6 +4,7 @@ import {
   getMarketplaceChannelMapping,
   getMarketplaceSimulation,
   getMarketplaceTemplates,
+  getProductActivity,
   getSubmissions,
   type AppRole,
   type ConnectorInstallation,
@@ -70,7 +71,7 @@ export async function ProductDetailDeferredSection({
   returnTo,
   tabHref,
 }: ProductDetailDeferredSectionProps) {
-  const [templates, mapping, simulation, categoryAttributes, readiness, submissionsRaw] = await Promise.all([
+  const [templates, mapping, simulation, categoryAttributes, readiness, submissionsRaw, activity] = await Promise.all([
     getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }).catch(
       () => [] as Awaited<ReturnType<typeof getMarketplaceTemplates>>,
     ),
@@ -126,6 +127,7 @@ export async function ProductDetailDeferredSection({
         }) satisfies Awaited<ReturnType<typeof evaluateConnectorPublishReadiness>>,
     ),
     getSubmissions({ productId, limit: 20 }, { role: actorRole, authHeader }).catch(() => null),
+    getProductActivity(productId, 50, { role: actorRole, authHeader }).catch(() => null),
   ]);
   const connectorSubmissions = (() => {
     if (!submissionsRaw) return [];
@@ -193,6 +195,7 @@ export async function ProductDetailDeferredSection({
     warningIssueCount:
       product.validationIssues?.filter((issue) => issue.severity === "warning").length ?? 0,
     recentJobs: exportJobs.slice(0, 5),
+    activityEvents: activity?.events ?? [],
     readinessBlockers: readiness.blockers ?? [],
     readinessWarnings: readiness.warnings ?? [],
     fallbackAckRequired: (readiness.blockers ?? []).includes("fallback_ack_required"),

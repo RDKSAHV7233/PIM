@@ -4064,10 +4064,23 @@ export class MarketplaceService implements OnModuleInit {
       });
     }
 
-    const [installation, products] = await Promise.all([
-      this.connectorFramework.requireInstallation(tenantKey, installationRow.connectorSlug, installationId),
-      Promise.all(eligibleProductIds.map((id) => this.buildConnectorProductPayload(id))),
-    ]);
+    const installation = await this.connectorFramework.requireInstallation(
+      tenantKey,
+      installationRow.connectorSlug,
+      installationId,
+    );
+
+    // Connectors without a native async feed API (Shopify, WooCommerce, ...) can't produce
+    // a single BulkSubmissionRef the way Amazon's Feeds API does — each product publishes
+    // synchronously via its own GraphQL/REST call. For those, fall back to queuing one
+    // MarketplaceExportJob per eligible product through the same connector-agnostic pipeline
+    // createExportJob already uses for the single-product "Queue channel export" action —
+    // proven to work for Shopify — instead of forcing them through the Amazon-shaped path.
+    if (!installation.capabilities.includes("BULK_PUBLISH")) {
+      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded);
+    }
+
+    const products = await Promise.all(eligibleProductIds.map((id) => this.buildConnectorProductPayload(id)));
 
     const bulkRef = await this.connectorFramework.publishBulk(installation, products);
 
@@ -4122,6 +4135,76 @@ export class MarketplaceService implements OnModuleInit {
       productCount: bulkRef.productCount,
       submissionIds,
       excluded,
+    };
+  }
+
+  /**
+   * Fallback bulk-publish path for connectors without a native async batch/feed API
+   * (Shopify, WooCommerce, ...). These publish synchronously per product — there is no
+   * single feed submission to poll for status the way Amazon's Feeds API works, so they
+   * can't produce a real BulkSubmissionRef. Instead, queue one MarketplaceExportJob per
+   * eligible product through the exact same connector-agnostic pipeline createExportJob
+   * already uses for the single-product "Queue channel export" action (queued job →
+   * CONNECTOR_SUBMISSION queue → connector.publishProduct), reusing its idempotency,
+   * readiness re-check, and retry handling as-is rather than duplicating any of it here.
+   * One product failing is added to `excluded`, not a batch-wide failure.
+   *
+   * `feedId`/`feedDocumentId` are synthesized (prefixed `queued-batch:`) to keep the
+   * response shape identical to the Amazon path for existing callers — they are not real
+   * external feed identifiers, only a label for this batch in logs.
+   */
+  private async bulkPublishViaQueuedExportJobs(
+    connectorSlug: string,
+    installationId: string,
+    eligibleProductIds: string[],
+    excluded: Array<{ productId: string; reason: string }>,
+  ): Promise<{
+    feedId: string;
+    feedDocumentId: string;
+    productCount: number;
+    submissionIds: string[];
+    excluded: Array<{ productId: string; reason: string }>;
+  }> {
+    const channel = this.mapConnectorSlugToChannel(connectorSlug);
+
+    const outcomes = await this.runWithConcurrency(
+      eligibleProductIds.map((productId) => async () => {
+        try {
+          const job = await this.createExportJob(productId, { channel, installationId }, undefined);
+          return { productId, jobId: job.id as string };
+        } catch (error: unknown) {
+          const reason = error instanceof Error ? error.message : String(error);
+          return { productId, error: reason };
+        }
+      }),
+      5,
+    );
+
+    const submissionIds: string[] = [];
+    const allExcluded = [...excluded];
+    for (const outcome of outcomes) {
+      if (outcome.jobId) {
+        submissionIds.push(outcome.jobId);
+      } else {
+        allExcluded.push({ productId: outcome.productId, reason: outcome.error ?? "Failed to queue export job." });
+      }
+    }
+
+    const batchId = `queued-batch:${randomUUID()}`;
+    this.logger.warn("Bulk publish queued via per-product export jobs (connector has no native batch API)", {
+      installationId,
+      connectorSlug,
+      batchId,
+      productCount: submissionIds.length,
+      excludedCount: allExcluded.length,
+    });
+
+    return {
+      feedId: batchId,
+      feedDocumentId: batchId,
+      productCount: submissionIds.length,
+      submissionIds,
+      excluded: allExcluded,
     };
   }
 
