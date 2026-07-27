@@ -98,14 +98,19 @@ function run() {
     "Channels tab must show the readiness/preflight state before queueing export work.",
   );
   assert(
-    channelsSource.includes("data.canWrite && data.publishableChannels.length > 0") &&
-      channelsSource.includes('name="fallbackAcknowledged"') &&
-      channelsSource.includes('name="templateId" value={data.selectedTemplateId ?? ""}') &&
-      channelsSource.includes('name="returnTo" value={data.returnTo}') &&
-      channelsSource.includes("disabled={!data.canQueueExportWithAck}") &&
-      channelsSource.includes('idleLabel="Queue channel export"') &&
+    channelsSource.includes("data.canPublish && data.publishableChannels.length > 0") &&
+      channelsSource.includes("<ExportWithPreviewForm") &&
       !channelsSource.includes("Publish to a channel"),
-    "Channels tab must expose a write-role-gated queued-export action with fallback acknowledgment, current mapping context, safe return context, and honest copy.",
+    "Channels tab must expose a single write-role-gated queued-export action (not a duplicate legacy form) with honest copy.",
+  );
+  assert(
+    exportWithPreviewSource.includes('name="fallbackAcknowledged"') &&
+      exportWithPreviewSource.includes('name="templateId"') &&
+      exportWithPreviewSource.includes("disabled={isLoading || !canQueueExportWithAck}") &&
+      exportWithPreviewSource.includes('"Queue channel export"') &&
+      exportWithPreviewSource.includes('confirmMode === "simple"') &&
+      exportWithPreviewSource.includes('confirmMode === "preview"'),
+    "Export form must carry fallback acknowledgment and current mapping context, gate submission on write permission, and always show a confirmation step before queuing — not just for Shopify.",
   );
   assert(
     channelsSource.includes("Advanced channel diagnostics") &&
