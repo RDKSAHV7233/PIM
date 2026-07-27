@@ -2243,7 +2243,11 @@ describe("bulk-publish and delta-sync RBAC alignment across layers", () => {
   });
 
   it("connector detail page gates bulk-publish with canPublishToChannels", () => {
-    const marker = 'capabilities.includes("BULK_PUBLISH")';
+    // The panel is gated on capabilities.includes("PUBLISH") (not BULK_PUBLISH) so
+    // connectors without a native batch/feed API (e.g. Shopify) still show it — the
+    // backend falls back to queuing one export job per product for those. The role
+    // gate (canPublishToChannels) is unchanged and must still wrap this condition.
+    const marker = 'capabilities.includes("PUBLISH")';
     const bulkIdx = connectorPageSource.indexOf(marker);
     expect(bulkIdx).toBeGreaterThan(-1);
     const bulkSection = connectorPageSource.substring(
