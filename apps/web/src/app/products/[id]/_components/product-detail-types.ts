@@ -11,6 +11,7 @@ import type {
   MarketplaceExportJob,
   MarketplaceSimulation,
   Product,
+  ProductActivityEvent,
   Variant,
 } from "@/lib/api";
 
@@ -61,6 +62,7 @@ export type ProductDetailPageData = {
   blockingIssueCount: number;
   warningIssueCount: number;
   recentJobs: MarketplaceExportJob[];
+  activityEvents: ProductActivityEvent[];
   readinessBlockers: string[];
   readinessWarnings: string[];
   fallbackAckRequired: boolean;

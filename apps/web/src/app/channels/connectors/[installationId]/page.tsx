@@ -2352,13 +2352,23 @@ export default async function ChannelConnectorDetailPage({
               ) : (
                 <p className="text-sm text-slate-500">You do not have permission to trigger syncs. Contact an admin or publisher.</p>
               )}
-              {canPublishToChannels(actorRole) && installation.capabilities.includes("BULK_PUBLISH") ? (
+              {canPublishToChannels(actorRole) && installation.capabilities.includes("PUBLISH") ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-sm font-medium text-amber-900">Amazon Feeds API — Bulk publish</p>
+                  <p className="text-sm font-medium text-amber-900">Bulk publish</p>
                   <p className="mt-1 text-xs text-amber-700">
-                    Submit all approved products as a single{" "}
-                    <code className="font-mono bg-white border border-amber-200 px-1 rounded">JSON_LISTINGS_FEED</code>{" "}
-                    document. Each product gets an individual submission record you can track in the Jobs workspace.
+                    {installation.capabilities.includes("BULK_PUBLISH") ? (
+                      <>
+                        Submit all approved products as a single{" "}
+                        <code className="font-mono bg-white border border-amber-200 px-1 rounded">JSON_LISTINGS_FEED</code>{" "}
+                        document. Each product gets an individual submission record you can track in the Jobs workspace.
+                      </>
+                    ) : (
+                      <>
+                        This connector publishes one product at a time — queues an export job per approved product
+                        through the standard export queue instead of a single batch feed. Track each product&apos;s
+                        progress individually in the Jobs workspace.
+                      </>
+                    )}
                   </p>
                   <BulkPublishConfirmForm
                     installationId={installation.id}

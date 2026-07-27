@@ -510,10 +510,21 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           tone: "border-slate-200 bg-slate-50/70",
         };
       }
-      if ((effectiveReadiness?.blockers ?? []).length > 0 || (effectiveReadiness?.warnings ?? []).length > 0) {
+      const approvedGateMappingBlockers = (effectiveReadiness?.blockers ?? []).filter(isMappingBlockerCode);
+      const approvedGateMappingWarnings = (effectiveReadiness?.warnings ?? []).filter(isMappingWarningCode);
+      if (approvedGateMappingBlockers.length > 0 || approvedGateMappingWarnings.length > 0) {
         return {
           title: "Map remaining attributes to go live",
           detail: "Channel mapping still needs attention before this approved product is ready for publish and export.",
+          href: tabHref("channels"),
+          cta: "Open Channels tab",
+          tone: "border-amber-200 bg-amber-50/70",
+        };
+      }
+      if ((effectiveReadiness?.blockers ?? []).length > 0) {
+        return {
+          title: "Resolve connector or approval blockers to go live",
+          detail: "Field mapping is clear, but connector setup or an approval-gate issue still blocks export — check Connector readiness and Approval status.",
           href: tabHref("channels"),
           cta: "Open Channels tab",
           tone: "border-amber-200 bg-amber-50/70",

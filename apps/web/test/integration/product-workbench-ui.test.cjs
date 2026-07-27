@@ -33,6 +33,11 @@ function run() {
     "Products tab must keep primary actions inside the compact toolbar instead of a standalone workbench card.",
   );
   assert(
+    productsTabSource.includes("xl:sticky xl:top-16 xl:z-20") &&
+      !productsTabSource.includes('className="sticky top-16 z-20'),
+    "Products tab toolbar must avoid sticky overlay behavior at standard viewport widths where it can cover the create form.",
+  );
+  assert(
     productsPageSource.includes("search?: string") &&
       productsTabSource.includes('placeholder="Search products by title or SKU"') &&
       productsTabSource.includes("No products match your search") &&
@@ -75,6 +80,7 @@ function run() {
         validated: [
           "product_workbench_uses_canonical_mapping_route",
           "products_tab_uses_compact_toolbar_actions",
+          "products_toolbar_sticky_only_on_xl",
           "products_table_prioritizes_catalog_workbench_signals",
           "create_product_form_handles_submit_failures_inline",
         ],

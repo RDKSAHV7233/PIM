@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import {
   ApiHttpError,
+  getConnectorMappingVersions,
   getInstalledConnectors,
   getProduct,
   type MarketplaceChannel,
@@ -57,6 +58,26 @@ export default async function MappingManagerRedirectPage({
     }
     if (product?.categoryId) {
       target.set("categoryId", product.categoryId);
+    }
+
+    // If a live (published) mapping version already exists for this scope, land the operator
+    // directly on the "review" step, where the version manager surfaces it — otherwise every
+    // wizard open starts at "scope" and silently offers to build a mapping from nothing, even
+    // when one already exists.
+    if (product?.categoryId) {
+      try {
+        const versions = await getConnectorMappingVersions(
+          installation.slug,
+          { categoryScope: product.categoryId, installationId: installation.id },
+          { role: actorRole, authHeader },
+        );
+        const hasLiveVersion = versions.some((version) => version.lifecycleState === "published");
+        if (hasLiveVersion) {
+          target.set("step", "review");
+        }
+      } catch {
+        // Non-fatal: fall through to the wizard's default step if the version lookup fails.
+      }
     }
 
     redirect(`/channels/mappings?${target.toString()}`);
