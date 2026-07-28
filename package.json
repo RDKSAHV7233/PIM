@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:web": "dotenv -o -e .env -- npm run dev --workspace @pim1/web",
+    "dev:web": "dotenv -e .env -- npm run dev --workspace @pim1/web",
     "dev:api": "dotenv -o -e .env -- npm run dev --workspace @pim1/api",
     "dev": "npm run dev:api",
     "test": "npm run test:integration:auth-revocation && npm run test:integration:connector-idempotency-semantics && npm run test:integration:marketplace-worker-failure-visibility && npm run test:integration:worker-backpressure && npm run test:integration:connector-mapping-lifecycle",
