@@ -13,6 +13,7 @@ const STATUS_ALERTS = path.join(REPO_ROOT, "apps", "web", "src", "app", "product
 const STATUS_TOAST = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "status-toast-effect.tsx");
 const READINESS_BAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "product-readiness-summary-bar.tsx");
 const REFRESH_ON_INTERVAL = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "refresh-on-interval.tsx");
+const EXPORT_WITH_PREVIEW_FORM = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "export-with-preview-form.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -30,6 +31,7 @@ function run() {
   const statusToastSource = fs.readFileSync(STATUS_TOAST, "utf8");
   const readinessBarSource = fs.readFileSync(READINESS_BAR, "utf8");
   const refreshOnIntervalSource = fs.readFileSync(REFRESH_ON_INTERVAL, "utf8");
+  const exportWithPreviewSource = fs.readFileSync(EXPORT_WITH_PREVIEW_FORM, "utf8");
 
   assert(
     overviewSource.includes("<CardTitle>Product overview</CardTitle>"),
@@ -42,15 +44,19 @@ function run() {
   );
   assert(
     channelsSource.includes("<CardTitle>Channel readiness and queued exports</CardTitle>") &&
-      channelsSource.includes("Queue channel export") &&
       channelsSource.includes("Export confirmation") &&
       channelsSource.includes("Latest export result summary") &&
       channelsSource.includes('name="channel" value={data.selectedChannel}') &&
-      channelsSource.includes('name="templateId" value={data.selectedTemplateId ?? ""}') &&
       channelsSource.includes("<RefreshOnInterval enabled={data.activeTab === \"channels\" && hasInFlightExportJobs} intervalMs={15_000} />") &&
       channelsSource.includes("Auto-refreshing every 15s while queued, processing, or retrying export jobs are still in flight.") &&
       !channelsSource.includes("Publish to a channel"),
     "Product detail must use truthful queued-export language, keep recovery actions pinned to the active product/channel context, and visibly auto-refresh while export jobs remain in flight.",
+  );
+  assert(
+    exportWithPreviewSource.includes("Queue channel export") &&
+      exportWithPreviewSource.includes('name="templateId"') &&
+      exportWithPreviewSource.includes('defaultValue={selectedTemplateId ?? ""}'),
+    "The single queued-export form must keep the truthful action label and stay aligned to the selected mapping template context.",
   );
   assert(
     pageSource.includes(">Open publish & export</Link>") &&

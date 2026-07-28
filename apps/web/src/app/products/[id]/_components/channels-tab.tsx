@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  createExportJobAction,
   createMappingTemplateAction,
   processExportJobAction,
   requeueExportJobAction,
@@ -21,7 +20,6 @@ import {
   translateReadinessBlocker,
 } from "./product-detail-shared";
 import { formatDateTime } from "@/lib/format";
-import { mapMarketplaceChannelToConnectorSlug } from "@/lib/marketplace-channels";
 import type { ProductDetailPageData } from "./product-detail-types";
 import { ExportWithPreviewForm } from "./export-with-preview-form";
 
@@ -112,8 +110,6 @@ function submissionStatusTone(status: string): "neutral" | "success" | "warning"
 }
 
 export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
-  const defaultSlug = mapMarketplaceChannelToConnectorSlug(data.defaultExportChannel);
-  const quickExportInstallations = data.publishableInstallations.filter(i => i.slug === defaultSlug);
   const latestExportJob = data.exportJobs[0] ?? null;
   const hasInFlightExportJobs = data.exportJobs.some((job) => {
     const normalized = String(job.status ?? "").trim().toLowerCase();
@@ -326,73 +322,19 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             </div>
           </div>
           {data.canPublish && data.publishableChannels.length > 0 ? (
-            <>
-              <form action={createExportJobAction} className="space-y-3">
-                <input type="hidden" name="productId" value={data.productId} />
-                <input type="hidden" name="channel" value={data.defaultExportChannel} />
-                <input type="hidden" name="templateId" value={data.selectedTemplateId ?? ""} />
-                {quickExportInstallations.length === 1 ? (
-                  <>
-                    <input type="hidden" name="installationId" value={quickExportInstallations[0].id} />
-                    <p className="text-sm text-slate-600">Destination: <span className="font-medium text-slate-800">{quickExportInstallations[0].accountAlias || quickExportInstallations[0].id}</span></p>
-                  </>
-                ) : null}
-                {data.returnTo ? <input type="hidden" name="returnTo" value={data.returnTo} /> : null}
-                {quickExportInstallations.length > 1 ? (
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-slate-700" htmlFor="quick-export-installation-id">Destination: <span className="text-red-500">*</span></label>
-                    <Select id="quick-export-installation-id" name="installationId" defaultValue="" required className="w-auto">
-                      <option value="" disabled>Select a destination</option>
-                      {quickExportInstallations.map((inst) => (
-                        <option key={inst.id} value={inst.id}>
-                          {inst.accountAlias || inst.id}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                ) : null}
-                {data.fallbackAckRequired ? (
-                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      name="fallbackAcknowledged"
-                      value="true"
-                      className="rounded border-slate-300"
-                    />
-                    Acknowledge fallback mapping usage for this export
-                  </label>
-                ) : (
-                  <input type="hidden" name="fallbackAcknowledged" value="true" />
-                )}
-                <div className="flex items-center gap-3">
-                  <PendingSubmitButton
-                    type="submit"
-                    idleLabel="Queue channel export"
-                    pendingLabel="Queueing export..."
-                    disabled={!data.canQueueExportWithAck}
-                  />
-                  <span className="text-xs text-slate-500">
-                    Channel:{" "}
-                    <span className="font-medium text-slate-700">
-                      {data.publishableChannels.find((c) => c.channel === data.defaultExportChannel)?.displayName ?? data.defaultExportChannel}
-                    </span>
-                  </span>
-                </div>
-              </form>
-              <ExportWithPreviewForm
-                productId={data.productId}
-                actorRole={data.actorRole}
-                publishableChannels={data.publishableChannels}
-                templates={data.templates}
-                defaultExportChannel={data.defaultExportChannel}
-                selectedTemplateId={data.selectedTemplateId}
-                returnTo={data.returnTo}
-                fallbackAckRequired={data.fallbackAckRequired}
-                canQueueExportWithAck={data.canQueueExportWithAck}
-                previewInstallationId={data.mappingManagerInstallation?.id ?? null}
-                publishableInstallations={data.publishableInstallations}
-              />
-            </>
+            <ExportWithPreviewForm
+              productId={data.productId}
+              actorRole={data.actorRole}
+              publishableChannels={data.publishableChannels}
+              templates={data.templates}
+              defaultExportChannel={data.defaultExportChannel}
+              selectedTemplateId={data.selectedTemplateId}
+              returnTo={data.returnTo}
+              fallbackAckRequired={data.fallbackAckRequired}
+              canQueueExportWithAck={data.canQueueExportWithAck}
+              previewInstallationId={data.mappingManagerInstallation?.id ?? null}
+              publishableInstallations={data.publishableInstallations}
+            />
           ) : data.canPublish ? (
             <p className="text-sm text-slate-600">
               No installed connector with publish capability is available for this tenant.

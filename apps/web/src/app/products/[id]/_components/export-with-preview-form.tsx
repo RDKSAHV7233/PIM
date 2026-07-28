@@ -56,6 +56,11 @@ export function ExportWithPreviewForm({
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [publishAnyway, setPublishAnyway] = useState(false);
   const [canonicalInstallationId, setCanonicalInstallationId] = useState<string | null>(null);
+  // "preview": Shopify's richer field-diff drawer below. "simple": a plain
+  // destination-confirmation drawer for every other channel, which previously
+  // had no confirmation step at all and queued the export the instant the
+  // button was clicked.
+  const [confirmMode, setConfirmMode] = useState<"preview" | "simple" | null>(null);
 
   const [destinationKey, setDestinationKey] = useState(0);
 
@@ -83,6 +88,7 @@ export function ExportWithPreviewForm({
     setPreviewLoading(false);
     setPublishAnyway(false);
     setCanonicalInstallationId(null);
+    setConfirmMode(null);
     setDestinationKey((k) => k + 1);
   }, []);
 
@@ -94,7 +100,10 @@ export function ExportWithPreviewForm({
     const formInstallationId = String(fd.get("installationId") ?? "").trim();
     const effectiveInstallationId = formInstallationId || previewInstallationId;
     if (!effectiveInstallationId || !isShopify) {
-      startTransition(() => createExportJobAction(fd));
+      // Every other channel (and Shopify with no resolvable destination) gets
+      // the plain confirmation drawer below instead of queuing immediately.
+      setPendingFormData(fd);
+      setConfirmMode("simple");
       return;
     }
 
@@ -114,6 +123,7 @@ export function ExportWithPreviewForm({
     setPreviewLoading(true);
     setPreviewError(null);
     setPendingFormData(fd);
+    setConfirmMode("preview");
 
     try {
       const res = await fetch(
@@ -126,8 +136,10 @@ export function ExportWithPreviewForm({
         return;
       }
 
+      // Any failure to compute a real diff still gets a confirmation step —
+      // just the plain one, instead of silently queuing the export.
       if (!res.ok) {
-        startTransition(() => createExportJobAction(fd));
+        setConfirmMode("simple");
         return;
       }
       const data = (await res.json()) as ShopifyProductPreview;
@@ -138,7 +150,7 @@ export function ExportWithPreviewForm({
       }
 
       if (!data.hasExistingProduct) {
-        startTransition(() => createExportJobAction(fd));
+        setConfirmMode("simple");
         return;
       }
 
@@ -164,7 +176,7 @@ export function ExportWithPreviewForm({
       if (requestGeneration !== previewGenerationRef.current) {
         return;
       }
-      startTransition(() => createExportJobAction(fd));
+      setConfirmMode("simple");
     } finally {
       // Only clear loading if this request is still current
       if (requestGeneration === previewGenerationRef.current) {
@@ -179,12 +191,14 @@ export function ExportWithPreviewForm({
       pendingFormData.set("installationId", canonicalInstallationId);
     }
     setPreview(null);
+    setConfirmMode(null);
     startTransition(() => createExportJobAction(pendingFormData));
   };
 
   const handleCancel = () => {
     setPreview(null);
     setPendingFormData(null);
+    setConfirmMode(null);
   };
 
   const isLoading = isPending || previewLoading;
@@ -272,7 +286,7 @@ export function ExportWithPreviewForm({
         ) : null}
       </form>
 
-      {preview ? (
+      {confirmMode === "preview" && preview ? (
         <AppDrawer
           open={true}
           width="lg"
@@ -358,6 +372,60 @@ export function ExportWithPreviewForm({
             </div>
           </div>
         </AppDrawer>
+      ) : null}
+
+      {confirmMode === "simple" && pendingFormData ? (
+        (() => {
+          const confirmChannel = String(pendingFormData.get("channel") ?? "");
+          const confirmInstallationId = String(pendingFormData.get("installationId") ?? "").trim();
+          const channelLabel =
+            publishableChannels.find((ch) => ch.channel === confirmChannel)?.displayName ?? confirmChannel;
+          const destinationLabel =
+            publishableInstallations.find((inst) => inst.id === confirmInstallationId)?.accountAlias ||
+            confirmInstallationId ||
+            "Default account for this channel";
+          return (
+            <AppDrawer
+              open={true}
+              width="sm"
+              title="Confirm this export"
+              description="This queues a real export job — review the destination before continuing."
+              onClose={handleCancel}
+            >
+              <div className="space-y-4">
+                <dl className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Channel</dt>
+                    <dd className="mt-1 text-slate-900">{channelLabel}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Destination</dt>
+                    <dd className="mt-1 text-slate-900">{destinationLabel}</dd>
+                  </div>
+                </dl>
+                <p className="text-sm text-slate-600">
+                  Once queued, track its progress in the Jobs workspace or the export result summary above.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4 mt-4">
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Confirm and queue export
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </AppDrawer>
+          );
+        })()
       ) : null}
     </>
   );
