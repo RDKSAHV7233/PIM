@@ -1131,7 +1131,12 @@ describe("Frontend generalization: connector-agnostic destination selector", () 
     expect(source).toContain('capabilities.some(cap => cap === "PUBLISH")');
   });
 
-  it("channels-tab filters installations by selected channel slug", () => {
+  it("channels-tab passes the full publishableInstallations list to ExportWithPreviewForm for per-channel filtering", () => {
+    // channels-tab.tsx used to filter installations by channel slug itself
+    // (a second, duplicate copy of the same "Queue channel export" form/logic
+    // now owned solely by ExportWithPreviewForm, see the test below) — it now
+    // just passes the full list through and lets that one component do the
+    // per-channel filtering, which it still does (see the next test).
     const fs = require("fs");
     const path = require("path");
     const source = fs.readFileSync(
@@ -1140,7 +1145,8 @@ describe("Frontend generalization: connector-agnostic destination selector", () 
     );
     expect(source).toContain("publishableInstallations");
     expect(source).not.toContain("shopifyInstallations");
-    expect(source).toContain("mapMarketplaceChannelToConnectorSlug");
+    expect(source).toContain("<ExportWithPreviewForm");
+    expect(source).toContain("publishableInstallations={data.publishableInstallations}");
   });
 
   it("export-with-preview-form uses publishableInstallations and previewInstallationId", () => {
