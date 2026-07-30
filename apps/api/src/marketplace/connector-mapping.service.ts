@@ -135,6 +135,86 @@ function parseObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function uniqueStrings(values: unknown[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? uniqueStrings(value) : [];
+}
+
+function mappingTargets(value: unknown): string[] {
+  return uniqueStrings(Array.isArray(value) ? value : [value]);
+}
+
+function mappingHasSource(fieldMappings: Record<string, unknown>, sourceField: string): boolean {
+  const normalized = String(sourceField ?? "").trim();
+  return Boolean(normalized) && mappingTargets(fieldMappings[normalized]).length > 0;
+}
+
+function mappingHasTarget(fieldMappings: Record<string, unknown>, targetField: string): boolean {
+  const normalized = String(targetField ?? "").trim();
+  return Boolean(normalized) && Object.values(fieldMappings).some((value) => mappingTargets(value).includes(normalized));
+}
+
+function findSourceForTarget(fieldMappings: Record<string, unknown>, targetField: string): string | null {
+  const normalized = String(targetField ?? "").trim();
+  if (!normalized) {
+    return null;
+  }
+  for (const [sourceField, value] of Object.entries(fieldMappings)) {
+    if (mappingTargets(value).includes(normalized)) {
+      return String(sourceField ?? "").trim() || null;
+    }
+  }
+  return null;
+}
+
+function readFieldValue(fieldPath: string, product: {
+  title?: string | null;
+  description?: string | null;
+  brand?: string | null;
+  attributes?: unknown;
+  variants?: Array<{ skuCode?: string | null; sellingPrice?: unknown; mrp?: unknown; attributes?: unknown }>;
+}): unknown {
+  const normalized = String(fieldPath ?? "").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "title") return product.title;
+  if (normalized === "description") return product.description;
+  if (normalized === "brand") return product.brand;
+  const attrs = parseObject(product.attributes);
+  if (normalized.startsWith("attributes.")) {
+    return attrs[normalized.slice("attributes.".length)];
+  }
+  if (normalized in attrs) {
+    return attrs[normalized];
+  }
+  const variant = product.variants?.[0];
+  if (normalized === "sku" || normalized === "skuCode") return variant?.skuCode;
+  if (normalized === "sellingPrice" || normalized === "price") return variant?.sellingPrice ?? attrs[normalized];
+  if (normalized === "mrp") return variant?.mrp ?? attrs.mrp;
+  const variantAttrs = parseObject(variant?.attributes);
+  if (normalized.startsWith("variantAttributes.")) {
+    return variantAttrs[normalized.slice("variantAttributes.".length)];
+  }
+  return undefined;
+}
+
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
 function normalizeIso(value: unknown): string | null {
   if (!value) return null;
   return new Date(String(value)).toISOString();
@@ -1254,6 +1334,10 @@ export class ConnectorMappingService {
       installationId: input.installationId,
     });
     const fieldMappings = parseObject(resolved.resolvedMapping.field_mappings);
+    const channelRequiredFields = uniqueStrings([
+      ...asStringArray(resolved.resolvedMapping.required_fields),
+      ...asStringArray(resolved.resolvedMapping.taxonomy_required_attributes),
+    ]);
     const requiredDefs = await this.prisma.tenant(tenantKey).attributeDefinition.findMany({
       where: {
         categoryId: input.categoryScope,
@@ -1267,13 +1351,14 @@ export class ConnectorMappingService {
       .map((item) => item.key)
       .filter((key) => {
         const namespaced = `attributes.${key}`;
-        return !(key in fieldMappings) && !(namespaced in fieldMappings);
+        return !mappingHasSource(fieldMappings, key) && !mappingHasSource(fieldMappings, namespaced);
       });
     if (missingRequiredMappings.length > 0) {
       blockers.push("required_attribute_mapping_missing");
     }
 
     let productCheck: Record<string, unknown> = {};
+    let missingRequiredProductValues: string[] = [];
     let openErrors = 0;
     let productData: {
       title?: string | null;
@@ -1324,11 +1409,22 @@ export class ConnectorMappingService {
         if (openErrors > 0) {
           blockers.push("product_blocking_issues_open");
         }
+        missingRequiredProductValues = channelRequiredFields.filter((targetField) => {
+          if (!mappingHasTarget(fieldMappings, targetField)) {
+            return true;
+          }
+          const sourceField = findSourceForTarget(fieldMappings, targetField);
+          return !sourceField || isEmptyValue(readFieldValue(sourceField, product));
+        });
+        if (missingRequiredProductValues.length > 0) {
+          blockers.push("required_product_data_missing");
+        }
         productCheck = {
           productId: product.id,
           categoryId: product.categoryId,
           status: product.status,
           openErrorIssues: openErrors,
+          missingRequiredProductValues,
         };
       }
     }
@@ -1393,6 +1489,13 @@ export class ConnectorMappingService {
       warnings: Array.from(new Set(warnings)),
       checks: {
         preflight,
+        mappingCompleteness: {
+          missingRequiredMappings,
+        },
+        productDataReadiness: {
+          missingRequiredProductValues,
+          requiredFields: channelRequiredFields,
+        },
         installation: installation
           ? {
               id: String(installation.id),

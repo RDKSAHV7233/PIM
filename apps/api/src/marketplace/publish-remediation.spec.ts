@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { MarketplaceService } from "./marketplace.service";
+import { CredentialExpiredError } from "../connector-framework/connector.errors";
 
 // ---------------------------------------------------------------------------
 // Shared factory
@@ -57,6 +58,10 @@ function makePublishService(overrides?: {
         findMany: jest.fn().mockResolvedValue(opts.activeInstallations ?? [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }]),
       },
       connectorSubmission: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      mediaAsset: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
     }),
@@ -536,6 +541,166 @@ describe("Phase 8: retry authorization", () => {
 
     const result = await svc.requeueExportJob("job-1");
     expect(result).toBeDefined();
+  });
+
+  it("retrySubmission blocks Shopify retry before enqueue when publication targets are missing", async () => {
+    const { svc, queueService } = makePublishService({
+      installation: {
+        id: "inst-shopify-1",
+        tenantKey: "tenant1",
+        slug: "shopify",
+        capabilities: ["PUBLISH"],
+        metadata: {},
+      },
+    });
+    jest.spyOn(svc, "getSubmission").mockResolvedValue({
+      idempotencyKey: "job-1:PUBLISH",
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+      externalRef: null,
+      source: "LIVE_API",
+    } as never);
+
+    const error = await svc.retrySubmission("sub-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toEqual(expect.objectContaining({
+      code: "SHOPIFY_PUBLICATION_TARGETS_MISSING",
+    }));
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("retrySubmission allows Shopify retry when publication targets are selected", async () => {
+    const { svc, queueService, exportJobDb } = makePublishService({
+      installation: {
+        id: "inst-shopify-1",
+        tenantKey: "tenant1",
+        slug: "shopify",
+        capabilities: ["PUBLISH"],
+        metadata: { publicationTargetIds: ["gid://shopify/Publication/1"] },
+      },
+    });
+    jest.spyOn(svc, "getSubmission").mockResolvedValue({
+      idempotencyKey: "job-1:PUBLISH",
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+      externalRef: null,
+      source: "LIVE_API",
+    } as never);
+    exportJobDb.updateMany.mockResolvedValue({ count: 1 });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1",
+      retryCount: 3,
+      status: "queued",
+      channel: "shopify",
+    });
+
+    const result = await svc.retrySubmission("sub-1");
+
+    expect(result).toEqual(expect.objectContaining({ queued: true, submissionId: "sub-1" }));
+    expect(queueService.enqueue).toHaveBeenCalled();
+  });
+
+  it("retrySubmission converts expired Shopify credentials into a 400 with SHOPIFY_CREDENTIAL_EXPIRED", async () => {
+    const { svc, queueService } = makePublishService({
+      requireInstallationError: new CredentialExpiredError("shopify"),
+    });
+    jest.spyOn(svc, "getSubmission").mockResolvedValue({
+      idempotencyKey: "job-1:PUBLISH",
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+      externalRef: null,
+      source: "LIVE_API",
+    } as never);
+
+    const error = await svc.retrySubmission("sub-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toEqual(expect.objectContaining({
+      code: "SHOPIFY_CREDENTIAL_EXPIRED",
+    }));
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("processLiveSubmissionRetry marks submission failed instead of throwing when Flipkart credentials are expired", async () => {
+    const { svc, prisma } = makePublishService({
+      requireInstallationError: new CredentialExpiredError("flipkart"),
+    });
+    const notificationsService = (svc as any).notificationsService;
+    jest.spyOn(svc, "getSubmission").mockResolvedValue({
+      idempotencyKey: "job-1:PUBLISH",
+      connectorSlug: "flipkart",
+      installationId: "inst-flipkart-1",
+      externalRef: "ext-ref-1",
+      source: "LIVE_API",
+      productId: "prod1",
+    } as never);
+
+    await expect((svc as any).processLiveSubmissionRetry("sub-1")).resolves.toBeUndefined();
+
+    const connectorSubmissionDb = prisma.tenant().connectorSubmission;
+    expect(connectorSubmissionDb.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "sub-1" },
+      data: expect.objectContaining({ status: "ERROR" }),
+    }));
+    expect(notificationsService.emitPublishStatus).toHaveBeenCalledWith("job-1", "failed");
+  });
+});
+
+describe("one-to-many mapping payload expansion", () => {
+  it("buildSimulationFromProduct maps one source value into multiple channel targets", async () => {
+    const { svc } = makePublishService();
+    jest.spyOn(svc as any, "getEffectiveMappingCached").mockResolvedValue({
+      channel: "shopify",
+      displayName: "Shopify",
+      requiredFields: [],
+      fieldMap: {
+        title: ["title", "seo.title"],
+        brand: "vendor",
+      },
+      templateId: null,
+      templateName: null,
+      source: "connector_mapping_version",
+    });
+
+    const simulation = await (svc as any).buildSimulationFromProduct(
+      {
+        id: "prod1",
+        categoryId: "cat1",
+        title: "Reusable title",
+        brand: "Reusable brand",
+        description: "",
+        attributes: {},
+        variants: [],
+        validationIssues: [],
+      },
+      "shopify",
+    );
+
+    expect(simulation.mappedPayload).toEqual(expect.objectContaining({
+      title: "Reusable title",
+      "seo.title": "Reusable title",
+      vendor: "Reusable brand",
+    }));
+  });
+});
+
+describe("unified readiness evidence contract", () => {
+  it("evaluatePublishReadiness returns separate mapping and product readiness evidence", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "connector-mapping.service.ts"),
+      "utf8",
+    );
+    const readinessSection = source.substring(
+      source.indexOf("async evaluatePublishReadiness"),
+      source.indexOf("async assertPublishReadyForExport"),
+    );
+
+    expect(readinessSection).toContain("mappingCompleteness");
+    expect(readinessSection).toContain("missingRequiredMappings");
+    expect(readinessSection).toContain("productDataReadiness");
+    expect(readinessSection).toContain("missingRequiredProductValues");
+    expect(readinessSection).toContain("required_product_data_missing");
   });
 });
 

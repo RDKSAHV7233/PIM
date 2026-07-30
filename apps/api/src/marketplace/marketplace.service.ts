@@ -52,7 +52,7 @@ type MappingPack = {
   channel: MarketplaceChannel;
   displayName: string;
   requiredFields: string[];
-  fieldMap: Record<string, string>;
+  fieldMap: Record<string, string | string[]>;
 };
 
 type EffectiveMapping = MappingPack & {
@@ -73,6 +73,17 @@ type AuthoritativeChannelIssue = {
   sellerMessage: string;
   message: string;
 };
+
+function normalizeFieldMapTargets(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : [value];
+  return Array.from(
+    new Set(
+      raw
+        .map((item) => String(item ?? "").trim())
+        .filter((item) => item.length > 0),
+    ),
+  );
+}
 
 function resolveCollectionLimit(limit?: number, fallback = 50, max = 500): number {
   if (!Number.isFinite(limit)) {
@@ -1291,11 +1302,13 @@ export class MarketplaceService implements OnModuleInit {
     const submission = await this.getSubmission(submissionId) as {
       idempotencyKey: string;
       connectorSlug: string;
+      installationId?: string | null;
       externalRef?: string | null;
       source?: string | null;
     };
 
     if (this.shouldRetryThroughLiveUpdate(submission)) {
+      await this.assertRetryPrerequisites(submission, null);
       await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
         mode: "submission-retry",
         submissionId,
@@ -1314,6 +1327,7 @@ export class MarketplaceService implements OnModuleInit {
       throw new BadRequestException("Submission cannot be retried: invalid idempotency key format.");
     }
     const jobId = idempotencyKey.slice(0, delimiter);
+    await this.assertRetryPrerequisites(submission, jobId);
     const requeuedJob = await this.requeueExportJob(jobId);
     return {
       queued: true,
@@ -1336,6 +1350,77 @@ export class MarketplaceService implements OnModuleInit {
       return false;
     }
     return String(submission.source ?? "").trim().toUpperCase() === "LIVE_API";
+  }
+
+  private async assertRetryPrerequisites(
+    submission: {
+      connectorSlug?: string | null;
+      installationId?: string | null;
+    },
+    jobId: string | null,
+  ): Promise<void> {
+    const connectorSlug = String(submission.connectorSlug ?? "").trim().toLowerCase();
+    if (connectorSlug !== "shopify") {
+      return;
+    }
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    let installationId = String(submission.installationId ?? "").trim();
+    if (!installationId && jobId) {
+      const job = await this.prisma.tenant().marketplaceExportJob.findUnique({
+        where: { id: jobId },
+        select: { installationId: true },
+      });
+      installationId = String(job?.installationId ?? "").trim();
+    }
+    if (!installationId) {
+      throw new BadRequestException({
+        code: "SHOPIFY_PUBLICATION_TARGETS_MISSING",
+        message: "Select Shopify publication targets before retrying this submission.",
+      });
+    }
+    let installation;
+    try {
+      installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, installationId);
+    } catch (error: unknown) {
+      if (error instanceof CredentialExpiredError) {
+        throw new BadRequestException({
+          code: "SHOPIFY_CREDENTIAL_EXPIRED",
+          installationId,
+          message: "Reconnect this Shopify account before retrying — its credentials have expired.",
+        });
+      }
+      if (error instanceof InstallationNotFoundError) {
+        throw new BadRequestException({
+          code: "SHOPIFY_INSTALLATION_NOT_FOUND",
+          installationId,
+          message: "The Shopify installation for this submission no longer exists.",
+        });
+      }
+      throw error;
+    }
+    if (!this.hasShopifyPublicationTargets(installation.metadata)) {
+      throw new BadRequestException({
+        code: "SHOPIFY_PUBLICATION_TARGETS_MISSING",
+        installationId,
+        message: "Select Shopify publication targets before retrying this submission.",
+      });
+    }
+  }
+
+  private hasShopifyPublicationTargets(metadata: Record<string, unknown> | null | undefined): boolean {
+    const source = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
+    const selectedIds = source.publicationTargetIds;
+    if (Array.isArray(selectedIds) && selectedIds.some((id) => String(id ?? "").trim())) {
+      return true;
+    }
+    const publicationTargets = source.publicationTargets;
+    return Array.isArray(publicationTargets) && publicationTargets.some((target) => {
+      if (!target || typeof target !== "object" || Array.isArray(target)) {
+        return false;
+      }
+      const item = target as Record<string, unknown>;
+      return item.selected !== false && Boolean(String(item.id ?? "").trim());
+    });
   }
 
   private async processLiveSubmissionRetry(submissionId: string) {
@@ -1363,11 +1448,33 @@ export class MarketplaceService implements OnModuleInit {
     if (!submissionInstallationId) {
       throw new BadRequestException("Submission cannot be retried: no installation ID on record.");
     }
-    const installation = await this.connectorFramework.requireInstallation(
-      tenantKey,
-      String(submission.connectorSlug ?? "").toLowerCase(),
-      submissionInstallationId,
-    );
+    let installation;
+    try {
+      installation = await this.connectorFramework.requireInstallation(
+        tenantKey,
+        String(submission.connectorSlug ?? "").toLowerCase(),
+        submissionInstallationId,
+      );
+    } catch (error: unknown) {
+      if (error instanceof CredentialExpiredError || error instanceof InstallationNotFoundError) {
+        await this.prisma.tenant(tenantKey).connectorSubmission.updateMany({
+          where: { id: submissionId },
+          data: {
+            status: "ERROR",
+            channelErrors: [{
+              code: error instanceof CredentialExpiredError ? "CONNECTOR_CREDENTIAL_EXPIRED" : "CONNECTOR_INSTALLATION_NOT_FOUND",
+              fieldPath: "",
+              severity: "error",
+              sellerMessage: error.message,
+            }] as Prisma.InputJsonValue,
+            resolvedAt: new Date(),
+          },
+        });
+        await this.notificationsService.emitPublishStatus(jobId, "failed");
+        return;
+      }
+      throw error;
+    }
     const productPayload = await this.buildConnectorProductPayload(String(submission.productId));
     const payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
 
@@ -1969,10 +2076,12 @@ export class MarketplaceService implements OnModuleInit {
       }
     }
     const mappedPayload: Record<string, unknown> = {};
-    for (const [sourceField, targetField] of Object.entries(mapping.fieldMap)) {
+    for (const [sourceField, rawTargetField] of Object.entries(mapping.fieldMap)) {
       const value = this.getFieldValue(sourceField, product, attributes);
       if (!this.isEmpty(value)) {
-        mappedPayload[targetField] = value;
+        for (const targetField of normalizeFieldMapTargets(rawTargetField)) {
+          mappedPayload[targetField] = value;
+        }
       }
     }
 
@@ -2138,11 +2247,12 @@ export class MarketplaceService implements OnModuleInit {
             !Array.isArray(rawFieldMappings) &&
             Object.keys(rawFieldMappings).length > 0
           ) {
+            const fieldMap = this.asStringMap(rawFieldMappings);
             return {
               channel,
               displayName: basePack.displayName,
               requiredFields: [...basePack.requiredFields],
-              fieldMap: rawFieldMappings as Record<string, string>,
+              fieldMap,
               templateId: null,
               templateName: null,
               source: "connector_mapping_version",
@@ -2414,15 +2524,15 @@ export class MarketplaceService implements OnModuleInit {
     return [...new Set(normalized)];
   }
 
-  private normalizeFieldMap(input: Record<string, string>) {
-    const normalized: Record<string, string> = {};
+  private normalizeFieldMap(input: Record<string, string | string[]>) {
+    const normalized: Record<string, string | string[]> = {};
     for (const [source, target] of Object.entries(input ?? {})) {
       const sourceKey = source.trim();
-      const targetKey = String(target ?? "").trim();
-      if (!sourceKey || !targetKey) {
+      const targetKeys = normalizeFieldMapTargets(target);
+      if (!sourceKey || targetKeys.length === 0) {
         continue;
       }
-      normalized[sourceKey] = targetKey;
+      normalized[sourceKey] = targetKeys.length === 1 ? targetKeys[0] : targetKeys;
     }
     if (Object.keys(normalized).length === 0) {
       throw new BadRequestException("fieldMap cannot be empty.");
@@ -2439,18 +2549,16 @@ export class MarketplaceService implements OnModuleInit {
       .filter((item) => item.length > 0);
   }
 
-  private asStringMap(value: unknown): Record<string, string> {
+  private asStringMap(value: unknown): Record<string, string | string[]> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return {};
     }
-    const out: Record<string, string> = {};
+    const out: Record<string, string | string[]> = {};
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      if (typeof val === "string") {
-        const source = key.trim();
-        const target = val.trim();
-        if (source && target) {
-          out[source] = target;
-        }
+      const source = key.trim();
+      const targets = normalizeFieldMapTargets(val);
+      if (source && targets.length > 0) {
+        out[source] = targets.length === 1 ? targets[0] : targets;
       }
     }
     return out;

@@ -32,7 +32,7 @@ export class UpdateMappingTemplateDto {
 
   @IsOptional()
   @IsObject()
-  fieldMap?: Record<string, string>;
+  fieldMap?: Record<string, string | string[]>;
 
   @IsOptional()
   @IsBoolean()

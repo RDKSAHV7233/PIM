@@ -124,8 +124,24 @@ function parseJsonObject(value: FormDataEntryValue | null, label: string): Recor
   }
 }
 
+function appendMappingTarget(
+  fieldMappings: Record<string, string | string[]>,
+  sourceField: string,
+  targetField: string,
+) {
+  const existing = fieldMappings[sourceField];
+  if (!existing) {
+    fieldMappings[sourceField] = targetField;
+    return;
+  }
+  const targets = Array.isArray(existing) ? existing : [existing];
+  if (!targets.includes(targetField)) {
+    fieldMappings[sourceField] = [...targets, targetField];
+  }
+}
+
 function parseStructuredConnectorMappingRules(formData: FormData, categoryScope: string): Record<string, unknown> {
-  const fieldMappings: Record<string, string> = {};
+  const fieldMappings: Record<string, string | string[]> = {};
   for (const [key, rawValue] of formData.entries()) {
     if (!key.startsWith("mapTarget::")) {
       continue;
@@ -133,7 +149,7 @@ function parseStructuredConnectorMappingRules(formData: FormData, categoryScope:
     const targetField = String(key.slice("mapTarget::".length)).trim();
     const sourceField = String(rawValue ?? "").trim();
     if (targetField && sourceField) {
-      fieldMappings[sourceField] = targetField;
+      appendMappingTarget(fieldMappings, sourceField, targetField);
     }
   }
 
@@ -294,6 +310,10 @@ function extractApiErrorMessage(error: ApiHttpError): string {
   const body = error.body;
   if (body && typeof body === "object" && !Array.isArray(body)) {
     const obj = body as Record<string, unknown>;
+    if (typeof obj.code === "string" && obj.code) {
+      const message = typeof obj.message === "string" && obj.message ? obj.message : `Request failed (${error.status}).`;
+      return `${obj.code}: ${message}`;
+    }
     if (typeof obj.message === "string" && obj.message) {
       return obj.message;
     }
@@ -1722,10 +1742,6 @@ export async function retrySubmissionAction(formData: FormData) {
     throw new Error("Submission id is required.");
   }
 
-  await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
-  revalidatePath("/operations/jobs");
-  revalidatePath("/dashboard");
-
   const jobsParams = new URLSearchParams();
   jobsParams.set("submissionId", submissionId);
   const keepToJobs = (targetKey: string, formKey: string) => {
@@ -1736,6 +1752,17 @@ export async function retrySubmissionAction(formData: FormData) {
   };
   keepToJobs("connectorSlug", "submissionConnector");
   keepToJobs("status", "submissionStatus");
+  try {
+    await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
+    revalidatePath("/operations/jobs");
+    revalidatePath("/dashboard");
+  } catch (error: unknown) {
+    const rawMessage = error instanceof ApiHttpError
+      ? extractApiErrorMessage(error)
+      : error instanceof Error ? error.message : "Retry request failed.";
+    jobsParams.set("retryError", extractErrorCode(rawMessage));
+    jobsParams.set("retryErrorMessage", rawMessage);
+  }
   redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
 

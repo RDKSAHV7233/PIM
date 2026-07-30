@@ -481,18 +481,24 @@ export function PublishReadinessCard({
   payloadPreviewHref: string;
 }) {
   const isBlocked = !(preflight?.ok ?? false) || !(readiness?.ok ?? false) || fallbackAckError === "required";
+  const mappingCompleteness = readiness?.checks?.mappingCompleteness;
+  const productDataReadiness = readiness?.checks?.productDataReadiness;
+  const missingRequiredMappings = mappingCompleteness?.missingRequiredMappings ?? [];
+  const missingRequiredProductValues = productDataReadiness?.missingRequiredProductValues ?? [];
 
   return (
     <Card id="mapping-readiness">
-      <CardTitle>Publish Readiness (Hard Gate)</CardTitle>
+      <CardTitle>Publish Readiness</CardTitle>
       <div className="mt-2 grid gap-3 text-sm text-slate-700">
         <p className="text-xs text-slate-500">
-          Use this section after the draft is validated. Publish remains blocked until both mapping preflight and publish readiness are clear.
+          Publish remains blocked until mapping completeness and product data readiness are both clear.
         </p>
         <div>
-          <p className="font-medium">Mapping preflight</p>
+          <p className="font-medium">Mapping completeness</p>
           <StatusChip label={preflight?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(preflight)} />
-          <p className="mt-1 text-xs text-slate-500">Blockers: {preflight?.blockers.length ?? 0}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Required category attributes missing from mappings: {missingRequiredMappings.length}
+          </p>
         </div>
         {preflight?.matchedVersionIds?.length ? (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -510,9 +516,11 @@ export function PublishReadinessCard({
           </div>
         )}
         <div>
-          <p className="font-medium">Publish readiness</p>
+          <p className="font-medium">Product data readiness</p>
           <StatusChip label={readiness?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(readiness)} />
-          <p className="mt-1 text-xs text-slate-500">Blockers: {readiness?.blockers.length ?? 0}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Channel-required product values missing: {missingRequiredProductValues.length}
+          </p>
         </div>
         {isBlocked ? (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">

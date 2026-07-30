@@ -82,6 +82,31 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "A locale translation for this product could not be generated.",
     action: "Check the translation configuration and retry the export.",
   },
+  SHOPIFY_PUBLICATION_TARGETS_MISSING: {
+    title: "Shopify publication targets required",
+    description: "Retry was not queued because this Shopify account has no selected publication target.",
+    action: "Open the Shopify connector details, select the publication target, then retry this submission.",
+  },
+  SHOPIFY_CREDENTIAL_EXPIRED: {
+    title: "Shopify connection expired",
+    description: "Retry was not queued because this Shopify account's credentials have expired.",
+    action: "Reconnect the Shopify account in Connector settings, then retry this submission.",
+  },
+  SHOPIFY_INSTALLATION_NOT_FOUND: {
+    title: "Shopify connection not found",
+    description: "Retry was not queued because the Shopify installation for this submission no longer exists.",
+    action: "Reconnect Shopify or choose a different installation, then retry this submission.",
+  },
+  CONNECTOR_CREDENTIAL_EXPIRED: {
+    title: "Connector credentials expired",
+    description: "The retry could not complete because the connector's credentials have expired.",
+    action: "Reconnect the connector account, then retry this submission.",
+  },
+  CONNECTOR_INSTALLATION_NOT_FOUND: {
+    title: "Connector installation not found",
+    description: "The retry could not complete because the connector installation no longer exists.",
+    action: "Reconnect the connector, then retry this submission.",
+  },
 
   // ── Import job row states ───────────────────────────────────────────────────
   dead_letter: {
@@ -682,6 +707,9 @@ export function translateError(code: string | undefined | null): UserFacingError
   };
 }
 
+/** Alias for translateError — some callers read more naturally as "describe this error code." */
+export const describeError = translateError;
+
 export function extractErrorCode(input: string | undefined | null): string {
   const text = String(input ?? "");
   const normalized = text.trim().toLowerCase();
@@ -704,6 +732,11 @@ export function extractErrorCode(input: string | undefined | null): string {
     "CONNECTOR_UPDATE_FAILED",
     "CONNECTOR_PUBLISH_FAILED",
     "LOCALE_TRANSLATION_FAILED",
+    "SHOPIFY_PUBLICATION_TARGETS_MISSING",
+    "SHOPIFY_CREDENTIAL_EXPIRED",
+    "SHOPIFY_INSTALLATION_NOT_FOUND",
+    "CONNECTOR_CREDENTIAL_EXPIRED",
+    "CONNECTOR_INSTALLATION_NOT_FOUND",
     "REQUIRED_FIELD_MISSING",
     "REQUIRED_FIELD",
     "CHANNEL_REQUIRED_FIELD",

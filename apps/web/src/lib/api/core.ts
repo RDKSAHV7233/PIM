@@ -766,7 +766,7 @@ export interface MarketplaceSimulation {
   };
   validationSource?: "local_rules" | "amazon_sp_api";
   validationWarnings?: string[];
-  mappingSource: "system_pack" | "saved_template";
+  mappingSource: "system_pack" | "saved_template" | "connector_mapping_version";
   templateId: string | null;
   templateName: string | null;
   mappedPayload: Record<string, unknown>;
@@ -777,8 +777,8 @@ export interface MarketplaceChannelMapping {
   channel: MarketplaceChannel;
   displayName: string;
   requiredFields: string[];
-  fieldMap: Record<string, string>;
-  source: "system_pack" | "saved_template";
+  fieldMap: Record<string, string | string[]>;
+  source: "system_pack" | "saved_template" | "connector_mapping_version";
   templateId: string | null;
   templateName: string | null;
 }
@@ -789,7 +789,7 @@ export interface ChannelMappingTemplate {
   categoryId: string;
   channel: MarketplaceChannel;
   requiredFields: string[];
-  fieldMap: Record<string, string>;
+  fieldMap: Record<string, string | string[]>;
   isDefault: boolean;
   isSystemPack?: boolean;
   createdBy?: string | null;
@@ -980,7 +980,14 @@ export interface ConnectorPublishReadiness {
   ok: boolean;
   blockers: string[];
   warnings: string[];
-  checks: Record<string, unknown>;
+  checks: Record<string, unknown> & {
+    mappingCompleteness?: {
+      missingRequiredMappings: string[];
+    };
+    productDataReadiness?: {
+      missingRequiredProductValues: string[];
+    };
+  };
   overallScore?: number;
   breakdown?: {
     content:    ReadinessDimension;
