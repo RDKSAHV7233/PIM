@@ -68,6 +68,19 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
+      # redis-memory-server (used only by apps/api/test/integration/queue-durability.test.cjs,
+      # which needs its own isolated Redis instance separate from the redis:7 service above)
+      # tries to download a prebuilt Redis Stack binary during npm ci and falls back to
+      # compiling the full Stack (RediSearch/RedisJSON/RedisTimeSeries/Rust crates) from source
+      # on failure — a build that isn't reliable on a stock CI image and isn't needed here.
+      # Installing a plain redis-server via apt and pointing REDISMS_SYSTEM_BINARY at it skips
+      # that download/compile path entirely.
+      - name: Install system redis-server (for redis-memory-server)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          echo "REDISMS_SYSTEM_BINARY=$(command -v redis-server)" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: npm ci
 
