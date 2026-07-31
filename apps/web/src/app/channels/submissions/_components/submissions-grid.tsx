@@ -7,6 +7,7 @@ import { retrySubmissionInlineAction } from "@/app/actions";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { ConnectorSubmission } from "@/lib/api";
+import { describeError, extractErrorCode } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 
 function normalizeStatus(status: string): string {
@@ -67,7 +68,9 @@ export function SubmissionsGrid({ submissions, canRetrySubmission }: Submissions
     try {
       const result = await retrySubmissionInlineAction(submissionId);
       if (!result.ok) {
-        setRetryError(result.error);
+        const code = extractErrorCode(result.error);
+        const copy = describeError(code);
+        setRetryError(`${copy.title}: ${copy.description}${copy.action ? ` ${copy.action}` : ""}`);
         return;
       }
       setRetrySuccessId(submissionId);

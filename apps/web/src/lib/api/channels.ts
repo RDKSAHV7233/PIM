@@ -233,7 +233,7 @@ export async function updateMarketplaceTemplate(
     name?: string;
     channel?: MarketplaceChannel;
     requiredFields?: string[];
-    fieldMap?: Record<string, string>;
+    fieldMap?: Record<string, string | string[]>;
     isDefault?: boolean;
     version?: number;
   },

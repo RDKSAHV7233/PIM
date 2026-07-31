@@ -343,12 +343,21 @@ function extractResolvedCategoryTarget(resolvedMapping: Record<string, unknown> 
   return typeof target === "string" ? target.trim() : "";
 }
 
-function invertFieldMap(fieldMap: Record<string, string>): Record<string, string> {
+type FieldMapValue = string | string[];
+
+function normalizeTargetList(value: FieldMapValue | unknown): string[] {
+  const raw = Array.isArray(value) ? value : [value];
+  return uniqueStrings(raw.map((item) => String(item ?? "")));
+}
+
+function invertFieldMap(fieldMap: Record<string, FieldMapValue>): Record<string, string> {
   const inverted: Record<string, string> = {};
-  for (const [sourceField, targetField] of Object.entries(fieldMap)) {
+  for (const [sourceField, rawTargetField] of Object.entries(fieldMap)) {
     const source = String(sourceField ?? "").trim();
-    const target = String(targetField ?? "").trim();
-    if (source && target) {
+    if (!source) {
+      continue;
+    }
+    for (const target of normalizeTargetList(rawTargetField)) {
       inverted[target] = source;
     }
   }
@@ -357,7 +366,7 @@ function invertFieldMap(fieldMap: Record<string, string>): Record<string, string
 
 function buildSourceFieldOptions(
   attributeDefinitions: AttributeDefinition[],
-  currentFieldMap: Record<string, string>,
+  currentFieldMap: Record<string, FieldMapValue>,
   sampleProduct: Product | null,
 ): Array<{ value: string; label: string; preview: string | null }> {
   const options = new Map<string, string>();
@@ -539,11 +548,20 @@ export function buildMappingsViewModel({
   ]);
   const selectedTargetCategory = selectedPublishCategoryId || resolvedCategoryTarget || targetCategoryOptions[0] || "";
   const requiredTargetFields = uniqueStrings([...mapping.requiredFields, ...taxonomyDefaults]);
-  const currentFieldMap = Object.fromEntries(
-    Object.entries(mapping.fieldMap).map(([sourceField, targetField]) => [String(sourceField), String(targetField)]),
-  );
+  const currentFieldMap: Record<string, FieldMapValue> = {};
+  for (const [sourceField, targetField] of Object.entries(mapping.fieldMap)) {
+    const source = String(sourceField ?? "").trim();
+    const targets = normalizeTargetList(targetField);
+    if (!source || targets.length === 0) {
+      continue;
+    }
+    currentFieldMap[source] = targets.length === 1 ? targets[0] : targets;
+  }
   const mappedTargetToSource = invertFieldMap(currentFieldMap);
-  const targetFieldOptions = uniqueStrings([...requiredTargetFields, ...Object.values(currentFieldMap)]);
+  const targetFieldOptions = uniqueStrings([
+    ...requiredTargetFields,
+    ...Object.values(currentFieldMap).flatMap((target) => normalizeTargetList(target)),
+  ]);
   const sourceFieldOptions = buildSourceFieldOptions(
     categoryAttributes.filter((definition) => definition.appliesTo === "product"),
     currentFieldMap,
@@ -600,6 +618,7 @@ export function describeReadinessCode(code: string): string {
   if (code === "fallback_mapping_applied") return "A tenant fallback mapping is being applied for this category scope.";
   if (code === "using_system_default_mapping") return "This scope is falling back to the system default mapping pack.";
   if (code === "required_attribute_mapping_missing") return "One or more required attribute mappings are still missing.";
+  if (code === "required_product_data_missing") return "One or more channel-required product values are missing.";
   if (code === "field_mappings_missing") return "No field mappings are defined for this scope yet.";
   if (code === "connector_not_installed") return "Connector not installed for this channel.";
   if (code === "connector_credentials_expired") return "Connector credentials have expired.";

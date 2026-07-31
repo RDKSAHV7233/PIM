@@ -18,6 +18,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
+import { describeError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ interface OperationsJobsPageProps {
     status?: string;
     connectorSlug?: string;
     submissionId?: string;
+    retryError?: string;
+    retryErrorMessage?: string;
   }>;
 }
 
@@ -239,6 +242,8 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
   const connectorSlug = String(query.connectorSlug ?? "").trim().toLowerCase();
   const selectedSubmissionId = String(query.submissionId ?? "").trim();
+  const retryError = String(query.retryError ?? "").trim();
+  const retryErrorCopy = retryError ? describeError(retryError) : null;
   const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
@@ -602,6 +607,15 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
             </div>
           </Card>
         </section>
+
+        {retryErrorCopy ? (
+          <section className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">{retryErrorCopy.title}</p>
+            <p className="mt-1">{retryErrorCopy.description}</p>
+            {retryErrorCopy.action ? <p className="mt-1 text-xs">{retryErrorCopy.action}</p> : null}
+            {query.retryErrorMessage ? <p className="mt-2 text-xs text-amber-800">{query.retryErrorMessage}</p> : null}
+          </section>
+        ) : null}
 
         <FilterBar>
           <form method="get" className="grid gap-3 md:grid-cols-[200px_220px_140px_auto]">

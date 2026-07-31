@@ -37,9 +37,11 @@ function run() {
   );
   assert(
     actionsSource.includes("parseStructuredConnectorMappingRules") &&
+      actionsSource.includes("appendMappingTarget") &&
+      actionsSource.includes("Record<string, string | string[]>") &&
       actionsSource.includes("parseStructuredConnectorFallbackPolicy") &&
       actionsSource.includes("key.startsWith(\"mapTarget::\")"),
-    "Server actions must translate structured mapping editor inputs into the existing backend contract.",
+    "Server actions must preserve one-to-many structured mappings instead of silently overwriting duplicate PIM source selections.",
   );
 
   console.log(
@@ -49,7 +51,7 @@ function run() {
         validated: [
           "structured_mapping_editor_present",
           "advanced_json_demoted_from_primary_authoring",
-          "server_actions_serialize_structured_mapping_inputs",
+          "server_actions_preserve_one_to_many_mapping_inputs",
         ],
         checkedAt: new Date().toISOString(),
       },

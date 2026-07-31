@@ -27,7 +27,7 @@ export class CreateMappingTemplateDto {
   requiredFields!: string[];
 
   @IsObject()
-  fieldMap!: Record<string, string>;
+  fieldMap!: Record<string, string | string[]>;
 
   @IsOptional()
   @IsBoolean()
