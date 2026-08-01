@@ -106,6 +106,11 @@ export type ProductMetafieldPayload = {
   value: unknown;
 };
 
+export type ProductCustomMetaPayload = {
+  key: string;
+  value: unknown;
+};
+
 export type ProductPayload = {
   sku: string;
   title: string;
@@ -147,6 +152,8 @@ export type ProductPayload = {
   marketPrices?: MarketPrice[];
   /** Connector-ready product metafields compiled from tenant field mappings. */
   metafields?: ProductMetafieldPayload[];
+  /** Connector-ready product metadata compiled from tenant field mappings. */
+  customMeta?: ProductCustomMetaPayload[];
 };
 
 export type ValidationResult = {

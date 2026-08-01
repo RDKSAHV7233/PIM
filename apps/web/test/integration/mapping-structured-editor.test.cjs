@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const MAPPINGS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
+const CHANNEL_MAPPINGS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "channel-mappings.ts");
 const FALLBACK_CONFIG_FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "mapping-fallback-config.tsx");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
@@ -16,6 +17,7 @@ function assert(condition, message) {
 
 function run() {
   const mappingsSource = fs.readFileSync(MAPPINGS_PAGE, "utf8");
+  const channelMappingsSource = fs.readFileSync(CHANNEL_MAPPINGS_FILE, "utf8");
   const fallbackConfigSource = fs.readFileSync(FALLBACK_CONFIG_FILE, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
@@ -43,6 +45,19 @@ function run() {
       actionsSource.includes("key.startsWith(\"mapTarget::\")"),
     "Server actions must preserve one-to-many structured mappings instead of silently overwriting duplicate PIM source selections.",
   );
+  assert(
+    mappingsSource.includes("shopifyMetafields: connectorSlug === \"shopify\" ? (shopifyConfig?.metafields ?? []) : []") &&
+      channelMappingsSource.includes("ShopifyMetafieldDefinition") &&
+      channelMappingsSource.includes("productMetafields.${namespace}.${key}") &&
+      channelMappingsSource.includes("definition.ownerType"),
+    "Mapping editor must surface imported Shopify product metafields as structured target options instead of diagnostics-only rows.",
+  );
+  assert(
+    channelMappingsSource.includes("definition.appliesTo === \"variant\"") &&
+      channelMappingsSource.includes("Variant attribute") &&
+      !channelMappingsSource.includes("categoryAttributes.filter((definition) => definition.appliesTo === \"product\")"),
+    "Mapping source options must include variant-scoped AttributeDefinitions instead of silently filtering them out.",
+  );
 
   console.log(
     JSON.stringify(
@@ -52,6 +67,8 @@ function run() {
           "structured_mapping_editor_present",
           "advanced_json_demoted_from_primary_authoring",
           "server_actions_preserve_one_to_many_mapping_inputs",
+          "shopify_metafields_surface_as_mapping_target_options",
+          "variant_scoped_attributes_surface_as_mapping_sources",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -126,6 +126,13 @@ const SYSTEM_CONNECTOR_DEFAULTS: Record<string, Record<string, string>> = {
     "attributes.color": "options.color",
     "attributes.size": "options.size",
   },
+  woocommerce: {
+    title: "name",
+    description: "description",
+    "attributes.sku": "sku",
+    "attributes.mainImageUrl": "images.0.src",
+    "attributes.productType": "categories.0.name",
+  },
 };
 
 function parseObject(value: unknown): Record<string, unknown> {

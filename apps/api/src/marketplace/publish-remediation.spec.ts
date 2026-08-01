@@ -704,6 +704,7 @@ describe("Shopify mapped metafield payload execution", () => {
         attributes: {
           material: "Cotton",
           neckline: "Round",
+          fabricCare: "Machine wash",
           mainImageUrl: "https://cdn.example.com/kurta.jpg",
         },
         category: { id: "cat1", name: "Kurtas", path: "Apparel/Women/Kurtas" },
@@ -716,6 +717,12 @@ describe("Shopify mapped metafield payload execution", () => {
         field_mappings: {
           "attributes.material": "metafields.material",
           "attributes.neckline": "metafields.custom.neckline",
+          "attributes.fabricCare": {
+            targetType: "shopify_metafield",
+            namespace: "care",
+            key: "fabric_care",
+            metafieldType: "multi_line_text_field",
+          },
           title: "title",
         },
       },
@@ -744,6 +751,378 @@ describe("Shopify mapped metafield payload execution", () => {
         type: "single_line_text_field",
         value: "Round",
       },
+      {
+        namespace: "care",
+        key: "fabric_care",
+        type: "multi_line_text_field",
+        value: "Machine wash",
+      },
+    ]));
+  });
+
+  it("buildConnectorProductPayload leaves Shopify mapped metafields out when the rollout flag is disabled", async () => {
+    const previous = process.env.PIM_SHOPIFY_MAPPED_METAFIELDS_ENABLED;
+    process.env.PIM_SHOPIFY_MAPPED_METAFIELDS_ENABLED = "false";
+    try {
+      const { svc, connectorMappingService } = makePublishService({
+        product: {
+          id: "prod1",
+          status: "approved",
+          categoryId: "cat1",
+          version: 1,
+          updatedAt: new Date("2026-07-01T00:00:00Z"),
+          title: "Mapped Kurta",
+          description: "Cotton kurta",
+          brand: "Vexa",
+          hsnCode: "6204",
+          gstRate: 12,
+          attributes: {
+            material: "Cotton",
+            mainImageUrl: "https://cdn.example.com/kurta.jpg",
+          },
+          category: { id: "cat1", name: "Kurtas", path: "Apparel/Women/Kurtas" },
+          variants: [],
+          taxCodes: [],
+        },
+      });
+      connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+        resolvedMapping: {
+          field_mappings: {
+            "attributes.material": "metafields.material",
+          },
+        },
+      });
+
+      const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+        connectorSlug: "shopify",
+        installationId: "inst-shopify-1",
+      });
+
+      expect(payload.metafields).toBeUndefined();
+      expect(connectorMappingService.resolveEffectiveMapping).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PIM_SHOPIFY_MAPPED_METAFIELDS_ENABLED;
+      } else {
+        process.env.PIM_SHOPIFY_MAPPED_METAFIELDS_ENABLED = previous;
+      }
+    }
+  });
+});
+
+describe("WooCommerce mapped metadata payload execution", () => {
+  it("buildConnectorProductPayload compiles WooCommerce meta mapping targets into ProductPayload.customMeta", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: {
+        id: "prod1",
+        status: "approved",
+        categoryId: "cat1",
+        version: 1,
+        updatedAt: new Date("2026-07-01T00:00:00Z"),
+        title: "Mapped Kurta",
+        description: "Cotton kurta",
+        brand: "Vexa",
+        hsnCode: "6204",
+        gstRate: 12,
+        attributes: {
+          material: "Cotton",
+          fabricCare: "Machine wash",
+          mainImageUrl: "https://cdn.example.com/kurta.jpg",
+        },
+        category: { id: "cat1", name: "Kurtas", path: "Apparel/Women/Kurtas" },
+        variants: [],
+        taxCodes: [],
+      },
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.material": "meta_data.material",
+          "attributes.fabricCare": {
+            targetType: "woocommerce_meta",
+            key: "fabric_care",
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "woocommerce",
+      installationId: "inst-woo-1",
+    });
+
+    expect(connectorMappingService.resolveEffectiveMapping).toHaveBeenCalledWith(expect.objectContaining({
+      connectorSlug: "woocommerce",
+      categoryScope: "cat1",
+      installationId: "inst-woo-1",
+    }));
+    expect(payload.customMeta).toEqual(expect.arrayContaining([
+      { key: "material", value: "Cotton" },
+      { key: "fabric_care", value: "Machine wash" },
+    ]));
+  });
+});
+
+describe("mapping field transforms", () => {
+  function makeTransformProduct(attributes: Record<string, unknown>) {
+    return {
+      id: "prod1",
+      status: "approved",
+      categoryId: "cat1",
+      version: 1,
+      updatedAt: new Date("2026-07-01T00:00:00Z"),
+      title: "Transform Kurta",
+      description: "Cotton kurta",
+      brand: "Vexa",
+      hsnCode: "6204",
+      gstRate: 12,
+      attributes,
+      category: { id: "cat1", name: "Kurtas", path: "Apparel/Women/Kurtas" },
+      variants: [],
+      taxCodes: [],
+    };
+  }
+
+  it("default: applies the fallback only when the source value is empty", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({ mainImageUrl: "https://cdn.example.com/kurta.jpg" }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.material": {
+            targetType: "shopify_metafield",
+            namespace: "care",
+            key: "material",
+            transform: { type: "default", value: "Unknown" },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+    });
+
+    expect(payload.metafields).toEqual(expect.arrayContaining([
+      { namespace: "care", key: "material", type: "single_line_text_field", value: "Unknown" },
+    ]));
+  });
+
+  it("concat: joins multiple resolved source paths with the configured separator", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({
+        material: "Cotton",
+        pattern: "Solid",
+        mainImageUrl: "https://cdn.example.com/kurta.jpg",
+      }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          title: {
+            targetType: "shopify_metafield",
+            namespace: "custom",
+            key: "summary",
+            transform: {
+              type: "concat",
+              sources: ["attributes.material", "attributes.pattern"],
+              separator: " / ",
+            },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+    });
+
+    expect(payload.metafields).toEqual(expect.arrayContaining([
+      { namespace: "custom", key: "summary", type: "single_line_text_field", value: "Cotton / Solid" },
+    ]));
+  });
+
+  it("format: substitutes {value} into a template string", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({ weight: 2, mainImageUrl: "https://cdn.example.com/kurta.jpg" }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.weight": {
+            targetType: "woocommerce_meta",
+            key: "weight_label",
+            transform: { type: "format", template: "{value} kg" },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "woocommerce",
+      installationId: "inst-woo-1",
+    });
+
+    expect(payload.customMeta).toEqual(expect.arrayContaining([
+      { key: "weight_label", value: "2 kg" },
+    ]));
+  });
+
+  it("units: converts a numeric value using a named from/to factor", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({ weightKg: 1.5, mainImageUrl: "https://cdn.example.com/kurta.jpg" }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.weightKg": {
+            targetType: "woocommerce_meta",
+            key: "weight_grams",
+            transform: { type: "units", from: "kg", to: "g" },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "woocommerce",
+      installationId: "inst-woo-1",
+    });
+
+    expect(payload.customMeta).toEqual(expect.arrayContaining([
+      { key: "weight_grams", value: 1500 },
+    ]));
+  });
+
+  it("list: joins an array source into a delimited string", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({
+        careInstructions: ["Machine wash", "Do not bleach", "Iron low heat"],
+        mainImageUrl: "https://cdn.example.com/kurta.jpg",
+      }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.careInstructions": {
+            targetType: "shopify_metafield",
+            namespace: "care",
+            key: "instructions",
+            transform: { type: "list", mode: "join", separator: "; " },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+    });
+
+    expect(payload.metafields).toEqual(expect.arrayContaining([
+      {
+        namespace: "care",
+        key: "instructions",
+        type: "single_line_text_field",
+        value: "Machine wash; Do not bleach; Iron low heat",
+      },
+    ]));
+  });
+
+  it("lookup: maps a source value through a table, falling back when unmatched", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({ material: "Cotton", mainImageUrl: "https://cdn.example.com/kurta.jpg" }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.material": {
+            targetType: "woocommerce_meta",
+            key: "material_code",
+            transform: {
+              type: "lookup",
+              table: { Cotton: "COT-100", Linen: "LIN-100" },
+              fallback: "UNMAPPED",
+            },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "woocommerce",
+      installationId: "inst-woo-1",
+    });
+
+    expect(payload.customMeta).toEqual(expect.arrayContaining([
+      { key: "material_code", value: "COT-100" },
+    ]));
+  });
+
+  it("locale: selects a locale-specific value, falling back when the locale is missing", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({ material: "Cotton", mainImageUrl: "https://cdn.example.com/kurta.jpg" }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.material": {
+            targetType: "shopify_metafield",
+            namespace: "custom",
+            key: "material_localized",
+            transform: {
+              type: "locale",
+              locale: "hi-IN",
+              values: { "hi-IN": "सूती" },
+              fallback: "Cotton (default)",
+            },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+    });
+
+    expect(payload.metafields).toEqual(expect.arrayContaining([
+      { namespace: "custom", key: "material_localized", type: "single_line_text_field", value: "सूती" },
+    ]));
+  });
+
+  it("locale: falls back when the requested locale has no value", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: makeTransformProduct({ material: "Cotton", mainImageUrl: "https://cdn.example.com/kurta.jpg" }),
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.material": {
+            targetType: "shopify_metafield",
+            namespace: "custom",
+            key: "material_localized",
+            transform: {
+              type: "locale",
+              locale: "fr-FR",
+              values: { "hi-IN": "सूती" },
+              fallback: "Cotton (default)",
+            },
+          },
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+    });
+
+    expect(payload.metafields).toEqual(expect.arrayContaining([
+      { namespace: "custom", key: "material_localized", type: "single_line_text_field", value: "Cotton (default)" },
     ]));
   });
 });
