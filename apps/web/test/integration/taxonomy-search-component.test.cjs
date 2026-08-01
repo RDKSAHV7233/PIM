@@ -16,10 +16,27 @@ function run() {
   const source = fs.readFileSync(FILE, "utf8");
   assert(source.includes("export function MappingsFilterCard"), "Taxonomy search module must export the filter card.");
   assert(source.includes("export function TaxonomyAlignmentCard"), "Taxonomy search module must export the alignment card.");
-  assert(source.includes("Publish category search"), "Taxonomy search module must render the publish-category search input label.");
+  assert(source.includes("Publish category filter"), "Taxonomy search module must render submit-driven category filter copy.");
+  assert(
+    source.includes("Filter target category path...") &&
+      source.includes("Apply the category path filter, then use a result below"),
+    "Taxonomy search copy must match the apply-scope submit behavior instead of promising live search.",
+  );
   assert(source.includes("Use this category"), "Taxonomy search module must render a direct taxonomy selection action.");
   assert(source.includes("Current scope"), "Taxonomy search module must summarize the selected scope before continuing.");
-  console.log(JSON.stringify({ status: "ok", validated: ["taxonomy_search_module_exports_isolated_cards"] }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "taxonomy_search_module_exports_isolated_cards",
+          "taxonomy_filter_copy_matches_apply_scope_submit_behavior",
+        ],
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 try {

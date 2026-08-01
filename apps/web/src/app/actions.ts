@@ -875,6 +875,7 @@ export async function createAttributeDefinitionAction(formData: FormData) {
     allowedValues,
   });
   revalidatePath("/catalog/attributes");
+  revalidatePath("/channels/mappings");
 }
 
 export async function validateProductAction(formData: FormData) {

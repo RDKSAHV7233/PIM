@@ -127,17 +127,17 @@ export function MappingsFilterCard({
           ) : null}
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-taxonomy-q">
-              Publish category search
+              Publish category filter
             </label>
             <Input
               id="mapping-taxonomy-q"
               name="taxonomyQ"
               defaultValue={taxonomyQ}
-              placeholder="Search target category path..."
+              placeholder="Filter target category path..."
               aria-describedby="mapping-taxonomy-q-help"
             />
             <p id="mapping-taxonomy-q-help" className="text-xs text-slate-500">
-              Search the target channel taxonomy, then use a result below to lock the publish category for this mapping.
+              Apply the category path filter, then use a result below to lock the publish category for this mapping.
             </p>
           </div>
           <div className="flex items-end">
