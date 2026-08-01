@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { ConnectorFrameworkService } from "../connector-framework/connector-framework.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
+import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import {
   CapabilityNotSupportedError,
@@ -1906,6 +1907,7 @@ export class MarketplaceService implements OnModuleInit {
     const productsById = new Map(products.map((product) => [product.id, product]));
     const mappingCache = new Map<string, EffectiveMapping>();
     const categoryChannelPairs = this.collectBatchReadinessPairs(products, channels);
+    const publishCapableChannels = await this.getPublishCapableChannels();
     const maxConcurrentTasks = 12;
     const channelTaskConcurrency = 3;
     const tasks: Array<() => Promise<{ productId: string; readiness: MarketplaceReadinessSummary[] }>> = [];
@@ -1941,7 +1943,7 @@ export class MarketplaceService implements OnModuleInit {
                 undefined,
                 mappingCache,
               );
-              return this.summarizeReadiness(channel, simulation);
+              return this.summarizeReadiness(channel, simulation, publishCapableChannels.has(channel));
             } catch (err) {
               this.logger.warn("Channel readiness evaluation failed", {
                 productId: product.id,
@@ -2025,6 +2027,7 @@ export class MarketplaceService implements OnModuleInit {
   private summarizeReadiness(
     channel: MarketplaceChannel,
     simulation: Awaited<ReturnType<MarketplaceService["buildSimulationFromProduct"]>>,
+    hasPublishCapableConnector: boolean,
   ): MarketplaceReadinessSummary {
     const missingFieldKeys = new Set(
       simulation.missingFields.map((fieldPath) => String(fieldPath ?? "").trim().toLowerCase()),
@@ -2037,8 +2040,13 @@ export class MarketplaceService implements OnModuleInit {
       return !(issue.code === "CHANNEL_REQUIRED_FIELD" && missingFieldKeys.has(fieldPath));
     }).length;
     const channelWarningCount = simulation.channelIssues.filter((issue) => issue.severity === "warning").length;
+    // Content/mapping validity alone isn't publishable: without an installed, active
+    // connector that supports PUBLISH for this channel there is nowhere to send the
+    // export, so this must not report "ready" — that previously disagreed with the
+    // product detail page's own "Connector readiness: Missing" card for the same channel.
+    const connectorErrorCount = hasPublishCapableConnector ? 0 : 1;
     const errorCount =
-      simulation.missingFields.length + simulation.complianceSummary.errorCount + channelErrorCount;
+      simulation.missingFields.length + simulation.complianceSummary.errorCount + channelErrorCount + connectorErrorCount;
     const warningCount = simulation.complianceSummary.warningCount + channelWarningCount;
     const status: MarketplaceReadinessStatus =
       errorCount > 0 ? "errors" : warningCount > 0 ? "warnings" : "ready";
@@ -2049,6 +2057,72 @@ export class MarketplaceService implements OnModuleInit {
       errorCount,
       warningCount,
     };
+  }
+
+  /**
+   * Channels with at least one ACTIVE, PUBLISH-capable connector installation for the
+   * current tenant. Computed once per batch call (tenant-wide, not per-product) and used
+   * to keep readiness/batch in agreement with the connector-installation check that the
+   * product detail page runs separately.
+   */
+  private async getPublishCapableChannels(): Promise<Set<MarketplaceChannel>> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const rows = await tenantRaw<Array<{ slug: string; capabilities: unknown; metadata: unknown; credentialsValidated: boolean }>>(
+      this.prisma.tenant(tenantKey),
+      `
+      SELECT cd.slug, cd.capabilities, ci.metadata,
+        EXISTS (
+          SELECT 1 FROM connector_credentials cc
+          WHERE cc.installation_id = ci.id
+            AND cc.tenant_key = ci.tenant_key
+            AND cc.last_validated_at IS NOT NULL
+            AND cc.failure_reason IS NULL
+        ) AS "credentialsValidated"
+      FROM connector_installations ci
+      JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ci.tenant_key = $1 AND ci.status = 'ACTIVE'
+      `,
+      [tenantKey],
+    );
+
+    const channels = new Set<MarketplaceChannel>();
+    for (const row of rows) {
+      if (!parseCapabilities(row.capabilities).includes("PUBLISH")) {
+        continue;
+      }
+      const slug = String(row.slug);
+      // VEXA-202: Shopify's managed-install path inserts the installation row as
+      // 'ACTIVE' before the OAuth handshake completes (connector-installer.service.ts).
+      // metadata.shopId is only written once fetchShopIdentity succeeds post-OAuth —
+      // reuse that same signal the connector-detail page already uses for its own
+      // "awaiting OAuth authorization" messaging, so this check doesn't disagree with it.
+      // Other connectors don't use this two-phase pattern, so this is a no-op for them.
+      if (slug === "shopify" && !this.hasCompletedShopifyAuth(row.metadata)) {
+        continue;
+      }
+      // VEXA-301-SPIKE: Flipkart/Amazon silently skip validateCredentials() when every
+      // credential field is left blank at install (captureAndValidateFlipkartCredentials /
+      // captureAndValidateAmazonCredentials), leaving the row 'ACTIVE' with nothing ever
+      // confirmed real. Require at least one credential row that actually passed validation.
+      if ((slug === "flipkart" || slug === "amazon-in") && !row.credentialsValidated) {
+        continue;
+      }
+      const channel = mapConnectorSlugToMarketplaceChannel(slug);
+      if (channel) {
+        channels.add(channel);
+      }
+    }
+    return channels;
+  }
+
+  /** Mirrors the `Boolean(metadataShopDomain && metadataShopId)` check the connector-detail
+   *  page already uses (apps/web/.../channels/connectors/[installationId]/page.tsx). */
+  private hasCompletedShopifyAuth(metadata: unknown): boolean {
+    if (!metadata || typeof metadata !== "object") {
+      return false;
+    }
+    const shopId = (metadata as Record<string, unknown>).shopId;
+    return typeof shopId === "string" && shopId.trim().length > 0;
   }
 
   private async buildSimulationFromProduct(

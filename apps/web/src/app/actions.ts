@@ -556,6 +556,10 @@ function resolveInstallConnectorError(error: unknown): string {
     if (code) {
       return code;
     }
+    // Structured response body but no `error` code (e.g. the default NestJS
+    // {statusCode, message} shape for an unmapped exception) — don't fall
+    // through to the raw JSON-stringified body below; treat as unmapped.
+    return "install_failed";
   }
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim();

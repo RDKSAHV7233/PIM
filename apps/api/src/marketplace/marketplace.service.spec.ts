@@ -486,6 +486,9 @@ describe("MarketplaceService.getBatchReadiness", () => {
       { id: "prod-2", categoryId: "cat-2", validationIssues: [] },
     ]);
     jest.spyOn(svcInternal, "getEffectiveMappingCached").mockResolvedValue(mockResolvedMapping());
+    // No publish-capable connector installed for this tenant — every channel picks up
+    // the "nowhere to publish to" error alongside its content/mapping errors.
+    jest.spyOn(svcInternal, "getPublishCapableChannels").mockResolvedValue(new Set());
     jest.spyOn(svcInternal, "buildSimulationFromProduct").mockImplementation(async (_product, channel) => ({
       missingFields: channel === "amazon" ? ["title", "brand"] : ["attributes.mainImageUrl"],
       channelIssues: [
@@ -509,13 +512,13 @@ describe("MarketplaceService.getBatchReadiness", () => {
     expect(result.items[0]?.readiness[0]).toMatchObject({
       channel: "amazon",
       status: "errors",
-      errorCount: 3,
+      errorCount: 4,
       warningCount: 0,
     });
     expect(result.items[0]?.readiness[1]).toMatchObject({
       channel: "shopify",
       status: "errors",
-      errorCount: 2,
+      errorCount: 3,
       warningCount: 0,
     });
   });
@@ -528,6 +531,7 @@ describe("MarketplaceService.getBatchReadiness", () => {
       { id: "prod-1", categoryId: "cat-1", validationIssues: [] },
     ]);
     jest.spyOn(svcInternal, "getEffectiveMappingCached").mockResolvedValue(mockResolvedMapping());
+    jest.spyOn(svcInternal, "getPublishCapableChannels").mockResolvedValue(new Set());
 
     const buildSimulationFromProduct = jest.spyOn(svcInternal, "buildSimulationFromProduct");
     buildSimulationFromProduct
@@ -585,13 +589,15 @@ describe("MarketplaceService.getBatchReadiness", () => {
     expect(initial.items[0]?.readiness[0]).toMatchObject({
       channel: "amazon",
       status: "errors",
-      errorCount: 4,
+      errorCount: 5,
       warningCount: 3,
     });
+    // Still "errors" (not "warnings") after content/mapping issues clear — no
+    // publish-capable connector is installed, so the channel stays blocked.
     expect(refreshed.items[0]?.readiness[0]).toMatchObject({
       channel: "amazon",
-      status: "warnings",
-      errorCount: 0,
+      status: "errors",
+      errorCount: 1,
       warningCount: 2,
     });
     expect(refreshed.items[0]?.readiness[0]?.errorCount).toBeLessThan(initial.items[0]?.readiness[0]?.errorCount ?? 0);
@@ -605,6 +611,7 @@ describe("MarketplaceService.getBatchReadiness", () => {
       { id: "prod-1", categoryId: "cat-1", validationIssues: [] },
     ]);
     jest.spyOn(svcInternal, "getEffectiveMappingCached").mockResolvedValue(mockResolvedMapping());
+    jest.spyOn(svcInternal, "getPublishCapableChannels").mockResolvedValue(new Set());
     jest.spyOn(svcInternal, "buildSimulationFromProduct").mockResolvedValue({
       missingFields: [],
       channelIssues: [],
@@ -625,5 +632,90 @@ describe("MarketplaceService.getBatchReadiness", () => {
         },
       ],
     });
+  });
+});
+
+describe("MarketplaceService.getPublishCapableChannels (VEXA-202)", () => {
+  function makeServiceWithRawRows(rows: Array<{ slug: string; capabilities: string[]; metadata: unknown; credentialsValidated?: boolean }>) {
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        $queryRawUnsafe: jest.fn().mockResolvedValue(rows),
+      }),
+    };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    };
+    const connectorRegistry = { get: jest.fn(), list: jest.fn().mockReturnValue([]) };
+    const planUsageService = {};
+    const queueService = {};
+    const metricsService = {};
+    const connectorMappingService = {};
+    const notificationsService = {};
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const accessPolicy = {};
+    const mediaStorage = {};
+
+    return new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      connectorRegistry as never,
+      planUsageService as never,
+      queueService as never,
+      metricsService as never,
+      connectorMappingService as never,
+      notificationsService as never,
+      logger as never,
+      accessPolicy as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      mediaStorage as never,
+    );
+  }
+
+  it("excludes a Shopify installation that is ACTIVE but has not completed OAuth (no metadata.shopId)", async () => {
+    const svc = makeServiceWithRawRows([
+      { slug: "shopify", capabilities: ["PUBLISH"], metadata: { authMode: "guided_managed_install", shopDomain: "qa-managed-test.myshopify.com" } },
+    ]);
+    const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
+    expect(result.has("shopify")).toBe(false);
+  });
+
+  it("includes a Shopify installation once metadata.shopId is recorded (OAuth completed)", async () => {
+    const svc = makeServiceWithRawRows([
+      { slug: "shopify", capabilities: ["PUBLISH"], metadata: { shopDomain: "qa-managed-test.myshopify.com", shopId: "gid://shopify/Shop/1" } },
+    ]);
+    const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
+    expect(result.has("shopify")).toBe(true);
+  });
+
+  it("does not require metadata.shopId for non-Shopify connectors", async () => {
+    const svc = makeServiceWithRawRows([
+      { slug: "flipkart", capabilities: ["PUBLISH", "VALIDATE"], metadata: {}, credentialsValidated: true },
+    ]);
+    const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
+    expect(result.has("flipkart")).toBe(true);
+  });
+
+  it("excludes a Flipkart installation that is ACTIVE but has no validated credentials (VEXA-301-SPIKE: blank-credentials install)", async () => {
+    const svc = makeServiceWithRawRows([
+      { slug: "flipkart", capabilities: ["PUBLISH", "VALIDATE"], metadata: {}, credentialsValidated: false },
+    ]);
+    const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
+    expect(result.has("flipkart")).toBe(false);
+  });
+
+  it("includes a Flipkart installation once credentials have been validated", async () => {
+    const svc = makeServiceWithRawRows([
+      { slug: "flipkart", capabilities: ["PUBLISH", "VALIDATE"], metadata: {}, credentialsValidated: true },
+    ]);
+    const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
+    expect(result.has("flipkart")).toBe(true);
+  });
+
+  it("excludes an Amazon installation that is ACTIVE but has no validated credentials", async () => {
+    const svc = makeServiceWithRawRows([
+      { slug: "amazon-in", capabilities: ["PUBLISH", "VALIDATE"], metadata: {}, credentialsValidated: false },
+    ]);
+    const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
+    expect(result.has("amazon")).toBe(false);
   });
 });

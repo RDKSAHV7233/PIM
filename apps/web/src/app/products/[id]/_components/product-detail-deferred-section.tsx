@@ -24,6 +24,7 @@ import { OverviewTab } from "./overview-tab";
 import { ProductDetailSideRail } from "./product-detail-side-rail";
 import {
   asRecord,
+  isConnectorReadyToPublish,
   mapMarketplaceChannelToConnectorSlug,
 } from "./product-detail-shared";
 import type { DetailTab, ProductDetailPageData } from "./product-detail-types";
@@ -137,7 +138,7 @@ export async function ProductDetailDeferredSection({
 
   const publishCapableConnectorSlugs = new Set(
     installedConnectors
-      .filter((connector) => connector.status === "ACTIVE" && connector.capabilities.some((capability) => capability === "PUBLISH"))
+      .filter((connector) => isConnectorReadyToPublish(connector) && connector.capabilities.some((capability) => capability === "PUBLISH"))
       .map((connector) => connector.slug),
   );
   const publishableChannels = channels.filter((channel) =>
@@ -150,12 +151,12 @@ export async function ProductDetailDeferredSection({
   const mappingManagerInstallation =
     installedConnectors.find(
       (connector) =>
-        connector.status === "ACTIVE" &&
+        isConnectorReadyToPublish(connector) &&
         connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel),
     ) ?? null;
 
   const publishableInstallations = installedConnectors
-    .filter(c => c.status === "ACTIVE" && c.capabilities.some(cap => cap === "PUBLISH"))
+    .filter(c => isConnectorReadyToPublish(c) && c.capabilities.some(cap => cap === "PUBLISH"))
     .map(c => ({ id: c.id, accountAlias: c.accountAlias, slug: c.slug }));
 
   const pageData: ProductDetailPageData = {

@@ -2,7 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  ServiceUnavailableException
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -38,6 +39,7 @@ import {
   ConnectorPermissionService,
 } from "./connector-permission.service";
 import { ConnectorCredentialEncryptionService } from "./credential-encryption.service";
+import { ShopifyApiHttpError } from "../connectors/shopify/shopify-api-client.service";
 import { ConfigureConnectorDto } from "./dto/configure-connector.dto";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
@@ -344,7 +346,7 @@ export class ConnectorInstallerService {
           }
         } catch (error) {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
-          throw error;
+          throw this.translateShopifyInstallError(error);
         }
       } else if (normalizedSlug === "meesho") {
         try {
@@ -484,7 +486,14 @@ export class ConnectorInstallerService {
         ci.installed_by AS "installedBy",
         ci.last_sync_at AS "lastSyncAt",
         ci.created_at AS "createdAt",
-        ci.updated_at AS "updatedAt"
+        ci.updated_at AS "updatedAt",
+        EXISTS (
+          SELECT 1 FROM connector_credentials cc
+          WHERE cc.installation_id = ci.id
+            AND cc.tenant_key = ci.tenant_key
+            AND cc.last_validated_at IS NOT NULL
+            AND cc.failure_reason IS NULL
+        ) AS "credentialsValidated"
       FROM connector_installations ci
       JOIN connector_definitions cd ON cd.id = ci.connector_id
       WHERE ci.tenant_key = $1
@@ -522,6 +531,11 @@ export class ConnectorInstallerService {
           lastSyncAt: row.lastSyncAt ? String(row.lastSyncAt) : null,
           createdAt: String(row.createdAt),
           updatedAt: String(row.updatedAt),
+          // Only flipkart/amazon-in have the "blank credentials, skip validation"
+          // gap this field exists to catch — see connector.types.ts. Every other
+          // connector reports true so this field is a no-op for them.
+          credentialsValidated:
+            slug === "flipkart" || slug === "amazon-in" ? Boolean(row.credentialsValidated) : true,
           actions: actor
             ? await this.connectorPermissionService.buildInstallationActions(actor, slug, accountAlias)
             : undefined,
@@ -585,7 +599,14 @@ export class ConnectorInstallerService {
         ci.installed_by AS "installedBy",
         ci.last_sync_at AS "lastSyncAt",
         ci.created_at AS "createdAt",
-        ci.updated_at AS "updatedAt"
+        ci.updated_at AS "updatedAt",
+        EXISTS (
+          SELECT 1 FROM connector_credentials cc
+          WHERE cc.installation_id = ci.id
+            AND cc.tenant_key = ci.tenant_key
+            AND cc.last_validated_at IS NOT NULL
+            AND cc.failure_reason IS NULL
+        ) AS "credentialsValidated"
       FROM connector_installations ci
       JOIN connector_definitions cd ON cd.id = ci.connector_id
       WHERE ci.tenant_key = $1
@@ -623,6 +644,8 @@ export class ConnectorInstallerService {
       lastSyncAt: row.lastSyncAt ? String(row.lastSyncAt) : null,
       createdAt: String(row.createdAt),
       updatedAt: String(row.updatedAt),
+      credentialsValidated:
+        slug === "flipkart" || slug === "amazon-in" ? Boolean(row.credentialsValidated) : true,
       actions: await this.connectorPermissionService.buildInstallationActions(actor, slug, accountAlias),
     };
 
@@ -1793,6 +1816,35 @@ export class ConnectorInstallerService {
         },
         updatedAt: new Date(),
       },
+    });
+  }
+
+  /**
+   * VEXA-201: Shopify install used to let a raw ShopifyApiHttpError (or worse,
+   * a bare Error from the HTTP client) reach the global exception filter as an
+   * opaque 500. 404/401/403 are user-fixable (bad domain, bad token) and should
+   * be a 400 with a specific message; anything else is a genuine Shopify-side
+   * problem and should read as an outage, not a request error.
+   */
+  private translateShopifyInstallError(error: unknown): Error {
+    if (!(error instanceof ShopifyApiHttpError)) {
+      return error instanceof Error ? error : new Error(String(error));
+    }
+    if (error.status === 404) {
+      return new BadRequestException({
+        error: "SHOPIFY_STORE_NOT_FOUND",
+        message: `We couldn't find a Shopify store at ${error.shopDomain}. Check the store domain and try again.`,
+      });
+    }
+    if (error.status === 401 || error.status === 403) {
+      return new BadRequestException({
+        error: "SHOPIFY_TOKEN_REJECTED",
+        message: "Shopify rejected that access token. Check it and try again.",
+      });
+    }
+    return new ServiceUnavailableException({
+      error: "SHOPIFY_UPSTREAM_UNAVAILABLE",
+      message: "Shopify's API is temporarily unavailable. Please try again shortly.",
     });
   }
 

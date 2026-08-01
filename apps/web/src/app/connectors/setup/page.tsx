@@ -85,6 +85,18 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   if (value === "SHOPIFY_SHOP_DOMAIN_INVALID") {
     return "Shopify store domain must be a valid *.myshopify.com hostname.";
   }
+  if (value === "SHOPIFY_STORE_NOT_FOUND") {
+    return "We couldn't find a Shopify store at that domain. Check the store domain and try again.";
+  }
+  if (value === "SHOPIFY_TOKEN_REJECTED") {
+    return "Shopify rejected that access token. Check it and try again.";
+  }
+  if (value === "SHOPIFY_UPSTREAM_UNAVAILABLE") {
+    return "Shopify's API is temporarily unavailable. Please try again shortly.";
+  }
+  if (value === "install_failed") {
+    return `${connectorLabel} install failed. Check your details and try again, or contact support if this continues.`;
+  }
   return `${connectorLabel} install failed: ${value}`;
 }
 
