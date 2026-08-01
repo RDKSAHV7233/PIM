@@ -67,6 +67,13 @@ type EffectiveMapping = MappingPack & {
   source: "system_pack" | "saved_template" | "connector_mapping_version";
 };
 
+type ConnectorProductPayloadOptions = {
+  channel?: string;
+  connectorSlug?: string;
+  installationId?: string | null;
+  templateId?: string;
+};
+
 type AuthoritativeChannelIssue = {
   severity: "error" | "warning";
   code: string;
@@ -680,7 +687,11 @@ export class MarketplaceService implements OnModuleInit {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     try {
       const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, resolvedInstallationId);
-      const productPayload = await this.buildConnectorProductPayload(productId);
+      const productPayload = await this.buildConnectorProductPayload(productId, {
+        channel: dto.channel,
+        installationId: resolvedInstallationId,
+        templateId: dto.templateId,
+      });
       const validationResult = await this.connectorFramework.validate(installation, productPayload);
       if (!validationResult.isValid) {
         this.logger.warn("pre-flight connector validation failed — job will proceed to async processing", {
@@ -1476,7 +1487,10 @@ export class MarketplaceService implements OnModuleInit {
       }
       throw error;
     }
-    const productPayload = await this.buildConnectorProductPayload(String(submission.productId));
+    const productPayload = await this.buildConnectorProductPayload(String(submission.productId), {
+      connectorSlug: String(submission.connectorSlug ?? "").toLowerCase(),
+      installationId: submissionInstallationId,
+    });
     const payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
 
     let recordedAttempt;
@@ -2937,7 +2951,10 @@ export class MarketplaceService implements OnModuleInit {
       // evidence reflects what was actually sent, not just what the mapping predicted.
       let payloadSnapshot: Record<string, unknown> = simulation.mappedPayload;
       try {
-        const productPayload = await this.buildConnectorProductPayload(job.productId);
+        const productPayload = await this.buildConnectorProductPayload(job.productId, {
+          channel: job.channel,
+          installationId: job.installationId,
+        });
         payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
 
         // Only look up prior external refs for connectors that support update-in-place.
@@ -3106,7 +3123,10 @@ export class MarketplaceService implements OnModuleInit {
     return installation.id;
   }
 
-  private async buildConnectorProductPayload(productId: string): Promise<ProductPayload> {
+  private async buildConnectorProductPayload(
+    productId: string,
+    options: ConnectorProductPayloadOptions = {},
+  ): Promise<ProductPayload> {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
@@ -3259,7 +3279,7 @@ export class MarketplaceService implements OnModuleInit {
     const parentSku = this.firstNonEmptyString(attributes.parentSku, attributes.parent_sku) || undefined;
     const variationTheme = this.firstNonEmptyString(attributes.variationTheme, attributes.variation_theme) || undefined;
 
-    return {
+    const payload: ProductPayload = {
       sku,
       title: this.firstNonEmptyString(product.title),
       description: this.firstNonEmptyString(product.description),
@@ -3298,6 +3318,101 @@ export class MarketplaceService implements OnModuleInit {
       tags: tags && tags.length > 0 ? tags : undefined,
       status,
     };
+    return this.applyMappedConnectorTargets(payload, {
+      ...options,
+      categoryId: product.category.id,
+    });
+  }
+
+  private async applyMappedConnectorTargets(
+    payload: ProductPayload,
+    options: ConnectorProductPayloadOptions & { categoryId: string },
+  ): Promise<ProductPayload> {
+    const connectorSlug = String(
+      options.connectorSlug ?? (options.channel ? this.mapChannelToConnectorSlug(options.channel) : ""),
+    ).trim().toLowerCase();
+    if (connectorSlug !== "shopify") {
+      return payload;
+    }
+
+    const channel = options.channel ?? this.mapConnectorSlugToChannel(connectorSlug);
+    const mapping = await this.getEffectiveMapping(
+      channel,
+      options.categoryId,
+      options.templateId,
+      options.installationId,
+    );
+    const mappedMetafields = this.compileShopifyMetafieldsFromMapping(payload, mapping.fieldMap);
+    if (mappedMetafields.length === 0) {
+      return payload;
+    }
+    return {
+      ...payload,
+      metafields: [...(payload.metafields ?? []), ...mappedMetafields],
+    };
+  }
+
+  private compileShopifyMetafieldsFromMapping(
+    payload: ProductPayload,
+    fieldMap: Record<string, string | string[]>,
+  ): NonNullable<ProductPayload["metafields"]> {
+    const metafields: NonNullable<ProductPayload["metafields"]> = [];
+    const seen = new Set<string>();
+    const attributes = this.asRecord(payload.attributes);
+
+    for (const [sourceField, rawTargetField] of Object.entries(fieldMap)) {
+      const value = this.getFieldValue(sourceField, payload, attributes);
+      if (this.isEmpty(value)) {
+        continue;
+      }
+      for (const targetField of normalizeFieldMapTargets(rawTargetField)) {
+        const target = this.parseShopifyMetafieldTarget(targetField);
+        if (!target) {
+          continue;
+        }
+        const identity = `${target.namespace}.${target.key}`;
+        if (seen.has(identity)) {
+          continue;
+        }
+        seen.add(identity);
+        metafields.push({
+          namespace: target.namespace,
+          key: target.key,
+          type: "single_line_text_field",
+          value,
+        });
+      }
+    }
+
+    return metafields;
+  }
+
+  private parseShopifyMetafieldTarget(targetField: string): { namespace: string; key: string } | null {
+    const target = String(targetField ?? "").trim();
+    const prefixes = ["metafields.", "productMetafields."];
+    const prefix = prefixes.find((item) => target.startsWith(item));
+    if (!prefix) {
+      return null;
+    }
+    const remainder = target.slice(prefix.length).trim();
+    if (!remainder) {
+      return null;
+    }
+    const parts = remainder.split(".").map((part) => this.normalizeShopifyMetafieldIdentifier(part)).filter(Boolean);
+    const namespace = parts.length >= 2 ? parts[0] : "pim_connector";
+    const key = parts.length >= 2 ? parts.slice(1).join("_") : parts[0];
+    if (!namespace || !key) {
+      return null;
+    }
+    return { namespace, key };
+  }
+
+  private normalizeShopifyMetafieldIdentifier(value: string): string {
+    return String(value ?? "")
+      .trim()
+      .replace(/[^A-Za-z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 64);
   }
 
   private async buildSubmissionStatusLookupRef(productId: string, externalRef: string): Promise<string> {
@@ -3652,7 +3767,10 @@ export class MarketplaceService implements OnModuleInit {
       return { hasExistingProduct: false, noChanges: false, changes: [], resolvedInstallationId };
     }
 
-    const payload = await this.buildConnectorProductPayload(productId);
+    const payload = await this.buildConnectorProductPayload(productId, {
+      connectorSlug,
+      installationId: resolvedInstallationId,
+    });
 
     const connector = this.connectorRegistry.getConnector(connectorSlug) as unknown as {
       previewChanges: (ctx: unknown, product: ProductPayload, gid: string) => Promise<ShopifyProductPreview>;
@@ -4268,7 +4386,14 @@ export class MarketplaceService implements OnModuleInit {
       return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded);
     }
 
-    const products = await Promise.all(eligibleProductIds.map((id) => this.buildConnectorProductPayload(id)));
+    const products = await Promise.all(
+      eligibleProductIds.map((id) =>
+        this.buildConnectorProductPayload(id, {
+          connectorSlug: installationRow.connectorSlug,
+          installationId,
+        }),
+      ),
+    );
 
     const bulkRef = await this.connectorFramework.publishBulk(installation, products);
 
@@ -4416,7 +4541,14 @@ export class MarketplaceService implements OnModuleInit {
 
     const [installation, products] = await Promise.all([
       this.connectorFramework.requireInstallation(tenantKey, installationRow.connectorSlug, installationId),
-      Promise.all(productIds.map((id) => this.buildConnectorProductPayload(id))),
+      Promise.all(
+        productIds.map((id) =>
+          this.buildConnectorProductPayload(id, {
+            connectorSlug: installationRow.connectorSlug,
+            installationId,
+          }),
+        ),
+      ),
     ]);
 
     const exportFile = await this.connectorFramework.exportProducts(installation, products);

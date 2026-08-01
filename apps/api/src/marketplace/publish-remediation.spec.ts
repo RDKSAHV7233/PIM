@@ -53,6 +53,9 @@ function makePublishService(overrides?: {
       connectorDefinition: {
         findFirst: jest.fn().mockResolvedValue(opts.connectorDef !== undefined ? opts.connectorDef : { id: "def-1" }),
       },
+      channelMappingTemplate: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       connectorInstallation: {
         count: jest.fn().mockResolvedValue(opts.installationCount ?? 1),
         findMany: jest.fn().mockResolvedValue(opts.activeInstallations ?? [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }]),
@@ -77,6 +80,7 @@ function makePublishService(overrides?: {
   const connectorMappingService = {
     assertPublishReadyForExport: jest.fn().mockResolvedValue(undefined),
     evaluateConnectorPublishReadiness: jest.fn().mockResolvedValue({ ok: true, blockers: [], warnings: [] }),
+    resolveEffectiveMapping: jest.fn().mockResolvedValue({ resolvedMapping: { field_mappings: {} } }),
   };
 
   const queueService = {
@@ -120,7 +124,7 @@ function makePublishService(overrides?: {
     validationSource: "local_rules",
   });
 
-  return { svc, prisma, connectorFramework, queueService, exportJobDb };
+  return { svc, prisma, connectorFramework, connectorMappingService, queueService, exportJobDb };
 }
 
 // ===========================================================================
@@ -680,6 +684,67 @@ describe("one-to-many mapping payload expansion", () => {
       "seo.title": "Reusable title",
       vendor: "Reusable brand",
     }));
+  });
+});
+
+describe("Shopify mapped metafield payload execution", () => {
+  it("buildConnectorProductPayload compiles legacy metafield mapping targets into ProductPayload.metafields", async () => {
+    const { svc, connectorMappingService } = makePublishService({
+      product: {
+        id: "prod1",
+        status: "approved",
+        categoryId: "cat1",
+        version: 1,
+        updatedAt: new Date("2026-07-01T00:00:00Z"),
+        title: "Mapped Kurta",
+        description: "Cotton kurta",
+        brand: "Vexa",
+        hsnCode: "6204",
+        gstRate: 12,
+        attributes: {
+          material: "Cotton",
+          neckline: "Round",
+          mainImageUrl: "https://cdn.example.com/kurta.jpg",
+        },
+        category: { id: "cat1", name: "Kurtas", path: "Apparel/Women/Kurtas" },
+        variants: [],
+        taxCodes: [],
+      },
+    });
+    connectorMappingService.resolveEffectiveMapping.mockResolvedValue({
+      resolvedMapping: {
+        field_mappings: {
+          "attributes.material": "metafields.material",
+          "attributes.neckline": "metafields.custom.neckline",
+          title: "title",
+        },
+      },
+    });
+
+    const payload = await (svc as any).buildConnectorProductPayload("prod1", {
+      connectorSlug: "shopify",
+      installationId: "inst-shopify-1",
+    });
+
+    expect(connectorMappingService.resolveEffectiveMapping).toHaveBeenCalledWith(expect.objectContaining({
+      connectorSlug: "shopify",
+      categoryScope: "cat1",
+      installationId: "inst-shopify-1",
+    }));
+    expect(payload.metafields).toEqual(expect.arrayContaining([
+      {
+        namespace: "pim_connector",
+        key: "material",
+        type: "single_line_text_field",
+        value: "Cotton",
+      },
+      {
+        namespace: "custom",
+        key: "neckline",
+        type: "single_line_text_field",
+        value: "Round",
+      },
+    ]));
   });
 });
 
@@ -2044,7 +2109,7 @@ describe("All publishing entry points: no arbitrary installation fallback", () =
     const callSites: string[] = [];
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].includes("requireInstallation(")) {
-        const chunk = lines.slice(i, i + 6).join(" ");
+        const chunk = lines.slice(i, i + 12).join(" ");
         callSites.push(chunk);
       }
     }
