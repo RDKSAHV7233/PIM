@@ -2931,8 +2931,14 @@ export class MarketplaceService implements OnModuleInit {
 
     let submission;
     if (operation === "PUBLISH" && simulation.exportReady) {
+      // Defaults to the mapping preview so a submission is still recorded with useful
+      // context if buildConnectorProductPayload itself throws before any payload exists.
+      // Overwritten below with the real payload as soon as it's built, so the stored
+      // evidence reflects what was actually sent, not just what the mapping predicted.
+      let payloadSnapshot: Record<string, unknown> = simulation.mappedPayload;
       try {
         const productPayload = await this.buildConnectorProductPayload(job.productId);
+        payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
 
         // Only look up prior external refs for connectors that support update-in-place.
         // The installationId filter already prevents cross-connector leakage, but gating
@@ -3010,7 +3016,7 @@ export class MarketplaceService implements OnModuleInit {
           source: "LIVE_API",
           status: publishResult.status,
           externalRef: publishResult.externalRef,
-          payloadSnapshot: simulation.mappedPayload,
+          payloadSnapshot,
           channelErrors: [
             ...simulation.channelIssues.map((issue) => ({
               code: issue.code,
@@ -3054,7 +3060,7 @@ export class MarketplaceService implements OnModuleInit {
           operation,
           source: "LIVE_API",
           status: "ERROR",
-          payloadSnapshot: simulation.mappedPayload,
+          payloadSnapshot,
           channelErrors,
         });
         await this.emitConnectorOutcomeMetrics({
