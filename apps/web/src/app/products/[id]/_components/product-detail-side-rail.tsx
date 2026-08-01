@@ -6,6 +6,12 @@ import type { ProductDetailPageData } from "./product-detail-types";
 export function ProductDetailSideRail({ data }: { data: ProductDetailPageData }) {
   const connectorBlocked = !data.mappingManagerInstallation || data.mappingManagerInstallation.status !== "ACTIVE";
   const mediaBlocked = data.imageAssetCount === 0;
+  // "Channel Readiness" must reflect the full export path, not just field-mapping
+  // content: simulation.exportReady only checks channel/compliance validation, so
+  // without connectorBlocked/mediaBlocked here this chip said "Ready" for products
+  // that had no connector installed and no media — contradicting the "Connector
+  // account needs attention" / "Publish diagnosis" text in the very same card.
+  const channelReady = data.simulation.exportReady && !connectorBlocked && !mediaBlocked;
 
   return (
     <aside className="space-y-3 xl:sticky xl:top-24 xl:h-fit">
@@ -23,8 +29,8 @@ export function ProductDetailSideRail({ data }: { data: ProductDetailPageData })
       </SideRailCard>
       <SideRailCard title="Channel Readiness">
         <StatusChip
-          label={data.simulation.exportReady ? "Ready" : "Blocked"}
-          tone={data.simulation.exportReady ? "success" : "danger"}
+          label={channelReady ? "Ready" : "Blocked"}
+          tone={channelReady ? "success" : "danger"}
         />
         <p className="text-xs text-slate-500">{data.simulation.missingFields.length} required field{data.simulation.missingFields.length !== 1 ? "s" : ""} missing</p>
         <p className="text-xs text-slate-500">

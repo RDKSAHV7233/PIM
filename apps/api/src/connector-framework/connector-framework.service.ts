@@ -118,6 +118,17 @@ export class ConnectorFrameworkService {
     }
 
     const launchPolicy = resolveConnectorLaunchPolicy(connectorDefinition.slug, parseCapabilities(connectorDefinition.capabilities));
+    const credentialsValidated =
+      connectorDefinition.slug === "flipkart" || connectorDefinition.slug === "amazon-in"
+        ? (await this.prisma.tenant(tenantKey).connectorCredential.count({
+            where: {
+              tenantKey,
+              installationId: installation.id,
+              lastValidatedAt: { not: null },
+              failureReason: null,
+            },
+          })) > 0
+        : true;
     return {
       id: installation.id,
       tenantKey: installation.tenantKey,
@@ -137,6 +148,7 @@ export class ConnectorFrameworkService {
       lastSyncAt: installation.lastSyncAt ? installation.lastSyncAt.toISOString() : null,
       createdAt: installation.createdAt.toISOString(),
       updatedAt: installation.updatedAt.toISOString(),
+      credentialsValidated,
     };
   }
 

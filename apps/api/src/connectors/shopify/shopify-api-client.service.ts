@@ -25,6 +25,24 @@ export const SHOPIFY_HTTP_TIMEOUT_MS = 30_000;
 const MAX_THROTTLE_WAIT_MS = 60_000;
 const GRAPHQL_MAX_RETRIES = 3;
 
+/**
+ * Thrown when Shopify's HTTP layer itself rejects a request (non-2xx response),
+ * as distinct from a network failure or a THROTTLED/GraphQL-body-level error.
+ * Carries the HTTP status so callers (e.g. connector install) can distinguish
+ * a user-fixable problem (404 bad domain, 401/403 bad token) from a genuine
+ * Shopify-side outage, instead of surfacing every failure as a generic 500.
+ */
+export class ShopifyApiHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly shopDomain: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ShopifyApiHttpError";
+  }
+}
+
 // ─── Shopify API response types ───────────────────────────────────────────────
 
 export type ShopifyTokenResponse = {
@@ -177,7 +195,11 @@ export class ShopifyApiClient {
       }
 
       if (!response.ok) {
-        throw new Error(`Shopify GraphQL request failed with status ${response.status}.`);
+        throw new ShopifyApiHttpError(
+          response.status,
+          input.shopDomain,
+          `Shopify GraphQL request failed with status ${response.status}.`,
+        );
       }
       if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
         const message = parsed.errors
@@ -227,7 +249,11 @@ export class ShopifyApiClient {
     }
 
     if (!response.ok) {
-      throw new Error(`Shopify token exchange failed with status ${response.status}.`);
+      throw new ShopifyApiHttpError(
+        response.status,
+        shopDomain,
+        `Shopify token exchange failed with status ${response.status}.`,
+      );
     }
 
     this.logger.info("connector.shopify.token_exchange.completed", {

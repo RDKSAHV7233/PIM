@@ -56,6 +56,18 @@ export interface ConnectorInstallationRecord {
   createdAt: string;
   updatedAt: string;
   actions?: ConnectorActionMatrix;
+  /**
+   * VEXA-202/VEXA-301-interim: true when at least one stored credential row for
+   * this installation has completed a successful validateCredentials() pass
+   * (last_validated_at set, no failure_reason). Distinct from `status ===
+   * 'ACTIVE'`, which is set at row-creation time regardless of whether any
+   * credential was ever supplied or confirmed real — see connector-installer.service.ts
+   * captureAndValidateFlipkartCredentials/captureAndValidateAmazonCredentials, which
+   * silently skip validation when every credential field is left blank.
+   * Only meaningful for connectors that run synchronous validation at install
+   * (flipkart, amazon-in); `true` for everything else since they don't have this gap.
+   */
+  credentialsValidated: boolean;
 }
 
 export interface PaginatedResponse<T> {

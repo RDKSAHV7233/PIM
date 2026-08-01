@@ -29,6 +29,7 @@ import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigat
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
 import {
   DETAIL_TABS,
+  isConnectorReadyToPublish,
   isMappingBlockerCode,
   isMappingWarningCode,
   mapMarketplaceChannelToConnectorSlug,
@@ -120,7 +121,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     installedConnectors
       .filter(
         (connector) =>
-          connector.status === "ACTIVE" &&
+          isConnectorReadyToPublish(connector) &&
           connector.capabilities.some((capability) => capability === "PUBLISH"),
       )
       .map((connector) => connector.slug),
@@ -354,7 +355,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     if (!selectedConnectorInstallation) {
       return { label: "Missing", tone: "danger" as const, detail: "Install a connector account before you export." };
     }
-    if (selectedConnectorInstallation.status === "ACTIVE") {
+    if (selectedConnectorInstallation.status === "ACTIVE" && !isConnectorReadyToPublish(selectedConnectorInstallation)) {
+      return {
+        label: "Pending authorization",
+        tone: "warning" as const,
+        detail: `${selectedConnectorInstallation.displayName} is installed but hasn't finished Shopify authorization yet — click "Authorize Shopify" on the connector's details page.`,
+      };
+    }
+    if (isConnectorReadyToPublish(selectedConnectorInstallation)) {
       return {
         label: "Connected",
         tone: "success" as const,

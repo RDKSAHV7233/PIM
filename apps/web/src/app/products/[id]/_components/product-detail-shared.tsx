@@ -55,6 +55,36 @@ export function isMappingWarningCode(code: string): boolean {
   return MAPPING_WARNING_CODES.has(code);
 }
 
+/**
+ * VEXA-202: Shopify's managed-install path creates the installation row as
+ * status "ACTIVE" before the OAuth handshake completes — metadata.shopId is
+ * only written once fetchShopIdentity succeeds. Without this check, a
+ * freshly-installed-but-unauthorized Shopify connector reads as "Connected"
+ * everywhere a plain `status === 'ACTIVE'` check is used. Other connectors
+ * don't use this two-phase metadata pattern, so this is a no-op for them.
+ */
+export function isConnectorReadyToPublish(connector: {
+  slug: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+  credentialsValidated?: boolean;
+}): boolean {
+  if (connector.status !== "ACTIVE") {
+    return false;
+  }
+  if (connector.slug === "shopify") {
+    const shopId = connector.metadata?.shopId;
+    return typeof shopId === "string" && shopId.trim().length > 0;
+  }
+  // VEXA-301-SPIKE: Flipkart/Amazon can reach status 'ACTIVE' with zero credentials
+  // ever validated (blank-credentials install path skips validateCredentials()
+  // entirely) — credentialsValidated is false in exactly that case, true otherwise.
+  if (connector.slug === "flipkart" || connector.slug === "amazon-in") {
+    return connector.credentialsValidated !== false;
+  }
+  return true;
+}
+
 export const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "content", label: "Content" },

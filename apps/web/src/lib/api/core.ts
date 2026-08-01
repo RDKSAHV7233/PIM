@@ -223,6 +223,9 @@ export interface ConnectorInstallation {
   lastSyncAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** True for every connector except flipkart/amazon-in, where it reflects whether
+   *  at least one stored credential has actually passed validateCredentials(). */
+  credentialsValidated: boolean;
   actions?: ConnectorActionMatrix;
 }
 

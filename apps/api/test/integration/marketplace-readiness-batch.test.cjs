@@ -174,7 +174,17 @@ function expectedErrorCountFromSimulation(simulation) {
     const fieldPath = String(issue.fieldPath ?? "").trim().toLowerCase();
     return !(issue.code === "CHANNEL_REQUIRED_FIELD" && missingFieldKeys.has(fieldPath));
   }).length;
-  return missingFieldKeys.size + Number(simulation?.complianceSummary?.errorCount ?? 0) + channelErrorCount;
+  // Batch readiness also reports a channel as blocked when the tenant has no
+  // ACTIVE, PUBLISH-capable connector installed for it — content can be perfectly
+  // valid while there is still nowhere to actually publish it. This test tenant
+  // never installs a connector, so every channel carries that +1 throughout.
+  const connectorNotInstalledErrorCount = 1;
+  return (
+    missingFieldKeys.size +
+    Number(simulation?.complianceSummary?.errorCount ?? 0) +
+    channelErrorCount +
+    connectorNotInstalledErrorCount
+  );
 }
 
 async function run() {
