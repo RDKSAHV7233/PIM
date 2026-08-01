@@ -639,7 +639,7 @@ describe("MarketplaceService.getPublishCapableChannels (VEXA-202)", () => {
   function makeServiceWithRawRows(rows: Array<{ slug: string; capabilities: string[]; metadata: unknown; credentialsValidated?: boolean }>) {
     const prisma = {
       tenant: jest.fn().mockReturnValue({
-        $queryRawUnsafe: jest.fn().mockResolvedValue(rows),
+        $queryRawUnsafe: jest.fn().mockResolvedValue(rows), // RLS-BYPASS: manual tenant filter
       }),
     };
     const connectorFramework = {
