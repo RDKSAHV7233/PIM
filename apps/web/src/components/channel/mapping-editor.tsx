@@ -485,6 +485,8 @@ export function PublishReadinessCard({
   const productDataReadiness = readiness?.checks?.productDataReadiness;
   const missingRequiredMappings = mappingCompleteness?.missingRequiredMappings ?? [];
   const missingRequiredProductValues = productDataReadiness?.missingRequiredProductValues ?? [];
+  const mappingCompletenessOk = Boolean(readiness) && missingRequiredMappings.length === 0;
+  const productDataReadinessOk = Boolean(readiness) && missingRequiredProductValues.length === 0;
 
   return (
     <Card id="mapping-readiness">
@@ -495,7 +497,7 @@ export function PublishReadinessCard({
         </p>
         <div>
           <p className="font-medium">Mapping completeness</p>
-          <StatusChip label={preflight?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(preflight)} />
+          <StatusChip label={mappingCompletenessOk ? "ok" : "blocked"} tone={mappingCompletenessOk ? "success" : "danger"} />
           <p className="mt-1 text-xs text-slate-500">
             Required category attributes missing from mappings: {missingRequiredMappings.length}
           </p>
@@ -517,7 +519,7 @@ export function PublishReadinessCard({
         )}
         <div>
           <p className="font-medium">Product data readiness</p>
-          <StatusChip label={readiness?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(readiness)} />
+          <StatusChip label={productDataReadinessOk ? "ok" : "blocked"} tone={productDataReadinessOk ? "success" : "danger"} />
           <p className="mt-1 text-xs text-slate-500">
             Channel-required product values missing: {missingRequiredProductValues.length}
           </p>

@@ -67,8 +67,17 @@ function run() {
       editorSource.includes("Blocked-state recovery") &&
       editorSource.includes("Open connector health") &&
       editorSource.includes("Open payload preview") &&
-      editorSource.includes("Use this section after the draft is validated."),
+      editorSource.includes("Publish remains blocked until mapping completeness and product data readiness are both clear."),
     "Publish readiness must be anchored as the third step with explicit sequencing guidance and blocked-state recovery links.",
+  );
+  assert(
+    editorSource.includes("const mappingCompletenessOk = Boolean(readiness) && missingRequiredMappings.length === 0;") &&
+      editorSource.includes("const productDataReadinessOk = Boolean(readiness) && missingRequiredProductValues.length === 0;") &&
+      editorSource.includes('label={mappingCompletenessOk ? "ok" : "blocked"}') &&
+      editorSource.includes('label={productDataReadinessOk ? "ok" : "blocked"}') &&
+      !editorSource.includes('label={preflight?.ok ? "ok" : "blocked"}') &&
+      !editorSource.includes('label={readiness?.ok ? "ok" : "blocked"}'),
+    "Publish readiness chips must use each gate's own evidence instead of blended preflight or aggregate readiness state.",
   );
 
   console.log(
@@ -80,6 +89,7 @@ function run() {
           "mapping_scope_step_uses_taxonomy_and_publish_category_selection",
           "mapping_editor_defaults_to_required_first_layout_with_dirty_state",
           "mapping_readiness_exposes_blocked_state_recovery",
+          "mapping_readiness_chips_use_separate_gate_evidence",
           "version_history_and_readiness_are_explicit_review_step_surfaces",
         ],
         checkedAt: new Date().toISOString(),
