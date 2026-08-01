@@ -15,3 +15,15 @@ export async function getServerAuthHeader(): Promise<string | undefined> {
   const claims = await getServerSessionClaims();
   return claims ? `Bearer ${token}` : undefined;
 }
+
+/**
+ * Reads the CSRF cookie server-side, for embedding as a hidden field in a
+ * native (URL-action) form. Native form submissions can't set the
+ * `x-csrf-token` header the way client-side fetch calls do (see
+ * apps/web/src/app/api/_auth.ts validateFormCsrf), so the token has to ride
+ * in the form body instead — this is the server-rendered source for that.
+ */
+export async function getServerCsrfToken(): Promise<string> {
+  const cookieStore = await cookies();
+  return String(cookieStore.get("pim_csrf_token")?.value ?? "").trim();
+}
