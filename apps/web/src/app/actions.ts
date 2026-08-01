@@ -2326,12 +2326,16 @@ export async function triggerBulkPublishAction(formData: FormData) {
     throw new Error("Forbidden: publishing role required.");
   }
   const installationId = String(formData.get("installationId") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
   const productIdsRaw = String(formData.get("productIds") ?? "").trim();
   const returnTo =
     String(formData.get("returnTo") ?? "").trim() ||
     `/channels/connectors/${encodeURIComponent(installationId)}?tab=sync`;
   if (!installationId) {
     throw new Error("Installation ID is required.");
+  }
+  if (isMarketplaceChannel(channel) && isChannelInDevelopment(channel)) {
+    throw new Error(IN_DEVELOPMENT_CHANNEL_NOTICE);
   }
   const productIds = productIdsRaw
     ? productIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)

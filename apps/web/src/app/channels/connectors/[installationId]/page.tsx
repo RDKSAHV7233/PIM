@@ -2372,6 +2372,7 @@ export default async function ChannelConnectorDetailPage({
                   </p>
                   <BulkPublishConfirmForm
                     installationId={installation.id}
+                    channel={mapConnectorSlugToMarketplaceChannel(installation.slug) ?? undefined}
                     returnTo={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
                     action={triggerBulkPublishAction}
                   />

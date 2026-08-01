@@ -2849,6 +2849,20 @@ describe("bulk-publish and delta-sync RBAC alignment across layers", () => {
     expect(actionSection).not.toContain("canManageConnectors");
   });
 
+  it("triggerBulkPublishAction rejects in-development channels before queueing publish work", () => {
+    const actionSection = actionsSource.substring(
+      actionsSource.indexOf("async function triggerBulkPublishAction"),
+      actionsSource.indexOf("async function triggerBulkPublishAction") + 1400,
+    );
+    expect(actionSection).toContain('formData.get("channel")');
+    expect(actionSection).toContain("isMarketplaceChannel(channel) && isChannelInDevelopment(channel)");
+    expect(actionSection).toContain("IN_DEVELOPMENT_CHANNEL_NOTICE");
+    expect(actionSection.indexOf("postJsonForAction")).toBeGreaterThan(-1);
+    expect(actionSection.indexOf("isChannelInDevelopment(channel)")).toBeLessThan(
+      actionSection.indexOf("postJsonForAction"),
+    );
+  });
+
   it("connector detail page gates delta-sync form with canPublishToChannels", () => {
     const syncSection = connectorPageSource.substring(
       connectorPageSource.indexOf("Queue delta sync") - 1000,
@@ -2870,6 +2884,14 @@ describe("bulk-publish and delta-sync RBAC alignment across layers", () => {
       bulkIdx + marker.length + 100,
     );
     expect(bulkSection).toContain("canPublishToChannels(actorRole)");
+  });
+
+  it("connector detail page passes marketplace channel into bulk-publish action for development-stage gating", () => {
+    const formSection = connectorPageSource.substring(
+      connectorPageSource.indexOf("<BulkPublishConfirmForm"),
+      connectorPageSource.indexOf("<BulkPublishConfirmForm") + 300,
+    );
+    expect(formSection).toContain("channel={mapConnectorSlugToMarketplaceChannel(installation.slug) ?? undefined}");
   });
 
   it("editor cannot trigger delta-sync or bulk-publish at any layer", () => {

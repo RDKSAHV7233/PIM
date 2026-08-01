@@ -6,12 +6,14 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
 interface BulkPublishConfirmFormProps {
   installationId: string;
+  channel?: string;
   returnTo: string;
   action: (formData: FormData) => void | Promise<void>;
 }
 
 export function BulkPublishConfirmForm({
   installationId,
+  channel,
   returnTo,
   action,
 }: BulkPublishConfirmFormProps) {
@@ -22,6 +24,7 @@ export function BulkPublishConfirmForm({
     <>
       <form ref={formRef} action={action} className="mt-3 flex flex-wrap items-center gap-3">
         <input type="hidden" name="installationId" value={installationId} />
+        {channel ? <input type="hidden" name="channel" value={channel} /> : null}
         <input type="hidden" name="returnTo" value={returnTo} />
         <PendingSubmitButton
           type="button"
