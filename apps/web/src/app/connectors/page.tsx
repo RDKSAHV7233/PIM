@@ -4,9 +4,9 @@ import {
   deleteConnectorInstallationAction,
   initiateOAuthAction,
   reconnectConnectorAction,
-  uninstallConnectorAction,
 } from "@/app/actions";
 import { ConnectorAccountQuickView } from "@/app/connectors/_components/connector-account-quick-view";
+import { getServerCsrfToken } from "@/lib/server-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
@@ -533,6 +533,9 @@ function summarizeDefinitionWorkspace(
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole } = await getServerSession();
+  // Disable pilot: native URL-form + POST/303, not a Server Action — see
+  // apps/web/src/app/connector-operations/[installationId]/disable/route.ts.
+  const disableCsrfToken = await getServerCsrfToken();
   const rawStatus = String(query.status ?? "");
   const actionStatusMessage = formatStatusMessage(rawStatus);
   const actionIsError = isErrorStatus(rawStatus);
@@ -1282,14 +1285,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         </form>
                       ) : null}
                       {installation.actions?.uninstall.allowed ? (
-                        <form action={uninstallConnectorAction}>
-                          <input type="hidden" name="installationId" value={installation.id} />
-                          <PendingSubmitButton
-                            type="submit"
-                            variant="secondary"
-                            idleLabel="Disable"
-                            pendingLabel="Disabling..."
-                          />
+                        <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/disable`}>
+                          <input type="hidden" name="csrfToken" value={disableCsrfToken} />
+                          <Button type="submit" variant="secondary" size="md">
+                            Disable
+                          </Button>
                         </form>
                       ) : null}
                     </div>
