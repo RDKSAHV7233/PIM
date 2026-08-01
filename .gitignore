@@ -5,6 +5,7 @@ data/
 node_modules/
 .next/
 .next-dev/
+.next-playwright-*/
 dist/
 .turbo/
 .env
