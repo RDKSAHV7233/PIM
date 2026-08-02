@@ -11,6 +11,8 @@ const QUALITY_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products"
 const SIDE_RAIL = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-side-rail.tsx");
 const STATUS_ALERTS = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-status-alerts.tsx");
 const STATUS_TOAST = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "status-toast-effect.tsx");
+const MEDIA_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "media-tab.tsx");
+const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 const READINESS_BAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "product-readiness-summary-bar.tsx");
 const REFRESH_ON_INTERVAL = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "refresh-on-interval.tsx");
 const EXPORT_WITH_PREVIEW_FORM = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "export-with-preview-form.tsx");
@@ -29,6 +31,8 @@ function run() {
   const sideRailSource = fs.readFileSync(SIDE_RAIL, "utf8");
   const statusAlertsSource = fs.readFileSync(STATUS_ALERTS, "utf8");
   const statusToastSource = fs.readFileSync(STATUS_TOAST, "utf8");
+  const mediaTabSource = fs.readFileSync(MEDIA_TAB, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
   const readinessBarSource = fs.readFileSync(READINESS_BAR, "utf8");
   const refreshOnIntervalSource = fs.readFileSync(REFRESH_ON_INTERVAL, "utf8");
   const exportWithPreviewSource = fs.readFileSync(EXPORT_WITH_PREVIEW_FORM, "utf8");
@@ -81,9 +85,9 @@ function run() {
   assert(
     readinessBarSource.includes("Top blockers for") &&
       readinessBarSource.includes("Open the exact fix path before you queue an export or review publish readiness.") &&
-      readinessBarSource.includes('if (selectedTemplateId) {') &&
+      readinessBarSource.includes("selectedTemplateId?: string;") &&
       readinessBarSource.includes("refreshSignal?: string;") &&
-      readinessBarSource.includes("}, [buildResults, productId, role, selectedTemplateId, refreshSignal]);") &&
+      readinessBarSource.includes("}, [buildResults, productId, selectedTemplateId, refreshSignal]);") &&
       readinessBarSource.includes('href={channelLinks?.[channel]}'),
     "Product detail readiness header must expose direct blocker recovery links, keep the readiness fetch aligned to the selected template context, and rerun on explicit same-page action refresh signals.",
   );
@@ -127,6 +131,23 @@ function run() {
       !channelsSource.includes("<CardTitle>Pre-Export Jobs</CardTitle>"),
     "Product detail must not foreground pre-export jobs as a primary merchandiser panel.",
   );
+  assert(
+    mediaTabSource.includes("Add Media") &&
+      mediaTabSource.includes("uploadMediaAssetAction") &&
+      mediaTabSource.includes('name="returnTo" value={returnTo}') &&
+      mediaTabSource.includes('name="sourceFile" type="file" accept="image/*" required') &&
+      mediaTabSource.includes('name="isMain" value="true"') &&
+      mediaTabSource.includes('name="channelEligibility"') &&
+      mediaTabSource.includes("Open Media Library"),
+    "Product detail media tab must offer inline product-scoped media upload while keeping the full media library as a secondary path.",
+  );
+  assert(
+    actionsSource.includes("const returnTo = resolveReturnToPath(") &&
+      actionsSource.includes('redirect(appendQueryParams(returnTo, { uploadError: "invalid-file-type" }));') &&
+      actionsSource.includes("revalidatePath(`/products/${productId}`);") &&
+      actionsSource.includes('redirect(appendQueryParams(returnTo, { mediaUploadStatus: "uploaded" }));'),
+    "Product media upload action must return to the product media tab for invalid-type and successful uploads.",
+  );
 
   console.log(
     JSON.stringify(
@@ -135,6 +156,7 @@ function run() {
         validated: [
           "product_detail_leads_with_overview_and_fix_blockers",
           "product_detail_uses_truthful_queued_export_language",
+          "product_detail_media_tab_supports_inline_upload",
           "product_detail_demotes_diagnostics_and_workflow_metadata",
         ],
         checkedAt: new Date().toISOString(),
