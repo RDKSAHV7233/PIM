@@ -422,13 +422,13 @@ function connectorDetailStatusMessage(status: string | undefined): {
   if (normalized === "bulk-publish-queued") {
     return {
       tone: "success",
-      message: "Bulk publish submitted via Amazon Feeds API. Submissions are PENDING — poll status in the Jobs workspace.",
+      message: "Bulk publish submitted. Native feed connectors create one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.",
     };
   }
   if (normalized === "bulk-publish-error") {
     return {
       tone: "danger",
-      message: "Bulk publish failed. Verify the BULK_PUBLISH capability is enabled and the connector is healthy.",
+      message: "Bulk publish failed. Verify products are approved, mapped, publish-ready, and that the connector is healthy.",
     };
   }
   return null;
@@ -709,6 +709,9 @@ export default async function ChannelConnectorDetailPage({
     ]);
     const submissions = toItems(submissionsRaw);
     const productsById = new Map(products.map((product) => [product.id, product]));
+    const bulkPublishProductIds = products
+      .filter((product) => product.status === "approved" || product.status === "active")
+      .map((product) => product.id);
 
     // Backfill submission-referenced products missing from the bounded first-page fetch.
     const missingProductIds = [...new Set(submissions.map((s) => s.productId))].filter((id) => !productsById.has(id));
@@ -2358,13 +2361,13 @@ export default async function ChannelConnectorDetailPage({
                   <p className="mt-1 text-xs text-amber-700">
                     {installation.capabilities.includes("BULK_PUBLISH") ? (
                       <>
-                        Submit all approved products as a single{" "}
+                        Submit up to 200 approved products from this connector workspace as a single{" "}
                         <code className="font-mono bg-white border border-amber-200 px-1 rounded">JSON_LISTINGS_FEED</code>{" "}
                         document. Each product gets an individual submission record you can track in the Jobs workspace.
                       </>
                     ) : (
                       <>
-                        This connector publishes one product at a time — queues an export job per approved product
+                        This connector publishes one product at a time — queues an export job per approved product in the current connector workspace
                         through the standard export queue instead of a single batch feed. Track each product&apos;s
                         progress individually in the Jobs workspace.
                       </>
@@ -2373,6 +2376,7 @@ export default async function ChannelConnectorDetailPage({
                   <BulkPublishConfirmForm
                     installationId={installation.id}
                     channel={mapConnectorSlugToMarketplaceChannel(installation.slug) ?? undefined}
+                    productIds={bulkPublishProductIds}
                     returnTo={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
                     action={triggerBulkPublishAction}
                   />
@@ -2524,4 +2528,3 @@ export default async function ChannelConnectorDetailPage({
     throw error;
   }
 }
-
