@@ -44,7 +44,7 @@ function run() {
     source.includes("const [permissions, submissionsRaw, products, shopifyPublicationState] = await Promise.all([") &&
       source.includes("getConnectorPermissions(installation.slug, { role: actorRole, authHeader })") &&
       source.includes("getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader })") &&
-      source.includes("getProductListPage({ slim: true, limit: 500 }, { role: actorRole, authHeader })"),
+      source.includes("getProductListPage({ slim: true, limit: 200 }, { role: actorRole, authHeader })"),
     "Channel connector detail must fetch permissions, installation-scoped submissions, and bounded catalog lookup data together.",
   );
   assert(
@@ -90,6 +90,13 @@ function run() {
       source.includes("Recovery Playbook") &&
       source.includes("Issue Queue"),
     "Channel connector detail must build catalog modules, payload preview, mapping context, readiness, and recovery views from current Vexa data.",
+  );
+
+  assert(
+    source.includes("const bulkPublishProductIds = products") &&
+      source.includes('product.status === "approved" || product.status === "active"') &&
+      source.includes("productIds={bulkPublishProductIds}"),
+    "Channel connector detail bulk-publish form must submit explicit approved/active product IDs required by the backend contract.",
   );
 
   assert(

@@ -58,6 +58,19 @@ function run() {
     "Shopify publication-target form must submit selected target ids with redirect and tenant context.",
   );
   assert(
+    detailSource.includes("<BulkPublishConfirmForm") &&
+      detailSource.includes("productIds={bulkPublishProductIds}") &&
+      detailSource.includes("Bulk publish submitted. Native feed connectors create one batch"),
+    "Connector bulk-publish UI must pass explicit backend product IDs and use connector-neutral success copy.",
+  );
+  assert(
+    fs.readFileSync(
+      path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "connectors", "[installationId]", "bulk-publish-confirm-form.tsx"),
+      "utf8",
+    ).includes('name="productIds"'),
+    "Bulk publish confirmation form must include the productIds field required by the API DTO.",
+  );
+  assert(
     actionsSource.includes("updateConnectorPublicationTargetsAction") &&
       actionsSource.includes("/publication-targets") &&
       actionsSource.includes("publication-targets-saved"),
