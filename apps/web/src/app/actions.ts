@@ -2345,18 +2345,43 @@ export async function triggerBulkPublishAction(formData: FormData) {
   const productIds = productIdsRaw
     ? productIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
+  let result: { submissionIds: string[]; excluded: Array<{ productId: string; reason: string }> };
   try {
-    await postJsonForAction(
+    result = await postJsonForAction<{ submissionIds: string[]; excluded: Array<{ productId: string; reason: string }> }>(
       formData,
       `/marketplace/connectors/${encodeURIComponent(installationId)}/bulk-publish`,
       { productIds },
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    // no_eligible_products means every product in the batch failed the approval/readiness
+    // gate — distinct from a transport/connector-health failure, so the operator sees why
+    // nothing was queued instead of a generic failure message.
+    if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+      const payload = error.body as Record<string, unknown>;
+      if (payload.error === "no_eligible_products") {
+        const excludedCount = Array.isArray(payload.excluded) ? payload.excluded.length : 0;
+        redirect(
+          appendQueryParams(returnTo, {
+            status: "bulk-publish-none-eligible",
+            excludedCount: String(excludedCount),
+          }),
+        );
+      }
+    }
     redirect(appendQueryParams(returnTo, { status: "bulk-publish-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
-  redirect(appendQueryParams(returnTo, { status: "bulk-publish-queued" }));
+  // Every excluded product failed approval status or destination readiness silently on the
+  // backend — surface the split so an operator can't read "8 approved products selected"
+  // followed by a flat success banner as "all 8 were queued" when most were dropped.
+  redirect(
+    appendQueryParams(returnTo, {
+      status: "bulk-publish-queued",
+      queuedCount: String(result.submissionIds.length),
+      excludedCount: String(result.excluded.length),
+    }),
+  );
 }
 
 export async function confirmCatalogLinksAction(

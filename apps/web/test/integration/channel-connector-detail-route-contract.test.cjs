@@ -100,6 +100,15 @@ function run() {
   );
 
   assert(
+    source.includes("queuedCount?: string; excludedCount?: string") &&
+      source.includes("excludedCount > 0") &&
+      source.includes('normalized === "bulk-publish-none-eligible"') &&
+      source.includes("queuedCount: query.queuedCount") &&
+      source.includes("excludedCount: query.excludedCount"),
+    "Channel connector detail must surface how many bulk-publish products were queued vs. silently excluded by the readiness gate, not a flat success banner regardless of outcome.",
+  );
+
+  assert(
     source.includes('label="Account health"') &&
       source.includes('label="Submissions"') &&
       source.includes('label="Errors / Rejections"') &&
@@ -166,6 +175,7 @@ function run() {
           "channel_connector_detail_route_surfaces_timestamp_fields",
           "channel_connector_detail_route_redirects_auth_failures_with_tab_context",
           "channel_connector_detail_route_surfaces_meesho_export_panel",
+          "channel_connector_detail_route_surfaces_bulk_publish_exclusion_counts",
         ],
         checkedAt: new Date().toISOString(),
       },
