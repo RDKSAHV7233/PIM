@@ -22,7 +22,6 @@ const nextConfig: NextConfig = {
       { source: "/channels/recovery", destination: "/operations/repair", permanent: true },
       // Legacy connector route tree — canonical path is /channels/connectors
       { source: "/connectors", destination: "/channels/connectors", permanent: true },
-      { source: "/connectors/:path*", destination: "/channels/connectors/:path*", permanent: true },
       // URL pattern consistency — Settings pages use /admin/ except Account Security
       { source: "/admin/security", destination: "/settings/security", permanent: true },
       { source: "/settings/users", destination: "/admin/users", permanent: true },
