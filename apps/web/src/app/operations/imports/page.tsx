@@ -27,6 +27,18 @@ import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
+const SAMPLE_JSON_PREVIEW = `[
+  {
+    "title": "Classic Cotton Tee",
+    "description": "Soft crew-neck t-shirt",
+    "brand": "Vexa PIM",
+    "skuCode": "TEE-BLK-M",
+    "status": "draft",
+    "attributes": {
+      "material": "cotton"
+    }
+  }
+]`;
 
 interface OperationsImportsPageProps {
   searchParams: Promise<{
@@ -432,6 +444,10 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 <li>Use one product row per line in CSV, or one object per item in JSON.</li>
                 <li>Start with a single sample row, then scale up after the mapping looks correct.</li>
               </ul>
+              <div className="rounded-md border border-slate-200 bg-slate-950 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Inline JSON format example</p>
+                <pre className="overflow-x-auto whitespace-pre text-xs text-slate-100">{SAMPLE_JSON_PREVIEW}</pre>
+              </div>
             </div>
           </Card>
         </section>
