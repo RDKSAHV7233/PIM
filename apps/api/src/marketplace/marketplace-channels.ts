@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 
-export const MARKETPLACE_CHANNELS = ["amazon", "flipkart", "meesho", "myntra", "shopify"] as const;
+export const MARKETPLACE_CHANNELS = ["amazon", "flipkart", "meesho", "myntra", "shopify", "woocommerce"] as const;
 export type MarketplaceChannel = (typeof MARKETPLACE_CHANNELS)[number];
 
 export const DEFAULT_MARKETPLACE_CHANNEL: MarketplaceChannel = "amazon";
@@ -11,6 +11,7 @@ const MARKETPLACE_CHANNEL_TO_CONNECTOR_SLUG: Record<MarketplaceChannel, string> 
   meesho: "meesho",
   myntra: "myntra",
   shopify: "shopify",
+  woocommerce: "woocommerce",
 };
 
 const CONNECTOR_SLUG_TO_MARKETPLACE_CHANNEL: Record<string, MarketplaceChannel> = {
@@ -20,6 +21,7 @@ const CONNECTOR_SLUG_TO_MARKETPLACE_CHANNEL: Record<string, MarketplaceChannel> 
   meesho: "meesho",
   myntra: "myntra",
   shopify: "shopify",
+  woocommerce: "woocommerce",
 };
 
 export function isMarketplaceChannel(value: string): value is MarketplaceChannel {

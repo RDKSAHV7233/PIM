@@ -1232,6 +1232,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       // 'yes' for any product with a known gstRate (including 0% exempt); absent when rate unknown.
       metaData.push({ key: '_vexa_gst_applicable', value: 'yes' });
     }
+    metaData.push(...this.normalizeCustomMeta(product.customMeta));
 
     const images: Array<{ src: string }> = [];
     if (product.mainImageUrl) {
@@ -1290,6 +1291,47 @@ export class WooCommerceConnector implements ConnectorInterface {
     }
 
     return payload;
+  }
+
+  private normalizeCustomMeta(customMeta: ProductPayload['customMeta']): Array<{ key: string; value: string }> {
+    if (!Array.isArray(customMeta)) {
+      return [];
+    }
+    const reserved = new Set([
+      '_vexa_pim_product_id',
+      '_vexa_pim_sync_ts',
+      '_vexa_hsn_code',
+      '_vexa_gst_rate',
+      '_vexa_gst_applicable',
+    ]);
+    const normalized: Array<{ key: string; value: string }> = [];
+    const seen = new Set(reserved);
+    for (const item of customMeta) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const key = String(item.key ?? '').trim();
+      const value = this.stringifyMetaValue(item.value);
+      if (!key || !value || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      normalized.push({ key, value });
+    }
+    return normalized;
+  }
+
+  private stringifyMetaValue(value: unknown): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    return JSON.stringify(value);
   }
 
   // ─── W8: brownfield import — paginated product list ──────────────────────────

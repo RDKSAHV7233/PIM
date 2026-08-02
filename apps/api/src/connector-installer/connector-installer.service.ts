@@ -208,7 +208,7 @@ export class ConnectorInstallerService {
           },
         };
       })
-      .filter((def) => showPlanned || isCustomerVisibleStage(def.launchStage));
+      .filter((def) => showPlanned || isCustomerVisibleStage(def.launchStage) || isInstallableStage(def.launchStage));
   }
 
   async install(slug: string, dto: InstallConnectorDto, actor: ConnectorActor): Promise<ConnectorInstallationRecord> {

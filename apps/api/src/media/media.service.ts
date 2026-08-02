@@ -73,6 +73,9 @@ const CHANNEL_RULES: Record<Channel, ChannelRule> = {
   meesho: { minWidth: 700, minHeight: 700, aspectMin: 0.75, aspectMax: 1.6 },
   myntra: { minWidth: 1000, minHeight: 1000, aspectMin: 0.75, aspectMax: 1.5 },
   shopify: { minWidth: 800, minHeight: 800, aspectMin: 0.5, aspectMax: 2 },
+  // WooCommerce imposes no platform-level minimums (self-hosted, theme-dependent) —
+  // reuse Shopify's permissive rule as a reasonable default until a real store is verified.
+  woocommerce: { minWidth: 800, minHeight: 800, aspectMin: 0.5, aspectMax: 2 },
 };
 
 const MAX_MEDIA_FILE_BYTES = 10 * 1024 * 1024;

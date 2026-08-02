@@ -164,6 +164,13 @@ describe("isInstallableStage", () => {
     expect(isInstallableStage("manual")).toBe(true);
   });
 
+  it("returns true for early-access setup stages", () => {
+    expect(isInstallableStage("code_complete")).toBe(true);
+    expect(isInstallableStage("qa_validation")).toBe(true);
+    expect(isInstallableStage("po_review")).toBe(true);
+    expect(isInstallableStage("early_access")).toBe(true);
+  });
+
   it("returns false for planned", () => {
     expect(isInstallableStage("planned")).toBe(false);
   });
@@ -173,8 +180,7 @@ describe("isInstallableStage", () => {
   });
 
   const nonInstallableStages: ConnectorLaunchStage[] = [
-    "under_development", "code_complete", "qa_validation",
-    "po_review", "early_access", "deprecated", "internal_diagnostic",
+    "under_development", "deprecated", "internal_diagnostic",
   ];
   for (const stage of nonInstallableStages) {
     it(`returns false for ${stage}`, () => {

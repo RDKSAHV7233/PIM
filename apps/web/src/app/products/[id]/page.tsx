@@ -91,6 +91,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // Start product-independent background promises immediately so they run during
   // the sequential product + channel/connector fetches below.
   const variantsPromise = getProductVariants(id, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getProductVariants>>);
+  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => {
+    channelsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getMarketplaceChannels>>;
+  });
+  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader }).catch(() => {
+    installedConnectorsUnavailable = true;
+    return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
+  });
   const exportJobsPromise = exportJobsRestricted
     ? Promise.resolve([] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>)
     : getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => {
@@ -107,14 +115,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // Resolve tenant-stable data (channels + connectors) before the main batch so we can
   // compute the effective channel once and make a single readiness call.
   const [channels, installedConnectors] = await Promise.all([
-    getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => {
-      channelsUnavailable = true;
-      return [] as Awaited<ReturnType<typeof getMarketplaceChannels>>;
-    }),
-    getInstalledConnectors({ role: actorRole, authHeader }).catch(() => {
-      installedConnectorsUnavailable = true;
-      return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
-    }),
+    channelsPromise,
+    installedConnectorsPromise,
   ]);
 
   const publishCapableSlugs = new Set(

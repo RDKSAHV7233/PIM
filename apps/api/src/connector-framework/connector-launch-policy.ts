@@ -106,7 +106,14 @@ export function isCustomerVisibleStage(stage: ConnectorLaunchStage): boolean {
 }
 
 export function isInstallableStage(stage: ConnectorLaunchStage): boolean {
-  return stage === "live" || stage === "manual";
+  return (
+    stage === "live" ||
+    stage === "manual" ||
+    stage === "code_complete" ||
+    stage === "qa_validation" ||
+    stage === "po_review" ||
+    stage === "early_access"
+  );
 }
 
 const LAUNCH_STAGE_LABELS: Record<ConnectorLaunchStage, string> = {

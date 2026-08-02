@@ -27,6 +27,7 @@ module.exports = {
     "**/connectors/amazon/amazon.connector.spec.ts",
     "**/connectors/shopify/shopify.connector.spec.ts",
     "**/connectors/shopify/shopify-api-client.spec.ts",
+    "**/connectors/woocommerce/woocommerce.connector.spec.ts",
     "**/connectors/flipkart/flipkart-category-rules.spec.ts",
     "**/connectors/flipkart/flipkart.connector.spec.ts",
     "**/connectors/meesho/meesho-category-templates.spec.ts",

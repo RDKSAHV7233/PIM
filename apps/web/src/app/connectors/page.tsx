@@ -245,6 +245,10 @@ function connectorLaunchLabel(
   return "Live publish";
 }
 
+function isConnectorPortfolioStage(stage: string): boolean {
+  return stage === "live" || stage === "manual" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
+}
+
 function resolveInstalledStatusPresentation(
   status: string,
   implementationStatus: string | undefined,
@@ -575,7 +579,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
-      .filter((item) => item.definition.launchStage === "live" || item.definition.launchStage === "manual")
+      .filter((item) => isConnectorPortfolioStage(item.definition.launchStage))
       .filter((item) => !item.definition.slug.startsWith("diag-"))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => {

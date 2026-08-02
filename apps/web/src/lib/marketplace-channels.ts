@@ -1,4 +1,4 @@
-export const MARKETPLACE_CHANNELS = ["amazon", "flipkart", "meesho", "myntra", "shopify"] as const;
+export const MARKETPLACE_CHANNELS = ["amazon", "flipkart", "meesho", "myntra", "shopify", "woocommerce"] as const;
 export type MarketplaceChannel = (typeof MARKETPLACE_CHANNELS)[number];
 
 export const DEFAULT_MARKETPLACE_CHANNEL: MarketplaceChannel = "amazon";
@@ -9,6 +9,7 @@ const MARKETPLACE_CHANNEL_TO_CONNECTOR_SLUG: Record<MarketplaceChannel, string> 
   meesho: "meesho",
   myntra: "myntra",
   shopify: "shopify",
+  woocommerce: "woocommerce",
 };
 
 const CONNECTOR_SLUG_TO_MARKETPLACE_CHANNEL: Record<string, MarketplaceChannel> = {
@@ -18,6 +19,7 @@ const CONNECTOR_SLUG_TO_MARKETPLACE_CHANNEL: Record<string, MarketplaceChannel> 
   meesho: "meesho",
   myntra: "myntra",
   shopify: "shopify",
+  woocommerce: "woocommerce",
 };
 
 export const MARKETPLACE_CHANNEL_LABELS: Record<MarketplaceChannel, string> = {
@@ -26,6 +28,7 @@ export const MARKETPLACE_CHANNEL_LABELS: Record<MarketplaceChannel, string> = {
   meesho: "Meesho",
   myntra: "Myntra",
   shopify: "Shopify",
+  woocommerce: "WooCommerce",
 };
 
 export function isMarketplaceChannel(value: unknown): value is MarketplaceChannel {
@@ -60,7 +63,10 @@ export function formatMarketplaceChannelLabel(channel: MarketplaceChannel): stri
 
 // Channels whose connectors are present in source but not yet ready for customer use.
 // Surfaces that show these channels must visibly mark them and disable destructive actions.
-const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>([]);
+// WooCommerce: mapped meta_data execution exists (marketplace.service.ts), but there is no
+// accessible WooCommerce tenant/store in this environment and no real end-to-end publish has
+// been verified by a human — see vexa_pim_mapping_review.md, Increment 3.
+const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>(["woocommerce"]);
 
 export function isChannelInDevelopment(channel: MarketplaceChannel): boolean {
   return IN_DEVELOPMENT_CHANNELS.has(channel);

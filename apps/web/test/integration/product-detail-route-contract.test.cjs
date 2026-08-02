@@ -56,7 +56,8 @@ function run() {
     pageSource.includes("const variantsPromise = getProductVariants(") &&
       pageSource.includes("const channelsPromise = getMarketplaceChannels(") &&
       pageSource.includes("const installedConnectorsPromise = getInstalledConnectors(") &&
-      pageSource.includes("const exportJobsPromise = getMarketplaceExportJobs(") &&
+      pageSource.includes("const exportJobsPromise = exportJobsRestricted") &&
+      pageSource.includes("getMarketplaceExportJobs(") &&
       pageSource.includes("product = await getProduct("),
     "Product detail route must pre-start secondary fetches while still awaiting the primary product record.",
   );
@@ -97,7 +98,7 @@ function run() {
       pageSource.includes('const showValidateAction = canWrite && activeTab === "quality";') &&
       pageSource.includes('{showSaveAction ? <button type="submit" form="product-edit-form"') &&
       pageSource.includes('{showValidateAction ? <button type="submit" form="product-validate-form"') &&
-      pageSource.includes('{canWrite ? <Link href={tabHref(\"channels\")}'),
+      pageSource.includes('{canPublish ? <Link href={tabHref("channels")}'),
     "Product detail header actions must preserve the inbox return path and only expose save and validation controls on tabs that mount their backing workflows.",
   );
 
