@@ -563,6 +563,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             step: "review",
             showAdvanced: wizardQuery.showAdvanced,
             advancedPanel: wizardQuery.advancedPanel,
+            shopifyMetafields: connectorSlug === "shopify" ? (shopifyConfig?.metafields ?? []) : [],
           })
         : null;
 

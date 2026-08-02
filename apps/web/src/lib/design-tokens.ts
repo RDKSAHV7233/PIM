@@ -73,6 +73,7 @@ export const channelConfig: Record<
   meesho: { label: "Meesho", short: "M", bg: "#fff1ec", text: "#9a3412", border: "#fdba74", color: "#e8450a" },
   myntra: { label: "Myntra", short: "My", bg: "#fdf2f8", text: "#9d174d", border: "#f9a8d4", color: "#e91e8c" },
   shopify: { label: "Shopify", short: "S", bg: "#ecfdf5", text: "#047857", border: "#6ee7b7", color: "#008060" },
+  woocommerce: { label: "WooCommerce", short: "W", bg: "#f5f3fa", text: "#5f3d8a", border: "#c4b0e0", color: "#7f54b3" },
 };
 
 export const radius = {

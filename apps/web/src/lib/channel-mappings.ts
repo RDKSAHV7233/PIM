@@ -7,6 +7,7 @@ import type {
   MarketplaceChannel,
   MarketplaceChannelMapping,
   Product,
+  ShopifyMetafieldDefinition,
 } from "@/lib/api";
 import {
   DEFAULT_MARKETPLACE_CHANNEL,
@@ -350,6 +351,12 @@ function normalizeTargetList(value: FieldMapValue | unknown): string[] {
   return uniqueStrings(raw.map((item) => String(item ?? "")));
 }
 
+function shopifyMetafieldTarget(definition: ShopifyMetafieldDefinition): string {
+  const namespace = String(definition.namespace ?? "").trim();
+  const key = String(definition.key ?? "").trim();
+  return namespace && key ? `productMetafields.${namespace}.${key}` : "";
+}
+
 function invertFieldMap(fieldMap: Record<string, FieldMapValue>): Record<string, string> {
   const inverted: Record<string, string> = {};
   for (const [sourceField, rawTargetField] of Object.entries(fieldMap)) {
@@ -384,7 +391,8 @@ function buildSourceFieldOptions(
     options.set(value, label);
   }
   for (const definition of attributeDefinitions) {
-    const appliesLabel = definition.required ? "Required attribute" : "Attribute";
+    const scopeLabel = definition.appliesTo === "variant" ? "Variant attribute" : "Attribute";
+    const appliesLabel = definition.required ? `Required ${scopeLabel.toLowerCase()}` : scopeLabel;
     options.set(`attributes.${definition.key}`, `${definition.name} (${appliesLabel})`);
   }
   for (const sourceField of Object.keys(currentFieldMap)) {
@@ -504,6 +512,7 @@ interface BuildMappingsViewModelArgs {
   step?: MappingWizardStep;
   showAdvanced?: boolean;
   advancedPanel?: MappingAdvancedPanel | "";
+  shopifyMetafields?: ShopifyMetafieldDefinition[];
 }
 
 export function buildMappingsViewModel({
@@ -524,6 +533,7 @@ export function buildMappingsViewModel({
   step = "review",
   showAdvanced = false,
   advancedPanel = "",
+  shopifyMetafields = [],
 }: BuildMappingsViewModelArgs) {
   const redirectTo = buildMappingRoute({
     step,
@@ -560,10 +570,13 @@ export function buildMappingsViewModel({
   const mappedTargetToSource = invertFieldMap(currentFieldMap);
   const targetFieldOptions = uniqueStrings([
     ...requiredTargetFields,
+    ...shopifyMetafields
+      .filter((definition) => String(definition.ownerType ?? "PRODUCT").toUpperCase() === "PRODUCT")
+      .map(shopifyMetafieldTarget),
     ...Object.values(currentFieldMap).flatMap((target) => normalizeTargetList(target)),
   ]);
   const sourceFieldOptions = buildSourceFieldOptions(
-    categoryAttributes.filter((definition) => definition.appliesTo === "product"),
+    categoryAttributes,
     currentFieldMap,
     sampleProduct,
   );

@@ -65,6 +65,7 @@ type EffectiveMapping = MappingPack & {
    *  "connector_mapping_version" — ConnectorMappingVersion record (Sprint 11+, 5-level precedence)
    */
   source: "system_pack" | "saved_template" | "connector_mapping_version";
+  rawFieldMap?: Record<string, unknown>;
 };
 
 type ConnectorProductPayloadOptions = {
@@ -87,10 +88,29 @@ function normalizeFieldMapTargets(value: unknown): string[] {
   return Array.from(
     new Set(
       raw
-        .map((item) => String(item ?? "").trim())
+        .map((item) => describeFieldMapTarget(item))
         .filter((item) => item.length > 0),
     ),
   );
+}
+
+function describeFieldMapTarget(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return String(value ?? "").trim();
+  }
+  const raw = value as Record<string, unknown>;
+  const explicit = raw.fieldPath ?? raw.path ?? raw.target;
+  if (typeof explicit === "string" && explicit.trim()) {
+    return explicit.trim();
+  }
+  const namespace = String(raw.namespace ?? "").trim();
+  const key = String(raw.key ?? "").trim();
+  const connector = String(raw.connector ?? raw.channel ?? "shopify").trim().toLowerCase();
+  const kind = String(raw.kind ?? raw.targetType ?? raw.type ?? "").trim().toLowerCase();
+  if (namespace && key && connector === "shopify" && (kind.includes("metafield") || namespace || key)) {
+    return `productMetafields.${namespace}.${key}`;
+  }
+  return "";
 }
 
 function resolveCollectionLimit(limit?: number, fallback = 50, max = 500): number {
@@ -291,6 +311,20 @@ const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
       "attributes.inventoryQty": "variants.0.inventoryQuantity",
       "attributes.color": "options.color",
       "attributes.size": "options.size",
+    },
+  },
+  // In development — see IN_DEVELOPMENT_CHANNELS in apps/web/src/lib/marketplace-channels.ts.
+  // Mapped meta_data execution exists, but no real store has been verified end-to-end.
+  woocommerce: {
+    channel: "woocommerce",
+    displayName: "WooCommerce",
+    requiredFields: ["title", "description", "attributes.mainImageUrl"],
+    fieldMap: {
+      title: "name",
+      description: "description",
+      "attributes.sku": "sku",
+      "attributes.mainImageUrl": "images.0.src",
+      "attributes.productType": "categories.0.name",
     },
   },
 };
@@ -2164,7 +2198,7 @@ export class MarketplaceService implements OnModuleInit {
       }
     }
     const mappedPayload: Record<string, unknown> = {};
-    for (const [sourceField, rawTargetField] of Object.entries(mapping.fieldMap)) {
+    for (const [sourceField, rawTargetField] of Object.entries(mapping.rawFieldMap ?? mapping.fieldMap)) {
       const value = this.getFieldValue(sourceField, product, attributes);
       if (!this.isEmpty(value)) {
         for (const targetField of normalizeFieldMapTargets(rawTargetField)) {
@@ -2279,6 +2313,7 @@ export class MarketplaceService implements OnModuleInit {
         displayName: basePack.displayName,
         requiredFields: this.asStringArray(template.requiredFields),
         fieldMap: this.asStringMap(template.fieldMap),
+        rawFieldMap: this.asRecord(template.fieldMap),
         templateId: template.id,
         templateName: template.name,
         source: "saved_template",
@@ -2301,6 +2336,7 @@ export class MarketplaceService implements OnModuleInit {
           displayName: basePack.displayName,
           requiredFields: this.asStringArray(defaultTemplate.requiredFields),
           fieldMap: this.asStringMap(defaultTemplate.fieldMap),
+          rawFieldMap: this.asRecord(defaultTemplate.fieldMap),
           templateId: defaultTemplate.id,
           templateName: defaultTemplate.name,
           source: "saved_template",
@@ -2341,6 +2377,7 @@ export class MarketplaceService implements OnModuleInit {
               displayName: basePack.displayName,
               requiredFields: [...basePack.requiredFields],
               fieldMap,
+              rawFieldMap: this.asRecord(rawFieldMappings),
               templateId: null,
               templateName: null,
               source: "connector_mapping_version",
@@ -2363,6 +2400,7 @@ export class MarketplaceService implements OnModuleInit {
       ...basePack,
       requiredFields: [...basePack.requiredFields],
       fieldMap: { ...basePack.fieldMap },
+      rawFieldMap: { ...basePack.fieldMap },
       templateId: null,
       templateName: null,
       source: "system_pack",
@@ -2389,6 +2427,7 @@ export class MarketplaceService implements OnModuleInit {
         ...cached,
         requiredFields: [...cached.requiredFields],
         fieldMap: { ...cached.fieldMap },
+        rawFieldMap: cached.rawFieldMap ? { ...cached.rawFieldMap } : undefined,
       };
     }
 
@@ -2398,6 +2437,7 @@ export class MarketplaceService implements OnModuleInit {
       ...resolved,
       requiredFields: [...resolved.requiredFields],
       fieldMap: { ...resolved.fieldMap },
+      rawFieldMap: resolved.rawFieldMap ? { ...resolved.rawFieldMap } : undefined,
     };
   }
 
@@ -3332,6 +3372,28 @@ export class MarketplaceService implements OnModuleInit {
       options.connectorSlug ?? (options.channel ? this.mapChannelToConnectorSlug(options.channel) : ""),
     ).trim().toLowerCase();
     if (connectorSlug !== "shopify") {
+      if (connectorSlug !== "woocommerce") {
+        return payload;
+      }
+      if (!this.woocommerceMappedMetaEnabled()) {
+        return payload;
+      }
+      const resolved = await this.connectorMappingService.resolveEffectiveMapping({
+        connectorSlug,
+        categoryScope: options.categoryId,
+        installationId: options.installationId,
+      });
+      const fieldMap = this.asRecord(resolved.resolvedMapping?.field_mappings);
+      const mappedMeta = this.compileWooCommerceMetaFromMapping(payload, fieldMap);
+      if (mappedMeta.length === 0) {
+        return payload;
+      }
+      return {
+        ...payload,
+        customMeta: [...(payload.customMeta ?? []), ...mappedMeta],
+      };
+    }
+    if (!this.shopifyMappedMetafieldsEnabled()) {
       return payload;
     }
 
@@ -3342,7 +3404,7 @@ export class MarketplaceService implements OnModuleInit {
       options.templateId,
       options.installationId,
     );
-    const mappedMetafields = this.compileShopifyMetafieldsFromMapping(payload, mapping.fieldMap);
+    const mappedMetafields = this.compileShopifyMetafieldsFromMapping(payload, mapping.rawFieldMap ?? mapping.fieldMap);
     if (mappedMetafields.length === 0) {
       return payload;
     }
@@ -3354,20 +3416,17 @@ export class MarketplaceService implements OnModuleInit {
 
   private compileShopifyMetafieldsFromMapping(
     payload: ProductPayload,
-    fieldMap: Record<string, string | string[]>,
+    fieldMap: Record<string, unknown>,
   ): NonNullable<ProductPayload["metafields"]> {
     const metafields: NonNullable<ProductPayload["metafields"]> = [];
     const seen = new Set<string>();
     const attributes = this.asRecord(payload.attributes);
 
     for (const [sourceField, rawTargetField] of Object.entries(fieldMap)) {
-      const value = this.getFieldValue(sourceField, payload, attributes);
-      if (this.isEmpty(value)) {
-        continue;
-      }
-      for (const targetField of normalizeFieldMapTargets(rawTargetField)) {
-        const target = this.parseShopifyMetafieldTarget(targetField);
-        if (!target) {
+      const rawValue = this.getFieldValue(sourceField, payload, attributes);
+      for (const target of this.normalizeShopifyMetafieldTargets(rawTargetField)) {
+        const value = this.applyFieldTransform(rawValue, target.transform, payload, attributes);
+        if (this.isEmpty(value)) {
           continue;
         }
         const identity = `${target.namespace}.${target.key}`;
@@ -3378,7 +3437,7 @@ export class MarketplaceService implements OnModuleInit {
         metafields.push({
           namespace: target.namespace,
           key: target.key,
-          type: "single_line_text_field",
+          type: target.type,
           value,
         });
       }
@@ -3387,7 +3446,257 @@ export class MarketplaceService implements OnModuleInit {
     return metafields;
   }
 
-  private parseShopifyMetafieldTarget(targetField: string): { namespace: string; key: string } | null {
+  private compileWooCommerceMetaFromMapping(
+    payload: ProductPayload,
+    fieldMap: Record<string, unknown>,
+  ): NonNullable<ProductPayload["customMeta"]> {
+    const customMeta: NonNullable<ProductPayload["customMeta"]> = [];
+    const seen = new Set<string>();
+    const attributes = this.asRecord(payload.attributes);
+
+    for (const [sourceField, rawTargetField] of Object.entries(fieldMap)) {
+      const rawValue = this.getFieldValue(sourceField, payload, attributes);
+      for (const target of this.normalizeWooCommerceMetaTargets(rawTargetField)) {
+        const value = this.applyFieldTransform(rawValue, target.transform, payload, attributes);
+        if (this.isEmpty(value)) {
+          continue;
+        }
+        if (seen.has(target.key)) {
+          continue;
+        }
+        seen.add(target.key);
+        customMeta.push({ key: target.key, value });
+      }
+    }
+
+    return customMeta;
+  }
+
+  /**
+   * Applies an optional mapping transform to a resolved source value. Transforms are carried on
+   * structured targets (see parseStructured*Target) as a `transform` object; legacy string
+   * targets never carry a transform and pass the raw value through unchanged.
+   *
+   * `concat` is the one case that ignores `rawValue` entirely — it resolves its own set of
+   * source paths, since concatenation is inherently a multi-source operation and the field_mappings
+   * shape only naturally hands the compiler one resolved source value per target.
+   */
+  private applyFieldTransform(
+    rawValue: unknown,
+    transform: Record<string, unknown> | undefined,
+    payload: ProductPayload,
+    attributes: Record<string, unknown>,
+  ): unknown {
+    if (!transform) {
+      return rawValue;
+    }
+    const type = String(transform.type ?? "").trim().toLowerCase();
+    switch (type) {
+      case "default":
+        return this.isEmpty(rawValue) ? transform.value : rawValue;
+
+      case "concat": {
+        const sources = Array.isArray(transform.sources) ? transform.sources : [];
+        const separator = typeof transform.separator === "string" ? transform.separator : " ";
+        const parts = sources
+          .map((source) => this.getFieldValue(String(source ?? "").trim(), payload, attributes))
+          .filter((part) => !this.isEmpty(part))
+          .map((part) => String(part));
+        return parts.length > 0 ? parts.join(separator) : undefined;
+      }
+
+      case "format": {
+        if (this.isEmpty(rawValue)) {
+          return rawValue;
+        }
+        const template = typeof transform.template === "string" && transform.template.includes("{value}")
+          ? transform.template
+          : "{value}";
+        return template.replace(/\{value\}/g, String(rawValue));
+      }
+
+      case "units": {
+        const numeric = typeof rawValue === "number" ? rawValue : Number.parseFloat(String(rawValue ?? ""));
+        if (!Number.isFinite(numeric)) {
+          return rawValue;
+        }
+        const factor = typeof transform.factor === "number"
+          ? transform.factor
+          : this.resolveUnitConversionFactor(String(transform.from ?? ""), String(transform.to ?? ""));
+        if (factor === undefined) {
+          return rawValue;
+        }
+        return Math.round(numeric * factor * 1000) / 1000;
+      }
+
+      case "list": {
+        const mode = String(transform.mode ?? "join").trim().toLowerCase();
+        if (mode === "wrap") {
+          if (Array.isArray(rawValue)) {
+            return rawValue;
+          }
+          return this.isEmpty(rawValue) ? [] : [rawValue];
+        }
+        // mode === "join" (default): array -> delimited string; scalars pass through unchanged.
+        if (Array.isArray(rawValue)) {
+          const separator = typeof transform.separator === "string" ? transform.separator : ", ";
+          return rawValue.map((item) => String(item ?? "").trim()).filter(Boolean).join(separator);
+        }
+        return rawValue;
+      }
+
+      case "lookup": {
+        const table = transform.table && typeof transform.table === "object" && !Array.isArray(transform.table)
+          ? (transform.table as Record<string, unknown>)
+          : {};
+        const lookupKey = String(rawValue ?? "");
+        if (Object.prototype.hasOwnProperty.call(table, lookupKey)) {
+          return table[lookupKey];
+        }
+        return Object.prototype.hasOwnProperty.call(transform, "fallback") ? transform.fallback : rawValue;
+      }
+
+      case "locale": {
+        const locale = String(transform.locale ?? "").trim();
+        const values = transform.values && typeof transform.values === "object" && !Array.isArray(transform.values)
+          ? (transform.values as Record<string, unknown>)
+          : {};
+        if (locale && Object.prototype.hasOwnProperty.call(values, locale)) {
+          return values[locale];
+        }
+        return Object.prototype.hasOwnProperty.call(transform, "fallback") ? transform.fallback : rawValue;
+      }
+
+      default:
+        return rawValue;
+    }
+  }
+
+  private resolveUnitConversionFactor(from: string, to: string): number | undefined {
+    const UNIT_CONVERSION_FACTORS: Record<string, number> = {
+      "kg->g": 1000,
+      "g->kg": 0.001,
+      "lb->kg": 0.453592,
+      "kg->lb": 2.20462,
+      "cm->in": 0.393701,
+      "in->cm": 2.54,
+      "m->cm": 100,
+      "cm->m": 0.01,
+      "mm->cm": 0.1,
+      "cm->mm": 10,
+    };
+    return UNIT_CONVERSION_FACTORS[`${from.trim().toLowerCase()}->${to.trim().toLowerCase()}`];
+  }
+
+  private extractTransformSpec(raw: Record<string, unknown>): Record<string, unknown> | undefined {
+    return raw.transform && typeof raw.transform === "object" && !Array.isArray(raw.transform)
+      ? (raw.transform as Record<string, unknown>)
+      : undefined;
+  }
+
+  private normalizeWooCommerceMetaTargets(
+    rawTargetField: unknown,
+  ): Array<{ key: string; transform?: Record<string, unknown> }> {
+    const rawTargets = Array.isArray(rawTargetField) ? rawTargetField : [rawTargetField];
+    const targets: Array<{ key: string; transform?: Record<string, unknown> }> = [];
+    for (const rawTarget of rawTargets) {
+      const structured = this.parseStructuredWooCommerceMetaTarget(rawTarget);
+      if (structured) {
+        targets.push(structured);
+        continue;
+      }
+      const stringTarget = this.parseWooCommerceMetaTarget(String(rawTarget ?? ""));
+      if (stringTarget) {
+        targets.push(stringTarget);
+      }
+    }
+    return targets;
+  }
+
+  private parseStructuredWooCommerceMetaTarget(
+    target: unknown,
+  ): { key: string; transform?: Record<string, unknown> } | null {
+    if (!target || typeof target !== "object" || Array.isArray(target)) {
+      return null;
+    }
+    const raw = target as Record<string, unknown>;
+    const connector = String(raw.connector ?? raw.channel ?? "woocommerce").trim().toLowerCase();
+    const kind = String(raw.kind ?? raw.targetType ?? raw.type ?? "").trim().toLowerCase();
+    const key = this.normalizeWooCommerceMetaKey(String(raw.metaKey ?? raw.key ?? ""));
+    const isMetaTarget =
+      connector === "woocommerce" &&
+      (kind.includes("meta") || Boolean(raw.metaKey) || Boolean(raw.key));
+    if (!isMetaTarget || !key) {
+      return null;
+    }
+    return { key, transform: this.extractTransformSpec(raw) };
+  }
+
+  private parseWooCommerceMetaTarget(targetField: string): { key: string } | null {
+    const target = String(targetField ?? "").trim();
+    const prefixes = ["meta_data.", "metadata.", "customMeta.", "woocommerceMeta.", "productMeta."];
+    const prefix = prefixes.find((item) => target.startsWith(item));
+    if (!prefix) {
+      return null;
+    }
+    const key = this.normalizeWooCommerceMetaKey(target.slice(prefix.length));
+    return key ? { key } : null;
+  }
+
+  private normalizeWooCommerceMetaKey(value: string): string {
+    return String(value ?? "")
+      .trim()
+      .replace(/[^A-Za-z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 255);
+  }
+
+  private normalizeShopifyMetafieldTargets(
+    rawTargetField: unknown,
+  ): Array<{ namespace: string; key: string; type: string; transform?: Record<string, unknown> }> {
+    const rawTargets = Array.isArray(rawTargetField) ? rawTargetField : [rawTargetField];
+    const targets: Array<{ namespace: string; key: string; type: string; transform?: Record<string, unknown> }> = [];
+    for (const rawTarget of rawTargets) {
+      const structured = this.parseStructuredShopifyMetafieldTarget(rawTarget);
+      if (structured) {
+        targets.push(structured);
+        continue;
+      }
+      const stringTarget = this.parseShopifyMetafieldTarget(String(rawTarget ?? ""));
+      if (stringTarget) {
+        targets.push(stringTarget);
+      }
+    }
+    return targets;
+  }
+
+  private parseStructuredShopifyMetafieldTarget(
+    target: unknown,
+  ): { namespace: string; key: string; type: string; transform?: Record<string, unknown> } | null {
+    if (!target || typeof target !== "object" || Array.isArray(target)) {
+      return null;
+    }
+    const raw = target as Record<string, unknown>;
+    const connector = String(raw.connector ?? raw.channel ?? "shopify").trim().toLowerCase();
+    const kind = String(raw.kind ?? raw.targetType ?? raw.type ?? "").trim().toLowerCase();
+    const namespace = this.normalizeShopifyMetafieldIdentifier(String(raw.namespace ?? ""));
+    const key = this.normalizeShopifyMetafieldIdentifier(String(raw.key ?? ""));
+    const metafieldType = String(raw.metafieldType ?? raw.valueType ?? raw.fieldType ?? raw.type ?? "single_line_text_field").trim();
+    const isMetafieldTarget =
+      connector === "shopify" &&
+      (kind.includes("metafield") || (Boolean(namespace) && Boolean(key)));
+    if (!isMetafieldTarget || !namespace || !key) {
+      return null;
+    }
+    return {
+      namespace,
+      key,
+      type: metafieldType || "single_line_text_field",
+      transform: this.extractTransformSpec(raw),
+    };
+  }
+
+  private parseShopifyMetafieldTarget(targetField: string): { namespace: string; key: string; type: string } | null {
     const target = String(targetField ?? "").trim();
     const prefixes = ["metafields.", "productMetafields."];
     const prefix = prefixes.find((item) => target.startsWith(item));
@@ -3404,7 +3713,7 @@ export class MarketplaceService implements OnModuleInit {
     if (!namespace || !key) {
       return null;
     }
-    return { namespace, key };
+    return { namespace, key, type: "single_line_text_field" };
   }
 
   private normalizeShopifyMetafieldIdentifier(value: string): string {
@@ -3413,6 +3722,14 @@ export class MarketplaceService implements OnModuleInit {
       .replace(/[^A-Za-z0-9_-]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(0, 64);
+  }
+
+  private shopifyMappedMetafieldsEnabled(): boolean {
+    return String(process.env.PIM_SHOPIFY_MAPPED_METAFIELDS_ENABLED ?? "true").trim().toLowerCase() !== "false";
+  }
+
+  private woocommerceMappedMetaEnabled(): boolean {
+    return String(process.env.PIM_WOOCOMMERCE_MAPPED_META_ENABLED ?? "true").trim().toLowerCase() !== "false";
   }
 
   private async buildSubmissionStatusLookupRef(productId: string, externalRef: string): Promise<string> {

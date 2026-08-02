@@ -14,6 +14,15 @@ const INSTALLER_SERVICE = path.join(
   "connector-installer",
   "connector-installer.service.ts",
 );
+const WOO_DEFINITION_MIGRATION = path.join(
+  REPO_ROOT,
+  "packages",
+  "db",
+  "prisma",
+  "migrations",
+  "20260801000000_seed_woocommerce_connector_definition",
+  "migration.sql",
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -23,6 +32,7 @@ function run() {
   const pageSource = fs.readFileSync(CONNECTORS_PAGE, "utf8");
   const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
   const installerSource = fs.readFileSync(INSTALLER_SERVICE, "utf8");
+  const wooDefinitionMigration = fs.readFileSync(WOO_DEFINITION_MIGRATION, "utf8");
 
   // ── Myntra credential form (setup/page.tsx) ────────────────────────────────
 
@@ -62,6 +72,37 @@ function run() {
     setupSource.includes("MYNTRA_CREDENTIALS_INCOMPLETE") &&
       setupSource.includes("MYNTRA_CREDENTIALS_INVALID"),
     "Setup page must surface MYNTRA_CREDENTIALS_INCOMPLETE and MYNTRA_CREDENTIALS_INVALID errors to the user.",
+  );
+
+  // ── WooCommerce credential form (setup/page.tsx) ──────────────────────────
+
+  assert(
+    setupSource.includes('if (slug === "woocommerce")') &&
+      setupSource.includes("Consumer Key") &&
+      setupSource.includes("Consumer Secret") &&
+      setupSource.includes("WooCommerce Settings"),
+    "Setup page must render WooCommerce credential fields and point operators to WooCommerce REST API settings.",
+  );
+  assert(
+    setupSource.includes('if (slug === "woocommerce") return "Site URL"') &&
+      setupSource.includes('if (slug === "woocommerce") return "https://store.example.com"'),
+    "WooCommerce setup must label the external account reference as the HTTPS Site URL.",
+  );
+  assert(
+    setupSource.includes('name="clientId"') &&
+      setupSource.includes('name="clientSecret"') &&
+      setupSource.includes('type="password"'),
+    "WooCommerce form fields must be wired to clientId/clientSecret and mask the Consumer Secret.",
+  );
+  assert(
+    setupSource.includes("WOOCOMMERCE_CREDENTIALS_INCOMPLETE") &&
+      setupSource.includes("WOOCOMMERCE_SITE_URL_NOT_HTTPS"),
+    "Setup page must surface WooCommerce incomplete-credential and HTTPS-only errors.",
+  );
+  assert(
+    setupSource.includes("isSetupLaneStage") &&
+      setupSource.includes('stage === "code_complete"'),
+    "Connector setup page must expose code-complete setup lanes such as WooCommerce, not only live connectors.",
   );
 
   // ── Myntra status note (AM-gated Beta) ────────────────────────────────────
@@ -138,6 +179,29 @@ function run() {
     "MYNTRA_CREDENTIALS_INCOMPLETE guard must appear before credential store calls in installer service.",
   );
 
+  // ── API installer service + catalog seed — WooCommerce path ───────────────
+
+  assert(
+    installerSource.includes('normalizedSlug === "woocommerce"') &&
+      installerSource.includes("captureAndStoreWooCommerceCredentials"),
+    "connector-installer.service.ts must handle the 'woocommerce' slug with the WooCommerce credential branch.",
+  );
+  assert(
+    installerSource.includes("WOOCOMMERCE_CREDENTIALS_INCOMPLETE") &&
+      installerSource.includes("WOOCOMMERCE_SITE_URL_NOT_HTTPS") &&
+      installerSource.includes('"site_url"') &&
+      installerSource.includes('"consumer_key"') &&
+      installerSource.includes('"consumer_secret"'),
+    "WooCommerce installer branch must require HTTPS site URL plus Consumer Key and Consumer Secret, then store the expected credential types.",
+  );
+  assert(
+    wooDefinitionMigration.includes("'cdef_woocommerce'") &&
+      wooDefinitionMigration.includes("'woocommerce'") &&
+      wooDefinitionMigration.includes("'WooCommerce'") &&
+      wooDefinitionMigration.includes("ARRAY['PUBLISH','VALIDATE','STATUS_SYNC','WEBHOOK_RECEIVE']"),
+    "WooCommerce connector definition seed migration must register cdef_woocommerce with runtime capabilities.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -157,6 +221,12 @@ function run() {
           "installer_service_has_myntra_branch",
           "installer_service_captures_all_three_credentials",
           "installer_service_guard_precedes_store_calls",
+          "woocommerce_credential_form_renders_site_url_consumer_key_and_secret",
+          "woocommerce_form_fields_wired_to_expected_dto_names",
+          "woocommerce_error_codes_present_in_setup_page",
+          "setup_page_exposes_code_complete_connector_lanes",
+          "installer_service_has_woocommerce_branch",
+          "woocommerce_connector_definition_seeded",
         ],
         checkedAt: new Date().toISOString(),
       },

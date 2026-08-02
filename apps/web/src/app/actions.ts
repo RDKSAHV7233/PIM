@@ -2010,6 +2010,10 @@ export async function applyBulkEditAction(formData: FormData) {
 export async function uploadMediaAssetAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "").trim();
   const variantId = String(formData.get("variantId") ?? "").trim();
+  const returnTo = resolveReturnToPath(
+    formData,
+    `/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}`,
+  );
   const altText = String(formData.get("altText") ?? "").trim();
   const isMain = String(formData.get("isMain") ?? "false") === "true";
   const sortOrder = parseNumber(formData.get("sortOrder"));
@@ -2027,9 +2031,7 @@ export async function uploadMediaAssetAction(formData: FormData) {
   const fileName = fileEntry.name || "media.bin";
   const mimeType = fileEntry.type || "application/octet-stream";
   if (!mimeType.startsWith("image/")) {
-    redirect(
-      `/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&uploadError=invalid-file-type`,
-    );
+    redirect(appendQueryParams(returnTo, { uploadError: "invalid-file-type" }));
   }
   const contentBase64 = Buffer.from(await fileEntry.arrayBuffer()).toString("base64");
 
@@ -2049,7 +2051,7 @@ export async function uploadMediaAssetAction(formData: FormData) {
     });
   } catch (error: unknown) {
     const redirectPath = withPlanLimitQuery(
-      `/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}`,
+      returnTo,
       error,
     );
     if (redirectPath) {
@@ -2059,7 +2061,10 @@ export async function uploadMediaAssetAction(formData: FormData) {
   }
 
   revalidatePath("/media");
-  redirect(`/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}`);
+  if (productId) {
+    revalidatePath(`/products/${productId}`);
+  }
+  redirect(appendQueryParams(returnTo, { mediaUploadStatus: "uploaded" }));
 }
 
 export async function updateMediaGovernanceAction(formData: FormData) {
@@ -2326,12 +2331,16 @@ export async function triggerBulkPublishAction(formData: FormData) {
     throw new Error("Forbidden: publishing role required.");
   }
   const installationId = String(formData.get("installationId") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
   const productIdsRaw = String(formData.get("productIds") ?? "").trim();
   const returnTo =
     String(formData.get("returnTo") ?? "").trim() ||
     `/channels/connectors/${encodeURIComponent(installationId)}?tab=sync`;
   if (!installationId) {
     throw new Error("Installation ID is required.");
+  }
+  if (isMarketplaceChannel(channel) && isChannelInDevelopment(channel)) {
+    throw new Error(IN_DEVELOPMENT_CHANNEL_NOTICE);
   }
   const productIds = productIdsRaw
     ? productIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)

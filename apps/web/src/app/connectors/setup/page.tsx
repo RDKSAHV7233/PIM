@@ -59,6 +59,8 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
             ? "Shopify"
             : connectorSlug === "myntra"
               ? "Myntra"
+              : connectorSlug === "woocommerce"
+                ? "WooCommerce"
               : "connector";
 
   if (value === "FLIPKART_CREDENTIALS_INCOMPLETE") {
@@ -78,6 +80,15 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   }
   if (value === "MYNTRA_CREDENTIALS_INVALID") {
     return `${connectorLabel} credentials could not be validated. Check the Merchant ID, Secret Key, and Warehouse ID from your Myntra account manager.`;
+  }
+  if (value === "WOOCOMMERCE_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires Site URL, Consumer Key, and Consumer Secret together.`;
+  }
+  if (value === "WOOCOMMERCE_SITE_URL_NOT_HTTPS") {
+    return `${connectorLabel} Site URL must use HTTPS. Update the store URL and retry.`;
+  }
+  if (value === "WOOCOMMERCE_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the Site URL, Consumer Key, and Consumer Secret in WooCommerce > Settings > Advanced > REST API.`;
   }
   if (value === "SHOPIFY_SHOP_DOMAIN_REQUIRED") {
     return "Shopify install requires the store domain before the connector account can be created.";
@@ -103,12 +114,14 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
 function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "amazon-in") return "Seller ID";
   if (slug === "myntra") return "Merchant ID";
+  if (slug === "woocommerce") return "Site URL";
   return "External Account Ref";
 }
 
 function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "amazon-in") return "Enter Amazon seller ID";
   if (slug === "myntra") return "Enter Myntra merchant ID";
+  if (slug === "woocommerce") return "https://store.example.com";
   return "Optional";
 }
 
@@ -157,7 +170,14 @@ function connectorStatusNote(
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
+  if (slug === "woocommerce") {
+    return "WooCommerce is code-complete and available for credential setup, but still blocked from publish while QA validation and PO review are pending.";
+  }
   return null;
+}
+
+function isSetupLaneStage(stage: string): boolean {
+  return stage === "live" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
 }
 
 function formatCapabilityLabel(capability: string): string {
@@ -444,6 +464,39 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     );
   }
 
+  if (slug === "woocommerce") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          WooCommerce uses REST API keys from WooCommerce Settings &gt; Advanced &gt; REST API. Enter a HTTPS store URL plus Read/Write Consumer Key and Consumer Secret. Values are encrypted on save and never shown again.
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Consumer Key
+          </label>
+          <Input
+            id={`install-client-id-${definitionId}`}
+            name="clientId"
+            autoComplete="off"
+            placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Consumer Secret
+          </label>
+          <Input
+            id={`install-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          />
+        </div>
+      </>
+    );
+  }
+
   return null;
 }
 
@@ -477,7 +530,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
-      .filter((item) => item.definition.launchStage === "live")
+      .filter((item) => isSetupLaneStage(item.definition.launchStage))
       .filter((item) => !item.definition.slug.startsWith("diag-"))
       .filter((item) => (selectedSlug ? item.definition.slug === selectedSlug : true))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
@@ -567,7 +620,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">1. Choose channel</p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Filter to the exact connector lane you want to install so the rest of the page stays focused. This setup workspace only exposes Live publish connectors.
+                  Filter to the exact connector lane you want to install so the rest of the page stays focused. This setup workspace exposes live and early-access setup lanes.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
