@@ -1740,6 +1740,7 @@ export class ShopifyConnector implements ConnectorInterface {
         type: "single_line_text_field",
         value: String(product.sku ?? "").trim(),
       },
+      ...this.normalizeProductMetafields(product.metafields),
     ];
 
     const isMultiVariant = Array.isArray(product.variants) && product.variants.length > 0;
@@ -1821,6 +1822,55 @@ export class ShopifyConnector implements ConnectorInterface {
       ],
       variants,
     };
+  }
+
+  private normalizeProductMetafields(metafields: ProductPayload["metafields"]): Array<{
+    namespace: string;
+    key: string;
+    type: string;
+    value: string;
+  }> {
+    if (!Array.isArray(metafields)) {
+      return [];
+    }
+    const reserved = new Set([
+      `${DEFAULT_CUSTOM_ID_NAMESPACE}.${DEFAULT_CUSTOM_ID_KEY}`,
+      `${DEFAULT_PIM_METAFIELD_NAMESPACE}.source_sku`,
+    ]);
+    const normalized: Array<{ namespace: string; key: string; type: string; value: string }> = [];
+    const seen = new Set<string>(reserved);
+    for (const metafield of metafields) {
+      if (!metafield || typeof metafield !== "object") {
+        continue;
+      }
+      const namespace = String(metafield.namespace ?? "").trim();
+      const key = String(metafield.key ?? "").trim();
+      const type = String(metafield.type ?? "single_line_text_field").trim() || "single_line_text_field";
+      const value = this.stringifyMetafieldValue(metafield.value, type);
+      const identity = `${namespace}.${key}`;
+      if (!namespace || !key || !value || seen.has(identity)) {
+        continue;
+      }
+      seen.add(identity);
+      normalized.push({ namespace, key, type, value });
+    }
+    return normalized;
+  }
+
+  private stringifyMetafieldValue(value: unknown, type: string): string {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    if (typeof value === "string") {
+      return value.trim();
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (type === "json" || Array.isArray(value) || typeof value === "object") {
+      return JSON.stringify(value);
+    }
+    return String(value).trim();
   }
 
   private async requirePublicationTargetIds(ctx: ConnectorContext): Promise<string[]> {

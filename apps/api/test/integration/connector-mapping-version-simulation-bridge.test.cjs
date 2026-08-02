@@ -13,6 +13,7 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
+const http = require("node:http");
 const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
@@ -160,6 +161,274 @@ async function issueStepUp(baseUrl, token) {
   return stepUpToken;
 }
 
+async function advanceToApproved(baseUrl, token, product) {
+  const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: product.version,
+    title: product.title,
+    description: product.description ?? "",
+    brand: product.brand,
+    categoryId: product.categoryId,
+    hsnCode: product.hsnCode ?? undefined,
+    gstRate: product.gstRate ?? undefined,
+    attributes: product.attributes ?? {},
+    status: "in_review",
+  });
+  assertStatus(toReview, 200, "advance product to in_review");
+
+  const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: toReview.payload.version,
+    title: toReview.payload.title,
+    description: toReview.payload.description ?? "",
+    brand: toReview.payload.brand,
+    categoryId: toReview.payload.categoryId,
+    hsnCode: toReview.payload.hsnCode ?? undefined,
+    gstRate: toReview.payload.gstRate ?? undefined,
+    attributes: toReview.payload.attributes ?? {},
+    status: "approved",
+  });
+  assertStatus(toApproved, 200, "advance product to approved");
+  return toApproved.payload;
+}
+
+function createFlipkartStub() {
+  const calls = {
+    oauth: [],
+    publish: [],
+  };
+  const queuedPublishResponses = [];
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/oauth-service/oauth/token") {
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => {
+          const params = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+          calls.oauth.push({
+            grantType: params.get("grant_type") || "",
+            auth: String(req.headers.authorization || ""),
+          });
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              access_token: "stub-access-token",
+              expires_in: 3600,
+              token_type: "bearer",
+            }),
+          );
+        });
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/sellers/listings/v3/skus/listings/update") {
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => {
+          const bodyText = Buffer.concat(chunks).toString("utf8");
+          let payload = {};
+          try {
+            payload = bodyText ? JSON.parse(bodyText) : {};
+          } catch {
+            payload = {};
+          }
+          calls.publish.push({
+            auth: String(req.headers.authorization || ""),
+            requestId: String(req.headers["x-flipkart-request-id"] || ""),
+            payload,
+          });
+          const nextResponse = queuedPublishResponses.shift() ?? {
+            statusCode: 200,
+            body: { requestId: "fk-request-1", status: "SUCCESS" },
+          };
+          res.statusCode = nextResponse.statusCode;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(nextResponse.body));
+        });
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
+    });
+
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Unable to resolve Flipkart stub address."));
+        return;
+      }
+      resolve({
+        server,
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        calls,
+        enqueuePublishFailure() {
+          queuedPublishResponses.push({
+            statusCode: 200,
+            body: {
+              requestId: "fk-request-error",
+              status: "FAILURE",
+              errors: [{ code: "STUB_REJECTED", message: "Stubbed publish rejection after payload construction." }],
+            },
+          });
+        },
+      });
+    });
+  });
+}
+
+async function seedFlipkartCredentials(tenantKey, installationId) {
+  const { PrismaDirectService } = require(path.join(
+    REPO_ROOT,
+    "apps",
+    "api",
+    "dist",
+    "prisma",
+    "prisma-direct.service.js",
+  ));
+  const { LoggerService } = require(path.join(
+    REPO_ROOT,
+    "apps",
+    "api",
+    "dist",
+    "common",
+    "logging",
+    "logger.service.js",
+  ));
+  const { ConnectorCredentialEncryptionService } = require(path.join(
+    REPO_ROOT,
+    "apps",
+    "api",
+    "dist",
+    "connector-installer",
+    "credential-encryption.service.js",
+  ));
+
+  const prismaDirect = new PrismaDirectService();
+  await prismaDirect.onModuleInit();
+  try {
+    const logger = new LoggerService();
+    const encryption = new ConnectorCredentialEncryptionService(prismaDirect, logger);
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "client_id",
+      plainValue: "flipkart-client-id",
+    });
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "client_secret",
+      plainValue: "flipkart-client-secret",
+    });
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "refresh_token",
+      plainValue: "flipkart-refresh-token",
+    });
+  } finally {
+    await prismaDirect.onModuleDestroy();
+  }
+}
+
+async function createPublishReadyProduct(baseUrl, token, categoryId, runId, suffix = "") {
+  const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
+    title: `Bridge Test Product ${suffix || "success"} ${runId}`,
+    description: "Test product for ConnectorMappingVersion simulation bridge regression",
+    brand: "Bridge Brand",
+    categoryId,
+    status: "draft",
+    hsnCode: "62046200",
+    gstRate: 12,
+    attributes: {
+      color: "black",
+      size: "M",
+      material: "Cotton",
+      mainImageUrl: "https://cdn.example.com/products/bridge-test.jpg",
+      packageWeight: 600,
+      packageLength: 300,
+      packageBreadth: 220,
+      packageHeight: 45,
+      procurementSla: 2,
+      procurementType: "REGULAR",
+    },
+  });
+  assertStatus(product, 201, `create ${suffix || "success"} product`);
+  const productId = String(product.payload.id);
+
+  const variant = await apiRequest(
+    baseUrl,
+    "POST",
+    `/catalog/products/${encodeURIComponent(productId)}/variants`,
+    token,
+    {
+      skuCode: `FK-${suffix || "success"}-${runId}`,
+      attributes: {},
+      mrp: 1999,
+      sellingPrice: 1499,
+      inventoryQty: 8,
+      status: "draft",
+    },
+  );
+  assertStatus(variant, 201, `create ${suffix || "success"} variant`);
+
+  const approved = await advanceToApproved(baseUrl, token, product.payload);
+  return { product: approved, productId };
+}
+
+async function createAndProcessExportJob(baseUrl, token, productId, connectorSlug) {
+  const createJob = await apiRequest(
+    baseUrl,
+    "POST",
+    `/marketplace/products/${encodeURIComponent(productId)}/export-jobs`,
+    token,
+    {
+      channel: connectorSlug,
+      maxRetries: 1,
+    },
+  );
+  assertStatus(createJob, 201, `create ${connectorSlug} export job`);
+  const jobId = String(createJob.payload.id);
+
+  const processed = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${encodeURIComponent(jobId)}/process`, token);
+  assertStatus(processed, 201, `process ${connectorSlug} export job`);
+  return { jobId, processed: processed.payload };
+}
+
+async function getLatestSubmissionForProduct(baseUrl, token, productId, connectorSlug) {
+  const submissions = await apiRequest(
+    baseUrl,
+    "GET",
+    `/submissions?productId=${encodeURIComponent(productId)}&connectorSlug=${encodeURIComponent(connectorSlug)}&limit=5`,
+    token,
+  );
+  assertStatus(submissions, 200, `list ${connectorSlug} submissions`);
+  assert(Array.isArray(submissions.payload) && submissions.payload.length >= 1, "expected at least one submission");
+
+  const detail = await apiRequest(baseUrl, "GET", `/submissions/${encodeURIComponent(String(submissions.payload[0].id))}`, token);
+  assertStatus(detail, 200, "get submission detail");
+  return detail.payload;
+}
+
+function assertLivePayloadSnapshot(detail, expected) {
+  const snapshot = detail.payloadSnapshot;
+  assert(snapshot && typeof snapshot === "object" && !Array.isArray(snapshot), "expected payloadSnapshot object");
+  assert(String(snapshot.sku) === expected.sku, `expected snapshot sku ${expected.sku}, got ${String(snapshot.sku)}`);
+  assert(String(snapshot.title).includes(expected.titleFragment), `expected snapshot title to include ${expected.titleFragment}`);
+  assert(snapshot.attributes && typeof snapshot.attributes === "object", "expected ProductPayload attributes snapshot");
+  assert(snapshot.attributes.material === "Cotton", "expected raw material attribute in ProductPayload snapshot");
+  assert(
+    snapshot["metafields.material"] === undefined,
+    "live payloadSnapshot must not store simulation.mappedPayload metafield keys after payload construction succeeds",
+  );
+  assert(
+    snapshot.product_title === undefined,
+    "live payloadSnapshot must not store simulation.mappedPayload target keys after payload construction succeeds",
+  );
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
@@ -176,10 +445,14 @@ async function run() {
   const userId = `mapping-sim-bridge-user-${runId}`;
   const commercialToken = `commercial-ops-${runId}`;
   const connectorSlug = "flipkart";
+  const stub = await createFlipkartStub();
 
   const env = {
     ...process.env,
     PORT: String(apiPort),
+    PIM_FLIPKART_OAUTH_BASE_URL: stub.baseUrl,
+    PIM_FLIPKART_API_BASE_URL: `${stub.baseUrl}/sellers`,
+    QUEUE_WORKER_ENABLED: "false",
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenant,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
@@ -233,17 +506,8 @@ async function run() {
     assertStatus(category, 201, "create category");
     const categoryId = String(category.payload.id);
 
-    const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
-      title: `Bridge Test Product ${runId}`,
-      sku: `bridge-sku-${runId}`,
-      brand: "Bridge Brand",
-      categoryId,
-      sellingPrice: 199,
-      mrp: 299,
-      description: "Test product for ConnectorMappingVersion simulation bridge regression",
-    });
-    assertStatus(product, 201, "create product");
-    const productId = String(product.payload.id);
+    const successProduct = await createPublishReadyProduct(baseUrl, token, categoryId, runId, "success");
+    const productId = successProduct.productId;
 
     // Install connector
     const install = await apiRequest(baseUrl, "POST", `/connectors/${connectorSlug}/install`, token, {
@@ -252,6 +516,7 @@ async function run() {
     });
     assertStatus(install, 201, "install connector");
     const installationId = String(install.payload.id);
+    await seedFlipkartCredentials(tenant, installationId);
 
     // Publish a ConnectorMappingVersion (slug-scoped default — no channelMappingTemplate exists for this tenant)
     const createDraft = await apiRequest(
@@ -272,6 +537,7 @@ async function run() {
             description: "description",
             hsnCode: "hsn_code",
             gstRate: "gst_rate",
+            "attributes.material": "metafields.material",
           },
         },
         fallbackPolicy: { enabled: false },
@@ -356,6 +622,40 @@ async function run() {
       `simulate without installationId returned mappingSource="${mappingSourceNoInstall}" — slug-scoped ConnectorMappingVersion not resolved`,
     );
 
+    assert(
+      simulateResult.payload?.mappedPayload?.["metafields.material"] === "Cotton",
+      "simulation should still expose mapped metafield preview before publish execution",
+    );
+
+    // --- Test 4: live submission snapshots the real ProductPayload, not the mapping preview ---
+    const successExport = await createAndProcessExportJob(baseUrl, token, productId, connectorSlug);
+    assert(
+      String(successExport.processed?.status) === "completed",
+      `expected completed export job, got ${String(successExport.processed?.status)} payload=${JSON.stringify(successExport.processed)}`,
+    );
+    const successSubmission = await getLatestSubmissionForProduct(baseUrl, token, productId, connectorSlug);
+    assert(String(successSubmission.status) === "PENDING", `expected PENDING submission, got ${String(successSubmission.status)}`);
+    assert(String(successSubmission.source) === "LIVE_API", `expected LIVE_API source, got ${String(successSubmission.source)}`);
+    assertLivePayloadSnapshot(successSubmission, {
+      sku: `FK-success-${runId}`,
+      titleFragment: "Bridge Test Product success",
+    });
+
+    // --- Test 5: post-construction connector failures also snapshot the real ProductPayload ---
+    const failingProduct = await createPublishReadyProduct(baseUrl, token, categoryId, runId, "failure");
+    stub.enqueuePublishFailure();
+    const failingExport = await createAndProcessExportJob(baseUrl, token, failingProduct.productId, connectorSlug);
+    assert(
+      String(failingExport.processed?.status) === "failed",
+      `expected failed export job after stubbed connector rejection, got ${String(failingExport.processed?.status)} payload=${JSON.stringify(failingExport.processed)}`,
+    );
+    const failedSubmission = await getLatestSubmissionForProduct(baseUrl, token, failingProduct.productId, connectorSlug);
+    assert(String(failedSubmission.status) === "ERROR", `expected ERROR submission, got ${String(failedSubmission.status)}`);
+    assertLivePayloadSnapshot(failedSubmission, {
+      sku: `FK-failure-${runId}`,
+      titleFragment: "Bridge Test Product failure",
+    });
+
     console.log(
       JSON.stringify(
         {
@@ -363,10 +663,15 @@ async function run() {
           productId,
           installationId,
           versionId,
+          successJobId: successExport.jobId,
+          failedJobId: failingExport.jobId,
+          publishCalls: stub.calls.publish.length,
           validated: [
             "simulate_with_installationId_resolves_connector_mapping_version",
             "publish_readiness_no_mapping_not_configured_blocker",
             "simulate_without_installationId_resolves_slug_scoped_connector_mapping_version",
+            "live_submission_snapshot_uses_product_payload_on_success",
+            "live_submission_snapshot_uses_product_payload_on_post_construction_error",
           ],
           checkedAt: new Date().toISOString(),
         },
@@ -382,6 +687,7 @@ async function run() {
     if (!apiProcess.killed) {
       apiProcess.kill("SIGKILL");
     }
+    stub.server.close();
   }
 }
 

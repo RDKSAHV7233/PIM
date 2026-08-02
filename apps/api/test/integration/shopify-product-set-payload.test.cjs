@@ -220,6 +220,14 @@ async function run() {
       mainImageUrl: "https://example.com/img.jpg",
       attributes: {},
       productType: "Test",
+      metafields: [
+        {
+          namespace: "pim_connector",
+          key: "material",
+          type: "single_line_text_field",
+          value: "Cotton",
+        },
+      ],
     });
 
     assert(result.status === "SUCCESS", `Expected SUCCESS, got ${result.status}`);
@@ -245,6 +253,13 @@ async function run() {
     assert(
       skuMetafield && skuMetafield.value === "PAYLOAD-001",
       `input.metafields must contain {namespace:"pim_connector", key:"sku", value:"PAYLOAD-001"} — got ${JSON.stringify(inputMetafields)}`,
+    );
+    const mappedMetafield = inputMetafields.find(
+      (m) => m.namespace === "pim_connector" && m.key === "material",
+    );
+    assert(
+      mappedMetafield && mappedMetafield.type === "single_line_text_field" && mappedMetafield.value === "Cotton",
+      `input.metafields must include mapped pim_connector/material value from ProductPayload.metafields — got ${JSON.stringify(inputMetafields)}`,
     );
 
     // ── Assertion 3: variants present with optionValues ─────────────────────
@@ -287,6 +302,7 @@ async function run() {
       validated: [
         "productSet_uses_handle_identifier_not_customId",
         "productSet_input_metafields_includes_pim_connector_sku",
+        "productSet_input_metafields_includes_mapped_product_metafields",
         "productSet_input_variants_present_with_optionValues",
         "productVariantsBulkUpdate_called_with_price_and_sku",
       ],

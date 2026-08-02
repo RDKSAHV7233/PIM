@@ -99,6 +99,13 @@ export type MarketPrice = {
   isDefault: boolean;    // true if this is the tenant's default PriceList for this market
 };
 
+export type ProductMetafieldPayload = {
+  namespace: string;
+  key: string;
+  type: string;
+  value: unknown;
+};
+
 export type ProductPayload = {
   sku: string;
   title: string;
@@ -138,6 +145,8 @@ export type ProductPayload = {
    * should look for the entry where isDefault === true or marketCode matches their target.
    */
   marketPrices?: MarketPrice[];
+  /** Connector-ready product metafields compiled from tenant field mappings. */
+  metafields?: ProductMetafieldPayload[];
 };
 
 export type ValidationResult = {
