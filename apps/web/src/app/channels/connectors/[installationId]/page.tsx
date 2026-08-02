@@ -47,7 +47,7 @@ export const dynamic = "force-dynamic";
 
 interface ChannelConnectorDetailPageProps {
   params: Promise<{ installationId: string }>;
-  searchParams: Promise<{ tab?: string; status?: string; action?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; action?: string; queuedCount?: string; excludedCount?: string }>;
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access" | "sync" | "schedule" | "catalog-link";
@@ -348,7 +348,10 @@ function formatDateTime(value: string | null | undefined): string {
   return fmtDT(value);
 }
 
-function connectorDetailStatusMessage(status: string | undefined): {
+function connectorDetailStatusMessage(
+  status: string | undefined,
+  counts?: { queuedCount?: string; excludedCount?: string },
+): {
   tone: "success" | "warning" | "danger";
   message: string;
 } | null {
@@ -420,9 +423,25 @@ function connectorDetailStatusMessage(status: string | undefined): {
     };
   }
   if (normalized === "bulk-publish-queued") {
+    const queuedCount = Number(counts?.queuedCount ?? "");
+    const excludedCount = Number(counts?.excludedCount ?? "");
+    if (Number.isFinite(queuedCount) && Number.isFinite(excludedCount) && excludedCount > 0) {
+      return {
+        tone: "warning",
+        message: `Bulk publish submitted: ${queuedCount} queued, ${excludedCount} skipped (not approved, mapped, or publish-ready). Track queued jobs in the Jobs workspace; review skipped products before retrying.`,
+      };
+    }
     return {
       tone: "success",
       message: "Bulk publish submitted. Native feed connectors create one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.",
+    };
+  }
+  if (normalized === "bulk-publish-none-eligible") {
+    const excludedCount = Number(counts?.excludedCount ?? "");
+    const countLabel = Number.isFinite(excludedCount) && excludedCount > 0 ? `All ${excludedCount} product(s)` : "Every product";
+    return {
+      tone: "danger",
+      message: `${countLabel} in this batch failed the approval or publish-readiness check — nothing was queued. Review approval status and destination mapping before retrying.`,
     };
   }
   if (normalized === "bulk-publish-error") {
@@ -645,7 +664,10 @@ export default async function ChannelConnectorDetailPage({
   const { authHeader, actorRole } = await getServerSession();
   const selectedTab = resolveTab(String(query.tab ?? ""));
   const detailReturnPath = buildDetailHref(installationId, selectedTab);
-  const statusMessage = connectorDetailStatusMessage(query.status);
+  const statusMessage = connectorDetailStatusMessage(query.status, {
+    queuedCount: query.queuedCount,
+    excludedCount: query.excludedCount,
+  });
 
   try {
     const installations = await getInstalledConnectors({ role: actorRole, authHeader });
