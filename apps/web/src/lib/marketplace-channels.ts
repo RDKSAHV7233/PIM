@@ -63,10 +63,10 @@ export function formatMarketplaceChannelLabel(channel: MarketplaceChannel): stri
 
 // Channels whose connectors are present in source but not yet ready for customer use.
 // Surfaces that show these channels must visibly mark them and disable destructive actions.
-// WooCommerce: mapped meta_data execution exists (marketplace.service.ts), but there is no
-// accessible WooCommerce tenant/store in this environment and no real end-to-end publish has
-// been verified by a human — see vexa_pim_mapping_review.md, Increment 3.
-const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>(["woocommerce"]);
+// WooCommerce graduated out of this set on 2026-08-02: a real end-to-end publish (live
+// category mapping, real connector account, real product export) was verified by a human
+// against web.vexapim.com/shop/ — see vexa_pim_mapping_review.md, Increment 3.
+const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>([]);
 
 export function isChannelInDevelopment(channel: MarketplaceChannel): boolean {
   return IN_DEVELOPMENT_CHANNELS.has(channel);

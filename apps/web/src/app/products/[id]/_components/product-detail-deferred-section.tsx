@@ -72,6 +72,13 @@ export async function ProductDetailDeferredSection({
   returnTo,
   tabHref,
 }: ProductDetailDeferredSectionProps) {
+  const readinessInstallation =
+    installedConnectors.find(
+      (connector) =>
+        isConnectorReadyToPublish(connector) &&
+        connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel),
+    ) ?? null;
+
   const [templates, mapping, simulation, categoryAttributes, readiness, submissionsRaw, activity] = await Promise.all([
     getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }).catch(
       () => [] as Awaited<ReturnType<typeof getMarketplaceTemplates>>,
@@ -116,7 +123,12 @@ export async function ProductDetailDeferredSection({
     ),
     evaluateConnectorPublishReadiness(
       mapMarketplaceChannelToConnectorSlug(selectedChannel),
-      { categoryScope: product.categoryId, productId, fallbackAcknowledged: false },
+      {
+        categoryScope: product.categoryId,
+        productId,
+        fallbackAcknowledged: false,
+        installationId: readinessInstallation?.id,
+      },
       { role: actorRole, authHeader },
     ).catch(
       () =>
@@ -148,12 +160,7 @@ export async function ProductDetailDeferredSection({
     publishableChannels.find((channel) => channel.channel === selectedChannel)?.channel ??
     publishableChannels[0]?.channel ??
     selectedChannel;
-  const mappingManagerInstallation =
-    installedConnectors.find(
-      (connector) =>
-        isConnectorReadyToPublish(connector) &&
-        connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel),
-    ) ?? null;
+  const mappingManagerInstallation = readinessInstallation;
 
   const publishableInstallations = installedConnectors
     .filter(c => isConnectorReadyToPublish(c) && c.capabilities.some(cap => cap === "PUBLISH"))

@@ -513,7 +513,7 @@ export class MediaService {
       where: { id: assetId },
       data: {
         metadata: this.mergeGovernanceMetadata(asset.metadata, {
-          altText: dto.altText === undefined ? undefined : dto.altText.trim() || null,
+          altText: dto.altText === undefined ? undefined : (typeof dto.altText === "string" ? dto.altText.trim() || null : null),
           isMain: dto.isMain,
           sortOrder: dto.sortOrder,
           channelEligibility: dto.channelEligibility,
