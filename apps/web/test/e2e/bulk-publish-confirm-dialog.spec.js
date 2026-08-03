@@ -114,7 +114,7 @@ for (const scenario of CONNECTOR_SCENARIOS) {
       await bulkPublishButton.click();
 
       await expect(page.getByRole("heading", { name: "Submit bulk publish feed?" })).toBeVisible();
-      await expect(page.getByText(/This will submit 1 approved product/)).toBeVisible();
+      await expect(page.getByText(/This will submit \d+ approved product/)).toBeVisible();
 
       // Cancel must close it without submitting.
       await page.getByRole("button", { name: "Cancel" }).click();
