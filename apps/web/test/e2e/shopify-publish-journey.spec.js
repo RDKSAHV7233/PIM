@@ -11,6 +11,7 @@ const {
   purgeProduct,
   reviewProduct,
   uniqueName,
+  updateProduct,
 } = require("./helpers/vexa-pim.cjs");
 
 const SHOP_DOMAIN = String(
@@ -60,12 +61,24 @@ test("approved product submitted to Shopify appears in submissions list with a r
       title: uniqueName("shopify-pub-product"),
       brand: "Vexa PIM",
       description: "shopify publish journey e2e scenario",
-      sku: uniqueName("sku").toLowerCase(),
       categoryId: category.id,
       status: "draft",
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: { color: "black", size: "M" },
     });
 
-    // Approve product so it is eligible for export
+    await updateProduct(adminToken, product.id, {
+      expectedVersion: product.version ?? 1,
+      title: product.title,
+      brand: product.brand,
+      description: product.description,
+      categoryId: product.categoryId,
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: { color: "black", size: "M" },
+      status: "in_review",
+    });
     await reviewProduct(adminToken, product.id, "approved", "e2e auto-approval for Shopify publish");
 
     // Create an export job (submission) for the product
@@ -130,15 +143,28 @@ test("export job for product with missing sku produces a submission that is not 
     });
 
     category = await createCategory(adminToken, uniqueName("shopify-err-cat"));
-    // No sku — Shopify validateProduct() marks this as a required field failure
     product = await createProduct(adminToken, {
       title: uniqueName("shopify-err-product"),
       brand: "Vexa PIM",
       description: "shopify error path e2e scenario",
       categoryId: category.id,
       status: "draft",
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: { color: "blue", size: "L" },
     });
 
+    await updateProduct(adminToken, product.id, {
+      expectedVersion: product.version ?? 1,
+      title: product.title,
+      brand: product.brand,
+      description: product.description,
+      categoryId: product.categoryId,
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: { color: "blue", size: "L" },
+      status: "in_review",
+    });
     await reviewProduct(adminToken, product.id, "approved", "e2e auto-approval for error path");
 
     const exportJob = await apiRequest(
