@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
@@ -20,28 +20,46 @@ export function BulkPublishConfirmForm({
   action,
 }: BulkPublishConfirmFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const confirmedRef = useRef(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const productCount = productIds.length;
   const productIdsValue = productIds.join(",");
   const hasProducts = productCount > 0;
 
+  // Progressive enhancement: pre-hydration the button is type="submit" so
+  // clicking it submits the form directly to the server action (which
+  // validates everything server-side). Post-hydration this handler
+  // intercepts the submit and shows the confirmation dialog first.
+  const handleSubmit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      if (confirmedRef.current) {
+        confirmedRef.current = false;
+        return;
+      }
+      e.preventDefault();
+      if (hasProducts) {
+        setShowConfirm(true);
+      }
+    },
+    [hasProducts],
+  );
+
   return (
     <>
-      <form ref={formRef} action={action} className="mt-3 flex flex-wrap items-center gap-3">
+      <form
+        ref={formRef}
+        action={action}
+        onSubmit={handleSubmit}
+        className="mt-3 flex flex-wrap items-center gap-3"
+      >
         <input type="hidden" name="installationId" value={installationId} />
         {channel ? <input type="hidden" name="channel" value={channel} /> : null}
         <input type="hidden" name="productIds" value={productIdsValue} />
         <input type="hidden" name="returnTo" value={returnTo} />
         <PendingSubmitButton
-          type="button"
           idleLabel={hasProducts ? "Submit bulk publish" : "No approved products"}
           className="bg-amber-600 hover:bg-amber-700 text-white"
           disabled={!hasProducts}
-          onClick={() => {
-            if (hasProducts) {
-              setShowConfirm(true);
-            }
-          }}
         />
         <span className="text-xs text-amber-800">
           {hasProducts
@@ -57,6 +75,7 @@ export function BulkPublishConfirmForm({
         destructive={false}
         onConfirm={() => {
           setShowConfirm(false);
+          confirmedRef.current = true;
           formRef.current?.requestSubmit();
         }}
         onCancel={() => setShowConfirm(false)}

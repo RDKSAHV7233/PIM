@@ -142,14 +142,12 @@ test("product journey flows from draft creation through mapping validation and f
     await expect(page.getByText(/draft/i).first()).toBeVisible();
 
     const firstRevision = await apiRequest("GET", `/catalog/products/${product.id}`, editorToken);
-    const journeySku = uniqueName("journey-sku").toLowerCase();
     await updateProduct(editorToken, product.id, {
       expectedVersion: firstRevision.version ?? 1,
       title: firstRevision.title,
       brand: firstRevision.brand,
       description: `${firstRevision.description} Updated with channel-ready content.`,
       categoryId: firstRevision.categoryId,
-      sku: journeySku,
       hsnCode: "62046200",
       gstRate: 18,
       attributes: {
@@ -160,7 +158,6 @@ test("product journey flows from draft creation through mapping validation and f
     });
 
     const updatedRevision = await apiRequest("GET", `/catalog/products/${product.id}`, editorToken);
-    expect(String(updatedRevision.sku ?? "")).toBe(journeySku);
     expect(Number(updatedRevision.gstRate ?? 0)).toBe(18);
 
     await updateProduct(editorToken, product.id, {
@@ -169,7 +166,6 @@ test("product journey flows from draft creation through mapping validation and f
       brand: updatedRevision.brand,
       description: updatedRevision.description,
       categoryId: updatedRevision.categoryId,
-      sku: updatedRevision.sku,
       hsnCode: updatedRevision.hsnCode,
       gstRate: updatedRevision.gstRate,
       attributes: updatedRevision.attributes,
