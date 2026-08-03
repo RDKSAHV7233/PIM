@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { colors } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: ButtonSize;
   isLoading?: boolean;
   children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
 };
 
 const baseClasses = "rounded-md font-medium transition disabled:cursor-not-allowed disabled:opacity-60";

@@ -313,8 +313,6 @@ const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
       "attributes.size": "options.size",
     },
   },
-  // In development — see IN_DEVELOPMENT_CHANNELS in apps/web/src/lib/marketplace-channels.ts.
-  // Mapped meta_data execution exists, but no real store has been verified end-to-end.
   woocommerce: {
     channel: "woocommerce",
     displayName: "WooCommerce",
@@ -325,6 +323,14 @@ const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
       "attributes.sku": "sku",
       "attributes.mainImageUrl": "images.0.src",
       "attributes.productType": "categories.0.name",
+      // FIND-04: the outbound payload builder (compileWooCommerceMetaFromMapping /
+      // WooCommerceConnector.normalizeCustomMeta) already supports arbitrary meta_data.* /
+      // customMeta.* targets, but the mapping wizard's field catalogue (targetFieldOptions in
+      // apps/web/src/lib/channel-mappings.ts) only ever offered rows for this static fieldMap's
+      // entries — Shopify gets structured metafield targets from its imported shopifyMetafields
+      // catalogue, WooCommerce had no equivalent, so no customMeta row ever appeared. This adds
+      // one selectable customMeta slot using the same optional-row mechanism as images.0.src/sku.
+      "attributes.customTag": "meta_data.custom_tag",
     },
   },
 };

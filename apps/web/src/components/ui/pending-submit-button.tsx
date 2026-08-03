@@ -1,12 +1,13 @@
 "use client";
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, Ref } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 
 type PendingSubmitButtonProps = Omit<ComponentProps<typeof Button>, "children"> & {
   idleLabel: string;
   pendingLabel?: string;
+  ref?: Ref<HTMLButtonElement>;
 };
 
 export function PendingSubmitButton({

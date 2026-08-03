@@ -176,6 +176,32 @@ function normalizeSiteUrl(raw: string): string {
   return raw.replace(/\/+$/, '');
 }
 
+// DEF-02/DEF-03: Node's native fetch() throws a bare `TypeError: fetch failed` when the
+// request can't complete at the network layer (DNS/TCP/TLS/connection-refused/abort), wrapping
+// the real cause in `error.cause`. That raw string was surfacing verbatim as the submission's
+// terminal error, unclassified and non-actionable. This maps it to a concrete, retryable-aware
+// category before it ever reaches a ConnectorSubmission record.
+type CallApiFailureCategory = 'TIMEOUT' | 'DNS' | 'TLS' | 'NETWORK';
+
+function classifyCallApiFailure(err: unknown): { category: CallApiFailureCategory; retryable: boolean; detail: string } {
+  if (err instanceof Error && err.name === 'AbortError') {
+    return { category: 'TIMEOUT', retryable: true, detail: `request exceeded ${CONNECTOR_HTTP_TIMEOUT_MS}ms timeout` };
+  }
+  const cause = err instanceof Error ? (err.cause as { code?: string; message?: string } | undefined) : undefined;
+  const causeCode = cause?.code ?? '';
+  if (causeCode === 'ENOTFOUND' || causeCode === 'EAI_AGAIN') {
+    return { category: 'DNS', retryable: false, detail: `DNS resolution failed (${causeCode})` };
+  }
+  if (causeCode.startsWith('ERR_TLS') || causeCode.startsWith('CERT_')) {
+    return { category: 'TLS', retryable: false, detail: `TLS/certificate error (${causeCode})` };
+  }
+  if (causeCode === 'ECONNREFUSED' || causeCode === 'ECONNRESET' || causeCode === 'EHOSTUNREACH' || causeCode === 'ETIMEDOUT') {
+    return { category: 'NETWORK', retryable: true, detail: `connection failed (${causeCode})` };
+  }
+  const detail = cause?.message || (err instanceof Error ? err.message : String(err));
+  return { category: 'NETWORK', retryable: true, detail: detail || 'unknown network failure' };
+}
+
 // ─── connector ────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -622,6 +648,17 @@ export class WooCommerceConnector implements ConnectorInterface {
         },
         body: body != null ? JSON.stringify(body) : undefined,
       });
+    } catch (err) {
+      const { category, retryable, detail } = classifyCallApiFailure(err);
+      this.logger.warn('WooCommerce callApi network failure', {
+        method,
+        path,
+        category,
+        retryable,
+        detail,
+        cause: err instanceof Error && err.cause ? String(err.cause) : undefined,
+      });
+      throw new Error(`WooCommerce request failed: ${category} — ${detail} (retryable: ${retryable})`);
     } finally {
       clearTimeout(timeoutId);
     }
