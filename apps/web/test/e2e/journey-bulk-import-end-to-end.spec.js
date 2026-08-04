@@ -180,31 +180,31 @@ test.describe("Journey: Bulk Import End-to-End", () => {
     await fileInput.waitFor({ state: "attached", timeout: 15_000 });
     await fileInput.setInputFiles(csvPath);
 
-    // Wait for validation to complete
-    await page.waitForTimeout(5_000);
+    // Explicitly run preflight validation before starting the import
+    await page.getByRole("button", { name: "Validate import file" }).click();
 
-    // Find and click start/process button
-    const startButton = page.getByRole("button", { name: /start|process|import/i });
-    if (await startButton.isVisible()) {
-      // Track process requests
-      const processRequests = [];
-      page.on("request", (req) => {
-        if (req.url().includes("bulk-import") && req.method() === "POST" && req.url().includes("process")) {
-          processRequests.push(req.url());
-        }
-      });
+    // Wait for validation to succeed and the start button to become enabled
+    const startButton = page.getByRole("button", { name: "Start validated import" });
+    await expect(startButton).toBeEnabled({ timeout: 30_000 });
 
-      await startButton.click();
-
-      // Button should be disabled after click (PendingSubmitButton)
-      await expect(startButton).toBeDisabled({ timeout: 2_000 }).catch(() => {
-        // Button may have been removed from DOM after action
-      });
-
-      // Rapid second click should not create duplicate
-      if (await startButton.isVisible()) {
-        await expect(startButton).toBeDisabled();
+    // Track process requests
+    const processRequests = [];
+    page.on("request", (req) => {
+      if (req.url().includes("bulk-import") && req.method() === "POST" && req.url().includes("process")) {
+        processRequests.push(req.url());
       }
+    });
+
+    await startButton.click();
+
+    // Button should be disabled after click (PendingSubmitButton)
+    await expect(startButton).toBeDisabled({ timeout: 2_000 }).catch(() => {
+      // Button may have been removed from DOM after action
+    });
+
+    // Rapid second click should not create duplicate
+    if (await startButton.isVisible()) {
+      await expect(startButton).toBeDisabled();
     }
   });
 
@@ -248,7 +248,7 @@ test.describe("Journey: Bulk Import End-to-End", () => {
     // Check catalog for products in our test category
     const products = await apiRequest(
       "GET",
-      `/catalog/products?categoryId=${category.id}&limit=10`,
+      `/catalog/products/advanced-search?categoryId=${category.id}&limit=10`,
       adminToken,
     );
 

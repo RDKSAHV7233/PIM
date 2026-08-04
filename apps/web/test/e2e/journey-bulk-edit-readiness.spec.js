@@ -48,9 +48,9 @@ test.describe("Journey: Bulk Edit → Compliance → Readiness", () => {
     await page.goto("/channels", { waitUntil: "domcontentloaded" });
 
     await expect(page.locator("main")).toBeVisible();
-    // Should see channel overview with connectors or empty state
+    // Should see channel overview section headings (Connections, Mappings, Issues, etc.)
     await expect(
-      page.locator('[class*="card"], [class*="channel"], table, [class*="empty"]').first()
+      page.getByRole("heading", { name: /connections|mappings|issues|submission|governance/i }).first()
     ).toBeVisible({ timeout: 15_000 });
   });
 

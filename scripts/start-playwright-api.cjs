@@ -861,7 +861,7 @@ function playwrightSchemaLooksBootstrapped(databaseUrl) {
 }
 
 const fileEnv = loadEnvFile(envFile);
-const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 1);
+const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 10);
 const usingPlaywrightFallbackDatabase = /schema=playwright_e2e/i.test(databaseUrl);
 const hasBootstrappedPlaywrightSchema = playwrightSchemaLooksBootstrapped(databaseUrl);
 const skipPrismaGenerate =

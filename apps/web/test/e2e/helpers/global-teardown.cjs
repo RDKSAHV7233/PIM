@@ -10,6 +10,28 @@ const E2E_PRODUCT_PATTERNS = [
   "test-product-fix-",
 ];
 
+// accountAlias prefixes used by uniqueName(...) calls across the e2e suite —
+// keep in sync with the prefixes passed to uniqueName() in test specs.
+const E2E_CONNECTOR_ALIAS_PATTERNS = [
+  "e2e-",
+  "mapping-",
+  "idempotency-tenant-",
+  "submission-lifecycle-tenant-",
+  "queue-fail-tenant-",
+  "capability-gating-",
+  "outbound-webhooks-",
+  "connector-access-",
+  "connector-issue-tenant-",
+  "dashboard-agg-",
+  "dashboard-boundary-",
+  "rotate-tenant-",
+  "governance-tenant-",
+  "scope-a-",
+  "payload-cap-tenant-",
+  "rejection-notification-tenant-",
+  "metrics-kpi-tenant-",
+];
+
 const EXPECTED_E2E_WORKSPACE = process.env.PLAYWRIGHT_WORKSPACE || "default";
 const IS_ISOLATED_TENANT = process.env.PLAYWRIGHT_E2E_ISOLATED_TENANT === "1";
 const ALLOW_FULL_PURGE = process.env.PLAYWRIGHT_ALLOW_FULL_TENANT_PURGE === "1";
@@ -87,37 +109,174 @@ async function cleanupIsolatedTenant(apiURL, adminToken) {
   }
 }
 
-async function cleanupSharedTenant(apiURL, adminToken) {
+async function cleanupSharedTenantProducts(apiURL, adminToken) {
+  let deleted = 0;
+  let candidates = 0;
+  let skippedAge = 0;
+  const cutoff = new Date(Date.now() - MAX_AGE_MS);
+  const MAX_PASSES = 100;
+  let cursor;
+
+  try {
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      const query = new URLSearchParams({ slim: "true", limit: "200" });
+      if (cursor) query.set("cursor", cursor);
+      const listRes = await fetch(`${apiURL}/catalog/products?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!listRes.ok) {
+        console.warn(`[global-teardown] Product list returned ${listRes.status} — stopping cleanup.`);
+        break;
+      }
+      const data = await listRes.json();
+      const products = data?.items ?? data ?? [];
+      if (!Array.isArray(products) || products.length === 0) break;
+
+      for (const product of products) {
+        const title = product.title ?? "";
+        const isE2E = E2E_PRODUCT_PATTERNS.some((p) => title.startsWith(p));
+        if (!isE2E) continue;
+        candidates++;
+
+        const createdAt = product.createdAt ? new Date(product.createdAt) : null;
+        if (createdAt && createdAt < cutoff) {
+          skippedAge++;
+          continue;
+        }
+
+        try {
+          const delRes = await fetch(`${apiURL}/catalog/products/${product.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${adminToken}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (delRes.ok || delRes.status === 204 || delRes.status === 404) {
+            deleted++;
+          }
+        } catch {}
+      }
+
+      cursor = data?.nextCursor ?? null;
+      if (!cursor) break;
+    }
+  } catch (err) {
+    console.warn(`[global-teardown] Product cleanup error: ${err.message}`);
+  }
+
+  console.log(
+    `[global-teardown] Products — candidates: ${candidates}, deleted: ${deleted}, skipped (age > 24h): ${skippedAge}.`,
+  );
+}
+
+async function cleanupSharedTenantConnectors(apiURL, adminToken) {
+  let deleted = 0;
+  let candidates = 0;
+  let skippedAge = 0;
+  const cutoff = new Date(Date.now() - MAX_AGE_MS);
+  const MAX_PASSES = 100;
+  let cursor;
+
+  try {
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      const query = new URLSearchParams({ limit: "200" });
+      if (cursor) query.set("cursor", cursor);
+      const listRes = await fetch(`${apiURL}/connectors/installed?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!listRes.ok) {
+        console.warn(`[global-teardown] Connector installation list returned ${listRes.status} — stopping cleanup.`);
+        break;
+      }
+      const data = await listRes.json();
+      const installations = data?.items ?? data ?? [];
+      if (!Array.isArray(installations) || installations.length === 0) break;
+
+      for (const installation of installations) {
+        const accountAlias = installation.accountAlias ?? "";
+        const isE2E = E2E_CONNECTOR_ALIAS_PATTERNS.some((p) => accountAlias.startsWith(p));
+        if (!isE2E) continue;
+        candidates++;
+
+        const createdAt = installation.createdAt ? new Date(installation.createdAt) : null;
+        if (createdAt && createdAt < cutoff) {
+          skippedAge++;
+          continue;
+        }
+
+        try {
+          await fetch(`${apiURL}/connectors/${installation.id}/uninstall`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+            body: "{}",
+            signal: AbortSignal.timeout(10_000),
+          });
+        } catch {}
+        try {
+          const delRes = await fetch(`${apiURL}/connectors/${installation.slug}/install/${installation.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${adminToken}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (delRes.ok || delRes.status === 204 || delRes.status === 404) {
+            deleted++;
+          }
+        } catch {}
+      }
+
+      cursor = data?.nextCursor ?? null;
+      if (!cursor) break;
+    }
+  } catch (err) {
+    console.warn(`[global-teardown] Connector installation cleanup error: ${err.message}`);
+  }
+
+  console.log(
+    `[global-teardown] Connector installations — candidates: ${candidates}, deleted: ${deleted}, skipped (age > 24h): ${skippedAge}.`,
+  );
+}
+
+const E2E_PERMISSION_ALIAS_PATTERNS = [
+  "e2e-audit-alias-",
+  "e2e-permission-alias-",
+];
+
+async function cleanupSharedTenantPermissions(apiURL, adminToken) {
   let deleted = 0;
   let candidates = 0;
   let skippedAge = 0;
   const cutoff = new Date(Date.now() - MAX_AGE_MS);
 
   try {
-    const listRes = await fetch(`${apiURL}/catalog/products?slim=true&limit=200`, {
+    const listRes = await fetch(`${apiURL}/connectors/permissions`, {
       headers: { Authorization: `Bearer ${adminToken}` },
       signal: AbortSignal.timeout(30_000),
     });
     if (!listRes.ok) {
-      console.warn(`[global-teardown] Product list returned ${listRes.status} — skipping cleanup.`);
+      console.warn(`[global-teardown] Permission list returned ${listRes.status} — skipping permission cleanup.`);
       return;
     }
-    const data = await listRes.json();
-    const products = data?.items ?? data ?? [];
-    for (const product of products) {
-      const title = product.title ?? "";
-      const isE2E = E2E_PRODUCT_PATTERNS.some((p) => title.startsWith(p));
+    const permissions = await listRes.json();
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+      console.log("[global-teardown] Permissions — candidates: 0, deleted: 0, skipped (age > 24h): 0.");
+      return;
+    }
+
+    for (const permission of permissions) {
+      const alias = permission.accountAlias ?? "";
+      const isE2E = E2E_PERMISSION_ALIAS_PATTERNS.some((p) => alias.startsWith(p));
       if (!isE2E) continue;
       candidates++;
 
-      const createdAt = product.createdAt ? new Date(product.createdAt) : null;
+      const createdAt = permission.createdAt ? new Date(permission.createdAt) : null;
       if (createdAt && createdAt < cutoff) {
         skippedAge++;
         continue;
       }
 
       try {
-        const delRes = await fetch(`${apiURL}/catalog/products/${product.id}`, {
+        const delRes = await fetch(`${apiURL}/connectors/permissions/${permission.id}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${adminToken}` },
           signal: AbortSignal.timeout(10_000),
@@ -128,12 +287,18 @@ async function cleanupSharedTenant(apiURL, adminToken) {
       } catch {}
     }
   } catch (err) {
-    console.warn(`[global-teardown] Product cleanup error: ${err.message}`);
+    console.warn(`[global-teardown] Permission cleanup error: ${err.message}`);
   }
 
   console.log(
-    `[global-teardown] Candidates: ${candidates}, deleted: ${deleted}, skipped (age > 24h): ${skippedAge}.`,
+    `[global-teardown] Permissions — candidates: ${candidates}, deleted: ${deleted}, skipped (age > 24h): ${skippedAge}.`,
   );
+}
+
+async function cleanupSharedTenant(apiURL, adminToken) {
+  await cleanupSharedTenantProducts(apiURL, adminToken);
+  await cleanupSharedTenantConnectors(apiURL, adminToken);
+  await cleanupSharedTenantPermissions(apiURL, adminToken);
 }
 
 module.exports = async function globalTeardown() {

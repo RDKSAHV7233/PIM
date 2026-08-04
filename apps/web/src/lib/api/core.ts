@@ -601,6 +601,12 @@ export interface PlanUsageResponse {
   };
 }
 
+export interface PlanTierResponse {
+  planTier: "TRIAL" | "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE" | string;
+  billingStatus: "trial" | "active_paid" | "past_due" | "cancelled" | "expired" | string;
+  accessStatus: "active" | "suspended" | string;
+}
+
 export interface PlanMetadata {
   tier: "TRIAL" | "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE" | string;
   label: string;

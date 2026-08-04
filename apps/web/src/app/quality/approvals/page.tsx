@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
 import { createChangeRequestAction, resolveChangeRequestAction } from "@/app/quality-actions";
-import { ApiHttpError, getApprovalComments, getBillingPlanProfile, getIssueInbox, getProductListPage, getStats } from "@/lib/api";
+import { ApiHttpError, getApprovalComments, getBillingPlanTier, getIssueInbox, getProductListPage, getStats } from "@/lib/api";
 import { getChangeRequests, getWorkflowSla, getOverdueCount } from "@/lib/api/catalog";
 import { SlaBadge } from "@/components/ui/sla-badge";
 import type { ProductRevision } from "@/lib/api";
@@ -125,7 +125,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
   try {
     let planTier = "ENTERPRISE";
     try {
-      const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+      const planProfile = await getBillingPlanTier({ role: actorRole, authHeader });
       planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
     } catch (planError) {
       if (planError instanceof ApiHttpError && planError.status === 401) {

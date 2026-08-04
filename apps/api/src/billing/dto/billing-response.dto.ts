@@ -117,6 +117,17 @@ export class PlanProfileSummaryDto {
   updatedAt!: string;
 }
 
+export class PlanTierSummaryDto {
+  @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"], example: "STARTER" })
+  planTier!: "TRIAL" | "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE";
+
+  @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled", "expired"], example: "trial" })
+  billingStatus!: "trial" | "active_paid" | "past_due" | "cancelled" | "expired";
+
+  @ApiProperty({ enum: ["active", "suspended"], example: "active" })
+  accessStatus!: "active" | "suspended";
+}
+
 export class PlanUsageSummaryDto {
   @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"], example: "STARTER" })
   planTier!: "TRIAL" | "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE";

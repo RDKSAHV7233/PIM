@@ -9,7 +9,7 @@ import {
   ApiHttpError,
   getAiAttributeEnrichment,
   getAiCategorySuggestion,
-  getBillingPlanProfile,
+  getBillingPlanTier,
   getProductList,
   getAiTitleSuggestion,
 } from "@/lib/api";
@@ -34,7 +34,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
   }
 
   try {
-    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+    const planProfile = await getBillingPlanTier({ role: actorRole, authHeader });
     const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (

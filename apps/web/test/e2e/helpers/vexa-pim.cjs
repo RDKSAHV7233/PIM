@@ -117,6 +117,11 @@ async function loginViaUi(page, role, options = {}) {
     throw new Error(`Unknown role "${role}"`);
   }
 
+  // Clear any existing session cookies first — otherwise, when a test switches
+  // roles within the same test case, the login page's server component sees
+  // the still-valid previous session and redirects straight to /dashboard
+  // instead of rendering the login form, hanging this navigation indefinitely.
+  await page.context().clearCookies();
   await page.goto(`${baseURL}/login`, { waitUntil: "domcontentloaded" });
   const workspaceInput = page.getByTestId("workspace");
   const userIdInput = page.getByTestId("user-id");

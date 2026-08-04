@@ -8,7 +8,9 @@ const {
   deleteProduct,
   loginViaUi,
   purgeProduct,
+  reviewProduct,
   uniqueName,
+  updateProduct,
 } = require("./helpers/vexa-pim.cjs");
 
 async function waitForSubmission(token, productId, connectorSlug, maxAttempts = 10) {
@@ -35,8 +37,23 @@ test("admin can drill from connector portfolio into connector detail and linked 
     description: "submission drilldown",
     categoryId: category.id,
     status: "draft",
-    attributes: {},
+    hsnCode: "62046200",
+    gstRate: 18,
+    attributes: { color: "black", size: "M" },
   });
+
+  await updateProduct(adminToken, product.id, {
+    expectedVersion: product.version ?? 1,
+    title: product.title,
+    brand: product.brand,
+    description: product.description,
+    categoryId: product.categoryId,
+    hsnCode: "62046200",
+    gstRate: 18,
+    attributes: { color: "black", size: "M" },
+    status: "in_review",
+  });
+  await reviewProduct(adminToken, product.id, "approved", "e2e auto-approval for connector drilldown");
 
   let installation = null;
 
@@ -60,6 +77,7 @@ test("admin can drill from connector portfolio into connector detail and linked 
       adminToken,
       {
         channel: "flipkart",
+        installationId: String(installation.id),
         maxRetries: 1,
       },
     );
@@ -83,7 +101,7 @@ test("admin can drill from connector portfolio into connector detail and linked 
     await page.waitForURL(new RegExp(`/channels/connectors/${installation.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
     await expect(page.getByRole("heading", { name: `Flipkart / ${accountAlias}` })).toBeVisible();
     await expect(page.getByText("Account alias")).toBeVisible();
-    await expect(page.getByText(accountAlias, { exact: true })).toBeVisible();
+    await expect(page.getByRole("definition").filter({ hasText: accountAlias })).toBeVisible();
     await page.getByRole("link", { name: "Review catalog coverage" }).click();
     await page.waitForURL(
       new RegExp(`/channels/connectors/${installation.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?tab=catalog$`),
@@ -94,7 +112,7 @@ test("admin can drill from connector portfolio into connector detail and linked 
     await expect(submissionRow).toBeVisible();
     await submissionRow.getByRole("link", { name: product.title }).click();
 
-    await page.waitForURL(new RegExp(`/products/${product.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+    await page.waitForURL(new RegExp(`/products/${product.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\?|$)`));
     await expect(page.getByRole("heading", { name: product.title })).toBeVisible();
   } finally {
     if (installation?.id) {

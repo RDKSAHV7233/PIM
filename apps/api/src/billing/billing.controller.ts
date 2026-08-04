@@ -4,7 +4,7 @@ import type { Request, Response } from "express";
 import { AuditService } from "../audit/audit.service";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
-import { AppRole, Roles } from "../common/rbac/roles";
+import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
 import { requireInternalToken } from "../common/security/internal-token";
 import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { Public } from "../auth/public.decorator";
@@ -17,6 +17,7 @@ import { CreatePlanUpgradeRequestDto } from "./dto/create-plan-upgrade-request.d
 import {
   PlanMetadataListDto,
   PlanProfileSummaryDto,
+  PlanTierSummaryDto,
   PlanUpgradeRequestCreateDto,
   PlanUpgradeRequestLookupDto,
   PlanUsageSummaryDto,
@@ -100,6 +101,20 @@ export class BillingController {
   @ApiResponse({ status: 200, description: "Tenant plan profile fetched", type: PlanProfileSummaryDto })
   planProfile() {
     return this.planUsageService.getTenantPlanProfile();
+  }
+
+  @Get("plan-tier")
+  @ReadAccessPolicy("billing_plan_tier_self_service")
+  @Roles(...APP_ROLES)
+  @ApiOperation({ summary: "Get current tenant plan tier for feature-gating (no billing contact details)" })
+  @ApiResponse({ status: 200, description: "Tenant plan tier fetched", type: PlanTierSummaryDto })
+  async planTier() {
+    const profile = await this.planUsageService.getTenantPlanProfile();
+    return {
+      planTier: profile.planTier,
+      billingStatus: profile.billingStatus,
+      accessStatus: profile.accessStatus,
+    };
   }
 
   @Post("billing-contact")

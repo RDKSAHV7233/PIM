@@ -95,6 +95,7 @@ export async function middleware(request: NextRequest) {
         Cookie: `${REFRESH_COOKIE}=${encodeURIComponent(refreshToken)}`,
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
     });
     if (!refreshResponse.ok) {
       return NextResponse.next();

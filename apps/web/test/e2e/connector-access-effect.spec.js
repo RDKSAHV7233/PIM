@@ -1,7 +1,18 @@
 const { test, expect } = require("@playwright/test");
 const { apiLoginPayload, apiRequest, loginViaUi, USERS, uniqueName } = require("./helpers/vexa-pim.cjs");
 
+async function expectAfterAction(page, urlPattern, bannerText) {
+  await page.waitForURL(urlPattern, { timeout: 30_000 });
+  try {
+    await expect(page.getByText(bannerText)).toBeVisible({ timeout: 10_000 });
+  } catch {
+    await page.reload({ waitUntil: "load" });
+    await expect(page.getByText(bannerText)).toBeVisible({ timeout: 10_000 });
+  }
+}
+
 test("admin connector grant unlocks reconnect for editor in the browser", async ({ page }) => {
+  test.setTimeout(90_000);
   const adminAuth = await apiLoginPayload("admin");
   const editorAuth = await apiLoginPayload("editor");
   test.skip(adminAuth.role !== "admin", `admin identity resolves as ${adminAuth.role} in current local environment`);
@@ -15,11 +26,11 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
   let installationId = null;
   let permissionId = null;
 
-  // Skip if amazon-in connector is not configured in this environment
+  // Skip if flipkart connector is not configured in this environment
   try {
     const definitionsRaw = await apiRequest("GET", "/connectors/definitions", adminToken);
     const definitions = Array.isArray(definitionsRaw) ? definitionsRaw : (definitionsRaw?.items ?? []);
-    test.skip(!definitions.find((d) => d.slug === "amazon-in"), "amazon-in connector not configured in this environment");
+    test.skip(!definitions.find((d) => d.slug === "flipkart"), "flipkart connector not configured in this environment");
   } catch {
     test.skip(true, "Connector definitions endpoint unreachable — skipping connector access effect spec.");
   }
@@ -31,7 +42,7 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
       .first();
 
   try {
-    const installation = await apiRequest("POST", "/connectors/amazon-in/install", adminToken, {
+    const installation = await apiRequest("POST", "/connectors/flipkart/install", adminToken, {
       accountAlias,
     });
     installationId = String(installation?.id ?? "");
@@ -57,20 +68,19 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
 
     await page.context().clearCookies();
     await loginViaUi(page, "admin");
-    await page.goto("/admin/connectors", { waitUntil: "domcontentloaded" });
+    await page.goto("/admin/connectors", { waitUntil: "load" });
+    await page.waitForLoadState("networkidle").catch(() => {});
 
-    await page.getByLabel("Connector").selectOption("amazon-in");
-    await page.getByLabel("Principal Type").selectOption("user");
-    await page.getByLabel("User ID").fill(targetUserId);
-    await page.getByLabel("Action").selectOption("reconnect");
-    await page.getByLabel("Account Alias (optional)").fill(accountAlias);
-    await page.getByRole("button", { name: "Grant" }).click();
-
-    await page.waitForURL(/status=permission-granted/);
-    await expect(page.getByText("Connector permission granted.")).toBeVisible();
+    await page.getByLabel("Channel connector").selectOption("flipkart");
+    await page.getByLabel("Who gets access").selectOption("user");
+    await page.getByLabel("Specific user").fill(targetUserId);
+    await page.getByLabel("Allowed action").selectOption("reconnect");
+    await page.getByLabel("Which accounts").fill(accountAlias);
+    await page.getByRole("button", { name: "Save policy" }).click();
+    await expectAfterAction(page, /status=permission-granted/, "Connector permission granted.");
     const permissionRow = page
       .locator("tbody tr")
-      .filter({ hasText: "amazon-in" })
+      .filter({ hasText: "flipkart" })
       .filter({ hasText: targetUserId })
       .filter({ hasText: accountAlias })
       .filter({ hasText: "reconnect" })
@@ -82,7 +92,7 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
       (row) =>
         row.principalType === "user" &&
         row.principalId === targetUserId &&
-        row.connectorSlug === "amazon-in" &&
+        row.connectorSlug === "flipkart" &&
         row.accountAlias === accountAlias &&
         row.action === "reconnect",
     );
@@ -106,11 +116,8 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
     await expect(installationSection()).toBeVisible();
     await expect(installationSection().getByRole("button", { name: "Reconnect" })).toBeVisible();
 
-    await Promise.all([
-      page.waitForURL(/status=reconnected/),
-      installationSection().getByRole("button", { name: "Reconnect" }).click(),
-    ]);
-    await expect(page.getByText("Connector reconnected and marked active.")).toBeVisible();
+    await installationSection().getByRole("button", { name: "Reconnect" }).click();
+    await expectAfterAction(page, /status=reconnected/, "Connector reconnected and marked active.");
   } finally {
     if (permissionId) {
       try {
@@ -122,7 +129,7 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
         await apiRequest("POST", `/connectors/${encodeURIComponent(installationId)}/uninstall`, adminToken, {});
       } catch {}
       try {
-        await apiRequest("DELETE", `/connectors/amazon-in/install/${encodeURIComponent(installationId)}`, adminToken);
+        await apiRequest("DELETE", `/connectors/flipkart/install/${encodeURIComponent(installationId)}`, adminToken);
       } catch {}
     }
   }

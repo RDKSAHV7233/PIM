@@ -26,7 +26,8 @@ test.describe("Journey: Bulk Import → Repair", () => {
     await expect(
       page.getByRole("button", { name: /import|upload|new/i })
         .or(page.locator('input[type="file"]'))
-        .or(page.getByText(/import/i).first())
+        .or(page.getByText(/import/i))
+        .first()
     ).toBeVisible({ timeout: 15_000 });
   });
 
