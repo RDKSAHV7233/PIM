@@ -1238,6 +1238,31 @@
           }
         },
         {
+          "name": "Get current tenant plan tier for feature-gating (no billing contact details)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/billing/plan-tier",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "plan-tier"
+              ]
+            },
+            "description": "Get current tenant plan tier for feature-gating (no billing contact details)"
+          }
+        },
+        {
           "name": "Update the billing notice recipient for this tenant",
           "request": {
             "method": "POST",
