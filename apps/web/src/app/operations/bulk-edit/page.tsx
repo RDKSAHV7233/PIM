@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
-  getBillingPlanProfile,
+  getBillingPlanTier,
   getBulkEditOperations,
   getBulkEditPreview,
   getCategoryTree,
@@ -167,7 +167,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   try {
     let planTier: string | null = null;
     try {
-      const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+      const planProfile = await getBillingPlanTier({ role: actorRole, authHeader });
       planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
     } catch {
       planTier = null;

@@ -484,7 +484,6 @@ export async function deleteCategoryAction(formData: FormData) {
 
   try {
     await deleteJsonForAction(formData, `/taxonomy/categories/${encodeURIComponent(categoryId)}`);
-    revalidatePath("/catalog/categories");
     revalidatePath("/dashboard");
     redirect(
       appendQueryParams(returnTo, {
@@ -521,7 +520,6 @@ export async function resolveIssueInboxWarningsAction(formData: FormData) {
     issueIds,
   });
 
-  revalidatePath("/quality/issues");
   const returnTo = sanitizePath(String(formData.get("returnTo") ?? ""), "/quality/issues");
   redirect(returnTo);
 }
@@ -616,7 +614,6 @@ export async function decideProductReviewAction(
       },
       await resolveActionOptions(formData),
     );
-    revalidatePath("/quality/approvals");
     revalidatePath(`/products/${productId}`);
     redirect(appendQueryParams(returnTo, { decisionStatus: status }));
   } catch (error: unknown) {
@@ -926,7 +923,6 @@ export async function deleteProductAction(formData: FormData) {
 
   try {
     await deleteJsonForAction(formData, `/catalog/products/${encodeURIComponent(productId)}`);
-    revalidatePath("/catalog/products");
     revalidatePath(`/products/${productId}`);
     revalidatePath("/dashboard");
     redirect(
@@ -973,7 +969,6 @@ export async function purgeProductAction(formData: FormData) {
 
   try {
     await deleteJsonForAction(formData, `/catalog/products/${encodeURIComponent(productId)}/purge`);
-    revalidatePath("/catalog/products");
     revalidatePath(`/products/${productId}`);
     revalidatePath("/dashboard");
     redirect(
@@ -1152,7 +1147,6 @@ export async function updateMappingTemplateAction(formData: FormData) {
   revalidatePath("/channels/mappings");
   revalidatePath("/catalog/products");
   if (redirectTo) {
-    revalidatePath(redirectTo);
     redirect(redirectTo);
   }
 }
@@ -1177,7 +1171,6 @@ export async function cloneMappingTemplateAction(formData: FormData) {
   revalidatePath("/channels/mappings");
   revalidatePath("/catalog/products");
   if (redirectTo) {
-    revalidatePath(redirectTo);
     redirect(redirectTo);
   }
 }
@@ -1193,7 +1186,6 @@ export async function deleteMappingTemplateAction(formData: FormData) {
   revalidatePath("/channels/mappings");
   revalidatePath("/catalog/products");
   if (redirectTo) {
-    revalidatePath(redirectTo);
     redirect(redirectTo);
   }
 }
@@ -1238,12 +1230,8 @@ export async function installConnectorAction(formData: FormData) {
     );
   }
 
-  revalidatePath("/channels/connectors");
   revalidatePath("/connectors");
   revalidatePath("/channels");
-  if (returnTo.startsWith("/")) {
-    revalidatePath(returnTo);
-  }
   revalidatePath("/dashboard");
   redirect(
     appendQueryParams(returnTo, {
@@ -1276,7 +1264,6 @@ export async function configureAmazonAction(formData: FormData) {
     rethrowRedirectError(error);
     throw error;
   }
-  revalidatePath(`/channels/connectors/${installationId}`);
   revalidatePath("/channels/connectors");
   redirect(appendQueryParams(returnTo, { status: "amazon-configured" }));
 }
@@ -1292,7 +1279,6 @@ export async function reconnectConnectorAction(formData: FormData) {
   }
 
   await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/reconnect`, {});
-  revalidatePath("/channels/connectors");
   revalidatePath("/channels");
   redirect("/channels/connectors?status=reconnected");
 }
@@ -1368,7 +1354,6 @@ export async function updateConnectorPublicationTargetsAction(formData: FormData
   }
 
   revalidatePath("/channels/connectors");
-  revalidatePath(returnTo);
   redirect(appendQueryParams(returnTo, { status: "publication-targets-saved" }));
 }
 
@@ -1379,7 +1364,6 @@ export async function uninstallConnectorAction(formData: FormData) {
   }
 
   await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/uninstall`, {});
-  revalidatePath("/channels/connectors");
   revalidatePath("/channels");
   revalidatePath("/dashboard");
   redirect("/channels/connectors?status=disabled");
@@ -1403,7 +1387,6 @@ export async function deleteConnectorInstallationAction(formData: FormData) {
     formData,
     `/connectors/${encodeURIComponent(connectorSlug)}/install/${encodeURIComponent(installationId)}`,
   );
-  revalidatePath("/channels/connectors");
   revalidatePath("/channels");
   revalidatePath("/dashboard");
   redirect("/channels/connectors?status=deleted");
@@ -1447,7 +1430,6 @@ export async function grantConnectorPermissionAction(formData: FormData) {
     }
     throw error;
   }
-  revalidatePath("/admin/connectors");
   revalidatePath("/channels/connectors");
   redirect("/admin/connectors?status=permission-granted");
 }
@@ -1458,7 +1440,6 @@ export async function revokeConnectorPermissionAction(formData: FormData) {
     throw new Error("Permission id is required.");
   }
   await deleteJsonForAction(formData, `/connectors/permissions/${permissionId}`);
-  revalidatePath("/admin/connectors");
   revalidatePath("/channels/connectors");
   redirect("/admin/connectors?status=permission-revoked");
 }
@@ -1557,7 +1538,6 @@ export async function createConnectorMappingVersionAction(formData: FormData) {
     fallbackAckRequired,
     installationId: installationId || undefined,
   });
-  revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }
 
@@ -1573,7 +1553,6 @@ export async function validateConnectorMappingVersionAction(formData: FormData) 
     `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/validate`,
     {},
   );
-  revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }
 
@@ -1625,7 +1604,6 @@ export async function publishConnectorMappingVersionAction(formData: FormData) {
     }
     throw error;
   }
-  revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }
 
@@ -1652,7 +1630,6 @@ export async function archiveConnectorMappingVersionAction(formData: FormData) {
     }
     throw error;
   }
-  revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }
 
@@ -1683,7 +1660,6 @@ export async function rollbackConnectorMappingVersionAction(formData: FormData) 
     }
     throw error;
   }
-  revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }
 
@@ -1759,7 +1735,6 @@ export async function retrySubmissionAction(formData: FormData) {
   keepToJobs("status", "submissionStatus");
   try {
     await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
-    revalidatePath("/operations/jobs");
     revalidatePath("/dashboard");
   } catch (error: unknown) {
     const rawMessage = error instanceof ApiHttpError
@@ -1833,7 +1808,6 @@ export async function createBulkImportJobAction(formData: FormData) {
   // Large import runs start only after validation
   if (validatedRun.effectiveMode === "large" && validatedRun.status === "preflight_ready") {
     await startBulkImportRun(formData, linkedRunId);
-    revalidatePath("/operations/imports");
     redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
   }
 
@@ -1918,7 +1892,6 @@ export async function processBulkImportJobAction(formData: FormData) {
     // processing in the background. The job moves to processing/done on its own;
     // redirect so the user can poll the status rather than seeing an error boundary.
   }
-  revalidatePath("/operations/imports");
   revalidatePath("/dashboard");
   redirect(returnTo);
 }
@@ -2060,7 +2033,6 @@ export async function uploadMediaAssetAction(formData: FormData) {
     throw error;
   }
 
-  revalidatePath("/media");
   if (productId) {
     revalidatePath(`/products/${productId}`);
   }
@@ -2091,7 +2063,6 @@ export async function updateMediaGovernanceAction(formData: FormData) {
     channelEligibility,
   });
 
-  revalidatePath("/media");
   redirect(
     appendQueryParams("/media", {
       productId,
@@ -2112,7 +2083,6 @@ export async function bulkAssociateMediaCsvAction(formData: FormData) {
     csvContent,
   });
 
-  revalidatePath("/media");
   redirect("/media?bulkAssociationStatus=done");
 }
 
@@ -2150,7 +2120,6 @@ export async function createOndcMappingAction(formData: FormData) {
     isDefault,
   });
 
-  revalidatePath("/ondc");
   redirect(
     `/ondc?categoryId=${encodeURIComponent(categoryId)}&version=${encodeURIComponent(version)}&nodeType=${encodeURIComponent(nodeType)}`,
   );
@@ -2175,7 +2144,6 @@ export async function runOndcSimulationAction(formData: FormData) {
     },
   );
 
-  revalidatePath("/ondc");
   redirect(
     `/ondc?productId=${encodeURIComponent(productId)}&version=${encodeURIComponent(version)}&nodeType=${encodeURIComponent(nodeType)}&mappingId=${encodeURIComponent(simulation.mappingId)}`,
   );
@@ -2190,7 +2158,6 @@ export async function applyAiRepairAction(formData: FormData) {
   await postJsonForAction(formData, `/auto-suggestions/products/${productId}/repair`, {
     apply: true,
   });
-  revalidatePath("/ai");
   revalidatePath(`/products/${productId}`);
   redirect(`/ai?productId=${encodeURIComponent(productId)}&repairStatus=applied`);
 }

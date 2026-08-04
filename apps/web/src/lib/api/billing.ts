@@ -2,6 +2,7 @@ import { cache } from "react";
 import type {
   ApiRequestOptions,
   PlanMetadataListResponse,
+  PlanTierResponse,
   PlanUpgradeRequestCreateResponse,
   PlanUpgradeRequestLookupResponse,
   PlanUsageResponse,
@@ -14,6 +15,13 @@ export async function getBillingUsage(options?: ApiRequestOptions) {
 
 export async function getBillingPlanProfile(options?: ApiRequestOptions) {
   return fetchJson<PlanUsageResponse["profile"]>("/billing/plan-profile", undefined, options);
+}
+
+// Lighter than getBillingPlanProfile — open to every app role, no billing
+// contact details. Use this for feature-gating checks on pages any role
+// can reach (dashboard, settings, quality, etc).
+export async function getBillingPlanTier(options?: ApiRequestOptions) {
+  return fetchJson<PlanTierResponse>("/billing/plan-tier", undefined, options);
 }
 
 export async function getBillingPlans(options?: ApiRequestOptions) {

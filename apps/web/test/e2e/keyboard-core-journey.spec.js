@@ -2,8 +2,11 @@ const { test, expect } = require("@playwright/test");
 const { loginViaUi } = require("./helpers/vexa-pim.cjs");
 
 test("keyboard users can open and close shell navigation and global search", async ({ page, browserName }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
+  // Role badge is hidden below the `sm` breakpoint (hidden sm:block), so log
+  // in at default desktop size before switching to the mobile viewport that
+  // this test's nav-drawer assertions require.
   await loginViaUi(page, "admin");
+  await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
 
   const menuButton = page.getByRole("button", { name: "Open navigation menu" });

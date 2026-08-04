@@ -866,6 +866,28 @@
         ]
       }
     },
+    "/api/v1/billing/plan-tier": {
+      "get": {
+        "operationId": "BillingController_planTier",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Tenant plan tier fetched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanTierSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get current tenant plan tier for feature-gating (no billing contact details)",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
     "/api/v1/billing/billing-contact": {
       "post": {
         "operationId": "BillingController_updateBillingContact",
@@ -7092,6 +7114,46 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "PlanTierSummaryDto": {
+        "type": "object",
+        "properties": {
+          "planTier": {
+            "type": "string",
+            "enum": [
+              "TRIAL",
+              "STARTER",
+              "GROWTH",
+              "BUSINESS",
+              "ENTERPRISE"
+            ],
+            "example": "STARTER"
+          },
+          "billingStatus": {
+            "type": "string",
+            "enum": [
+              "trial",
+              "active_paid",
+              "past_due",
+              "cancelled",
+              "expired"
+            ],
+            "example": "trial"
+          },
+          "accessStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "example": "active"
+          }
+        },
+        "required": [
+          "planTier",
+          "billingStatus",
+          "accessStatus"
         ]
       },
       "UpdateBillingContactDto": {

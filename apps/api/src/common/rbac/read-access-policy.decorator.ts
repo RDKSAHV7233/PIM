@@ -101,6 +101,12 @@ export const READ_ACCESS_POLICY_CONFIG = {
     responseHandling: "redact",
     apiClientPolicy: "denied_human_only",
   },
+  billing_plan_tier_self_service: {
+    reasonCode: "READ_POLICY_BILLING_PLAN_TIER_SELF_SERVICE",
+    classification: "self_service",
+    responseHandling: "none",
+    apiClientPolicy: "denied_human_only",
+  },
   billing_upgrade_request_governance_redacted: {
     reasonCode: "READ_POLICY_BILLING_UPGRADE_REQUEST_GOVERNANCE_REDACTED",
     classification: "role_redacted",
