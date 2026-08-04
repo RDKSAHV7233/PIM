@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import { MappingFieldRowControls } from "@/components/channel/mapping-field-row";
+import { WooCommerceCustomMetaFields } from "@/components/channel/woocommerce-custom-meta-fields";
 import type {
   AppRole,
   ConnectorMappingPreflight,
@@ -281,6 +282,9 @@ export function MappingEditorCard({
   const optionalRows = rows.filter((row) => !row.required);
   const mappedRequiredCount = mappedRequiredRows.length;
   const missingRequiredCount = missingRequiredRows.length;
+  const existingMetaTargets = Object.entries(mappedTargetToSource)
+    .filter(([key]) => key.startsWith("meta_data."))
+    .map(([target, source]) => ({ target, source }));
 
   return (
     <Card id="mapping-draft">
@@ -404,6 +408,14 @@ export function MappingEditorCard({
                   <div className="mt-3">{renderFieldRows(optionalRows, fieldInputPrefix, sourceFieldOptions)}</div>
                 </details>
               ) : null}
+
+              {connectorSlug === "woocommerce" && (
+                <WooCommerceCustomMetaFields
+                  fieldInputPrefix={fieldInputPrefix}
+                  sourceFieldOptions={sourceFieldOptions}
+                  existingMetaTargets={existingMetaTargets}
+                />
+              )}
             </div>
           </div>
 

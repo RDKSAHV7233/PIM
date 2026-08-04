@@ -25,3 +25,22 @@ export class CapabilityNotSupportedError extends Error {
     this.name = "CapabilityNotSupportedError";
   }
 }
+
+export type NetworkErrorCategory = 'TIMEOUT' | 'DNS' | 'TLS' | 'NETWORK';
+
+export class ConnectorNetworkError extends Error {
+  readonly category: NetworkErrorCategory;
+  readonly retryable: boolean;
+  readonly detail: string;
+
+  constructor(slug: string, category: NetworkErrorCategory, retryable: boolean, detail: string) {
+    const actionable = retryable
+      ? `Transient network issue contacting ${slug} store. The system will retry automatically.`
+      : `Check your ${slug} store URL and credentials. ${detail}`;
+    super(actionable);
+    this.name = "ConnectorNetworkError";
+    this.category = category;
+    this.retryable = retryable;
+    this.detail = detail;
+  }
+}

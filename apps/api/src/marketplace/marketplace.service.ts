@@ -12,6 +12,7 @@ import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import {
   CapabilityNotSupportedError,
+  ConnectorNetworkError,
   CredentialExpiredError,
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
@@ -1775,6 +1776,46 @@ export class MarketplaceService implements OnModuleInit {
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
       return updated;
     } catch (error) {
+      if (error instanceof ConnectorNetworkError && error.retryable) {
+        const nextRetry = existing.retryCount + 1;
+        if (nextRetry >= existing.maxRetries) {
+          const updated = await this.prisma.tenant().marketplaceExportJob.update({
+            where: { id: jobId },
+            data: {
+              status: ExportJobStatus.dead_letter,
+              retryCount: nextRetry,
+              failureReason: error.message,
+              dlqReason: `Network error exhausted retries: ${error.category} — ${error.detail}`,
+              exportPayload: Prisma.JsonNull,
+            },
+            include: { template: true },
+          });
+          await this.notificationsService.emitPublishStatus(updated.id, "dead_letter");
+          await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+          await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
+          return updated;
+        }
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.retrying,
+            retryCount: nextRetry,
+            failureReason: error.message,
+            exportPayload: Prisma.JsonNull,
+          },
+          include: { template: true },
+        });
+        this.logger.warn("Retrying export job after transient network error", {
+          jobId,
+          channel: existing.channel,
+          category: error.category,
+          retryCount: nextRetry,
+          maxRetries: existing.maxRetries,
+        });
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
+
       const failureReason = this.toFailureReason(error);
       this.logger.error("Marketplace export job failed during processing", {
         jobId,
@@ -1794,7 +1835,6 @@ export class MarketplaceService implements OnModuleInit {
       });
       await this.notificationsService.emitPublishStatus(updated.id, "failed");
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
-      // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue on every subsequent run
       await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
       return updated;
     }
@@ -3108,14 +3148,23 @@ export class MarketplaceService implements OnModuleInit {
                 severity: issue.severity,
                 sellerMessage: issue.sellerMessage,
               }))
-            : [
-                {
-                  code: "CONNECTOR_PUBLISH_FAILED",
-                  fieldPath: "",
-                  severity: "error" as const,
-                  sellerMessage: this.toFailureReason(error),
-                },
-              ];
+            : error instanceof ConnectorNetworkError
+              ? [
+                  {
+                    code: `CONNECTOR_NETWORK_${error.category}`,
+                    fieldPath: "",
+                    severity: "error" as const,
+                    sellerMessage: error.message,
+                  },
+                ]
+              : [
+                  {
+                    code: "CONNECTOR_PUBLISH_FAILED",
+                    fieldPath: "",
+                    severity: "error" as const,
+                    sellerMessage: this.toFailureReason(error),
+                  },
+                ];
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
           productId: job.productId,

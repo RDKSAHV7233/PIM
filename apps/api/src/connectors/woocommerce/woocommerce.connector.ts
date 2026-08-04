@@ -48,6 +48,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
+import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { tenantExecRaw } from '../../common/tenant/tenant-raw';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
@@ -658,7 +659,7 @@ export class WooCommerceConnector implements ConnectorInterface {
         detail,
         cause: err instanceof Error && err.cause ? String(err.cause) : undefined,
       });
-      throw new Error(`WooCommerce request failed: ${category} — ${detail} (retryable: ${retryable})`);
+      throw new ConnectorNetworkError('woocommerce', category, retryable, detail);
     } finally {
       clearTimeout(timeoutId);
     }
