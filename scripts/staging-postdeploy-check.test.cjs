@@ -295,7 +295,10 @@ async function main() {
         webLoginBody = JSON.parse(raw || "{}");
         res.writeHead(200, {
           "content-type": "application/json",
-          "set-cookie": `${validCookie}; Path=/; HttpOnly`,
+          "set-cookie": [
+            `${validCookie}; Path=/; HttpOnly`,
+            "pim_csrf_token=web-csrf-token; Path=/; SameSite=Lax",
+          ],
         });
         res.end(JSON.stringify({ userId: "admin@vexa-pim.local", tenantId: "default", role: "admin" }));
       });

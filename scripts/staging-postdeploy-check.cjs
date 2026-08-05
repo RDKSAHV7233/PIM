@@ -333,16 +333,12 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
   }
 }
 
-async function verifyCsrfToken(baseUrl, token) {
-  const privacyCheck = await requestJson(baseUrl, "/api/v1/auth/account/privacy-status", {
-    headers: {
-      authorization: `Bearer ${token}`,
-    },
-    retries: 2,
-  });
-  assertStatus(privacyCheck, 200, "privacy status check");
-
-  const setCookieHeaders = privacyCheck.setCookie || [];
+function verifyCsrfToken(webLoginSetCookie) {
+  // pim_csrf_token is only ever set by the web app's own login route
+  // (apps/web/src/app/api/auth/login/route.ts) — the API has no code path
+  // that sets it, so this must be checked against the web login response,
+  // not an API call.
+  const setCookieHeaders = webLoginSetCookie || [];
   const csrfCookie = setCookieHeaders.find((cookie) =>
     String(cookie ?? "").toLowerCase().includes("pim_csrf_token"),
   );
@@ -354,14 +350,19 @@ async function verifyCsrfToken(baseUrl, token) {
   }
 
   const csrfStr = String(csrfCookie).toLowerCase();
-  if (!csrfStr.includes("httponly")) {
-    throw new Error(`CSRF verification failed: pim_csrf_token missing httpOnly flag. cookie=${csrfCookie}`);
+  // Deliberately NOT httpOnly: apps/web/src/lib/csrf.ts reads this cookie via
+  // document.cookie for the double-submit x-csrf-token header, which requires
+  // client JS access.
+  if (csrfStr.includes("httponly")) {
+    throw new Error(
+      `CSRF verification failed: pim_csrf_token must not be httpOnly (double-submit pattern needs client JS access). cookie=${csrfCookie}`,
+    );
   }
-  if (!csrfStr.includes("samesite=strict")) {
-    throw new Error(`CSRF verification failed: pim_csrf_token missing SameSite=Strict. cookie=${csrfCookie}`);
+  if (!csrfStr.includes("samesite=lax")) {
+    throw new Error(`CSRF verification failed: pim_csrf_token missing SameSite=Lax. cookie=${csrfCookie}`);
   }
 
-  console.log("✓ CSRF token properly configured (httpOnly, SameSite=Strict)");
+  console.log("✓ CSRF token properly configured (client-readable, SameSite=Lax)");
 }
 
 async function verifyDatabaseSeed(baseUrl, adminToken) {
@@ -634,7 +635,7 @@ async function run() {
   if (!securityChecksToken) {
     throw new Error("re-login for security checks response missing accessToken");
   }
-  await verifyCsrfToken(baseUrl, securityChecksToken);
+  verifyCsrfToken(webLogin.setCookie);
   await verifyDatabaseSeed(baseUrl, securityChecksToken);
   await testBulkImportCsrfFlow(baseUrl, webBaseUrl, securityChecksToken, cookieHeader);
 
