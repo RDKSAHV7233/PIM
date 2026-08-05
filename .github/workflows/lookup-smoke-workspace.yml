@@ -1,0 +1,47 @@
+name: Lookup Smoke Workspace
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke_user_id:
+        description: "Email/userId to look up in AuthIdentity"
+        required: true
+        type: string
+
+jobs:
+  lookup-smoke-workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      APP_ENV: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Lookup smoke workspace
+        shell: bash
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          SMOKE_USER_ID: ${{ inputs.smoke_user_id }}
+        run: |
+          if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
+            echo "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret."
+            exit 1
+          fi
+          node scripts/lookup-smoke-workspace.cjs
