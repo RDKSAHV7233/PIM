@@ -198,9 +198,9 @@ jobs:
             echo "Skipping BullMQ cleanup — missing staging secrets."
             exit 0
           fi
-          login_response="$(curl -fsS "${STAGING_BASE_URL}/api/v1/auth/login" \
+          login_response="$(curl -sS "${STAGING_BASE_URL}/api/v1/auth/login" \
             -H 'Content-Type: application/json' \
-            -d "{\"workspace\":\"${STAGING_SMOKE_WORKSPACE}\",\"email\":\"${STAGING_SMOKE_USER}\",\"password\":\"${STAGING_SMOKE_PASSWORD}\"}")"
+            -d "{\"workspaceSlug\":\"${STAGING_SMOKE_WORKSPACE}\",\"userId\":\"${STAGING_SMOKE_USER}\",\"password\":\"${STAGING_SMOKE_PASSWORD}\"}")" || true
           token="$(echo "${login_response}" | jq -r '.token // .accessToken // empty')"
           if [ -z "${token}" ]; then
             echo "::warning::Could not obtain admin token for BullMQ cleanup."
