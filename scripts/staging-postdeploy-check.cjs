@@ -616,9 +616,27 @@ async function run() {
   // === NEW SECURITY & DATA VERIFICATION CHECKS ===
   // These catch bugs like the CSRF httpOnly issue and plan limit DB mismatches
   console.log("\n[Post-Deploy Security Checks]");
-  await verifyCsrfToken(baseUrl, token);
-  await verifyDatabaseSeed(baseUrl, token);
-  await testBulkImportCsrfFlow(baseUrl, webBaseUrl, token, cookieHeader);
+  // `token` was deliberately revoked by the logout probe above (line ~530) —
+  // mint a fresh one for the checks below instead of reusing the dead token.
+  const securityChecksLogin = await requestJson(baseUrl, "/api/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: {
+      workspaceSlug,
+      userId: smokeUser,
+      password: smokePassword,
+      expiresInMinutes: 30,
+    },
+    retries: 2,
+  });
+  assertStatus(securityChecksLogin, 201, "re-login for security checks");
+  const securityChecksToken = String(securityChecksLogin.payload?.accessToken ?? "");
+  if (!securityChecksToken) {
+    throw new Error("re-login for security checks response missing accessToken");
+  }
+  await verifyCsrfToken(baseUrl, securityChecksToken);
+  await verifyDatabaseSeed(baseUrl, securityChecksToken);
+  await testBulkImportCsrfFlow(baseUrl, webBaseUrl, securityChecksToken, cookieHeader);
 
   console.log(
     JSON.stringify(
