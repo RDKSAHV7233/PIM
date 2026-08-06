@@ -8,6 +8,22 @@ import { Select } from "@/components/ui/select";
 import type { MarketplaceChannelConfig, ShopifyProductPreview, ShopifyProductChangeItem } from "@/lib/api";
 import { mapMarketplaceChannelToConnectorSlug, type MarketplaceChannel } from "@/lib/marketplace-channels";
 
+const BLOCKER_LABELS: Record<string, string> = {
+  fallback_ack_required: "Fallback usage must be acknowledged",
+  field_mappings_missing: "Required field mappings are missing",
+  mapping_compatibility_blocked: "Mapping version is incompatible",
+  mapping_remap_required: "Mapping needs to be re-mapped",
+  connector_not_installed: "No connector installed for this channel",
+  connector_credentials_expired: "Connector credentials have expired",
+  required_attribute_mapping_missing: "Required attribute mappings are missing",
+  product_not_found: "Product could not be found",
+  product_category_scope_mismatch: "Product category does not match the mapping scope",
+  product_archived: "Product is archived",
+  product_not_approved: "Product has not been approved",
+  product_blocking_issues_open: "Product has unresolved blocking issues",
+  required_product_data_missing: "Required product data is missing",
+};
+
 const RISK_COLORS: Record<ShopifyProductChangeItem["riskLevel"], string> = {
   low:    "bg-slate-50 text-slate-700",
   medium: "bg-amber-50 text-amber-800",
@@ -30,6 +46,7 @@ interface ExportWithPreviewFormProps {
   returnTo: string;
   fallbackAckRequired: boolean;
   canQueueExportWithAck: boolean;
+  readinessBlockers: string[];
   previewInstallationId: string | null;
   publishableInstallations: Array<{ id: string; accountAlias: string; slug: string }>;
 }
@@ -44,6 +61,7 @@ export function ExportWithPreviewForm({
   returnTo,
   fallbackAckRequired,
   canQueueExportWithAck,
+  readinessBlockers,
   previewInstallationId,
   publishableInstallations,
 }: ExportWithPreviewFormProps) {
@@ -281,6 +299,18 @@ export function ExportWithPreviewForm({
         >
           {previewLoading ? "Checking for changes…" : isPending ? "Queuing export…" : "Queue channel export"}
         </button>
+        {!canQueueExportWithAck && readinessBlockers.length > 0 ? (
+          <div className="col-span-full">
+            <p className="text-xs font-medium text-amber-700">Export blocked:</p>
+            <ul className="mt-1 list-inside list-disc text-xs text-amber-600">
+              {readinessBlockers
+                .filter((b) => b !== "fallback_ack_required")
+                .map((blocker) => (
+                  <li key={blocker}>{BLOCKER_LABELS[blocker] ?? blocker.replaceAll("_", " ")}</li>
+                ))}
+            </ul>
+          </div>
+        ) : null}
         {previewError ? (
           <p className="col-span-4 text-xs text-red-600">{previewError}</p>
         ) : null}

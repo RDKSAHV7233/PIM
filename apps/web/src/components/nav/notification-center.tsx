@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { readCsrfCookie } from "@/lib/csrf";
 import { formatDateTime } from "@/lib/format";
 
 const POLL_INTERVAL_MS = 30_000;
+const MAX_BACKOFF_MS = 300_000;
 
 function eventSeverity(eventType: NotificationItem["eventType"]): "info" | "warning" | "blocker" {
   if (
@@ -81,7 +82,9 @@ export function NotificationCenter() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const loadNotifications = useCallback(async () => {
+  const consecutiveFailuresRef = useRef(0);
+
+  const loadNotifications = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     try {
       const response = await fetch("/api/notifications?limit=12", {
@@ -89,24 +92,41 @@ export function NotificationCenter() {
         cache: "no-store",
       });
       if (!response.ok) {
-        return;
+        consecutiveFailuresRef.current += 1;
+        return false;
       }
       const payload = (await response.json()) as NotificationListResponse;
       setItems(Array.isArray(payload.items) ? payload.items : []);
       setUnreadCount(Number(payload.unreadCount ?? 0));
+      consecutiveFailuresRef.current = 0;
+      return true;
     } catch {
-      // Network failures during polling are non-fatal — the next tick will retry.
+      consecutiveFailuresRef.current += 1;
+      return false;
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadNotifications();
-    const timer = window.setInterval(() => {
-      void loadNotifications();
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    async function tick() {
+      await loadNotifications();
+      if (cancelled) return;
+      const backoff = Math.min(
+        POLL_INTERVAL_MS * Math.pow(2, consecutiveFailuresRef.current),
+        MAX_BACKOFF_MS,
+      );
+      timer = setTimeout(tick, backoff);
+    }
+
+    void tick();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [loadNotifications]);
 
   const hasItems = items.length > 0;

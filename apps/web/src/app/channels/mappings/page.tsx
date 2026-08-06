@@ -143,6 +143,17 @@ function ScopeSummaryCard({
   );
 }
 
+const CHECKLIST_GUIDANCE: Record<string, string> = {
+  "Channel selected": "Go back to Step 1 and select a channel.",
+  "Connector account selected": "Go back to Step 1 and choose a connector account.",
+  "Publish category selected": "Go back to Step 1 and select a publish category.",
+  "Required fields mapped": "Go back to Step 2 and map all required fields in the draft, then save.",
+  "Draft validated": "Save your mapping draft, then validate it using the version manager below.",
+  "Readiness passed": "Validate and publish the mapping draft, then resolve any blockers shown below.",
+  "Fallback acknowledged if needed": "Acknowledge fallback usage in the readiness section below.",
+  "Active version impact shown": "No published version exists yet. Validate and publish your first draft.",
+};
+
 function PublishChecklistCard({
   channelSelected,
   connectorAccountSelected,
@@ -181,9 +192,14 @@ function PublishChecklistCard({
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {checks.map(([label, ok]) => (
-          <div key={label} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-            <span className="text-sm text-slate-700">{label}</span>
-            <StatusChip label={ok ? "Pass" : "Blocked"} tone={ok ? "success" : "warning"} />
+          <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-700">{label}</span>
+              <StatusChip label={ok ? "Pass" : "Blocked"} tone={ok ? "success" : "warning"} />
+            </div>
+            {!ok && CHECKLIST_GUIDANCE[label] ? (
+              <p className="mt-1.5 text-xs text-slate-500">{CHECKLIST_GUIDANCE[label]}</p>
+            ) : null}
           </div>
         ))}
       </div>

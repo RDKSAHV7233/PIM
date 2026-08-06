@@ -332,6 +332,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
               returnTo={data.returnTo}
               fallbackAckRequired={data.fallbackAckRequired}
               canQueueExportWithAck={data.canQueueExportWithAck}
+              readinessBlockers={data.readinessBlockers}
               previewInstallationId={data.mappingManagerInstallation?.id ?? null}
               publishableInstallations={data.publishableInstallations}
             />
