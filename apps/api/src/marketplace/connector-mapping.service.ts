@@ -187,6 +187,8 @@ function readFieldValue(fieldPath: string, product: {
   title?: string | null;
   description?: string | null;
   brand?: string | null;
+  hsnCode?: string | null;
+  gstRate?: number | null;
   attributes?: unknown;
   variants?: Array<{ skuCode?: string | null; sellingPrice?: unknown; mrp?: unknown; attributes?: unknown }>;
 }): unknown {
@@ -197,6 +199,8 @@ function readFieldValue(fieldPath: string, product: {
   if (normalized === "title") return product.title;
   if (normalized === "description") return product.description;
   if (normalized === "brand") return product.brand;
+  if (normalized === "hsnCode") return product.hsnCode;
+  if (normalized === "gstRate") return product.gstRate;
   const attrs = parseObject(product.attributes);
   if (normalized.startsWith("attributes.")) {
     return attrs[normalized.slice("attributes.".length)];
@@ -1371,6 +1375,8 @@ export class ConnectorMappingService {
       title?: string | null;
       description?: string | null;
       brand?: string | null;
+      hsnCode?: string | null;
+      gstRate?: number | null;
       attributes?: unknown;
       variants?: Array<{ skuCode?: string | null; sellingPrice?: unknown; mrp?: unknown; attributes?: unknown }>;
     } | null = null;
@@ -1385,6 +1391,8 @@ export class ConnectorMappingService {
           title: true,
           description: true,
           brand: true,
+          hsnCode: true,
+          gstRate: true,
           attributes: true,
           variants: {
             orderBy: [{ updatedAt: "desc" }],
@@ -1416,12 +1424,17 @@ export class ConnectorMappingService {
         if (openErrors > 0) {
           blockers.push("product_blocking_issues_open");
         }
-        missingRequiredProductValues = channelRequiredFields.filter((targetField) => {
-          if (!mappingHasTarget(fieldMappings, targetField)) {
-            return true;
+        missingRequiredProductValues = channelRequiredFields.filter((requiredField) => {
+          // required_fields may contain PIM source field names (keys) or
+          // channel target field names (values) — check both directions.
+          if (mappingHasSource(fieldMappings, requiredField)) {
+            return isEmptyValue(readFieldValue(requiredField, product));
           }
-          const sourceField = findSourceForTarget(fieldMappings, targetField);
-          return !sourceField || isEmptyValue(readFieldValue(sourceField, product));
+          if (mappingHasTarget(fieldMappings, requiredField)) {
+            const sourceField = findSourceForTarget(fieldMappings, requiredField);
+            return !sourceField || isEmptyValue(readFieldValue(sourceField, product));
+          }
+          return true;
         });
         if (missingRequiredProductValues.length > 0) {
           blockers.push("required_product_data_missing");
