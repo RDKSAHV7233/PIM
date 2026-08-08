@@ -2228,14 +2228,38 @@ export async function queueConnectorDeltaSyncAction(formData: FormData) {
   if (!installationId) {
     throw new Error("Installation ID is required.");
   }
+  let result: { queued: number; skipped: number };
   try {
-    await postJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/delta`, {});
+    result = await postJsonForAction<{ queued: number; skipped: number }>(
+      formData,
+      `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/delta`,
+      {},
+    );
   } catch (error: unknown) {
     rethrowRedirectError(error);
     redirect(appendQueryParams(returnTo, { status: "delta-sync-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
-  redirect(appendQueryParams(returnTo, { status: "delta-sync-queued" }));
+  // A 200 response only means the request was accepted, not that anything was queued —
+  // every candidate can fail (missing category, expired credentials blocking the
+  // connector elsewhere in the flow, etc.) and queueDeltaSync still returns normally
+  // with queued: 0. Surface that split instead of a flat "queued" banner that reads as
+  // success when nothing was actually handed to a worker.
+  if (result.queued === 0 && result.skipped > 0) {
+    redirect(
+      appendQueryParams(returnTo, {
+        status: "delta-sync-none-queued",
+        excludedCount: String(result.skipped),
+      }),
+    );
+  }
+  redirect(
+    appendQueryParams(returnTo, {
+      status: "delta-sync-queued",
+      queuedCount: String(result.queued),
+      excludedCount: String(result.skipped),
+    }),
+  );
 }
 
 export async function upsertConnectorSyncScheduleAction(formData: FormData) {
