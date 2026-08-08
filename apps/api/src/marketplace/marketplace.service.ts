@@ -856,10 +856,7 @@ export class MarketplaceService implements OnModuleInit {
     // processing failure, never decremented), so `${id}:${retryCount}` is unique
     // per attempt.  A dedicated processingAttempt column is cleaner semantically
     // but adds a schema migration; retryCount satisfies the uniqueness invariant.
-    await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
-      jobId: job.id,
-      connectorSlug: simulation.channel,
-    }, { jobId: `${job.id}_${job.retryCount}` });
+    await this.enqueueExportJobForExecution(job.id, simulation.channel, job.retryCount);
     return job;
   }
 
@@ -1962,22 +1959,7 @@ export class MarketplaceService implements OnModuleInit {
       throw new NotFoundException("Export job not found after status claim");
     }
 
-    try {
-      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
-        jobId,
-        connectorSlug: updated.channel,
-      }, { jobId: `${jobId}_${updated.retryCount}` });
-    } catch (enqueueError) {
-      const queueJobId = `${jobId}_${updated.retryCount}`;
-      const delivered = await this.queueService.isJobPresent(QUEUE_NAMES.CONNECTOR_SUBMISSION, queueJobId).catch(() => false);
-      if (!delivered) {
-        await this.prisma.tenant().marketplaceExportJob.updateMany({
-          where: { id: jobId, status: ExportJobStatus.queued },
-          data: { status: ExportJobStatus.failed, failureReason: "Queue enqueue failed" },
-        });
-        throw enqueueError;
-      }
-    }
+    await this.enqueueExportJobForExecution(jobId, updated.channel, updated.retryCount);
 
     return updated;
   }
@@ -4322,6 +4304,85 @@ export class MarketplaceService implements OnModuleInit {
     return rows.map((r) => ({ productId: r.product_id, version: r.version }));
   }
 
+  /**
+   * Canonical create→enqueue handoff for MarketplaceExportJob. A `status: queued` row
+   * must mean "handed to the connector-submission worker", never just "DB row exists" —
+   * queueDeltaSync previously created rows without this call, so scheduled/manual delta
+   * sync jobs sat at `queued` forever with no worker ever invoking processExportJob.
+   * On enqueue failure, isJobPresent distinguishes a truly-dropped add() from one that
+   * landed despite the client throwing (e.g. a post-add timeout), and only marks the row
+   * `failed` in the confirmed-absent case. If the presence check itself fails (e.g. Redis
+   * also unreachable), that is a THIRD outcome — "unknown", not "confirmed absent" — and
+   * must not be treated as proof of failure: doing so risks marking a job `failed` in the
+   * DB while a worker is actually about to process it. The row is left at `queued` for
+   * operator/reconciliation visibility instead of asserting a certainty we don't have.
+   * (A `queued` row with no matching queue entry is a known residual gap this patch does
+   * not close — see TECH-QUEUE-RECON-001 for the reconciliation follow-up. That follow-up
+   * MUST re-enqueue using this same `${jobId}_${retryCount}` id for the attempt it is
+   * reconciling, never a freshly minted id — inventing a new id when presence was merely
+   * unverified (as opposed to confirmed absent) would defeat BullMQ's jobId dedup and
+   * risk a duplicate submission if the original add() had actually landed.)
+   */
+  private async enqueueExportJobForExecution(
+    jobId: string,
+    connectorSlug: string,
+    retryCount: number,
+  ): Promise<void> {
+    const queueJobId = `${jobId}_${retryCount}`;
+    try {
+      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, { jobId, connectorSlug }, { jobId: queueJobId });
+    } catch (enqueueError) {
+      let delivered: boolean;
+      try {
+        delivered = await this.queueService.isJobPresent(QUEUE_NAMES.CONNECTOR_SUBMISSION, queueJobId);
+      } catch (presenceCheckError) {
+        // Coarse error codes only — never the raw message/stack. Redis/BullMQ client
+        // errors can embed connection details (host, port, sometimes credentials in a
+        // malformed REDIS_URL) in .message; .code (e.g. ECONNREFUSED) and .name are the
+        // standard, non-sensitive classification surface for this kind of failure.
+        this.logger.error(
+          "Cannot verify connector-submission queue presence after an enqueue failure — leaving job queued rather than asserting failure",
+          {
+            event: "QUEUE_HANDOFF_UNVERIFIED",
+            jobId,
+            connectorSlug,
+            retryCount,
+            queueJobId,
+            enqueueErrorCode: this.toSafeQueueErrorCode(enqueueError),
+            presenceCheckErrorCode: this.toSafeQueueErrorCode(presenceCheckError),
+          },
+        );
+        throw enqueueError;
+      }
+      if (!delivered) {
+        await this.prisma.tenant().marketplaceExportJob.updateMany({
+          where: { id: jobId, status: ExportJobStatus.queued },
+          data: { status: ExportJobStatus.failed, failureReason: "Queue enqueue failed" },
+        });
+        throw enqueueError;
+      }
+    }
+  }
+
+  /**
+   * Standardized, non-sensitive error code for queue-layer diagnostics. Deliberately
+   * never touches `.message` or `.stack` — Redis/BullMQ client errors can carry
+   * connection details (host, port, occasionally credentials from a malformed
+   * REDIS_URL) in free-text message content, which must not reach logs.
+   */
+  private toSafeQueueErrorCode(error: unknown): string {
+    if (error && typeof error === "object") {
+      const code = (error as { code?: unknown }).code;
+      if (typeof code === "string" && code.trim()) {
+        return code.trim();
+      }
+    }
+    if (error instanceof Error && error.name.trim()) {
+      return error.name.trim();
+    }
+    return "UNKNOWN_ERROR";
+  }
+
   async queueDeltaSync(
     installationId: string,
     actor?: PolicyActor,
@@ -4356,7 +4417,7 @@ export class MarketplaceService implements OnModuleInit {
         page.map(async ({ product_id: productId, category_id: categoryId }) => {
           if (!categoryId) return Promise.reject(new Error("missing_category"));
           try {
-            return await db.marketplaceExportJob.create({
+            const created = await db.marketplaceExportJob.create({
               data: {
                 tenantKey,
                 productId,
@@ -4370,6 +4431,11 @@ export class MarketplaceService implements OnModuleInit {
               },
               select: { id: true },
             });
+            // Without this, the row above sits at `queued` forever — no worker is ever
+            // told about it. See enqueueExportJobForExecution for why a plain DB row is
+            // not sufficient on its own.
+            await this.enqueueExportJobForExecution(created.id, channel, 0);
+            return created;
           } catch (err: unknown) {
             if (
               err instanceof Prisma.PrismaClientKnownRequestError &&
