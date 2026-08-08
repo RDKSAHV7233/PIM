@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  getErrorAuthorityIngestTokenValidationIssue,
+  getErrorAuthorityReleaseValidationIssue,
+} from "./error-authority-env";
 
 type AppEnv = "development" | "staging" | "production";
 type BoolText = "true" | "false";
@@ -64,6 +68,12 @@ export interface ValidatedEnv {
   STRIPE_PRICE_ID_ENTERPRISE?: string;
   QUEUE_BACKEND: QueueBackend;
   QUEUE_WORKER_ENABLED: BoolText;
+  ERROR_AUTHORITY_ENABLED: BoolText;
+  ERROR_AUTHORITY_RELEASE?: string;
+  ERROR_AUTHORITY_INGEST_TOKEN?: string;
+  OBSERVABILITY_DATABASE_URL?: string;
+  ERROR_AUTHORITY_REF_SECRET?: string;
+  OBSERVABILITY_DB_POOL_APP_NAME?: string;
   SENTRY_DSN?: string;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
 }
@@ -162,6 +172,12 @@ const EnvSchema = z.object({
   STRIPE_PRICE_ID_ENTERPRISE: OptionalTrimmedText,
   QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
   QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),
+  ERROR_AUTHORITY_ENABLED: z.enum(["true", "false"] as const).default("false"),
+  ERROR_AUTHORITY_RELEASE: OptionalTrimmedText,
+  ERROR_AUTHORITY_INGEST_TOKEN: OptionalTrimmedText,
+  OBSERVABILITY_DATABASE_URL: UrlSchema.optional(),
+  ERROR_AUTHORITY_REF_SECRET: z.string().min(32).optional(),
+  OBSERVABILITY_DB_POOL_APP_NAME: OptionalTrimmedText,
   SENTRY_DSN: z.string().url().optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
@@ -231,6 +247,30 @@ export function validateEnv(): ValidatedEnv {
       data.QUEUE_WORKER_ENABLED !== "true"
     ) {
       issues.push("QUEUE_WORKER_ENABLED: staging/production must use QUEUE_WORKER_ENABLED=true");
+    }
+    if (data.ERROR_AUTHORITY_ENABLED === "true") {
+      if (!data.OBSERVABILITY_DATABASE_URL) {
+        issues.push("OBSERVABILITY_DATABASE_URL: required when ERROR_AUTHORITY_ENABLED=true");
+      }
+      if (!data.ERROR_AUTHORITY_REF_SECRET) {
+        issues.push("ERROR_AUTHORITY_REF_SECRET: required when ERROR_AUTHORITY_ENABLED=true");
+      }
+      if (data.APP_ENV === "staging" || data.APP_ENV === "production") {
+        const releaseIssue = getErrorAuthorityReleaseValidationIssue(data.ERROR_AUTHORITY_RELEASE);
+        if (releaseIssue) {
+          issues.push(`ERROR_AUTHORITY_RELEASE: ${releaseIssue} when ERROR_AUTHORITY_ENABLED=true in staging/production`);
+        }
+        const ingestTokenIssue = getErrorAuthorityIngestTokenValidationIssue(data.ERROR_AUTHORITY_INGEST_TOKEN);
+        if (ingestTokenIssue) {
+          issues.push(`ERROR_AUTHORITY_INGEST_TOKEN: ${ingestTokenIssue} when ERROR_AUTHORITY_ENABLED=true in staging/production`);
+        }
+      }
+    }
+    if (data.ERROR_AUTHORITY_RELEASE) {
+      const releaseIssue = getErrorAuthorityReleaseValidationIssue(data.ERROR_AUTHORITY_RELEASE);
+      if (releaseIssue) {
+        issues.push(`ERROR_AUTHORITY_RELEASE: ${releaseIssue}`);
+      }
     }
     const redisDisabledRaw = (key: string) =>
       String(envInput[key] ?? "false").trim().toLowerCase() === "true";

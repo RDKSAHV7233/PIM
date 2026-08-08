@@ -83,3 +83,81 @@ describe("QueueService.onModuleInit — Redis fail-fast", () => {
     await expect(service.onModuleInit()).resolves.toBeUndefined();
   });
 });
+
+describe("QueueService worker error authority capture", () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV, QUEUE_BACKEND: "memory", QUEUE_WORKER_ENABLED: "true" };
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  type WorkerCaptureHarness = {
+    captureTerminalWorkerFailure(
+      queueName: string,
+      laneKey: string,
+      payload: unknown,
+      error: unknown,
+      context?: { jobId?: string; sourceEventId?: string },
+    ): Promise<void>;
+  };
+
+  function asWorkerCaptureHarness(service: unknown): WorkerCaptureHarness {
+    return service as WorkerCaptureHarness;
+  }
+
+  it("captures unexpected terminal memory worker failures without raw payload", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { QueueService } = require("./queue.service");
+    const captureUnexpected = jest.fn().mockResolvedValue(undefined);
+    const service = new QueueService({ captureUnexpected });
+
+    await asWorkerCaptureHarness(service).captureTerminalWorkerFailure(
+      "bulk-import",
+      "default",
+      {
+        tenantKey: "tenant-a",
+        jobId: "job-a",
+        operationId: "operation-a",
+        installationId: "install-a",
+        rawPayload: "must-not-be-forwarded",
+      },
+      new Error("Unexpected worker database crash"),
+      { jobId: "job-a" },
+    );
+
+    expect(captureUnexpected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime: "worker",
+        service: "vexa-pim-api",
+        category: "database",
+        routeTemplate: "queue:bulk-import:default",
+        rawTenantKey: "tenant-a",
+        jobId: "job-a",
+        operationId: "operation-a",
+        installationId: "install-a",
+      }),
+    );
+    expect(JSON.stringify(captureUnexpected.mock.calls[0][0])).not.toContain("must-not-be-forwarded");
+  });
+
+  it("does not capture expected memory worker domain failures", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { QueueService } = require("./queue.service");
+    const captureUnexpected = jest.fn().mockResolvedValue(undefined);
+    const service = new QueueService({ captureUnexpected });
+
+    await asWorkerCaptureHarness(service).captureTerminalWorkerFailure(
+      "connector-submission",
+      "default",
+      { tenantKey: "tenant-a", jobId: "job-a" },
+      new Error("Marketplace validation rejection"),
+    );
+
+    expect(captureUnexpected).not.toHaveBeenCalled();
+  });
+});

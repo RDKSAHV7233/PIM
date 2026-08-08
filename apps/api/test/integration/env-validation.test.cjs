@@ -82,6 +82,44 @@ console.log("VALIDATION_PASSED_UNEXPECTEDLY");
   }
 }
 
+async function runValidationOnlySuccessCase(baseEnv, overrides, failureMessage) {
+  const stdout = [];
+  const stderr = [];
+  const script = `
+const { validateEnv } = require(${JSON.stringify(path.join(REPO_ROOT, "apps", "api", "dist", "common", "env-validation.js"))});
+validateEnv();
+console.log("VALIDATION_PASSED");
+  `.trim();
+  const processHandle = spawn("node", ["-e", script], {
+    cwd: REPO_ROOT,
+    env: {
+      ...baseEnv,
+      ...overrides,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(10_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(`${failureMessage} Output tail: ${mergedOutput.slice(-500)}`);
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code !== 0 || !mergedOutput.includes("VALIDATION_PASSED")) {
+    throw new Error(`${failureMessage} Process exited with code ${result.code}. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
 function buildBaseEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
   const databaseUrl = process.env.DATABASE_URL;
@@ -473,6 +511,97 @@ async function runCaseStagingRejectsPlaceholderJwtSecret(baseEnv) {
   );
 }
 
+function strictErrorAuthorityEnv(baseEnv, overrides = {}) {
+  return {
+    PORT: String(5520 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "console",
+    QUEUE_BACKEND: "bullmq",
+    QUEUE_WORKER_ENABLED: "true",
+    PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+    PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+    PIM_AUTH_REDIS_DISABLED: "false",
+    JWT_BLOCKLIST_REDIS_DISABLED: "false",
+    ERROR_AUTHORITY_ENABLED: "true",
+    OBSERVABILITY_DATABASE_URL:
+      baseEnv.OBSERVABILITY_DATABASE_URL || baseEnv.DATABASE_URL_POOLED || "postgresql://vexa:vexa@localhost:5432/vexa_observability",
+    ERROR_AUTHORITY_REF_SECRET: "error-authority-ref-secret-minimum-length-32",
+    ERROR_AUTHORITY_RELEASE: "260a89cc3475152d27821ae2334389ae88084f67",
+    ERROR_AUTHORITY_INGEST_TOKEN: "error-authority-ingest-token-minimum-32",
+    ...overrides,
+  };
+}
+
+async function runCaseStagingErrorAuthorityRequiresRelease(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    strictErrorAuthorityEnv(baseEnv, { ERROR_AUTHORITY_RELEASE: "" }),
+    "ERROR_AUTHORITY_RELEASE",
+    "Expected staging startup to fail when Error Authority is enabled without a release.",
+  );
+}
+
+async function runCaseStagingErrorAuthorityRejectsMalformedRelease(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    strictErrorAuthorityEnv(baseEnv, { ERROR_AUTHORITY_RELEASE: "latest" }),
+    "deploy-specific immutable release",
+    "Expected staging startup to fail when Error Authority release is a floating value.",
+  );
+}
+
+async function runCaseStagingErrorAuthorityRequiresIngestToken(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    strictErrorAuthorityEnv(baseEnv, { ERROR_AUTHORITY_INGEST_TOKEN: "" }),
+    "ERROR_AUTHORITY_INGEST_TOKEN",
+    "Expected staging startup to fail when trusted Error Authority ingestion has no token.",
+  );
+}
+
+async function runCaseStagingErrorAuthorityAcceptsReleaseAndToken(baseEnv) {
+  await runValidationOnlySuccessCase(
+    baseEnv,
+    strictErrorAuthorityEnv(baseEnv),
+    "Expected staging Error Authority validation to pass with immutable release and ingest token.",
+  );
+}
+
+async function runCaseDevErrorAuthorityUsesLocalReleaseFallback(baseEnv) {
+  await runValidationOnlySuccessCase(
+    baseEnv,
+    {
+      ERROR_AUTHORITY_ENABLED: "true",
+      OBSERVABILITY_DATABASE_URL:
+        baseEnv.OBSERVABILITY_DATABASE_URL || baseEnv.DATABASE_URL_POOLED || "postgresql://vexa:vexa@localhost:5432/vexa_observability",
+      ERROR_AUTHORITY_REF_SECRET: "error-authority-ref-secret-minimum-length-32",
+      ERROR_AUTHORITY_RELEASE: "",
+      ERROR_AUTHORITY_INGEST_TOKEN: "",
+    },
+    "Expected development Error Authority validation to allow explicit local release fallback.",
+  );
+  const script = `
+const { resolveErrorAuthorityRelease, ERROR_AUTHORITY_LOCAL_RELEASE } = require(${JSON.stringify(
+    path.join(REPO_ROOT, "apps", "api", "dist", "common", "error-authority-env.js"),
+  )});
+const resolved = resolveErrorAuthorityRelease({ APP_ENV: "development", ERROR_AUTHORITY_ENABLED: "true" });
+if (resolved !== ERROR_AUTHORITY_LOCAL_RELEASE) {
+  throw new Error("unexpected fallback release: " + resolved);
+}
+if (resolveErrorAuthorityRelease({ APP_ENV: "staging", ERROR_AUTHORITY_ENABLED: "true", ERROR_AUTHORITY_RELEASE: "260a89cc3475152d27821ae2334389ae88084f67" }) !== "260a89cc3475152d27821ae2334389ae88084f67") {
+  throw new Error("canonical accessor must be deterministic for explicit release");
+}
+console.log("RELEASE_ACCESSOR_PASSED");
+  `.trim();
+  const output = execFileSync("node", ["-e", script], { cwd: REPO_ROOT, env: baseEnv, encoding: "utf8" });
+  if (!output.includes("RELEASE_ACCESSOR_PASSED")) {
+    throw new Error(`Expected release accessor proof to pass. Output: ${output}`);
+  }
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -491,6 +620,11 @@ async function run() {
   await runCaseStagingFilesystemModeRequiresDirectory(baseEnv);
   await runCaseProductionRejectsConsoleEmailProvider(baseEnv);
   await runCaseStagingRejectsPlaceholderJwtSecret(baseEnv);
+  await runCaseStagingErrorAuthorityRequiresRelease(baseEnv);
+  await runCaseStagingErrorAuthorityRejectsMalformedRelease(baseEnv);
+  await runCaseStagingErrorAuthorityRequiresIngestToken(baseEnv);
+  await runCaseStagingErrorAuthorityAcceptsReleaseAndToken(baseEnv);
+  await runCaseDevErrorAuthorityUsesLocalReleaseFallback(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
   console.log(
@@ -510,6 +644,11 @@ async function run() {
           "staging_filesystem_account_export_requires_storage_dir",
           "production_requires_resend_email_provider",
           "staging_rejects_placeholder_jwt_secret",
+          "staging_error_authority_requires_release",
+          "staging_error_authority_rejects_malformed_release",
+          "staging_error_authority_requires_ingest_token",
+          "staging_error_authority_accepts_release_and_token",
+          "development_error_authority_uses_local_release_fallback",
           "valid_env_starts_api",
         ],
         checkedAt: new Date().toISOString(),

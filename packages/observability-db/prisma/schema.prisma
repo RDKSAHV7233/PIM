@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("OBSERVABILITY_DATABASE_URL")
+}
+
+enum ErrorRuntime {
+  api
+  worker
+  next_server
+  browser
+}
+
+enum ErrorCategory {
+  internal
+  network
+  timeout
+  database
+  cache
+  authentication
+  authorization
+  contract
+  dependency
+  rendering
+  hydration
+  unknown
+}
+
+enum ErrorSeverity {
+  p0
+  p1
+  p2
+  p3
+}
+
+enum ErrorIssueState {
+  open
+  muted
+  resolved
+}
+
+model ErrorIssue {
+  id                  String                   @id @default(cuid())
+  fingerprint         String
+  fingerprintVersion  Int                      @map("fingerprint_version")
+  runtime             ErrorRuntime
+  service             String
+  environment         String
+  errorCode           String?                  @map("error_code")
+  category            ErrorCategory            @default(unknown)
+  safeTitle           String                   @map("safe_title")
+  severity            ErrorSeverity            @default(p2)
+  state               ErrorIssueState          @default(open)
+  firstSeenAt         DateTime                 @default(now()) @map("first_seen_at")
+  lastSeenAt          DateTime                 @default(now()) @map("last_seen_at")
+  firstSeenRelease    String?                  @map("first_seen_release")
+  lastSeenRelease     String?                  @map("last_seen_release")
+  occurrenceCount     Int                      @default(0) @map("occurrence_count")
+  affectedTenantCount Int                      @default(0) @map("affected_tenant_count")
+  latestOccurrenceId  String?                  @map("latest_occurrence_id")
+  occurrences         ErrorOccurrence[]
+  tenantImpacts       ErrorIssueTenantImpact[]
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([environment, runtime, service, fingerprintVersion, fingerprint], map: "error_issues_group_unique")
+  @@index([environment, state, lastSeenAt(sort: Desc)], map: "idx_error_issues_env_state_last_seen")
+  @@index([runtime, category, lastSeenAt(sort: Desc)], map: "idx_error_issues_runtime_category_last_seen")
+  @@map("error_issues")
+}
+
+model ErrorOccurrence {
+  id               String        @id @default(cuid())
+  issueId          String        @map("issue_id")
+  issue            ErrorIssue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  occurredAt       DateTime      @default(now()) @map("occurred_at")
+  environment      String
+  release          String?
+  runtime          ErrorRuntime
+  service          String
+  requestId        String?       @map("request_id")
+  correlationId    String?       @map("correlation_id")
+  routeTemplate    String?       @map("route_template")
+  method           String?
+  statusCode       Int?          @map("status_code")
+  safeTenantRef    String?       @map("safe_tenant_ref")
+  safeActorRef     String?       @map("safe_actor_ref")
+  actorType        String?       @map("actor_type")
+  jobId            String?       @map("job_id")
+  operationId      String?       @map("operation_id")
+  installationId   String?       @map("installation_id")
+  errorCode        String?       @map("error_code")
+  category         ErrorCategory @default(unknown)
+  safeMessage      String        @map("safe_message")
+  topFrameFile     String?       @map("top_frame_file")
+  topFrameFunction String?       @map("top_frame_function")
+  topFrameLine     Int?          @map("top_frame_line")
+  normalizedFrames Json?         @map("normalized_frames")
+  stackHash        String?       @map("stack_hash")
+  sourceEventId    String?       @unique @map("source_event_id")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  @@index([issueId, occurredAt(sort: Desc)], map: "idx_error_occurrences_issue_time")
+  @@index([environment, runtime, occurredAt(sort: Desc)], map: "idx_error_occurrences_env_runtime_time")
+  @@index([correlationId], map: "idx_error_occurrences_correlation")
+  @@index([requestId], map: "idx_error_occurrences_request")
+  @@index([jobId], map: "idx_error_occurrences_job")
+  @@map("error_occurrences")
+}
+
+model ErrorIssueTenantImpact {
+  id            String     @id @default(cuid())
+  issueId       String     @map("issue_id")
+  issue         ErrorIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  safeTenantRef String     @map("safe_tenant_ref")
+  firstSeenAt   DateTime   @default(now()) @map("first_seen_at")
+  lastSeenAt    DateTime   @default(now()) @map("last_seen_at")
+
+  @@unique([issueId, safeTenantRef], map: "error_issue_tenant_impact_unique")
+  @@index([safeTenantRef, lastSeenAt(sort: Desc)], map: "idx_error_issue_tenant_ref_last_seen")
+  @@map("error_issue_tenant_impacts")
+}

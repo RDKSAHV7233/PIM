@@ -24,6 +24,7 @@ import { ReadAccessPolicyInterceptor } from "./common/rbac/read-access-policy.in
 import { TenantDirectoryModule } from "./common/tenant/tenant-directory.module";
 import { TenantContextMiddleware } from "./common/tenant/tenant-context.middleware";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { ErrorAuthorityModule } from "./error-authority/error-authority.module";
 import { ConnectorFrameworkModule } from "./connector-framework/connector-framework.module";
 import { ConnectorInstallerModule } from "./connector-installer/connector-installer.module";
 import { MarketplaceModule } from "./marketplace/marketplace.module";
@@ -63,6 +64,7 @@ const FEATURE_ONDC_ENABLED =
     TaxonomyModule,
     ComplianceModule,
     DashboardModule,
+    ErrorAuthorityModule,
     ConnectorFrameworkModule,
     ConnectorInstallerModule,
     BulkImportModule,
