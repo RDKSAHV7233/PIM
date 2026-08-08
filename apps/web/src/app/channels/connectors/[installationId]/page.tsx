@@ -393,9 +393,25 @@ function connectorDetailStatusMessage(
     };
   }
   if (normalized === "delta-sync-queued") {
+    const queuedCount = Number(counts?.queuedCount ?? "");
+    const excludedCount = Number(counts?.excludedCount ?? "");
+    if (Number.isFinite(queuedCount) && Number.isFinite(excludedCount) && excludedCount > 0) {
+      return {
+        tone: "warning",
+        message: `Delta sync queued ${queuedCount}, skipped ${excludedCount} (missing category or a conflicting active job). Track queued jobs in the Jobs workspace; review skipped products before retrying.`,
+      };
+    }
     return {
       tone: "success",
       message: "Delta sync queued. Changed products will be picked up by the export worker shortly.",
+    };
+  }
+  if (normalized === "delta-sync-none-queued") {
+    const excludedCount = Number(counts?.excludedCount ?? "");
+    const countLabel = Number.isFinite(excludedCount) && excludedCount > 0 ? `All ${excludedCount} pending product(s)` : "Every pending product";
+    return {
+      tone: "danger",
+      message: `${countLabel} failed to queue — nothing was handed to the export worker. Check for missing category assignments and connector health before retrying.`,
     };
   }
   if (normalized === "delta-sync-error") {
