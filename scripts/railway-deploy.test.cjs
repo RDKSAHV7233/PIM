@@ -10,11 +10,13 @@ const {
   buildDeployCommands,
   classifyDeployTargets,
   findOverlappingServiceTargets,
+  formatRailwayVariablePairs,
   isRetryableRailwayDeployError,
   normalizeServiceTarget,
   prepareRailwayDeployRoot,
   resolveApiDatabaseVariables,
   resolveConfig,
+  resolveErrorAuthorityServiceVariables,
 } = require("./railway-deploy.cjs");
 
 function main() {
@@ -229,6 +231,36 @@ function main() {
       ["DATABASE_URL_POOLED", "postgresql://fallback:pass@localhost:5432/db"],
       ["DATABASE_URL_DIRECT", "postgresql://fallback:pass@localhost:5432/db"],
     ],
+  );
+  assert.deepEqual(
+    resolveErrorAuthorityServiceVariables({
+      GITHUB_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+      ERROR_AUTHORITY_INGEST_TOKEN: "error-authority-ingest-token-minimum-32",
+    }),
+    [
+      ["ERROR_AUTHORITY_RELEASE", "260a89cc3475152d27821ae2334389ae88084f67"],
+      ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
+    ],
+    "Railway deploy should derive Error Authority release from the immutable GitHub SHA and include the server-only ingest token when configured.",
+  );
+  assert.deepEqual(
+    formatRailwayVariablePairs([
+      ["ERROR_AUTHORITY_RELEASE", "260a89cc3475152d27821ae2334389ae88084f67"],
+      ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
+    ]),
+    [
+      "ERROR_AUTHORITY_RELEASE=260a89cc3475152d27821ae2334389ae88084f67",
+      "ERROR_AUTHORITY_INGEST_TOKEN=error-authority-ingest-token-minimum-32",
+    ],
+    "Railway variable set arguments must use KEY=VALUE format.",
+  );
+  assert.deepEqual(
+    resolveErrorAuthorityServiceVariables({
+      ERROR_AUTHORITY_RELEASE: "explicit-release-sha",
+      GITHUB_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+    }),
+    [["ERROR_AUTHORITY_RELEASE", "explicit-release-sha"]],
+    "Explicit ERROR_AUTHORITY_RELEASE should take precedence over GITHUB_SHA for controlled rollback/redeploy cases.",
   );
 
   assert.deepEqual(

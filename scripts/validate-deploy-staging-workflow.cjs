@@ -151,6 +151,9 @@ function main() {
   requireEnvVar(deployStep, "DATABASE_URL_DIRECT", "Deploy to staging");
   requireEnvVar(deployStep, "DATABASE_URL", "Deploy to staging");
   requireEnvVar(deployStep, "STAGING_BASE_URL", "Deploy to staging");
+  requireEnvVar(deployStep, "GITHUB_SHA", "Deploy to staging");
+  requireEnvVar(deployStep, "ERROR_AUTHORITY_RELEASE", "Deploy to staging");
+  requireEnvVar(deployStep, "ERROR_AUTHORITY_INGEST_TOKEN", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to staging");
@@ -159,6 +162,10 @@ function main() {
   assert(
     String(deployStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
     "Deploy to staging must use the resolved staging API URL output.",
+  );
+  assert(
+    String(deployStep.env?.ERROR_AUTHORITY_RELEASE ?? "").trim() === "${{ github.sha }}",
+    "Deploy to staging must use github.sha as ERROR_AUTHORITY_RELEASE.",
   );
   const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");
   assert(String(resolveWebUrlStep?.id ?? "").trim() === "resolve_staging_web_url", "Resolve staging web URL step must expose id=resolve_staging_web_url");

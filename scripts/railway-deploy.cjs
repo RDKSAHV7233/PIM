@@ -642,6 +642,74 @@ function resolveApiDatabaseVariables(env = process.env) {
   return pairs;
 }
 
+function resolveErrorAuthorityServiceVariables(env = process.env) {
+  const release = optionalEnv("ERROR_AUTHORITY_RELEASE", env) || optionalEnv("GITHUB_SHA", env);
+  const ingestToken = optionalEnv("ERROR_AUTHORITY_INGEST_TOKEN", env);
+  const pairs = [];
+  if (release) {
+    pairs.push(["ERROR_AUTHORITY_RELEASE", release]);
+  }
+  if (ingestToken) {
+    pairs.push(["ERROR_AUTHORITY_INGEST_TOKEN", ingestToken]);
+  }
+  return pairs;
+}
+
+function formatRailwayVariablePairs(pairs) {
+  return pairs.map(([key, value]) => `${key}=${value}`);
+}
+
+function setErrorAuthorityServiceVariables(config, railwayEnv, env = process.env) {
+  const pairs = resolveErrorAuthorityServiceVariables(env);
+  if (pairs.length === 0) {
+    console.warn(
+      "[railway-deploy] No Error Authority release/ingest variables found — skipping Error Authority variable sync.",
+    );
+    return;
+  }
+
+  const safeKeys = pairs.map(([key]) => key).join(" ");
+  const targets = [
+    { label: "API", serviceTarget: config.apiServiceTargets[0] },
+    { label: "Web", serviceTarget: config.webServiceTargets[0] },
+  ];
+
+  for (const { label, serviceTarget } of targets) {
+    const args = [
+      "variables",
+      "set",
+      ...formatRailwayVariablePairs(pairs),
+      "--service",
+      serviceTarget,
+      "--environment",
+      config.environmentName,
+      "--project",
+      config.projectId,
+    ];
+
+    console.log(`[railway-deploy] Setting ${label} Error Authority env vars on '${serviceTarget}': ${safeKeys}`);
+    const result = childProcess.spawnSync(config.railwayBin, args, {
+      cwd: config.repoRoot,
+      env: railwayEnv,
+      encoding: "utf8",
+    });
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+    if (result.error || result.status !== 0) {
+      console.warn(
+        `[railway-deploy] Warning: could not set ${label} Error Authority env vars (exit ${result.status}). ` +
+          "Set ERROR_AUTHORITY_RELEASE and ERROR_AUTHORITY_INGEST_TOKEN manually in Railway before enabling Error Authority capture.",
+      );
+    } else {
+      console.log(`[railway-deploy] ${label} Error Authority env vars synced successfully.`);
+    }
+  }
+}
+
 function setApiServiceDatabaseVariables(config, railwayEnv, env = process.env) {
   const pairs = resolveApiDatabaseVariables(env);
   if (pairs.length === 0) {
@@ -655,7 +723,7 @@ function setApiServiceDatabaseVariables(config, railwayEnv, env = process.env) {
   const args = [
     "variables",
     "set",
-    ...pairs.flatMap(([key, value]) => [key, value]),
+    ...formatRailwayVariablePairs(pairs),
     "--service",
     primaryTarget,
     "--environment",
@@ -741,6 +809,7 @@ function main(env = process.env) {
     }
 
     setApiServiceDatabaseVariables(deployConfig, railwayEnv, env);
+    setErrorAuthorityServiceVariables(deployConfig, railwayEnv, env);
 
     const deployCommands = buildDeployCommands(deployConfig);
 
@@ -793,6 +862,7 @@ module.exports = {
   classifyDeployTargets,
   buildRailwayExecutionEnv,
   findOverlappingServiceTargets,
+  formatRailwayVariablePairs,
   getChangedFiles,
   isRetryableRailwayDeployError,
   isServiceNotFoundRailwayError,
@@ -801,7 +871,9 @@ module.exports = {
   prepareRailwayDeployRoot,
   resolveApiDatabaseVariables,
   resolveConfig,
+  resolveErrorAuthorityServiceVariables,
   resolveServiceTargets,
   runDeployCommandWithRetry,
   setApiServiceDatabaseVariables,
+  setErrorAuthorityServiceVariables,
 };

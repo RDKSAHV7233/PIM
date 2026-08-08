@@ -137,6 +137,15 @@ Web env vars are in `apps/web/.env` (or Railway env for the web service):
 |----------|-------|
 | `SENTRY_DSN` | Activates Sentry error tracking; leave empty to disable |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint for traces |
+| `ERROR_AUTHORITY_ENABLED` | Enables Vexa Error Authority capture/storage. Disabled by default |
+| `OBSERVABILITY_DATABASE_URL` | Separate observability PostgreSQL URL. Required when Error Authority is enabled |
+| `ERROR_AUTHORITY_REF_SECRET` | Server-only hashing secret for safe tenant/actor references. Required when Error Authority is enabled |
+| `ERROR_AUTHORITY_RELEASE` | Immutable deploy identifier, normally the Git commit SHA. Required in staging/production when Error Authority is enabled. Do not use `unknown`, `latest`, timestamps, or container-generated values |
+| `ERROR_AUTHORITY_INGEST_TOKEN` | Server-only token reserved for trusted Next-server ingestion. Required in staging/production when Error Authority is enabled. Never expose as `NEXT_PUBLIC_*` or write into client bundles |
+
+`ERROR_AUTHORITY_ENABLED` is currently the gate for strict Error Authority release and trusted-ingestion-token validation because Vexa does not yet have a separate server-ingestion feature flag. CI exposes `GITHUB_SHA`, but the repository does not prove that Railway runtime services automatically receive `ERROR_AUTHORITY_RELEASE`; set it explicitly on API and web services as `${GITHUB_SHA}` during deployment.
+
+The Railway deploy workflow now passes `ERROR_AUTHORITY_RELEASE=${GITHUB_SHA}` into the deploy script. The script syncs `ERROR_AUTHORITY_RELEASE` and, when configured in the protected GitHub environment, `ERROR_AUTHORITY_INGEST_TOKEN` onto the API and web Railway services before deploy. The ingest token value must never be printed in logs; only whether it is configured may be reported. If Vexa later runs workers as a separate Railway service, configure the same `ERROR_AUTHORITY_RELEASE` on that worker service too.
 
 ---
 
