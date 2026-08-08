@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { ExportJobStatus } from "@prisma/client";
 import { MarketplaceService } from "./marketplace.service";
 
 function makeService(productOverride?: Record<string, unknown>) {
@@ -717,5 +718,266 @@ describe("MarketplaceService.getPublishCapableChannels (VEXA-202)", () => {
     ]);
     const result = await (svc as unknown as { getPublishCapableChannels: () => Promise<Set<string>> }).getPublishCapableChannels();
     expect(result.has("amazon")).toBe(false);
+  });
+});
+
+// ─── MarketplaceService.queueDeltaSync — connector-submission enqueue handoff ──
+//
+// Regression coverage for the bug where scheduled/manual delta sync created
+// MarketplaceExportJob rows at status=queued but never handed them to the
+// connector-submission worker (queueService.enqueue was never called), so the
+// rows sat at `queued` forever. createExportJob and requeueExportJob always
+// enqueued after creating; queueDeltaSync was the one path that didn't.
+
+describe("MarketplaceService.queueDeltaSync — connector-submission enqueue handoff", () => {
+  const INSTALLATION_ROW = {
+    id: "inst_1",
+    connectorId: "conn_1",
+    tenantKey: "tenant1",
+    connectorSlug: "shopify",
+    capabilities: ["PUBLISH"],
+  };
+
+  function makeDeltaSyncService(options: {
+    candidates?: Array<{ product_id: string; version: number; category_id: string }>;
+    createImpl?: (args: { data: Record<string, unknown> }) => Promise<{ id: string }>;
+    enqueueImpl?: (...args: unknown[]) => Promise<void>;
+    isJobPresentImpl?: (...args: unknown[]) => Promise<boolean>;
+  } = {}) {
+    const candidates = options.candidates ?? [
+      { product_id: "p1", version: 2, category_id: "cat1" },
+      { product_id: "p2", version: 3, category_id: "cat1" },
+    ];
+
+    const marketplaceExportJob = {
+      create: jest.fn(
+        options.createImpl ??
+          (({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({ id: `job-${data.productId as string}` })),
+      ),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+
+    const db = {
+      $queryRaw: jest.fn().mockResolvedValue([INSTALLATION_ROW]),
+      $queryRawUnsafe: jest.fn().mockResolvedValue(candidates),
+      marketplaceExportJob,
+    };
+
+    const prisma = {
+      // Same mock regardless of args: covers both `this.prisma.tenant(tenantKey)`
+      // (used directly in queueDeltaSync) and `this.prisma.tenant()` (used inside
+      // the shared enqueueExportJobForExecution helper).
+      tenant: jest.fn().mockReturnValue(db),
+    };
+
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    };
+
+    const queueService = {
+      enqueue: jest.fn(options.enqueueImpl ?? (() => Promise.resolve(undefined))),
+      isJobPresent: jest.fn(options.isJobPresentImpl ?? (() => Promise.resolve(false))),
+      processScheduledSync: jest.fn(),
+      processWithBackpressure: jest.fn(),
+    };
+
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      logger as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+
+    return { svc, db, queueService, marketplaceExportJob, logger };
+  }
+
+  it("enqueues a CONNECTOR_SUBMISSION job for every export job it creates", async () => {
+    const { svc, queueService } = makeDeltaSyncService();
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 2, skipped: 0 });
+    expect(queueService.enqueue).toHaveBeenCalledTimes(2);
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-p1", connectorSlug: "shopify" },
+      { jobId: "job-p1_0" },
+    );
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-p2", connectorSlug: "shopify" },
+      { jobId: "job-p2_0" },
+    );
+  });
+
+  it("the scheduled-sync cron handler drives the same enqueue path as a manual run (not a separate, divergeable copy)", async () => {
+    // There are two distinct queue layers here: registerRepeatableSync's BullMQ
+    // schedule only queues the *orchestration* trigger — processScheduledSync's
+    // handler still has to call queueDeltaSync, which is what actually creates
+    // and enqueues the CONNECTOR_SUBMISSION work. A fix applied only to a manual
+    // "run sync now" call site (and not to queueDeltaSync itself) would leave the
+    // cron path silently broken; this test exercises the cron wiring directly so
+    // that scenario cannot pass.
+    const { svc, queueService } = makeDeltaSyncService();
+
+    svc.onModuleInit();
+    expect(queueService.processScheduledSync).toHaveBeenCalledTimes(1);
+    const scheduledHandler = queueService.processScheduledSync.mock.calls[0][0] as (
+      payload: unknown,
+    ) => Promise<void>;
+
+    await scheduledHandler({ tenantKey: "tenant1", installationId: "inst_1" });
+
+    expect(queueService.enqueue).toHaveBeenCalledTimes(2);
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-p1", connectorSlug: "shopify" },
+      { jobId: "job-p1_0" },
+    );
+  });
+
+  it("enqueues nothing when there are no delta-sync candidates", async () => {
+    const { svc, queueService, marketplaceExportJob } = makeDeltaSyncService({ candidates: [] });
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 0, skipped: 0 });
+    expect(marketplaceExportJob.create).not.toHaveBeenCalled();
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("does not enqueue for a candidate whose DB row creation failed", async () => {
+    const { svc, queueService } = makeDeltaSyncService({
+      createImpl: ({ data }) => {
+        if (data.productId === "p1") {
+          return Promise.reject(new Error("db unavailable"));
+        }
+        return Promise.resolve({ id: `job-${data.productId as string}` });
+      },
+    });
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 1, skipped: 1 });
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-p2", connectorSlug: "shopify" },
+      { jobId: "job-p2_0" },
+    );
+  });
+
+  it("marks the row failed (not silently queued) when the queue enqueue call itself fails", async () => {
+    const { svc, db, marketplaceExportJob } = makeDeltaSyncService({
+      candidates: [{ product_id: "p1", version: 2, category_id: "cat1" }],
+      enqueueImpl: () => Promise.reject(new Error("redis unreachable")),
+      isJobPresentImpl: () => Promise.resolve(false), // the add() genuinely never landed
+    });
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    // The row was created but the handoff failed — it must NOT be counted as
+    // a genuinely queued (worker-visible) job.
+    expect(result).toEqual({ queued: 0, skipped: 1 });
+    expect(marketplaceExportJob.updateMany).toHaveBeenCalledWith({
+      where: { id: "job-p1", status: ExportJobStatus.queued },
+      data: { status: ExportJobStatus.failed, failureReason: "Queue enqueue failed" },
+    });
+    void db;
+  });
+
+  it("leaves the row queued (not falsely marked failed) when isJobPresent itself cannot answer", async () => {
+    // enqueue fails AND the presence check fails too (e.g. same Redis outage) — this
+    // is genuinely unknown, not confirmed-absent, so the row must not be asserted as
+    // `failed`. It still counts as `skipped` in this call's return value because no
+    // enqueue was ever confirmed to succeed.
+    //
+    // The underlying errors intentionally carry sensitive-looking content (host,
+    // port, a credential-bearing URL, a stack) to prove the diagnostic log never
+    // forwards raw error text — only a coarse, non-sensitive error code.
+    const enqueueError = Object.assign(
+      new Error("connect ECONNREFUSED redis://default:s3cr3t-pass@10.0.4.12:6379"),
+      { code: "ECONNREFUSED", stack: "Error: connect ECONNREFUSED\n    at TCPConnectWrap.afterConnect (net.js:1)" },
+    );
+    const presenceCheckError = Object.assign(
+      new Error("getaddrinfo ENOTFOUND internal-redis.vexapim-prod.svc.cluster.local"),
+      { code: "ENOTFOUND" },
+    );
+
+    const { svc, marketplaceExportJob, logger } = makeDeltaSyncService({
+      candidates: [{ product_id: "p1", version: 2, category_id: "cat1" }],
+      enqueueImpl: () => Promise.reject(enqueueError),
+      isJobPresentImpl: () => Promise.reject(presenceCheckError),
+    });
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 0, skipped: 1 });
+    expect(marketplaceExportJob.updateMany).not.toHaveBeenCalled();
+
+    // Operator-visible signal distinguishing "queued" from "queued but the
+    // execution handoff could not be verified" without a DB status/enum change.
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    const [, loggedContext] = logger.error.mock.calls[0] as [string, Record<string, unknown>];
+    expect(loggedContext).toEqual({
+      event: "QUEUE_HANDOFF_UNVERIFIED",
+      jobId: "job-p1",
+      connectorSlug: "shopify",
+      retryCount: 0,
+      queueJobId: "job-p1_0",
+      enqueueErrorCode: "ECONNREFUSED",
+      presenceCheckErrorCode: "ENOTFOUND",
+    });
+
+    // Narrow data-safety regression: no raw message/stack/connection material of any
+    // kind should reach the log, under any key name.
+    const serializedContext = JSON.stringify(loggedContext);
+    expect(serializedContext).not.toContain("s3cr3t-pass");
+    expect(serializedContext).not.toContain("10.0.4.12");
+    expect(serializedContext).not.toContain("internal-redis.vexapim-prod");
+    expect(serializedContext).not.toContain("ECONNREFUSED redis://");
+    expect(loggedContext).not.toHaveProperty("stack");
+    expect(loggedContext).not.toHaveProperty("payload");
+    expect(loggedContext).not.toHaveProperty("credentials");
+    expect(loggedContext).not.toHaveProperty("redisUrl");
+    expect(loggedContext).not.toHaveProperty("connectionString");
+    expect(loggedContext).not.toHaveProperty("enqueueError");
+    expect(loggedContext).not.toHaveProperty("presenceCheckError");
+  });
+
+  it("does not mark the row failed if isJobPresent shows the enqueue actually landed", async () => {
+    const { svc, marketplaceExportJob } = makeDeltaSyncService({
+      candidates: [{ product_id: "p1", version: 2, category_id: "cat1" }],
+      enqueueImpl: () => Promise.reject(new Error("client-side timeout after add() succeeded")),
+      isJobPresentImpl: () => Promise.resolve(true), // BullMQ confirms the job is really there
+    });
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 1, skipped: 0 });
+    expect(marketplaceExportJob.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFoundException when the installation does not exist", async () => {
+    const { svc, db } = makeDeltaSyncService();
+    (db.$queryRaw as jest.Mock).mockResolvedValue([]);
+    await expect(svc.queueDeltaSync("missing-inst")).rejects.toThrow(NotFoundException);
+  });
+
+  it("rejects delta sync for a connector installation without PUBLISH capability", async () => {
+    const { svc, db } = makeDeltaSyncService();
+    (db.$queryRaw as jest.Mock).mockResolvedValue([{ ...INSTALLATION_ROW, capabilities: ["VALIDATE"] }]);
+    await expect(svc.queueDeltaSync("inst_1")).rejects.toThrow(BadRequestException);
   });
 });

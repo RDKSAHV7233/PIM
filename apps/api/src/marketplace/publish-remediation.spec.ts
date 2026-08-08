@@ -504,6 +504,29 @@ describe("Phase 7: ambiguous enqueue recovery", () => {
       }),
     );
   });
+
+  // "Unknown" (we could not verify either way) must never be silently treated as
+  // "confirmed absent" — that false certainty risks marking a job `failed` in the
+  // DB while a worker is actually about to process it (e.g. both the enqueue call
+  // and the health-check probe hit the same transient Redis outage).
+  it("does not mark the row failed when isJobPresent is also unable to answer (ambiguous, not confirmed-absent)", async () => {
+    const { svc, queueService, exportJobDb } = makePublishService();
+    exportJobDb.updateMany.mockResolvedValue({ count: 1 });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", retryCount: 2, status: "queued", channel: "shopify",
+    });
+    queueService.enqueue.mockRejectedValue(new Error("Redis connection failed"));
+    queueService.isJobPresent.mockRejectedValue(new Error("Redis connection failed"));
+
+    // The original enqueue failure must still surface to the caller (it is a real
+    // failure signal) — but the DB row must not be asserted as `failed` on a guess.
+    await expect(svc.requeueExportJob("job-1")).rejects.toThrow("Redis connection failed");
+    expect(exportJobDb.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "failed" }),
+      }),
+    );
+  });
 });
 
 // ===========================================================================
