@@ -1770,6 +1770,7 @@ export class MarketplaceService implements OnModuleInit {
         },
         include: { template: true },
       });
+      await this.enqueueExportJobForExecution(jobId, existing.channel, nextRetry);
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
       return updated;
     } catch (error) {
@@ -1802,6 +1803,7 @@ export class MarketplaceService implements OnModuleInit {
           },
           include: { template: true },
         });
+        await this.enqueueExportJobForExecution(jobId, existing.channel, nextRetry);
         this.logger.warn("Retrying export job after transient network error", {
           jobId,
           channel: existing.channel,
@@ -4441,8 +4443,7 @@ export class MarketplaceService implements OnModuleInit {
               err instanceof Prisma.PrismaClientKnownRequestError &&
               err.code === "P2002"
             ) {
-              // Active job already exists for this product+installation — skip
-              return { id: "concurrent-active" };
+              return { id: "concurrent-active", _conflicted: true as const };
             }
             throw err;
           }
@@ -4450,7 +4451,7 @@ export class MarketplaceService implements OnModuleInit {
       );
 
       for (const r of results) {
-        if (r.status === "fulfilled") queued++;
+        if (r.status === "fulfilled" && !(r.value as { _conflicted?: boolean })._conflicted) queued++;
         else skipped++;
       }
 
