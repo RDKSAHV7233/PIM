@@ -1,6 +1,8 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from "@nestjs/common";
 import type { Job as BullJob, Queue as BullQueue, Worker } from "bullmq";
 import type { RedisClientType } from "redis";
+import { ErrorCaptureService } from "../error-authority/error-capture.service";
+import { classifyWorkerError, extractSafePayloadRef, isTerminalBullFailure } from "../error-authority/worker-error-classifier";
 import { QueueName } from "./queue.constants";
 
 type QueueHandler<T = unknown> = (payload: T) => Promise<void> | void;
@@ -198,6 +200,8 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   private scheduledSyncQueue: BullQueue | null = null;
   private scheduledSyncWorker: Worker | null = null;
   private scheduledSyncHandler: QueueHandler<unknown> | null = null;
+
+  constructor(@Optional() private readonly errorCaptureService?: ErrorCaptureService) {}
 
   getBackend(): QueueBackend {
     return this.backend;
@@ -573,6 +577,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
           lane.consecutiveRateLimitFailures = 0;
         } catch (error: unknown) {
           this.handleHandlerError(registration, this.resolveQueueName(registration), laneKey, payload, error);
+          void this.captureTerminalWorkerFailure(this.resolveQueueName(registration), laneKey, payload, error, {
+            jobId: extractSafePayloadRef(payload, "jobId") ?? extractSafePayloadRef(payload, "id"),
+          });
           if (this.isRateLimitError(registration.options, error)) {
             lane.consecutiveRateLimitFailures += 1;
             if (lane.consecutiveRateLimitFailures >= policy.rateLimitFailureThreshold) {
@@ -783,6 +790,15 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
             : {}),
         },
       );
+      created.worker.on("failed", (job: BullJob<unknown> | undefined, error: Error) => {
+        if (!job || !isTerminalBullFailure(job.attemptsMade, job.opts?.attempts)) {
+          return;
+        }
+        void this.captureTerminalWorkerFailure(queueName, laneKey, job.data, error, {
+          jobId: String(job.id ?? ""),
+          sourceEventId: `bullmq:${queueName}:${laneKey}:${String(job.id ?? "")}:terminal`,
+        });
+      });
       await created.worker.waitUntilReady();
     }
 
@@ -890,6 +906,36 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       laneKey,
       payload,
       errorMessage,
+    });
+  }
+
+  private async captureTerminalWorkerFailure(
+    queueName: string,
+    laneKey: string,
+    payload: unknown,
+    error: unknown,
+    context: { jobId?: string; sourceEventId?: string } = {},
+  ): Promise<void> {
+    if (!this.errorCaptureService) {
+      return;
+    }
+    const classification = classifyWorkerError(error);
+    if (!classification.capture) {
+      return;
+    }
+    await this.errorCaptureService.captureUnexpected({
+      runtime: "worker",
+      service: "vexa-pim-api",
+      error,
+      errorCode: classification.reason,
+      category: classification.category,
+      severity: "p1",
+      routeTemplate: `queue:${queueName}:${laneKey}`,
+      rawTenantKey: extractSafePayloadRef(payload, "tenantKey") || extractSafePayloadRef(payload, "tenantId"),
+      jobId: context.jobId || extractSafePayloadRef(payload, "jobId") || extractSafePayloadRef(payload, "id"),
+      operationId: extractSafePayloadRef(payload, "operationId") || extractSafePayloadRef(payload, "runId"),
+      installationId: extractSafePayloadRef(payload, "installationId"),
+      sourceEventId: context.sourceEventId,
     });
   }
 

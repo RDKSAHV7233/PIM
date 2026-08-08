@@ -15,6 +15,9 @@
     "paths": {
       "@pim1/db/*": [
         "packages/db/*"
+      ],
+      "@pim1/observability-db/*": [
+        "packages/observability-db/*"
       ]
     }
   }
