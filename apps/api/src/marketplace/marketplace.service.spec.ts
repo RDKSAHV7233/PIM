@@ -969,6 +969,36 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
     expect(marketplaceExportJob.updateMany).not.toHaveBeenCalled();
   });
 
+  it("counts a P2002 (concurrent-active) conflict as skipped, not queued", async () => {
+    const { Prisma } = require("@prisma/client"); // eslint-disable-line @typescript-eslint/no-var-requires
+    const p2002 = Object.assign(
+      new Error("Unique constraint failed on the fields: (`tenantKey`,`productId`,`installation_id`)"),
+      { code: "P2002", meta: { target: ["tenantKey", "productId", "installation_id"] } },
+    );
+    Object.setPrototypeOf(p2002, (Prisma?.PrismaClientKnownRequestError ?? Error).prototype);
+
+    const { svc, queueService } = makeDeltaSyncService({
+      candidates: [
+        { product_id: "p1", version: 2, category_id: "cat1" },
+        { product_id: "p2", version: 3, category_id: "cat1" },
+      ],
+      createImpl: ({ data }) => {
+        if (data.productId === "p1") return Promise.reject(p2002);
+        return Promise.resolve({ id: `job-${data.productId as string}` });
+      },
+    });
+
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 1, skipped: 1 });
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-p2", connectorSlug: "shopify" },
+      { jobId: "job-p2_0" },
+    );
+  });
+
   it("throws NotFoundException when the installation does not exist", async () => {
     const { svc, db } = makeDeltaSyncService();
     (db.$queryRaw as jest.Mock).mockResolvedValue([]);
