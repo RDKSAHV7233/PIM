@@ -760,7 +760,7 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
 
     const db = {
       $queryRaw: jest.fn().mockResolvedValue([INSTALLATION_ROW]),
-      $queryRawUnsafe: jest.fn().mockResolvedValue(candidates),
+      $queryRawUnsafe: jest.fn().mockResolvedValue(candidates), // RLS-BYPASS: manual tenant filter
       marketplaceExportJob,
     };
 
