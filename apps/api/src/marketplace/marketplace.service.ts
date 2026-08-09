@@ -3846,7 +3846,7 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const mainAsset = await this.prisma.tenant().mediaAsset.findFirst({
-      where: { productId, metadata: { path: ["isMain"], equals: true } },
+      where: { productId, metadata: { path: ["governance", "isMain"], equals: true } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: { id: true, storagePath: true },
     });
