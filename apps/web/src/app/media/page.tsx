@@ -220,9 +220,43 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
 
     const assetColumns: Column<(typeof assets)[number]>[] = [
       {
+        key: "thumbnail",
+        header: "",
+        render: (asset) => {
+          const isImage = asset.mimeType.startsWith("image/");
+          return (
+            <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md bg-slate-100">
+              {isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/media/assets/${encodeURIComponent(asset.id)}/file`}
+                  alt={asset.altText ?? asset.fileName}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">
+                  {asset.mimeType.split("/")[1]?.toUpperCase() ?? "FILE"}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
         key: "asset",
         header: "Asset",
-        render: (asset) => <span className="font-mono text-xs">{asset.id}</span>,
+        render: (asset) => (
+          <div>
+            <p className="text-sm font-medium text-slate-900">{asset.fileName}</p>
+            <p className="font-mono text-[11px] text-slate-400">{asset.id}</p>
+            {asset.isMain && (
+              <span className="mt-0.5 inline-block rounded bg-blue-600 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
+                Main
+              </span>
+            )}
+          </div>
+        ),
       },
       {
         key: "product",
