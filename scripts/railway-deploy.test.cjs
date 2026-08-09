@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -17,6 +18,7 @@ const {
   resolveApiDatabaseVariables,
   resolveConfig,
   resolveErrorAuthorityServiceVariables,
+  setRailwayVariablesAcrossServiceTargets,
 } = require("./railway-deploy.cjs");
 
 function main() {
@@ -254,6 +256,60 @@ function main() {
     ],
     "Railway variable set arguments must use KEY=VALUE format.",
   );
+
+  const originalSpawnSync = childProcess.spawnSync;
+  const variableSetCalls = [];
+  childProcess.spawnSync = (command, args, options) => {
+    variableSetCalls.push({ command, args, cwd: options.cwd });
+    const serviceTarget = args[args.indexOf("--service") + 1];
+    if (serviceTarget === "stale-service-name") {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: "Service not found",
+        error: null,
+      };
+    }
+    return {
+      status: 0,
+      stdout: "Variables set successfully\n",
+      stderr: "",
+      error: null,
+    };
+  };
+  try {
+    assert.equal(
+      setRailwayVariablesAcrossServiceTargets(config, { RAILWAY_TOKEN: "token_123" }, {
+        label: "API Error Authority env vars",
+        serviceTargets: ["stale-service-name", "vexa-api-slug"],
+        pairs: [
+          ["ERROR_AUTHORITY_RELEASE", "260a89cc3475152d27821ae2334389ae88084f67"],
+          ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
+        ],
+        safeDisplayPairs: ["ERROR_AUTHORITY_RELEASE", "ERROR_AUTHORITY_INGEST_TOKEN"],
+        failureMessage: "manual fallback required",
+        successMessage: "fallback sync succeeded",
+      }),
+      true,
+      "Railway variable sync should try fallback service targets after Service not found.",
+    );
+  } finally {
+    childProcess.spawnSync = originalSpawnSync;
+  }
+  assert.equal(variableSetCalls.length, 2);
+  assert.equal(variableSetCalls[0].args[variableSetCalls[0].args.indexOf("--service") + 1], "stale-service-name");
+  assert.equal(variableSetCalls[1].args[variableSetCalls[1].args.indexOf("--service") + 1], "vexa-api-slug");
+  assert.deepEqual(
+    variableSetCalls[1].args.slice(0, 5),
+    [
+      "variables",
+      "set",
+      "ERROR_AUTHORITY_RELEASE=260a89cc3475152d27821ae2334389ae88084f67",
+      "ERROR_AUTHORITY_INGEST_TOKEN=error-authority-ingest-token-minimum-32",
+      "--service",
+    ],
+  );
+
   assert.deepEqual(
     resolveErrorAuthorityServiceVariables({
       ERROR_AUTHORITY_RELEASE: "explicit-release-sha",
