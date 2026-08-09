@@ -178,6 +178,7 @@ export async function ProductDetailDeferredSection({
     simulation,
     categoryAttributes,
     readiness,
+    mediaAssets,
     mediaAssetCount: mediaAssets.length,
     imageAssetCount: mediaAssets.filter((asset) => asset.mimeType.startsWith("image/")).length,
     actorRole,
