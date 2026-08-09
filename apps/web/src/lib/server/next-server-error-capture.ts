@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
 import { getApiBaseUrl } from "../api-base-url";
 import { isErrorAuthorityEnabled, resolveErrorAuthorityRelease } from "./error-authority-env";
 
@@ -150,18 +149,19 @@ function resolveSourceEventId(error: unknown, routeTemplate: string | undefined)
     if (existing) {
       return existing;
     }
-    const next = `next_server:${randomUUID()}`;
+    const next = `next_server:${createRuntimeEventId()}`;
     EVENT_IDS.set(error, next);
     return next;
   }
-  const basis = [
-    "next_server",
-    resolveErrorAuthorityRelease(),
-    routeTemplate ?? "unknown-route",
-    String(error ?? "unknown-error"),
-    Date.now(),
-  ].join("|");
-  return `next_server:${createHash("sha256").update(basis).digest("hex").slice(0, 32)}`;
+  return `next_server:${createRuntimeEventId()}`;
+}
+
+function createRuntimeEventId(): string {
+  const cryptoLike = globalThis.crypto as { randomUUID?: () => string } | undefined;
+  if (typeof cryptoLike?.randomUUID === "function") {
+    return cryptoLike.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 function resolveRouteTemplate(request: NextRequestLike | undefined, context: NextErrorContextLike | undefined): string | undefined {
