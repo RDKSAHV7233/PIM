@@ -587,41 +587,15 @@ function setWebServiceVariables(config, railwayEnv, webPackagePath) {
     return;
   }
 
-  // Use the primary web service target; if it fails, warn but don't block the deploy.
-  const primaryTarget = config.webServiceTargets[0];
-  const args = [
-    "variables",
-    "set",
-    ...pairs,
-    "--service",
-    primaryTarget,
-    "--environment",
-    config.environmentName,
-    "--project",
-    config.projectId,
-  ];
-
-  console.log(`[railway-deploy] Setting web service env vars on '${primaryTarget}': ${pairs.join(" ")}`);
-  const result = childProcess.spawnSync(config.railwayBin, args, {
-    cwd: config.repoRoot,
-    env: railwayEnv,
-    encoding: "utf8",
+  setRailwayVariablesAcrossServiceTargets(config, railwayEnv, {
+    label: "web service env vars",
+    serviceTargets: config.webServiceTargets,
+    pairs: relevantKeys.filter((key) => vars[key]).map((key) => [key, vars[key]]),
+    safeDisplayPairs: pairs,
+    failureMessage:
+      "The deploy will proceed, but PIM_API_BASE_URL may be unset on the running container. Set it manually in the Railway dashboard if the service starts with AUTH_UPSTREAM_UNAVAILABLE.",
+    successMessage: "[railway-deploy] Web service env vars synced successfully.",
   });
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
-  if (result.error || result.status !== 0) {
-    console.warn(
-      `[railway-deploy] Warning: could not set web service env vars (exit ${result.status}). ` +
-        "The deploy will proceed, but PIM_API_BASE_URL may be unset on the running container. " +
-        "Set it manually in the Railway dashboard if the service starts with AUTH_UPSTREAM_UNAVAILABLE.",
-    );
-  } else {
-    console.log("[railway-deploy] Web service env vars synced successfully.");
-  }
 }
 
 function resolveApiDatabaseVariables(env = process.env) {
@@ -659,22 +633,18 @@ function formatRailwayVariablePairs(pairs) {
   return pairs.map(([key, value]) => `${key}=${value}`);
 }
 
-function setErrorAuthorityServiceVariables(config, railwayEnv, env = process.env) {
-  const pairs = resolveErrorAuthorityServiceVariables(env);
-  if (pairs.length === 0) {
-    console.warn(
-      "[railway-deploy] No Error Authority release/ingest variables found — skipping Error Authority variable sync.",
-    );
-    return;
-  }
+function setRailwayVariablesAcrossServiceTargets(config, railwayEnv, options) {
+  const {
+    label,
+    serviceTargets,
+    pairs,
+    safeDisplayPairs = pairs.map(([key]) => key),
+    failureMessage,
+    successMessage,
+  } = options;
 
-  const safeKeys = pairs.map(([key]) => key).join(" ");
-  const targets = [
-    { label: "API", serviceTarget: config.apiServiceTargets[0] },
-    { label: "Web", serviceTarget: config.webServiceTargets[0] },
-  ];
-
-  for (const { label, serviceTarget } of targets) {
+  let lastResult = null;
+  for (const serviceTarget of serviceTargets) {
     const args = [
       "variables",
       "set",
@@ -687,26 +657,72 @@ function setErrorAuthorityServiceVariables(config, railwayEnv, env = process.env
       config.projectId,
     ];
 
-    console.log(`[railway-deploy] Setting ${label} Error Authority env vars on '${serviceTarget}': ${safeKeys}`);
+    console.log(`[railway-deploy] Setting ${label} on '${serviceTarget}': ${safeDisplayPairs.join(" ")}`);
     const result = childProcess.spawnSync(config.railwayBin, args, {
       cwd: config.repoRoot,
       env: railwayEnv,
       encoding: "utf8",
     });
+    lastResult = result;
     if (result.stdout) {
       process.stdout.write(result.stdout);
     }
     if (result.stderr) {
       process.stderr.write(result.stderr);
     }
-    if (result.error || result.status !== 0) {
-      console.warn(
-        `[railway-deploy] Warning: could not set ${label} Error Authority env vars (exit ${result.status}). ` +
-          "Set ERROR_AUTHORITY_RELEASE and ERROR_AUTHORITY_INGEST_TOKEN manually in Railway before enabling Error Authority capture.",
-      );
-    } else {
-      console.log(`[railway-deploy] ${label} Error Authority env vars synced successfully.`);
+    if (!result.error && result.status === 0) {
+      if (serviceTarget !== serviceTargets[0]) {
+        console.log(`[railway-deploy] ${label} synced using fallback service target '${serviceTarget}'.`);
+      }
+      console.log(successMessage);
+      return true;
     }
+
+    const canTryNextCandidate = serviceTarget !== serviceTargets[serviceTargets.length - 1];
+    if (
+      canTryNextCandidate &&
+      isServiceNotFoundRailwayError({
+        message: `${label} variable sync failed`,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      })
+    ) {
+      console.warn(`[railway-deploy] ${label} service target '${serviceTarget}' was not found. Trying next candidate...`);
+      continue;
+    }
+    break;
+  }
+
+  console.warn(
+    `[railway-deploy] Warning: could not set ${label} (exit ${lastResult?.status ?? "unknown"}). ${failureMessage}`,
+  );
+  return false;
+}
+
+function setErrorAuthorityServiceVariables(config, railwayEnv, env = process.env) {
+  const pairs = resolveErrorAuthorityServiceVariables(env);
+  if (pairs.length === 0) {
+    console.warn(
+      "[railway-deploy] No Error Authority release/ingest variables found — skipping Error Authority variable sync.",
+    );
+    return;
+  }
+
+  const safeKeys = pairs.map(([key]) => key);
+  const targets = [
+    { label: "API", serviceTargets: config.apiServiceTargets },
+    { label: "Web", serviceTargets: config.webServiceTargets },
+  ];
+
+  for (const { label, serviceTargets } of targets) {
+    setRailwayVariablesAcrossServiceTargets(config, railwayEnv, {
+      label: `${label} Error Authority env vars`,
+      serviceTargets,
+      pairs,
+      safeDisplayPairs: safeKeys,
+      failureMessage: "Set ERROR_AUTHORITY_RELEASE and ERROR_AUTHORITY_INGEST_TOKEN manually in Railway before enabling Error Authority capture.",
+      successMessage: `[railway-deploy] ${label} Error Authority env vars synced successfully.`,
+    });
   }
 }
 
@@ -719,44 +735,15 @@ function setApiServiceDatabaseVariables(config, railwayEnv, env = process.env) {
     return;
   }
 
-  const primaryTarget = config.apiServiceTargets[0];
-  const args = [
-    "variables",
-    "set",
-    ...formatRailwayVariablePairs(pairs),
-    "--service",
-    primaryTarget,
-    "--environment",
-    config.environmentName,
-    "--project",
-    config.projectId,
-  ];
-
-  console.log(
-    `[railway-deploy] Setting API service database variables on '${primaryTarget}': ${pairs
-      .map(([key]) => key)
-      .join(" ")}`,
-  );
-  const result = childProcess.spawnSync(config.railwayBin, args, {
-    cwd: config.repoRoot,
-    env: railwayEnv,
-    encoding: "utf8",
+  setRailwayVariablesAcrossServiceTargets(config, railwayEnv, {
+    label: "API service database variables",
+    serviceTargets: config.apiServiceTargets,
+    pairs,
+    safeDisplayPairs: pairs.map(([key]) => key),
+    failureMessage:
+      "The deploy will proceed, but the API service may fail to start without database credentials. Set them manually in the Railway dashboard if necessary.",
+    successMessage: "[railway-deploy] API service database variables synced successfully.",
   });
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
-  if (result.error || result.status !== 0) {
-    console.warn(
-      `[railway-deploy] Warning: could not set API service database variables (exit ${result.status}). ` +
-        "The deploy will proceed, but the API service may fail to start without database credentials. " +
-        "Set them manually in the Railway dashboard if necessary.",
-    );
-  } else {
-    console.log("[railway-deploy] API service database variables synced successfully.");
-  }
 }
 
 function main(env = process.env) {
@@ -874,6 +861,7 @@ module.exports = {
   resolveErrorAuthorityServiceVariables,
   resolveServiceTargets,
   runDeployCommandWithRetry,
+  setRailwayVariablesAcrossServiceTargets,
   setApiServiceDatabaseVariables,
   setErrorAuthorityServiceVariables,
 };
