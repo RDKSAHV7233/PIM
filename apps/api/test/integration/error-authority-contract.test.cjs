@@ -96,6 +96,7 @@ assert(
 assert(
   moduleSource.includes("NextServerErrorIngestController") &&
     nextServerIngest.includes('@Controller("error-authority")') &&
+    nextServerIngest.includes("ApiExcludeEndpoint") &&
     nextServerIngest.includes('@Post("ingest/next-server")') &&
     nextServerIngest.includes("ERROR_AUTHORITY_INGEST_TOKEN") &&
     nextServerIngest.includes('runtime: "next_server"') &&

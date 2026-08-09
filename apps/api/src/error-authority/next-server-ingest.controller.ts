@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Headers, HttpCode, Post, Req } from "@nestjs/common";
+import { ApiExcludeEndpoint } from "@nestjs/swagger";
 import type { Request } from "express";
 import { Public } from "../auth/public.decorator";
 import { requireInternalToken } from "../common/security/internal-token";
@@ -42,6 +43,7 @@ export class NextServerErrorIngestController {
   constructor(private readonly errorCaptureService: ErrorCaptureService) {}
 
   @Public()
+  @ApiExcludeEndpoint()
   @Post("ingest/next-server")
   @HttpCode(202)
   async ingestNextServerError(
