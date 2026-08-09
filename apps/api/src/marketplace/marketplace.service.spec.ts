@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { ExportJobStatus } from "@prisma/client";
+import { UnrecoverableError } from "bullmq";
 import { MarketplaceService } from "./marketplace.service";
 
 function makeService(productOverride?: Record<string, unknown>) {
@@ -24,6 +25,7 @@ function makeService(productOverride?: Record<string, unknown>) {
 
   const connectorFramework = {
     getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
     requireInstallation: jest.fn().mockResolvedValue({
       slug: "flipkart",
       capabilities: ["PUBLISH", "VALIDATE"],
@@ -222,6 +224,7 @@ describe("MarketplaceService.triggerConnectorExport", () => {
 
     const connectorFramework = {
       getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
       requireInstallation: jest.fn().mockResolvedValue({
         id: "inst_1",
         slug: "meesho",
@@ -327,6 +330,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
 
     const connectorFramework = {
       getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
       requireInstallation: jest.fn().mockResolvedValue({ id: "inst_1", slug: connectorSlug, capabilities }),
       publishBulk: jest.fn().mockImplementation((_installation: unknown, products: unknown[]) =>
         Promise.resolve({
@@ -645,6 +649,7 @@ describe("MarketplaceService.getPublishCapableChannels (VEXA-202)", () => {
     };
     const connectorFramework = {
       getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
     };
     const connectorRegistry = { get: jest.fn(), list: jest.fn().mockReturnValue([]) };
     const planUsageService = {};
@@ -773,6 +778,7 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
 
     const connectorFramework = {
       getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
     };
 
     const queueService = {
@@ -811,12 +817,12 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
     expect(queueService.enqueue).toHaveBeenCalledTimes(2);
     expect(queueService.enqueue).toHaveBeenCalledWith(
       "connector-submission",
-      { jobId: "job-p1", connectorSlug: "shopify" },
+      { jobId: "job-p1", connectorSlug: "shopify", tenantKey: "tenant1" },
       { jobId: "job-p1_0" },
     );
     expect(queueService.enqueue).toHaveBeenCalledWith(
       "connector-submission",
-      { jobId: "job-p2", connectorSlug: "shopify" },
+      { jobId: "job-p2", connectorSlug: "shopify", tenantKey: "tenant1" },
       { jobId: "job-p2_0" },
     );
   });
@@ -842,7 +848,7 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
     expect(queueService.enqueue).toHaveBeenCalledTimes(2);
     expect(queueService.enqueue).toHaveBeenCalledWith(
       "connector-submission",
-      { jobId: "job-p1", connectorSlug: "shopify" },
+      { jobId: "job-p1", connectorSlug: "shopify", tenantKey: "tenant1" },
       { jobId: "job-p1_0" },
     );
   });
@@ -873,7 +879,7 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);
     expect(queueService.enqueue).toHaveBeenCalledWith(
       "connector-submission",
-      { jobId: "job-p2", connectorSlug: "shopify" },
+      { jobId: "job-p2", connectorSlug: "shopify", tenantKey: "tenant1" },
       { jobId: "job-p2_0" },
     );
   });
@@ -994,7 +1000,7 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);
     expect(queueService.enqueue).toHaveBeenCalledWith(
       "connector-submission",
-      { jobId: "job-p2", connectorSlug: "shopify" },
+      { jobId: "job-p2", connectorSlug: "shopify", tenantKey: "tenant1" },
       { jobId: "job-p2_0" },
     );
   });
@@ -1009,5 +1015,307 @@ describe("MarketplaceService.queueDeltaSync — connector-submission enqueue han
     const { svc, db } = makeDeltaSyncService();
     (db.$queryRaw as jest.Mock).mockResolvedValue([{ ...INSTALLATION_ROW, capabilities: ["VALIDATE"] }]);
     await expect(svc.queueDeltaSync("inst_1")).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ─── CONNECTOR_SUBMISSION worker boundary — tenant context restoration ────────
+// (BUG-MKT-QUEUE-002)
+//
+// Root cause: the worker callback registered via processWithBackpressure has no
+// HTTP request to inherit AsyncLocalStorage tenant context from, so every
+// ambient `this.prisma.tenant()` call inside processExportJob (and its
+// siblings) silently fell back to DEFAULT_TENANT_KEY and could never find a
+// real tenant's row. The fix restores context once at the top of the worker
+// callback, sourced from a required `tenantKey` field on the queue payload,
+// before dispatching to any mode. These tests exercise the REAL
+// runWithTenantContext/getTenantKeyFromContext machinery (not mocked) against
+// a small per-tenant fake Prisma client, so a regression that reintroduces the
+// ambient-fallback bug would make the "correct tenant" test fail exactly the
+// way production did.
+
+describe("CONNECTOR_SUBMISSION worker boundary — tenant context restoration", () => {
+  const { getTenantKeyFromContext } = require("../common/tenant/tenant-context");
+
+  function emptyTenantDb() {
+    return {
+      marketplaceExportJob: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+  }
+
+  function makeWorkerBoundaryService(dbByTenant: Record<string, unknown> = {}) {
+    const prisma = {
+      // Mirrors the real PrismaService.tenant(): explicit arg wins, otherwise
+      // ambient AsyncLocalStorage context — genuinely exercised here, not stubbed.
+      tenant: jest.fn((explicitKey?: string) => {
+        const key = explicitKey ?? getTenantKeyFromContext();
+        return dbByTenant[key] ?? emptyTenantDb();
+      }),
+    };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn(() => getTenantKeyFromContext()),
+    };
+    const queueService = {
+      processScheduledSync: jest.fn(),
+      processWithBackpressure: jest.fn(),
+      enqueue: jest.fn(),
+      isJobPresent: jest.fn(),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      logger as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+    return { svc, prisma, queueService, logger };
+  }
+
+  function captureWorkerHandler(svc: MarketplaceService, queueService: { processWithBackpressure: jest.Mock }) {
+    svc.onModuleInit();
+    expect(queueService.processWithBackpressure).toHaveBeenCalledTimes(1);
+    // processWithBackpressure(queueName, options, handler)
+    return queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+  }
+
+  it("restores the payload's tenant before dispatch — the job is found under the correct tenant", async () => {
+    // ExportJobStatus.completed short-circuits processExportJob immediately after
+    // the tenant-scoped lookup, which is exactly the boundary this test needs to
+    // prove crossed correctly — no need to stub the rest of the publish pipeline.
+    const completedJob = { id: "job-1", status: ExportJobStatus.completed, tenantKey: "tenantA" };
+    const { svc, queueService } = makeWorkerBoundaryService({
+      tenantA: { marketplaceExportJob: { findUnique: jest.fn().mockResolvedValue(completedJob) } },
+    });
+    const handler = captureWorkerHandler(svc, queueService);
+
+    await handler({ jobId: "job-1", connectorSlug: "shopify", tenantKey: "tenantA" });
+    // No throw = success: processExportJob found the row and its own tenant-
+    // consistency assertion (existing.tenantKey === activeTenantKey) passed.
+  });
+
+  it("does not leak another tenant's job when the payload names a different tenant", async () => {
+    // The same job id exists — but only under tenantA. A payload claiming tenantB
+    // must not be able to see it: this is the isolation half of the fix, proving
+    // the restored context actually scopes the lookup rather than merely existing.
+    const completedJob = { id: "job-1", status: ExportJobStatus.completed, tenantKey: "tenantA" };
+    const { svc, queueService } = makeWorkerBoundaryService({
+      tenantA: { marketplaceExportJob: { findUnique: jest.fn().mockResolvedValue(completedJob) } },
+    });
+    const handler = captureWorkerHandler(svc, queueService);
+
+    await expect(
+      handler({ jobId: "job-1", connectorSlug: "shopify", tenantKey: "tenantB" }),
+    ).rejects.toThrow("Export job not found");
+  });
+
+  it.each(["export-job" as const, "status-sync" as const, "submission-retry" as const])(
+    "fails closed with UnrecoverableError for mode=%s when tenantKey is missing — never falls back to a default tenant",
+    async (mode) => {
+      const { svc, queueService, prisma, logger } = makeWorkerBoundaryService();
+      const handler = captureWorkerHandler(svc, queueService);
+      const processExportJobSpy = jest.spyOn(svc, "processExportJob");
+      const autoSyncSpy = jest.spyOn(svc as unknown as { autoSyncSubmissionStatus: () => unknown }, "autoSyncSubmissionStatus" as never);
+      const retrySpy = jest.spyOn(svc as unknown as { processLiveSubmissionRetry: () => unknown }, "processLiveSubmissionRetry" as never);
+
+      const payload =
+        mode === "export-job"
+          ? { jobId: "job-1", connectorSlug: "shopify" }
+          : mode === "status-sync"
+            ? { mode, submissionId: "sub-1", connectorSlug: "shopify" }
+            : { mode, submissionId: "sub-1", connectorSlug: "shopify" };
+
+      await expect(handler(payload)).rejects.toThrow(UnrecoverableError);
+
+      expect(processExportJobSpy).not.toHaveBeenCalled();
+      expect(autoSyncSpy).not.toHaveBeenCalled();
+      expect(retrySpy).not.toHaveBeenCalled();
+      // The ambient-fallback bug this fix closes is specifically "silently resolve
+      // to DEFAULT_TENANT_KEY and query anyway" — so no tenant-scoped client should
+      // ever be requested for a payload with no tenant identity at all.
+      expect(prisma.tenant).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ event: "QUEUE_TENANT_CONTEXT_MISSING" }),
+      );
+    },
+  );
+
+  it("logs no raw payload content for the missing-tenantKey diagnostic — mode only", async () => {
+    const { svc, queueService, logger } = makeWorkerBoundaryService();
+    const handler = captureWorkerHandler(svc, queueService);
+
+    await expect(
+      handler({ mode: "submission-retry", submissionId: "sub-secret-1", connectorSlug: "shopify" }),
+    ).rejects.toThrow(UnrecoverableError);
+
+    const [, loggedContext] = logger.error.mock.calls[0] as [string, Record<string, unknown>];
+    expect(loggedContext).toEqual({ event: "QUEUE_TENANT_CONTEXT_MISSING", mode: "submission-retry" });
+    expect(JSON.stringify(loggedContext)).not.toContain("sub-secret-1");
+  });
+});
+
+describe("MarketplaceService.processExportJob — tenant-consistency self-check", () => {
+  it("throws if the loaded row's tenantKey does not match the active tenant (defense-in-depth)", async () => {
+    // Structurally this should be unreachable in production (the tenant-scope
+    // Prisma extension already injects tenantKey into the query), but the check
+    // exists to fail loudly if that guarantee is ever broken — verify it actually
+    // fires rather than being dead code.
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        marketplaceExportJob: {
+          findUnique: jest.fn().mockResolvedValue({ id: "job-1", status: "queued", tenantKey: "tenantB" }),
+        },
+      }),
+    };
+    const connectorFramework = { getCurrentTenantKey: jest.fn().mockReturnValue("tenantA") };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+
+    await expect(svc.processExportJob("job-1")).rejects.toThrow(/[Tt]enant/);
+  });
+});
+
+// ─── Producer-side strict tenant accessor (BUG-MKT-QUEUE-002, Gate 2) ─────────
+//
+// getCurrentTenantKey() is intentionally lenient — it silently resolves to
+// DEFAULT_TENANT_KEY when no AsyncLocalStorage context exists, which is fine
+// for the many read paths that tolerate it. requireCurrentTenantKey() is the
+// strict sibling used specifically to stamp queue payloads: a contextless
+// producer must fail loudly, never mint a payload that looks valid but names
+// the wrong tenant. These tests use the REAL context implementation (not
+// mocked) so a regression that swaps requireCurrentTenantKey() back to the
+// lenient accessor at a producer call site would make the first test fail.
+
+describe("Producer tenant resolution cannot silently synthesize a default tenant", () => {
+  const { requireTenantKeyFromContext, runWithTenantContext } = require("../common/tenant/tenant-context");
+
+  function makeDeltaSyncServiceWithRealTenantAccessor(candidates: Array<{ product_id: string; version: number; category_id: string }>) {
+    const marketplaceExportJob = {
+      create: jest.fn(({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: `job-${data.productId as string}` }),
+      ),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        { id: "inst_1", connectorId: "conn_1", tenantKey: "tenant1", connectorSlug: "shopify", capabilities: ["PUBLISH"] },
+      ]),
+      $queryRawUnsafe: jest.fn().mockResolvedValue(candidates), // RLS-BYPASS: manual tenant filter
+      marketplaceExportJob,
+    };
+    const prisma = { tenant: jest.fn().mockReturnValue(db) };
+    const connectorFramework = {
+      // Real implementations, not hardcoded strings — genuinely exercises
+      // "is there an established context" rather than asserting it.
+      getCurrentTenantKey: jest.fn(() => require("../common/tenant/tenant-context").getTenantKeyFromContext()),
+      requireCurrentTenantKey: jest.fn(() => requireTenantKeyFromContext()),
+    };
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined), isJobPresent: jest.fn().mockResolvedValue(false) };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+    return { svc, queueService, marketplaceExportJob };
+  }
+
+  it("never enqueues (and is honestly counted as skipped, not queued) when invoked with no tenant context at all", async () => {
+    const { svc, queueService, marketplaceExportJob } = makeDeltaSyncServiceWithRealTenantAccessor([
+      { product_id: "p1", version: 2, category_id: "cat1" },
+    ]);
+
+    // Deliberately NOT wrapped in runWithTenantContext — simulates a future
+    // caller that forgets to establish one before reaching a producer.
+    // queueDeltaSync's per-item Promise.allSettled absorbs the resulting throw
+    // as a skip rather than failing the whole batch — the invariant this test
+    // actually enforces is narrower and non-negotiable: the enqueue call itself
+    // must never happen, and never with a fabricated tenantKey="default".
+    const result = await svc.queueDeltaSync("inst_1");
+
+    expect(result).toEqual({ queued: 0, skipped: 1 });
+    expect(marketplaceExportJob.create).toHaveBeenCalled();
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("requeueExportJob rejects outright (no Promise.allSettled to absorb it) when invoked with no tenant context", async () => {
+    // Unlike queueDeltaSync's bulk loop, requeueExportJob is a single direct
+    // call — a missing tenant context here must surface as a genuine failure
+    // to the caller, not be silently swallowed.
+    const exportJobDb = {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn().mockResolvedValue({ id: "job-1", retryCount: 0, status: "queued", channel: "shopify" }),
+    };
+    const prisma = { tenant: jest.fn().mockReturnValue({ marketplaceExportJob: exportJobDb }) };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn(() => require("../common/tenant/tenant-context").getTenantKeyFromContext()),
+      requireCurrentTenantKey: jest.fn(() => requireTenantKeyFromContext()),
+    };
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined), isJobPresent: jest.fn().mockResolvedValue(false) };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+
+    await expect(svc.requeueExportJob("job-1")).rejects.toThrow(/tenant context/i);
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("still works correctly when a real, explicit tenant context happens to be named 'default'", async () => {
+    // The distinction that matters: "no context" (must fail) vs. "a context
+    // that happens to hold the literal string default" (must succeed exactly
+    // like any other tenant name) — these are not the same thing.
+    const { svc, queueService } = makeDeltaSyncServiceWithRealTenantAccessor([
+      { product_id: "p1", version: 2, category_id: "cat1" },
+    ]);
+
+    const result = await runWithTenantContext("default", () => svc.queueDeltaSync("inst_1"));
+
+    expect(result).toEqual({ queued: 1, skipped: 0 });
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-p1", connectorSlug: "shopify", tenantKey: "default" },
+      { jobId: "job-p1_0" },
+    );
   });
 });

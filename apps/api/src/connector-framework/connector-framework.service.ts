@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { LoggerService } from "../common/logging/logger.service";
-import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { getTenantKeyFromContext, requireTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CapabilityNotSupportedError,
@@ -456,6 +456,18 @@ export class ConnectorFrameworkService {
 
   getCurrentTenantKey(): string {
     return getTenantKeyFromContext();
+  }
+
+  /**
+   * Strict variant for stamping trusted tenant identity onto internal queue
+   * payloads (BUG-MKT-QUEUE-002). getCurrentTenantKey() silently resolves to
+   * DEFAULT_TENANT_KEY when no context exists — fine for the many call sites
+   * that legitimately tolerate that, wrong for a queue producer: a
+   * contextless call there must never mint a valid-looking payload naming
+   * the wrong tenant. Throws instead.
+   */
+  requireCurrentTenantKey(): string {
+    return requireTenantKeyFromContext();
   }
 
   private completeExportOnly(installation: ConnectorInstallationRecord): {

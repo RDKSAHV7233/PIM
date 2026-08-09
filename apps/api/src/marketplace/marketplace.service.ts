@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { UnrecoverableError } from "bullmq";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import {
   ExportJobStatus,
@@ -193,22 +194,33 @@ type ConnectorProductSource = Prisma.ProductGetPayload<{
   };
 }>;
 
+// tenantKey is REQUIRED on every variant — it is the trusted, server-derived
+// routing identity the CONNECTOR_SUBMISSION worker restores via
+// runWithTenantContext before touching any tenant-scoped data. It must only
+// ever be set from ConnectorFrameworkService.requireCurrentTenantKey() — the
+// strict variant that throws rather than silently defaulting when no request
+// context exists — never from client/browser input, and never from the
+// lenient getCurrentTenantKey() at a queue-payload-construction call site.
+// See BUG-MKT-QUEUE-002.
 type ConnectorWorkerPayload =
   | {
       mode?: "export-job";
       jobId: string;
       connectorSlug?: string;
+      tenantKey: string;
     }
   | {
       mode: "status-sync";
       submissionId: string;
       connectorSlug?: string;
       attemptNumber?: number;
+      tenantKey: string;
     }
   | {
       mode: "submission-retry";
       submissionId: string;
       connectorSlug?: string;
+      tenantKey: string;
     };
 
 const AUTO_STATUS_SYNC_DELAY_MS = 800;
@@ -1363,6 +1375,7 @@ export class MarketplaceService implements OnModuleInit {
         mode: "submission-retry",
         submissionId,
         connectorSlug: String(submission.connectorSlug ?? "").toLowerCase(),
+        tenantKey: this.connectorFramework.requireCurrentTenantKey(),
       } satisfies ConnectorWorkerPayload);
       return {
         queued: true,
@@ -1610,6 +1623,15 @@ export class MarketplaceService implements OnModuleInit {
     const existing = await this.prisma.tenant().marketplaceExportJob.findUnique({ where: { id: jobId } });
     if (!existing) {
       throw new NotFoundException("Export job not found");
+    }
+    // Defense-in-depth for BUG-MKT-QUEUE-002: the tenant-scope Prisma extension already
+    // injects tenantKey into the query above, so a genuine cross-tenant row can't be
+    // returned here — this assertion exists to fail loudly if that guarantee is ever
+    // broken (e.g. a future refactor swaps in unscoped raw SQL), not because it's
+    // expected to trip under normal operation.
+    const activeTenantKey = this.connectorFramework.getCurrentTenantKey();
+    if (existing.tenantKey !== activeTenantKey) {
+      throw new Error(`Tenant context mismatch for export job ${jobId}: expected active tenant, found a different one on the row.`);
     }
     if (existing.status === ExportJobStatus.completed) {
       return existing;
@@ -1899,37 +1921,53 @@ export class MarketplaceService implements OnModuleInit {
       },
       async (payload: unknown) => {
         const lanePayload = payload as ConnectorWorkerPayload;
-        if (lanePayload.mode === "status-sync") {
-          const submissionId = String(lanePayload.submissionId ?? "").trim();
-          if (!submissionId) {
-            return;
-          }
-          await this.autoSyncSubmissionStatus(
-            submissionId,
-            Math.max(1, Number(lanePayload.attemptNumber ?? 1)),
-          );
-          return;
+        const tenantKey = String((lanePayload as { tenantKey?: unknown }).tenantKey ?? "").trim();
+        if (!tenantKey) {
+          // Old-shape payload from before BUG-MKT-QUEUE-002 was fixed, or a malformed
+          // producer. Never fall back to DEFAULT_TENANT_KEY here — that's exactly the
+          // bug (ambient context silently resolving to "default" and looking up the
+          // job/submission under the wrong tenant). Fail closed and skip retries: no
+          // amount of retrying fixes a payload that was never given a tenant.
+          this.logger.error("Connector-submission job has no tenantKey — refusing to process under a fallback tenant", {
+            event: "QUEUE_TENANT_CONTEXT_MISSING",
+            mode: (lanePayload as { mode?: string }).mode ?? "export-job",
+          });
+          throw new UnrecoverableError("QUEUE_TENANT_CONTEXT_MISSING");
         }
 
-        if (lanePayload.mode === "submission-retry") {
-          const submissionId = String(lanePayload.submissionId ?? "").trim();
-          if (!submissionId) {
+        await runWithTenantContext(tenantKey, async () => {
+          if (lanePayload.mode === "status-sync") {
+            const submissionId = String(lanePayload.submissionId ?? "").trim();
+            if (!submissionId) {
+              return;
+            }
+            await this.autoSyncSubmissionStatus(
+              submissionId,
+              Math.max(1, Number(lanePayload.attemptNumber ?? 1)),
+            );
             return;
           }
-          await this.processLiveSubmissionRetry(submissionId);
-          return;
-        }
 
-        const jobId = String(lanePayload.jobId ?? "").trim();
-        if (!jobId) {
-          return;
-        }
-        try {
-          await this.processExportJob(jobId);
-        } catch (error: unknown) {
-          await this.markJobFailedFromWorker(jobId, error);
-          throw error;
-        }
+          if (lanePayload.mode === "submission-retry") {
+            const submissionId = String(lanePayload.submissionId ?? "").trim();
+            if (!submissionId) {
+              return;
+            }
+            await this.processLiveSubmissionRetry(submissionId);
+            return;
+          }
+
+          const jobId = String(lanePayload.jobId ?? "").trim();
+          if (!jobId) {
+            return;
+          }
+          try {
+            await this.processExportJob(jobId);
+          } catch (error: unknown) {
+            await this.markJobFailedFromWorker(jobId, error);
+            throw error;
+          }
+        });
       },
     );
   }
@@ -3970,6 +4008,7 @@ export class MarketplaceService implements OnModuleInit {
         submissionId,
         connectorSlug,
         attemptNumber,
+        tenantKey: this.connectorFramework.requireCurrentTenantKey(),
       } satisfies ConnectorWorkerPayload,
       { delayMs: AUTO_STATUS_SYNC_DELAY_MS },
     );
@@ -4074,10 +4113,10 @@ export class MarketplaceService implements OnModuleInit {
             payload: {} as Prisma.JsonObject,
           },
         });
-        await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
-          jobId: job.id,
-          connectorSlug,
-        } satisfies ConnectorWorkerPayload, { jobId: `${job.id}_${job.retryCount}` });
+        // Canonical handoff (see enqueueExportJobForExecution) — this loop previously
+        // duplicated the raw enqueue call with none of the ambiguous-failure handling
+        // or tenant-context payload that path now provides.
+        await this.enqueueExportJobForExecution(job.id, connectorSlug, job.retryCount);
       }),
     );
 
@@ -4324,15 +4363,25 @@ export class MarketplaceService implements OnModuleInit {
    * reconciling, never a freshly minted id — inventing a new id when presence was merely
    * unverified (as opposed to confirmed absent) would defeat BullMQ's jobId dedup and
    * risk a duplicate submission if the original add() had actually landed.)
+   *
+   * BUG-MKT-QUEUE-002: the payload also carries `tenantKey`, read here via
+   * requireCurrentTenantKey() (throws if no context, never falls back to
+   * DEFAULT_TENANT_KEY the way getCurrentTenantKey() does) — never from client
+   * input. The CONNECTOR_SUBMISSION worker has no HTTP request to inherit
+   * AsyncLocalStorage context from, so without this the worker's own
+   * `this.prisma.tenant()` calls would have silently fallen back to
+   * DEFAULT_TENANT_KEY and every tenant-scoped lookup in processExportJob (and
+   * its siblings) would have missed the real row entirely.
    */
   private async enqueueExportJobForExecution(
     jobId: string,
     connectorSlug: string,
     retryCount: number,
   ): Promise<void> {
+    const tenantKey = this.connectorFramework.requireCurrentTenantKey();
     const queueJobId = `${jobId}_${retryCount}`;
     try {
-      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, { jobId, connectorSlug }, { jobId: queueJobId });
+      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, { jobId, connectorSlug, tenantKey }, { jobId: queueJobId });
     } catch (enqueueError) {
       let delivered: boolean;
       try {

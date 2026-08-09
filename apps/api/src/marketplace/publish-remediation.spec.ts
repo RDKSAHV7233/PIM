@@ -72,6 +72,7 @@ function makePublishService(overrides?: {
 
   const connectorFramework = {
     getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
     requireInstallation: opts.requireInstallationError
       ? jest.fn().mockRejectedValue(opts.requireInstallationError)
       : jest.fn().mockResolvedValue(installation),
@@ -1454,7 +1455,7 @@ describe("Phase 11: service-level concurrency safety", () => {
     const { svc, exportJobDb } = makePublishService();
     exportJobDb.findUnique.mockResolvedValue({
       id: "job-1", retryCount: 0, status: "queued", channel: "shopify",
-      tenantKey: "t1", productId: "p1", installationId: "inst-1", maxRetries: 3,
+      tenantKey: "tenant1", productId: "p1", installationId: "inst-1", maxRetries: 3,
       templateId: null, payload: {},
     });
     exportJobDb.updateMany.mockImplementation(async () => {
@@ -1691,7 +1692,7 @@ describe("retryRecoveryGroup installationId persistence", () => {
 
     const svc = new MarketplaceService(
       prisma as never,
-      { getCurrentTenantKey: jest.fn().mockReturnValue("t1"), requireInstallation: jest.fn().mockResolvedValue({ id: "inst-1", slug: "shopify", capabilities: ["PUBLISH"] }) } as never,
+      { getCurrentTenantKey: jest.fn().mockReturnValue("t1"), requireCurrentTenantKey: jest.fn().mockReturnValue("t1"), requireInstallation: jest.fn().mockResolvedValue({ id: "inst-1", slug: "shopify", capabilities: ["PUBLISH"] }) } as never,
       { get: jest.fn(), list: jest.fn().mockReturnValue([]) } as never,
       { assertExportJobQuota: jest.fn(), recordExportJobUsage: jest.fn(), getTenantPlanProfile: jest.fn().mockResolvedValue({ accessStatus: "active" }) } as never,
       { enqueue: jest.fn().mockResolvedValue(undefined), isJobPresent: jest.fn().mockResolvedValue(false) } as never,
@@ -2939,6 +2940,144 @@ describe("bulk-publish and delta-sync RBAC alignment across layers", () => {
       roleCapSource.indexOf("canPublishToChannels") + 200,
     );
     expect(publishSection).not.toContain('"editor"');
+  });
+});
+
+// ===========================================================================
+// Phase 12 — BUG-MKT-QUEUE-002: CONNECTOR_SUBMISSION payload carries a
+// trusted, server-derived tenantKey (producer side)
+// ===========================================================================
+//
+// The CONNECTOR_SUBMISSION worker has no HTTP request to inherit
+// AsyncLocalStorage tenant context from, so every producer must stamp the
+// payload with tenantKey itself — sourced only from
+// ConnectorFrameworkService.getCurrentTenantKey() (never client input).
+// Consumer-side restoration/fail-closed behavior is covered separately in
+// marketplace.service.spec.ts.
+
+describe("Phase 12: CONNECTOR_SUBMISSION payload carries tenantKey (producer side)", () => {
+  it("createExportJob stamps the payload with the active tenant", async () => {
+    const { svc, queueService, exportJobDb } = makePublishService();
+    exportJobDb.create.mockResolvedValue({
+      id: "job-new", retryCount: 0, status: "queued",
+      payload: { publishRequestIdentity: { productRevision: "v1:2026-07-01T00:00:00.000Z", installationId: "inst-shopify-1", payloadHash: "abc" } },
+    });
+    try {
+      await svc.createExportJob("prod1", { channel: "shopify", installationId: "inst-shopify-1", fallbackAcknowledged: false } as never);
+    } catch {
+      // mock gaps elsewhere in the flow are not the concern of this test
+    }
+    expect(queueService.enqueue).toHaveBeenCalled();
+    const payload = queueService.enqueue.mock.calls[0][1];
+    expect(payload).toEqual(expect.objectContaining({ tenantKey: "tenant1" }));
+  });
+
+  it("requeueExportJob stamps the payload with the active tenant", async () => {
+    const { svc, queueService, exportJobDb } = makePublishService();
+    exportJobDb.updateMany.mockResolvedValue({ count: 1 });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", retryCount: 3, status: "queued", channel: "shopify",
+    });
+    await svc.requeueExportJob("job-1");
+    expect(queueService.enqueue).toHaveBeenCalled();
+    const payload = queueService.enqueue.mock.calls[0][1];
+    expect(payload).toEqual(expect.objectContaining({ tenantKey: "tenant1" }));
+  });
+
+  it("retrySubmission's live-update (Flipkart) branch stamps the payload with the active tenant", async () => {
+    const { svc, queueService } = makePublishService();
+    jest.spyOn(svc, "getSubmission").mockResolvedValue({
+      idempotencyKey: "job-1:PUBLISH",
+      connectorSlug: "flipkart",
+      installationId: "inst-flipkart-1",
+      externalRef: "FLIPKART-EXT-REF-1",
+      source: "LIVE_API",
+    } as never);
+
+    const result = await svc.retrySubmission("sub-1");
+
+    expect(result).toEqual(expect.objectContaining({ queued: true, mode: "live_update" }));
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      expect.objectContaining({ mode: "submission-retry", submissionId: "sub-1", tenantKey: "tenant1" }),
+    );
+  });
+
+  it("retryRecoveryGroup stamps each created job's payload with the active tenant", async () => {
+    const failedSubmissions = [
+      { productId: "prod-1", channelErrors: [{ code: "IMAGE_MISSING" }] },
+    ];
+    const tenantDb = {
+      connectorInstallation: {
+        findFirst: jest.fn().mockResolvedValue({ id: "inst-1", connectorId: "def-1", tenantKey: "tenant1" }),
+      },
+      connectorDefinition: {
+        findUnique: jest.fn().mockResolvedValue({ slug: "shopify" }),
+      },
+      connectorSubmission: {
+        findMany: jest.fn().mockResolvedValue(failedSubmissions),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([{ id: "prod-1", categoryId: "cat-1" }]),
+      },
+      marketplaceExportJob: {
+        create: jest.fn().mockResolvedValue({ id: "job-recovery-1", retryCount: 0 }),
+      },
+    };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined), isJobPresent: jest.fn().mockResolvedValue(false) };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      { get: jest.fn(), list: jest.fn().mockReturnValue([]) } as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+
+    const result = await svc.retryRecoveryGroup("inst-1", "IMAGE_MISSING");
+
+    expect(result).toEqual({ queued: 1 });
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      { jobId: "job-recovery-1", connectorSlug: "shopify", tenantKey: "tenant1" },
+      { jobId: "job-recovery-1_0" },
+    );
+  });
+
+  it("queueSubmissionStatusSync stamps the status-sync payload with the active tenant", async () => {
+    // Private producer — the 6th of the 6 producer call sites. Invoked directly
+    // (bracket-cast) rather than through autoSyncSubmissionStatus/
+    // processLiveSubmissionRetry's full call chains: this test is scoped to the
+    // producer contract itself (mode, submissionId, connectorSlug, attemptNumber,
+    // tenantKey), not the surrounding retry-scheduling logic.
+    const { svc, queueService } = makePublishService();
+
+    await (svc as unknown as {
+      queueSubmissionStatusSync: (submissionId: string, connectorSlug: string, attemptNumber: number) => Promise<void>;
+    }).queueSubmissionStatusSync("sub-42", "shopify", 2);
+
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      "connector-submission",
+      {
+        mode: "status-sync",
+        submissionId: "sub-42",
+        connectorSlug: "shopify",
+        attemptNumber: 2,
+        tenantKey: "tenant1",
+      },
+      expect.objectContaining({ delayMs: expect.any(Number) }),
+    );
   });
 });
 
