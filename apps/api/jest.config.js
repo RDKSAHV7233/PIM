@@ -50,6 +50,7 @@ module.exports = {
     "**/prisma/extensions/tenant-scope.spec.ts",
     "**/common/tenant/tenant-raw-usage.spec.ts",
     "**/common/security/url-safety.spec.ts",
+    "**/common/env-validation.spec.ts",
     "**/bulk-edit/bulk-edit.service.spec.ts",
     "**/queue/queue.service.spec.ts",
     "**/error-authority/api-exception-capture.filter.spec.ts",
