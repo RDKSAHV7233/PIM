@@ -183,10 +183,19 @@ jobs:
             echo "Missing STAGING_BASE_URL secret for smoke tests."
             exit 1
           fi
-          response="$(curl -fsS "${STAGING_BASE_URL}/api/v1/health")"
-          echo "health=${response}"
-          echo "${response}" | grep -q "\"status\":\"ok\""
-          echo "${response}" | grep -q "\"env\":\"staging\""
+          response=""
+          for attempt in $(seq 1 30); do
+            if response="$(curl -fsS --max-time 20 "${STAGING_BASE_URL}/api/v1/health")"; then
+              echo "health=${response}"
+              echo "${response}" | grep -q "\"status\":\"ok\""
+              echo "${response}" | grep -q "\"env\":\"staging\""
+              exit 0
+            fi
+            echo "::warning::Staging health probe attempt ${attempt}/30 failed; waiting for Railway readiness."
+            sleep 10
+          done
+          echo "Staging health did not become ready after 30 attempts."
+          exit 1
 
       - name: Cleanup failed BullMQ jobs
         continue-on-error: true
