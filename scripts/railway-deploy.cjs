@@ -312,7 +312,7 @@ function isServiceNotFoundRailwayError(error) {
   ]
     .join("\n")
     .toLowerCase();
-  return combined.includes("service not found");
+  return combined.includes("service not found") || /service\s+['"][^'"]+['"]\s+not found/.test(combined);
 }
 
 function isServiceConfigMissingRailwayError(error) {

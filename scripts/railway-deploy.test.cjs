@@ -266,7 +266,7 @@ function main() {
       return {
         status: 1,
         stdout: "",
-        stderr: "Service not found",
+        stderr: "Service 'stale-service-name' not found",
         error: null,
       };
     }
@@ -291,7 +291,7 @@ function main() {
         successMessage: "fallback sync succeeded",
       }),
       true,
-      "Railway variable sync should try fallback service targets after Service not found.",
+      "Railway variable sync should try fallback service targets after Service '<target>' not found.",
     );
   } finally {
     childProcess.spawnSync = originalSpawnSync;
