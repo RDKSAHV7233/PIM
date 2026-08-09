@@ -30,7 +30,11 @@ function main() {
     /startCommand = "node --max-old-space-size=400 dist\/main\.js"/,
     "API package must start from the packaged dist output with heap cap to prevent OOM on Railway Hobby",
   );
-  assert.match(railwayToml, /healthcheckPath = "\/api\/v1\/health"/, "API package must expose the staging health path");
+  assert.match(
+    railwayToml,
+    /healthcheckPath = "\/api\/v1\/health\/ready"/,
+    "API package must gate deploy cutover on the readiness check, not bare liveness",
+  );
   assert.equal(packageJson.scripts.prebuild, "prisma generate --schema prisma/schema.prisma");
   assert.match(migrateScript, /prisma\/schema\.prisma/, "Packaged migrate helper must target the packaged Prisma schema");
   assert.doesNotMatch(

@@ -16,6 +16,24 @@
         ]
       }
     },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "AppController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Instance is ready to serve traffic"
+          },
+          "503": {
+            "description": "Instance is not yet ready (e.g. database unreachable)"
+          }
+        },
+        "summary": "Readiness check — can this instance safely receive real traffic (used for deploy-cutover gating)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/health/internal": {
       "get": {
         "operationId": "AppController_healthInternal",

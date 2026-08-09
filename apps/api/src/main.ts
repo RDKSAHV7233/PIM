@@ -8,6 +8,7 @@ import helmet from "helmet";
 import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
+import { PrismaService } from "./prisma/prisma.service";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
@@ -106,6 +107,21 @@ async function bootstrap() {
   app.getHttpAdapter().getInstance().get("/health", (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
     response.status(200).json({ status: "ok", env: env.APP_ENV });
   });
+  // Readiness alias at the same bare path as the liveness alias above, for the same
+  // reason: Railway's dashboard-configured healthcheck path may not carry /api/v1.
+  // Unlike liveness, this proves the instance can actually serve traffic (DB reachable)
+  // before Railway's deploy cutover treats it as healthy.
+  app.getHttpAdapter().getInstance().get(
+    "/health/ready",
+    async (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
+      try {
+        await app.get(PrismaService).getPoolStats();
+        response.status(200).json({ status: "ready" });
+      } catch {
+        response.status(503).json({ status: "not_ready" });
+      }
+    },
+  );
   app.setGlobalPrefix("api/v1");
   const corsOrigin =
     env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : env.APP_ENV === "development" ? true : false;
