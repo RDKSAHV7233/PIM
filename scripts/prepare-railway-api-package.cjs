@@ -94,9 +94,18 @@ function main() {
   // preDeployCommand requires DATABASE_URL to be injected into a separate
   // Railway container — if that env var is missing the whole deploy fails.
   //
-  // Zero-downtime is still achieved: startCommand boots directly to
-  // "node dist/main.js" (no migration blocking startup), so the healthcheck
-  // passes in ~5s and Railway switches traffic before stopping the old container.
+  // startCommand boots directly to "node dist/main.js" (no migration blocking
+  // startup), so in the healthy case the healthcheck passes in ~5s.
+  //
+  // IMPORTANT (INCIDENT-CREDENTIAL-KEY-BOOT-001, #480/#473): that fast-happy-path
+  // timing says nothing about the failure case. When the process can't boot at all
+  // (e.g. env validation failing before the HTTP listener opens), the healthcheck
+  // never returns 200 — see TECH-DEPLOY-READINESS-001 (#473) for evidence that this
+  // service's old instance was observed torn down before a failed replacement ever
+  // attempted its first boot, not gated on a health signal. Do not assume "healthcheck
+  // passes fast when things work" implies "old instance survives when things don't."
+  // healthcheckPath below points at a real readiness check (DB reachability), not bare
+  // liveness, specifically so a boot failure has something meaningful to fail against.
   const railwayTomlContents = [
     "[build]",
     'buildCommand = "npm install && npm run build"',
@@ -105,7 +114,7 @@ function main() {
     // Cap heap to 400 MB — stays within Railway Hobby's billing model and
     // prevents Node from attempting to allocate beyond available container memory.
     'startCommand = "node --max-old-space-size=400 dist/main.js"',
-    'healthcheckPath = "/api/v1/health"',
+    'healthcheckPath = "/api/v1/health/ready"',
     "healthcheckTimeout = 300",
     'restartPolicyType = "ON_FAILURE"',
     "restartPolicyMaxRetries = 10",

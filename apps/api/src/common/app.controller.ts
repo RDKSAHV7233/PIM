@@ -1,4 +1,4 @@
-import { Controller, Get, Header, HttpCode, Param, Post, Query } from "@nestjs/common";
+import { Controller, Get, Header, HttpCode, Param, Post, Query, ServiceUnavailableException } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
 import { AdminBoundaryAccess } from "./rbac/admin-boundary.decorator";
@@ -35,6 +35,24 @@ export class AppController {
         workerEnabled: this.queueService.isWorkerEnabled(),
       },
     };
+  }
+
+  @Public()
+  @Get("health/ready")
+  @ApiOperation({
+    summary: "Readiness check — can this instance safely receive real traffic (used for deploy-cutover gating)",
+  })
+  @ApiResponse({ status: 200, description: "Instance is ready to serve traffic" })
+  @ApiResponse({ status: 503, description: "Instance is not yet ready (e.g. database unreachable)" })
+  async readiness() {
+    try {
+      await this.prismaService.getPoolStats();
+    } catch {
+      // Deliberately generic: never surface the underlying DB error (may contain
+      // connection details) to an unauthenticated infra probe.
+      throw new ServiceUnavailableException({ status: "not_ready" });
+    }
+    return { status: "ready" };
   }
 
   @DisallowApiClient()
