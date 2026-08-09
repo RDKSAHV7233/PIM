@@ -1,3 +1,5 @@
+import { assertTrustedErrorAuthorityServerIngestionConfig } from "./lib/server/error-authority-env";
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
@@ -36,6 +38,11 @@ export async function register() {
     const authMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase();
     if (authMode !== "db") {
       missing.push(`AUTH_MODE must be "db" in ${appEnv} (got: "${authMode || "(unset)"}")`);
+    }
+    try {
+      assertTrustedErrorAuthorityServerIngestionConfig();
+    } catch (error) {
+      missing.push(error instanceof Error ? error.message : String(error));
     }
   }
 

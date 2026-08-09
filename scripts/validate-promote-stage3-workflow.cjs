@@ -109,10 +109,17 @@ function main() {
   requireEnvVar(deployStep, "DATABASE_URL", "Deploy to production");
   requireEnvVar(deployStep, "STAGING_BASE_URL", "Deploy to production");
   requireEnvVar(deployStep, "STAGING_WEB_URL", "Deploy to production");
+  requireEnvVar(deployStep, "GITHUB_SHA", "Deploy to production");
+  requireEnvVar(deployStep, "ERROR_AUTHORITY_RELEASE", "Deploy to production");
+  requireEnvVar(deployStep, "ERROR_AUTHORITY_INGEST_TOKEN", "Deploy to production");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to production");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to production");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to production");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to production");
+  assert(
+    String(deployStep.env?.ERROR_AUTHORITY_RELEASE ?? "").trim() === "${{ github.sha }}",
+    "Deploy to production must use github.sha as ERROR_AUTHORITY_RELEASE.",
+  );
 
   const resolveWebUrlStep = requireStep(steps, "Resolve production web URL");
   assert(String(resolveWebUrlStep?.id ?? "").trim() === "resolve_production_web_url", "Resolve production web URL step must expose id=resolve_production_web_url");

@@ -103,6 +103,9 @@ jobs:
           STAGING_BASE_URL: ${{ inputs.staging_url }}
           STAGING_WEB_URL: ${{ secrets.STAGE3_WEB_URL }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
+          ERROR_AUTHORITY_RELEASE: ${{ github.sha }}
+          ERROR_AUTHORITY_INGEST_TOKEN: ${{ secrets.ERROR_AUTHORITY_INGEST_TOKEN }}
           RAILWAY_DEPLOY_RETRIES: "2"
           RAILWAY_DEPLOY_TIMEOUT_MS: "600000"
           RAILWAY_DEPLOY_RETRY_DELAY_MS: "5000"
