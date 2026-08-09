@@ -568,6 +568,102 @@ function parseEnvFile(filePath) {
   return result;
 }
 
+const WEB_SESSION_AUTH_VARIABLE_KEYS = [
+  "JWT_SECRET",
+  "PIM_JWT_SECRET",
+  "AUTH_MODE",
+  "PIM_AUTH_IDENTITIES_JSON",
+  "PIM_AUTH_WORKSPACES_JSON",
+  "PIM_DEFAULT_TENANT_KEY",
+  "PIM_DEFAULT_WORKSPACE_SLUG",
+  "PIM_DEFAULT_ROLE",
+];
+
+function normalizeRailwayVariablesPayload(payload) {
+  if (!payload) {
+    return {};
+  }
+  if (Array.isArray(payload)) {
+    return Object.fromEntries(
+      payload
+        .map((item) => [String(item?.name ?? item?.key ?? "").trim(), item?.value])
+        .filter(([key]) => key),
+    );
+  }
+  if (payload.variables && typeof payload.variables === "object") {
+    return payload.variables;
+  }
+  if (typeof payload === "object") {
+    return payload;
+  }
+  return {};
+}
+
+function readRailwayVariablesAcrossServiceTargets(config, railwayEnv, serviceTargets, label) {
+  let lastResult = null;
+  for (const serviceTarget of serviceTargets) {
+    const args = [
+      "variables",
+      "--service",
+      serviceTarget,
+      "--environment",
+      config.environmentName,
+      "--project",
+      config.projectId,
+      "--json",
+    ];
+    const result = childProcess.spawnSync(config.railwayBin, args, {
+      cwd: config.repoRoot,
+      env: railwayEnv,
+      encoding: "utf8",
+    });
+    lastResult = result;
+    if (!result.error && result.status === 0) {
+      try {
+        return normalizeRailwayVariablesPayload(JSON.parse(String(result.stdout ?? "{}")));
+      } catch (error) {
+        throw new Error(
+          `[railway-deploy] Could not parse ${label} Railway variables JSON from '${serviceTarget}': ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    const canTryNextCandidate = serviceTarget !== serviceTargets[serviceTargets.length - 1];
+    if (
+      canTryNextCandidate &&
+      isServiceNotFoundRailwayError({
+        message: `${label} variable read failed`,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      })
+    ) {
+      console.warn(`[railway-deploy] ${label} service target '${serviceTarget}' was not found. Trying next candidate...`);
+      continue;
+    }
+    break;
+  }
+
+  const stderr = String(lastResult?.stderr ?? "").trim();
+  throw new Error(
+    `[railway-deploy] Could not read ${label} Railway variables (exit ${lastResult?.status ?? "unknown"}). ${
+      stderr ? stderr.replace(/\S{32,}/g, "[REDACTED]") : "No error details returned."
+    }`,
+  );
+}
+
+function resolveWebSessionAuthVariables(apiVariables) {
+  const pairs = WEB_SESSION_AUTH_VARIABLE_KEYS
+    .filter((key) => Object.prototype.hasOwnProperty.call(apiVariables, key))
+    .map((key) => [key, String(apiVariables[key] ?? "")]);
+  const hasJwtSecret = pairs.some(([key, value]) => (key === "JWT_SECRET" || key === "PIM_JWT_SECRET") && value.trim());
+  if (!hasJwtSecret) {
+    return [];
+  }
+  return pairs;
+}
+
 /**
  * Set Railway service-level env vars for the web service so they are available
  * as Docker build-args (Railway passes service vars as build args automatically).
@@ -595,6 +691,32 @@ function setWebServiceVariables(config, railwayEnv, webPackagePath) {
     failureMessage:
       "The deploy will proceed, but PIM_API_BASE_URL may be unset on the running container. Set it manually in the Railway dashboard if the service starts with AUTH_UPSTREAM_UNAVAILABLE.",
     successMessage: "[railway-deploy] Web service env vars synced successfully.",
+  });
+}
+
+function syncWebSessionAuthVariables(config, railwayEnv) {
+  const apiVariables = readRailwayVariablesAcrossServiceTargets(
+    config,
+    railwayEnv,
+    config.apiServiceTargets,
+    "API session auth env vars",
+  );
+  const pairs = resolveWebSessionAuthVariables(apiVariables);
+  if (pairs.length === 0) {
+    console.warn(
+      "[railway-deploy] API session auth variables were not readable or JWT_SECRET/PIM_JWT_SECRET is missing — skipping web session auth variable sync.",
+    );
+    return;
+  }
+
+  setRailwayVariablesAcrossServiceTargets(config, railwayEnv, {
+    label: "web session auth env vars",
+    serviceTargets: config.webServiceTargets,
+    pairs,
+    safeDisplayPairs: pairs.map(([key]) => key),
+    failureMessage:
+      "The deploy will proceed, but the web service may reject API-issued login cookies. Sync JWT_SECRET and auth fingerprint variables manually if /channels redirects to login after web login.",
+    successMessage: "[railway-deploy] Web session auth env vars synced successfully.",
   });
 }
 
@@ -793,6 +915,7 @@ function main(env = process.env) {
     // localhost:4000, causing AUTH_UPSTREAM_UNAVAILABLE in the post-deploy check.
     if (deployPlan.deployWeb) {
       setWebServiceVariables(deployConfig, railwayEnv, deployConfig.webSourcePath);
+      syncWebSessionAuthVariables(deployConfig, railwayEnv);
     }
 
     setApiServiceDatabaseVariables(deployConfig, railwayEnv, env);
@@ -855,13 +978,16 @@ module.exports = {
   isServiceNotFoundRailwayError,
   main,
   normalizeServiceTarget,
+  normalizeRailwayVariablesPayload,
   prepareRailwayDeployRoot,
   resolveApiDatabaseVariables,
   resolveConfig,
   resolveErrorAuthorityServiceVariables,
+  resolveWebSessionAuthVariables,
   resolveServiceTargets,
   runDeployCommandWithRetry,
   setRailwayVariablesAcrossServiceTargets,
   setApiServiceDatabaseVariables,
   setErrorAuthorityServiceVariables,
+  syncWebSessionAuthVariables,
 };

@@ -13,12 +13,15 @@ const {
   findOverlappingServiceTargets,
   formatRailwayVariablePairs,
   isRetryableRailwayDeployError,
+  normalizeRailwayVariablesPayload,
   normalizeServiceTarget,
   prepareRailwayDeployRoot,
   resolveApiDatabaseVariables,
   resolveConfig,
   resolveErrorAuthorityServiceVariables,
+  resolveWebSessionAuthVariables,
   setRailwayVariablesAcrossServiceTargets,
+  syncWebSessionAuthVariables,
 } = require("./railway-deploy.cjs");
 
 function main() {
@@ -318,6 +321,99 @@ function main() {
     [["ERROR_AUTHORITY_RELEASE", "explicit-release-sha"]],
     "Explicit ERROR_AUTHORITY_RELEASE should take precedence over GITHUB_SHA for controlled rollback/redeploy cases.",
   );
+
+  assert.deepEqual(
+    normalizeRailwayVariablesPayload([
+      { name: "JWT_SECRET", value: "shared-jwt-secret-minimum-32-characters" },
+      { key: "PIM_DEFAULT_WORKSPACE_SLUG", value: "admin" },
+    ]),
+    {
+      JWT_SECRET: "shared-jwt-secret-minimum-32-characters",
+      PIM_DEFAULT_WORKSPACE_SLUG: "admin",
+    },
+    "Railway variable JSON arrays should normalize to a key/value object.",
+  );
+  assert.deepEqual(
+    resolveWebSessionAuthVariables({
+      JWT_SECRET: "shared-jwt-secret-minimum-32-characters",
+      AUTH_MODE: "db",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_AUTH_WORKSPACES_JSON: "",
+      PIM_DEFAULT_TENANT_KEY: "pim1",
+      PIM_DEFAULT_WORKSPACE_SLUG: "admin",
+      PIM_DEFAULT_ROLE: "viewer",
+      DATABASE_URL: "postgresql://must-not-be-copied",
+      ERROR_AUTHORITY_INGEST_TOKEN: "must-not-be-copied",
+    }),
+    [
+      ["JWT_SECRET", "shared-jwt-secret-minimum-32-characters"],
+      ["AUTH_MODE", "db"],
+      ["PIM_AUTH_IDENTITIES_JSON", ""],
+      ["PIM_AUTH_WORKSPACES_JSON", ""],
+      ["PIM_DEFAULT_TENANT_KEY", "pim1"],
+      ["PIM_DEFAULT_WORKSPACE_SLUG", "admin"],
+      ["PIM_DEFAULT_ROLE", "viewer"],
+    ],
+    "Web session auth sync must copy only JWT/fingerprint inputs required for SSR cookie verification.",
+  );
+  assert.deepEqual(
+    resolveWebSessionAuthVariables({ AUTH_MODE: "db", PIM_DEFAULT_WORKSPACE_SLUG: "admin" }),
+    [],
+    "Web session auth sync must not run without a JWT secret.",
+  );
+
+  const originalSpawnSyncForSessionAuth = childProcess.spawnSync;
+  const sessionAuthCalls = [];
+  childProcess.spawnSync = (command, args, options) => {
+    sessionAuthCalls.push({ command, args, cwd: options.cwd });
+    const serviceTarget = args[args.indexOf("--service") + 1];
+    const isRead = args.includes("--json") && !args.includes("set");
+    if (isRead && serviceTarget === "stale-api-service") {
+      return { status: 1, stdout: "", stderr: "Service 'stale-api-service' not found", error: null };
+    }
+    if (isRead && serviceTarget === "api-fallback-service") {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          JWT_SECRET: "shared-jwt-secret-minimum-32-characters",
+          AUTH_MODE: "db",
+          PIM_AUTH_IDENTITIES_JSON: "",
+          PIM_AUTH_WORKSPACES_JSON: "",
+          PIM_DEFAULT_TENANT_KEY: "pim1",
+          PIM_DEFAULT_WORKSPACE_SLUG: "admin",
+          PIM_DEFAULT_ROLE: "viewer",
+          DATABASE_URL: "postgresql://must-not-be-copied",
+        }),
+        stderr: "",
+        error: null,
+      };
+    }
+    if (args.includes("set") && serviceTarget === "stale-web-service") {
+      return { status: 1, stdout: "", stderr: "Service 'stale-web-service' not found", error: null };
+    }
+    if (args.includes("set") && serviceTarget === "web-fallback-service") {
+      return { status: 0, stdout: "Variables set successfully\n", stderr: "", error: null };
+    }
+    return { status: 1, stdout: "", stderr: `Unexpected service target ${serviceTarget}`, error: null };
+  };
+  try {
+    syncWebSessionAuthVariables(
+      {
+        ...config,
+        apiServiceTargets: ["stale-api-service", "api-fallback-service"],
+        webServiceTargets: ["stale-web-service", "web-fallback-service"],
+      },
+      { RAILWAY_TOKEN: "token_123" },
+    );
+  } finally {
+    childProcess.spawnSync = originalSpawnSyncForSessionAuth;
+  }
+  assert.equal(sessionAuthCalls.length, 4);
+  const webSessionSetCall = sessionAuthCalls[3];
+  assert.equal(webSessionSetCall.args[webSessionSetCall.args.indexOf("--service") + 1], "web-fallback-service");
+  assert(webSessionSetCall.args.includes("JWT_SECRET=shared-jwt-secret-minimum-32-characters"));
+  assert(webSessionSetCall.args.includes("PIM_DEFAULT_WORKSPACE_SLUG=admin"));
+  assert(!webSessionSetCall.args.some((arg) => arg.startsWith("DATABASE_URL=")));
 
   assert.deepEqual(
     classifyDeployTargets([
