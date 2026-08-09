@@ -16,7 +16,7 @@ export interface ValidatedEnv {
   DATABASE_URL_DIRECT: string;
   JWT_SECRET: string;
   JWT_EXPIRY: string;
-  CREDENTIAL_ENCRYPTION_KEY_V1: string;
+  CREDENTIAL_ENCRYPTION_KEY_V1?: string;
   CREDENTIAL_ENCRYPTION_KEY_V2?: string;
   CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION: number;
   REDIS_URL: string;
@@ -102,7 +102,13 @@ const EnvSchema = z.object({
   DATABASE_URL_DIRECT: UrlSchema,
   JWT_SECRET: z.string().min(32),
   JWT_EXPIRY: z.string().default("4h"),
-  CREDENTIAL_ENCRYPTION_KEY_V1: z.string().min(32),
+  CREDENTIAL_ENCRYPTION_KEY_V1: z.preprocess(
+    (value) => {
+      const normalized = String(value ?? "").trim();
+      return normalized.length === 0 ? undefined : normalized;
+    },
+    z.string().min(32).optional(),
+  ),
   CREDENTIAL_ENCRYPTION_KEY_V2: z.preprocess(
     (value) => {
       const normalized = String(value ?? "").trim();
