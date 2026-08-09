@@ -37,6 +37,11 @@ try {
   const deployScript = read("scripts/railway-deploy.cjs");
   const webFiles = walkFiles(WEB_SRC).filter((file) => /\.(ts|tsx|js|jsx)$/.test(file));
   const ingestTokenUsers = webFiles.filter((file) => fs.readFileSync(file, "utf8").includes("ERROR_AUTHORITY_INGEST_TOKEN"));
+  const allowedServerTokenUsers = new Set([
+    "apps/web/src/lib/server/error-authority-env.ts",
+    "apps/web/src/lib/server/next-server-error-capture.ts",
+    "apps/web/src/instrumentation.ts",
+  ]);
   const clientIngestTokenUsers = ingestTokenUsers.filter((file) => {
     const source = fs.readFileSync(file, "utf8");
     return /^\s*["']use client["'];?/m.test(source);
@@ -78,7 +83,7 @@ try {
   );
   assert(
     ingestTokenUsers.every((file) =>
-      ["apps/web/src/lib/server/error-authority-env.ts", "apps/web/src/instrumentation.ts"].includes(path.relative(REPO_ROOT, file)),
+      allowedServerTokenUsers.has(path.relative(REPO_ROOT, file)),
     ),
     `Trusted Error Authority ingest token must stay in the server config boundary. Users: ${ingestTokenUsers
       .map((file) => path.relative(REPO_ROOT, file))

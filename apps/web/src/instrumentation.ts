@@ -59,3 +59,9 @@ export async function register() {
     throw new Error(message);
   }
 }
+
+export async function onRequestError(error: unknown, request: unknown, context: unknown) {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { captureNextServerError } = await import("./lib/server/next-server-error-capture");
+  await captureNextServerError(error, request, context);
+}

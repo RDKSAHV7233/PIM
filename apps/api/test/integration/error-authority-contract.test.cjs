@@ -18,6 +18,7 @@ const appModule = read("apps/api/src/app.module.ts");
 const envValidation = read("apps/api/src/common/env-validation.ts");
 const moduleSource = read("apps/api/src/error-authority/error-authority.module.ts");
 const apiFilter = read("apps/api/src/error-authority/api-exception-capture.filter.ts");
+const nextServerIngest = read("apps/api/src/error-authority/next-server-ingest.controller.ts");
 const workerClassifier = read("apps/api/src/error-authority/worker-error-classifier.ts");
 const captureService = read("apps/api/src/error-authority/error-capture.service.ts");
 const storageService = read("apps/api/src/error-authority/observability-db.service.ts");
@@ -90,6 +91,23 @@ assert(
     storageService.includes("errorOccurrence.findUnique") &&
     storageService.includes("sourceEventId"),
   "Error capture must be fail-open, idempotent, and use atomic issue upsert semantics.",
+);
+
+assert(
+  moduleSource.includes("NextServerErrorIngestController") &&
+    nextServerIngest.includes('@Controller("error-authority")') &&
+    nextServerIngest.includes("ApiExcludeEndpoint") &&
+    nextServerIngest.includes('@Post("ingest/next-server")') &&
+    nextServerIngest.includes("ERROR_AUTHORITY_INGEST_TOKEN") &&
+    nextServerIngest.includes('runtime: "next_server"') &&
+    nextServerIngest.includes('service: "vexa-pim-web"') &&
+    nextServerIngest.includes("sourceEventId") &&
+    nextServerIngest.includes("Unexpected Next.js server error") &&
+    !nextServerIngest.includes("request.body") &&
+    !nextServerIngest.includes("request.headers") &&
+    !nextServerIngest.includes('@Headers("authorization")') &&
+    !nextServerIngest.includes("@Headers('authorization')"),
+  "Next server trusted ingestion must require the ingest token, use canonical ErrorCaptureService, preserve sourceEventId, and avoid raw request data.",
 );
 
 assert(

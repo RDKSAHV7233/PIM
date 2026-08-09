@@ -2,10 +2,12 @@ import { Global, Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { ApiExceptionCaptureFilter } from "./api-exception-capture.filter";
 import { ErrorCaptureService } from "./error-capture.service";
+import { NextServerErrorIngestController } from "./next-server-ingest.controller";
 import { ObservabilityDbService } from "./observability-db.service";
 
 @Global()
 @Module({
+  controllers: [NextServerErrorIngestController],
   providers: [
     ErrorCaptureService,
     ObservabilityDbService,
