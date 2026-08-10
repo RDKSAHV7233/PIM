@@ -56,19 +56,44 @@ async function api(method, path, opts = {}) {
 }
 
 async function login() {
-  const res = await api("POST", "/api/v1/auth/login", {
-    body: { workspaceSlug: WORKSPACE, userId: USER, password: PASSWORD },
-  });
-  if (res.status !== 200 && res.status !== 201) {
+  // Retry on 502 (Railway cold-start) up to 5 times with backoff
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const res = await api("POST", "/api/v1/auth/login", {
+      body: { workspaceSlug: WORKSPACE, userId: USER, password: PASSWORD },
+    });
+    if (res.status === 200 || res.status === 201) {
+      const token = res.json?.token ?? res.json?.accessToken;
+      if (!token) throw new Error("Login succeeded but no token in response");
+      return token;
+    }
+    if (res.status === 502 && attempt < 5) {
+      console.log(`  … login attempt ${attempt}/5 got 502, retrying in ${attempt * 5}s`);
+      await new Promise(r => setTimeout(r, attempt * 5000));
+      continue;
+    }
     throw new Error(`Login failed: ${res.status} ${res.text}`);
   }
-  const token = res.json?.token ?? res.json?.accessToken;
-  if (!token) throw new Error("Login succeeded but no token in response");
-  return token;
 }
 
 async function run() {
   console.log("\n=== Staging Media Acceptance Test ===\n");
+
+  // ── Health check (warm up Railway) ──
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      const res = await api("GET", "/api/v1/health");
+      if (res.status === 200) {
+        pass("[health] api_reachable", `env=${res.json?.env ?? "unknown"}`);
+        break;
+      }
+    } catch {}
+    if (attempt === 10) {
+      fail("[health] api_reachable", "API did not respond after 10 attempts");
+      process.exit(1);
+    }
+    console.log(`  … health probe ${attempt}/10 failed, retrying in 5s`);
+    await new Promise(r => setTimeout(r, 5000));
+  }
 
   // ── Auth ──
   let token;
@@ -77,7 +102,7 @@ async function run() {
     pass("[auth] login", `workspace=${WORKSPACE}`);
   } catch (e) {
     fail("[auth] login", e.message);
-    return;
+    process.exit(1);
   }
 
   const auth = { Authorization: `Bearer ${token}` };
