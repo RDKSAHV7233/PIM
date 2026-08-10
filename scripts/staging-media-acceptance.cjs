@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * Staging acceptance test for PR #487 (B1) and PR #488 (Scope A).
+ * Staging media acceptance test — read + write paths.
  *
- * B1:  Verifies the governed main-image JSON path fix works at runtime —
- *      queries a product's media assets, checks governance.isMain resolution.
- *
- * Scope A: Verifies the same-origin media proxy route returns image bytes
- *          and correct headers for a real uploaded asset.
+ * Read:  governed main-image resolution, media proxy route, API file endpoint.
+ * Write: uploads a 1x1 PNG via the API and reads it back.
  *
  * Requires env: STAGING_BASE_URL, STAGING_SMOKE_WORKSPACE,
  *               STAGING_SMOKE_USER, STAGING_SMOKE_PASSWORD
@@ -246,6 +243,51 @@ async function run() {
       }
     } catch (e) {
       fail("[scope-a] api_media_endpoint", e.message);
+    }
+  }
+
+  // ── Write path: upload a tiny test image via API ──
+  let uploadedAssetId = null;
+  try {
+    // 1x1 red PNG (68 bytes)
+    const TINY_PNG_BASE64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    const uploadRes = await api("POST", "/api/v1/media/assets", {
+      headers: auth,
+      body: {
+        fileName: `acceptance-test-${Date.now()}.png`,
+        mimeType: "image/png",
+        contentBase64: TINY_PNG_BASE64,
+      },
+    });
+    if (uploadRes.status === 201 || uploadRes.status === 200) {
+      uploadedAssetId = uploadRes.json?.id ?? uploadRes.json?.data?.id ?? null;
+      pass("[write] upload_asset", `id=${uploadedAssetId} status=${uploadRes.status}`);
+    } else {
+      fail("[write] upload_asset", `status=${uploadRes.status} body=${uploadRes.text.slice(0, 200)}`);
+    }
+  } catch (e) {
+    fail("[write] upload_asset", e.message);
+  }
+
+  // ── Write path: read back the uploaded asset bytes ──
+  if (uploadedAssetId) {
+    try {
+      const readRes = await fetch(`${BASE}/api/v1/media/assets/${uploadedAssetId}/file`, {
+        headers: auth,
+        signal: AbortSignal.timeout(15000),
+        redirect: "follow",
+      });
+      if (readRes.status === 200) {
+        const ct = readRes.headers.get("content-type") ?? "unknown";
+        const cl = readRes.headers.get("content-length") ?? "unknown";
+        pass("[write] read_back_uploaded",
+          `id=${uploadedAssetId} content-type=${ct} content-length=${cl}`);
+      } else {
+        fail("[write] read_back_uploaded", `status=${readRes.status} for asset ${uploadedAssetId}`);
+      }
+    } catch (e) {
+      fail("[write] read_back_uploaded", e.message);
     }
   }
 
