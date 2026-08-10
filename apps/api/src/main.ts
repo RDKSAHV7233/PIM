@@ -9,6 +9,7 @@ import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
+import { runStorageMigrationOnce } from "./bootstrap/run-storage-migration-once";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
@@ -33,6 +34,10 @@ async function bootstrap() {
     queueBackend: env.QUEUE_BACKEND,
     port: env.PORT,
   });
+  // TEMPORARY — see run-storage-migration-once.ts. No-op unless
+  // RUN_STORAGE_MIGRATION_ONCE=true is explicitly set. Runs before the app
+  // starts serving traffic so readiness can't report true mid-migration.
+  await runStorageMigrationOnce();
   const { AppModule } = await import("./app.module");
 
   if (env.SENTRY_DSN) {
