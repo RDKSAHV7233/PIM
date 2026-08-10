@@ -77,6 +77,37 @@ type ConnectorProductPayloadOptions = {
   templateId?: string;
 };
 
+// BUG-MKT-EXPORT-003: locked status contract (dashboard.service.ts's readiness
+// buckets and marketplace.service.ts's own emitConnectorOutcomeMetrics already
+// agree on this classification independently):
+//   SUCCESS               -> success        -> ExportJob completed
+//   PENDING                -> accepted_async -> ExportJob completed (status-sync
+//                             owns the provider's eventual resolution; the
+//                             export job row is never revisited by that loop)
+//   REJECTED/ERROR/SUPPRESSED -> provider_failure -> ExportJob failed
+// "recorded" covers submissions whose status was computed locally from
+// simulation.exportReady rather than from a live connector round-trip (the
+// non-PUBLISH / EXPORT_ONLY path, and the dead "PUBLISH but not exportReady"
+// ternary branch alongside it) - that status carries no information beyond
+// what simulation.exportReady already encodes, so it must never trigger the
+// provider_failure short-circuit; processExportJob's existing
+// exportReady-gated completion/retry logic remains authoritative for it.
+type SubmissionOutcome =
+  | { kind: "success"; installationId: string; submissionId: string }
+  | { kind: "accepted_async"; installationId: string; submissionId: string }
+  | { kind: "recorded"; installationId: string; submissionId: string }
+  | {
+      kind: "provider_failure";
+      installationId: string;
+      submissionId: string;
+      // Widened beyond the three known failure statuses on purpose: the
+      // fail-closed default in classifyPublishSubmissionStatus can also route
+      // an unrecognized future connector status here, and this field must be
+      // able to hold that value honestly rather than mis-typing it.
+      status: string;
+      reason: string;
+    };
+
 type AuthoritativeChannelIssue = {
   severity: "error" | "warning";
   code: string;
@@ -1737,11 +1768,33 @@ export class MarketplaceService implements OnModuleInit {
         existing.templateId ?? undefined,
         effectiveInstallationId ?? undefined,
       );
-      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(
+      const submissionOutcome = await this.recordConnectorSubmission(
         { ...existing, installationId: effectiveInstallationId },
         simulation,
       );
-      effectiveInstallationId = effectiveInstallationId ?? resolvedInstallationId ?? null;
+      effectiveInstallationId = effectiveInstallationId ?? submissionOutcome.installationId ?? null;
+
+      // BUG-MKT-EXPORT-003: a submission the connector truthfully rejected
+      // (REJECTED/ERROR/SUPPRESSED returned without throwing) must never be
+      // reported as a completed export - previously this branch didn't exist
+      // and completion was decided by simulation.exportReady alone, so a
+      // provider-side rejection could be silently reported as success.
+      if (submissionOutcome.kind === "provider_failure") {
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.failed,
+            failureReason: submissionOutcome.reason,
+            dlqReason: null,
+            exportPayload: Prisma.JsonNull,
+          },
+          include: { template: true },
+        });
+        await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
+        await this.notificationsService.emitPublishStatus(updated.id, "failed");
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
 
       if (simulation.exportReady) {
         const updated = await this.prisma.tenant().marketplaceExportJob.update({
@@ -3006,9 +3059,38 @@ export class MarketplaceService implements OnModuleInit {
     }
   }
 
-  // Returns the resolved installationId so the caller can write sync state even when
-  // job.installationId is null (legacy jobs created before the column was added). (P3-4)
-  private async recordConnectorSubmissionIfInstalled(
+  // BUG-MKT-EXPORT-003: this function's return value is the invariant boundary
+  // between "a ConnectorSubmission definitely exists" and "no legitimate handoff
+  // occurred." It must never let the caller believe a submission exists when it
+  // doesn't (that was the bug: missing installation silently produced `null`,
+  // and the caller marked the job completed anyway). The contract now is:
+  //   - returns a SubmissionOutcome  -> a ConnectorSubmission row was recorded.
+  //   - throws                      -> no submission was recorded at all.
+  // A recorded submission that the provider truthfully rejected (REJECTED /
+  // ERROR / SUPPRESSED, returned without the connector throwing) is still a
+  // *return*, not a throw - the outcome's `kind: "provider_failure"` carries
+  // that distinction so the caller can decide the export job's terminal status
+  // instead of this function silently picking one.
+  private classifyPublishSubmissionStatus(
+    status: string,
+  ): "success" | "accepted_async" | "provider_failure" {
+    switch (status) {
+      case "SUCCESS":
+        return "success";
+      case "PENDING":
+        return "accepted_async";
+      case "REJECTED":
+      case "ERROR":
+      case "SUPPRESSED":
+        return "provider_failure";
+      default:
+        // Fail closed: an unrecognized future connector status must not be
+        // silently treated as success. (BUG-MKT-EXPORT-003 Case 6.)
+        return "provider_failure";
+    }
+  }
+
+  private async recordConnectorSubmission(
     job: {
       id: string;
       productId: string;
@@ -3028,11 +3110,16 @@ export class MarketplaceService implements OnModuleInit {
       }>;
       validationSource: "local_rules" | "amazon_sp_api";
     },
-  ): Promise<string | null> {
+  ): Promise<SubmissionOutcome> {
     const connectorSlug = this.mapChannelToConnectorSlug(job.channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     if (!job.installationId) {
-      return null;
+      // No legitimate handoff can occur without a resolved installation - the
+      // caller (processExportJob) always resolves installationId before this
+      // call today, so this is defensive, not a live path. Throwing (rather
+      // than silently no-op-ing, as this branch previously did) keeps that
+      // guarantee explicit for any future caller.
+      throw new InstallationNotFoundError(connectorSlug);
     }
     let installation;
     try {
@@ -3043,7 +3130,11 @@ export class MarketplaceService implements OnModuleInit {
       );
     } catch (error) {
       if (error instanceof InstallationNotFoundError) {
-        return null;
+        // BUG-MKT-EXPORT-003: previously returned null here and the caller
+        // proceeded to mark the export job completed with zero submission
+        // ever recorded. Re-throwing lets processExportJob's existing outer
+        // catch mark the job failed with a truthful, typed reason instead.
+        throw error;
       }
       throw error;
     }
@@ -3052,6 +3143,7 @@ export class MarketplaceService implements OnModuleInit {
     const source = simulation.validationSource === "amazon_sp_api" ? "LIVE_API" : "LOCAL_RULES";
 
     let submission;
+    let outcome: SubmissionOutcome;
     if (operation === "PUBLISH" && simulation.exportReady) {
       // Defaults to the mapping preview so a submission is still recorded with useful
       // context if buildConnectorProductPayload itself throws before any payload exists.
@@ -3159,6 +3251,17 @@ export class MarketplaceService implements OnModuleInit {
         ) {
           await this.queueSubmissionStatusSync(submission.id, connectorSlug, 1);
         }
+        const publishClassification = this.classifyPublishSubmissionStatus(submission.status);
+        outcome =
+          publishClassification === "provider_failure"
+            ? {
+                kind: "provider_failure",
+                installationId: installation.id,
+                submissionId: submission.id,
+                status: submission.status,
+                reason: `Connector ${connectorSlug} reported ${submission.status} for this submission.`,
+              }
+            : { kind: publishClassification, installationId: installation.id, submissionId: submission.id };
       } catch (error) {
         // ShopifyPublishError carries parsed ConnectorIssue[] with real fieldPaths.
         // Generic errors fall back to a single CONNECTOR_PUBLISH_FAILED issue.
@@ -3229,6 +3332,13 @@ export class MarketplaceService implements OnModuleInit {
           sellerMessage: issue.sellerMessage,
         })),
       });
+      // `status` here is always derived from simulation.exportReady, never from
+      // a live connector round-trip - it carries no information the caller's
+      // existing exportReady-gated logic doesn't already have, so this must
+      // never classify as provider_failure (that would bypass the legitimate
+      // retry/dead_letter path for EXPORT_ONLY connectors and any PUBLISH
+      // connector that simply isn't ready yet - BUG-MKT-EXPORT-003 Case 5).
+      outcome = { kind: "recorded", installationId: installation.id, submissionId: submission.id };
     }
 
     await this.emitConnectorOutcomeMetrics({
@@ -3237,7 +3347,7 @@ export class MarketplaceService implements OnModuleInit {
       submissionStatus: submission.status,
       attemptNumber: submission.attemptNumber,
     });
-    return installation.id;
+    return outcome;
   }
 
   private async buildConnectorProductPayload(

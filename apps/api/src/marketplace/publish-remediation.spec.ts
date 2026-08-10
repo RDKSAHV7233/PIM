@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { MarketplaceService } from "./marketplace.service";
-import { CredentialExpiredError } from "../connector-framework/connector.errors";
+import { CredentialExpiredError, InstallationNotFoundError } from "../connector-framework/connector.errors";
 
 // ---------------------------------------------------------------------------
 // Shared factory
@@ -1913,7 +1913,9 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
       channel: "shopify", template: null,
     });
 
-    jest.spyOn(svc as any, "recordConnectorSubmissionIfInstalled").mockResolvedValue("inst-shopify-1");
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "success", installationId: "inst-shopify-1", submissionId: "sub-1",
+    });
     jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
     jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
 
@@ -1949,7 +1951,9 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
       channel: "shopify", template: null,
     });
 
-    const recordSpy = jest.spyOn(svc as any, "recordConnectorSubmissionIfInstalled").mockResolvedValue("inst-shopify-1");
+    const recordSpy = jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "success", installationId: "inst-shopify-1", submissionId: "sub-1",
+    });
     jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
     jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
 
@@ -1983,7 +1987,9 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
       channel: "shopify", template: null,
     });
 
-    jest.spyOn(svc as any, "recordConnectorSubmissionIfInstalled").mockResolvedValue("inst-concurrent");
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "success", installationId: "inst-concurrent", submissionId: "sub-1",
+    });
     jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
     jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
 
@@ -2376,9 +2382,9 @@ describe("External identity isolation", () => {
       path.resolve(__dirname, "marketplace.service.ts"),
       "utf8",
     );
-    const fnStart = source.indexOf("private async recordConnectorSubmissionIfInstalled");
+    const fnStart = source.indexOf("private async recordConnectorSubmission(");
     expect(fnStart).toBeGreaterThan(-1);
-    const gidSection = source.substring(fnStart, fnStart + 3000);
+    const gidSection = source.substring(fnStart, fnStart + 4000);
     expect(gidSection).toContain("installationId: installation.id");
   });
 
@@ -2451,18 +2457,25 @@ describe("External identity isolation", () => {
     expect(retrySection).not.toContain("installationId ?? undefined");
   });
 
-  it("recordConnectorSubmissionIfInstalled returns null for null installationId (no fallback)", () => {
+  // BUG-MKT-EXPORT-003: this used to assert the bug itself - a null
+  // installationId silently returned null, and processExportJob (which never
+  // checked the return value) went on to mark the export job "completed" with
+  // zero ConnectorSubmission ever created. The fix's invariant is: this
+  // function returning means a submission definitely exists, so "no
+  // installation to submit to" must throw, not return.
+  it("recordConnectorSubmission throws for null installationId (no fallback, no silent completion)", () => {
     const fs = require("fs");
     const path = require("path");
     const source = fs.readFileSync(
       path.resolve(__dirname, "marketplace.service.ts"),
       "utf8",
     );
-    const fnStart = source.indexOf("private async recordConnectorSubmissionIfInstalled");
+    const fnStart = source.indexOf("private async recordConnectorSubmission(");
     expect(fnStart).toBeGreaterThan(-1);
-    const recordSection = source.substring(fnStart, fnStart + 800);
+    const recordSection = source.substring(fnStart, fnStart + 1400);
     expect(recordSection).toContain("if (!job.installationId)");
-    expect(recordSection).toContain("return null");
+    expect(recordSection).toContain("throw new InstallationNotFoundError(connectorSlug)");
+    expect(recordSection).not.toContain("return null");
     expect(recordSection).not.toContain("installationId ?? undefined");
   });
 
@@ -2474,8 +2487,8 @@ describe("External identity isolation", () => {
       "utf8",
     );
     const recordSection = source.substring(
-      source.indexOf("private async recordConnectorSubmissionIfInstalled"),
-      source.indexOf("private async recordConnectorSubmissionIfInstalled") + 3000,
+      source.indexOf("private async recordConnectorSubmission("),
+      source.indexOf("private async recordConnectorSubmission(") + 4000,
     );
     const gidLookup = recordSection.substring(
       recordSection.indexOf("findFirst"),
@@ -3078,6 +3091,160 @@ describe("Phase 12: CONNECTOR_SUBMISSION payload carries tenantKey (producer sid
       },
       expect.objectContaining({ delayMs: expect.any(Number) }),
     );
+  });
+});
+
+// ===========================================================================
+// BUG-MKT-EXPORT-003 — MarketplaceExportJob completion/submission invariant
+//
+// Locked contract (dashboard.service.ts's readiness buckets and this file's
+// own emitConnectorOutcomeMetrics independently agree on the classification):
+//   SUCCESS                  -> completed
+//   PENDING (accepted_async) -> completed (status-sync owns later resolution;
+//                                the export job row is never revisited by it)
+//   REJECTED/ERROR/SUPPRESSED -> failed
+//   no submission recorded    -> failed (never completed)
+//   unrecognized future status -> failed closed, never silently success
+// ===========================================================================
+
+describe("BUG-MKT-EXPORT-003: submission-outcome/completion invariant", () => {
+  function queuedJobWithInstallation() {
+    return {
+      id: "job-1", status: "queued", installationId: "inst-shopify-1", channel: "shopify",
+      productId: "prod1", retryCount: 0, maxRetries: 3, tenantKey: "tenant1", templateId: null,
+    };
+  }
+
+  it("Case 1: success outcome -> job marked completed", async () => {
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue(queuedJobWithInstallation());
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "success", installationId: "inst-shopify-1", submissionId: "sub-1",
+    });
+    jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    const updateCall = exportJobDb.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("completed");
+  });
+
+  it("Case 2: recordConnectorSubmission throwing (installation absent) -> job failed, never completed", async () => {
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue(queuedJobWithInstallation());
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockRejectedValue(
+      new InstallationNotFoundError("shopify"),
+    );
+    jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    const updateCall = exportJobDb.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("failed");
+    expect(updateCall.data.status).not.toBe("completed");
+    expect(updateCall.data.failureReason).toContain("not installed");
+  });
+
+  it("Case 3: recordConnectorSubmission throwing a live publish error -> job failed, never completed", async () => {
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue(queuedJobWithInstallation());
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockRejectedValue(
+      new Error("Shopify GraphQL request failed: rate limited"),
+    );
+    jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    const updateCall = exportJobDb.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("failed");
+    expect(updateCall.data.failureReason).toContain("rate limited");
+  });
+
+  it("Case 4: provider_failure outcome (e.g. Amazon REJECTED, no throw) -> job failed, never completed", async () => {
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue(queuedJobWithInstallation());
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "provider_failure",
+      installationId: "inst-shopify-1",
+      submissionId: "sub-1",
+      status: "REJECTED",
+      reason: "Connector amazon-in reported REJECTED for this submission.",
+    });
+    jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    const updateCall = exportJobDb.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("failed");
+    expect(updateCall.data.status).not.toBe("completed");
+    expect(updateCall.data.failureReason).toContain("REJECTED");
+  });
+
+  it("Case 5: recorded outcome (EXPORT_ONLY / not-yet-ready path) never triggers the provider_failure short-circuit", async () => {
+    // "recorded" carries no live-provider information - it must let the
+    // existing simulation.exportReady-gated completion/retry logic decide,
+    // exactly as it did before this fix. simulateProduct is mocked
+    // exportReady: true by makePublishService, so this proves a "recorded"
+    // outcome does not get force-failed the way "provider_failure" does above.
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue(queuedJobWithInstallation());
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "recorded", installationId: "inst-shopify-1", submissionId: "sub-1",
+    });
+    jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    const updateCall = exportJobDb.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("completed");
+  });
+
+  it("Case 6: classifyPublishSubmissionStatus fails closed for an unrecognized future connector status", () => {
+    // Source inspection, matching this file's established convention for
+    // internal-method contracts (see "External identity isolation" above).
+    // Proves the switch's default branch returns provider_failure rather
+    // than falling through to success - an unrecognized status must never
+    // be silently treated as a completed export.
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "marketplace.service.ts"),
+      "utf8",
+    );
+    const fnStart = source.indexOf("private classifyPublishSubmissionStatus(");
+    expect(fnStart).toBeGreaterThan(-1);
+    const fnSection = source.substring(fnStart, fnStart + 700);
+    expect(fnSection).toContain('case "SUCCESS":');
+    expect(fnSection).toContain('case "PENDING":');
+    expect(fnSection).toContain("default:");
+    const defaultIdx = fnSection.lastIndexOf("default:");
+    const defaultBranch = fnSection.substring(defaultIdx, defaultIdx + 200);
+    expect(defaultBranch).toContain('return "provider_failure"');
+  });
+
+  it("Case 7: accepted_async outcome (Amazon PENDING) -> job still completed, matching today's async handoff contract", async () => {
+    // Confirms the fix does not regress async connectors: status-sync (not
+    // this function) owns the provider's eventual resolution of a PENDING
+    // submission - marketplaceExportJob.update is never called again by that
+    // path (verified separately by "External identity isolation" and the
+    // autoSyncSubmissionStatus tests, which only touch connector_submissions).
+    const { svc, exportJobDb } = makePublishService();
+    exportJobDb.findUnique.mockResolvedValue(queuedJobWithInstallation());
+    jest.spyOn(svc as any, "recordConnectorSubmission").mockResolvedValue({
+      kind: "accepted_async", installationId: "inst-shopify-1", submissionId: "sub-1",
+    });
+    jest.spyOn(svc as any, "persistSyncStateForProduct").mockResolvedValue(undefined);
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    const updateCall = exportJobDb.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("completed");
   });
 });
 
