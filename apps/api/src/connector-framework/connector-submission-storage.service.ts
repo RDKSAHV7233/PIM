@@ -32,7 +32,9 @@ export class ConnectorSubmissionStorageService {
     const secretAccessKey = String(process.env.R2_SECRET_ACCESS_KEY ?? "").trim();
     const explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
 
-    this.bucketName = String(process.env.R2_BUCKET_NAME ?? "").trim();
+    // Private artifacts live in a separate bucket from public media — falls back
+    // to R2_BUCKET_NAME only if the dedicated private bucket isn't configured.
+    this.bucketName = String(process.env.R2_PRIVATE_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "").trim();
     this.localStorageRoot = path.join(
       process.cwd(),
       String(process.env.CONNECTOR_SNAPSHOT_STORAGE_DIR ?? DEFAULT_LOCAL_STORAGE_ROOT).trim(),
@@ -110,6 +112,15 @@ export class ConnectorSubmissionStorageService {
   }
 
   private shouldUseLocalFallback(accountId: string, explicitEndpoint: string): boolean {
+    // Per-service override takes priority over the global STORAGE_BACKEND flag,
+    // matching AuthExportStorageService's ACCOUNT_EXPORT_STORAGE_MODE pattern.
+    const explicitMode = String(process.env.CONNECTOR_SNAPSHOT_STORAGE_MODE ?? "").trim().toLowerCase();
+    if (explicitMode === "filesystem") {
+      return true;
+    }
+    if (explicitMode === "object_storage") {
+      return false;
+    }
     if (String(process.env.STORAGE_BACKEND ?? "").trim().toLowerCase() === "local") {
       return true;
     }

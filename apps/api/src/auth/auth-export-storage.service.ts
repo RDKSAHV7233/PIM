@@ -57,7 +57,9 @@ export class AuthExportStorageService {
   private readonly accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim();
   private readonly accessKeyId = String(process.env.R2_ACCESS_KEY_ID ?? "").trim();
   private readonly secretAccessKey = String(process.env.R2_SECRET_ACCESS_KEY ?? "").trim();
-  private readonly bucketName = String(process.env.R2_BUCKET_NAME ?? "").trim();
+  // Private artifacts live in a separate bucket from public media — falls back
+  // to R2_BUCKET_NAME only if the dedicated private bucket isn't configured.
+  private readonly bucketName = String(process.env.R2_PRIVATE_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "").trim();
   private readonly explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
   private readonly configuredStorageMode = this.readConfiguredStorageMode();
   private readonly filesystemStorageRoot = this.resolveFilesystemStorageRoot();

@@ -17,7 +17,9 @@ const LOCAL_FALLBACK_ACCOUNT_IDS = new Set([
 @Injectable()
 export class BulkImportStorageService {
   private readonly logger = new Logger(BulkImportStorageService.name);
-  private readonly bucketName = String(process.env.R2_BUCKET_NAME ?? "").trim();
+  // Private artifacts live in a separate bucket from public media — falls back
+  // to R2_BUCKET_NAME only if the dedicated private bucket isn't configured.
+  private readonly bucketName = String(process.env.R2_PRIVATE_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "").trim();
   private readonly endpoint =
     String(process.env.R2_ENDPOINT ?? "").trim() ||
     `https://${String(process.env.R2_ACCOUNT_ID ?? "").trim()}.r2.cloudflarestorage.com`;
@@ -100,6 +102,15 @@ export class BulkImportStorageService {
   }
 
   private shouldUseLocalFallback(): boolean {
+    // Per-service override takes priority over the global STORAGE_BACKEND flag,
+    // matching AuthExportStorageService's ACCOUNT_EXPORT_STORAGE_MODE pattern.
+    const explicitMode = String(process.env.BULK_IMPORT_STORAGE_MODE ?? "").trim().toLowerCase();
+    if (explicitMode === "filesystem") {
+      return true;
+    }
+    if (explicitMode === "object_storage") {
+      return false;
+    }
     if (String(process.env.STORAGE_BACKEND ?? "").trim().toLowerCase() === "local") {
       return true;
     }
