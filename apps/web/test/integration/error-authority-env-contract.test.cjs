@@ -62,6 +62,17 @@ try {
     "Next instrumentation must validate trusted Error Authority server-ingestion config when NEXT_RUNTIME is unset or Node.js, and skip only Edge runtime.",
   );
   assert(
+    instrumentation.includes("ERROR_AUTHORITY_DIAGNOSTICS") &&
+      instrumentation.includes("instrumentation_register_executed") &&
+      instrumentation.includes("instrumentation_on_request_error_entered") &&
+      instrumentation.includes("logErrorAuthorityDiagnostic(") &&
+      !instrumentation.includes("ERROR_AUTHORITY_INGEST_TOKEN}`") &&
+      !instrumentation.includes("ERROR_AUTHORITY_RUNTIME_PROOF_TOKEN}`") &&
+      !instrumentation.includes("JSON.stringify(process.env") &&
+      !instrumentation.includes("console.info(process.env"),
+    "Next instrumentation diagnostics must be opt-in fixed markers and must not print tokens, env dumps, or request metadata.",
+  );
+  assert(
     !read("apps/web/src/lib/server/error-authority-env.ts").includes("NEXT_PUBLIC_ERROR_AUTHORITY_INGEST_TOKEN") &&
       !read("apps/web/src/instrumentation.ts").includes("NEXT_PUBLIC_ERROR_AUTHORITY_INGEST_TOKEN") &&
       !packageScript.includes("ERROR_AUTHORITY_INGEST_TOKEN") &&
@@ -104,6 +115,7 @@ try {
         validated: [
           "web_has_server_error_authority_release_accessor",
           "next_instrumentation_validates_trusted_server_ingestion_config",
+          "next_instrumentation_has_safe_opt_in_diagnostic_markers",
           "ingest_token_not_projected_to_public_env_or_web_package",
           "railway_deploy_syncs_error_authority_vars_without_logging_token_values",
           "ingest_token_not_referenced_by_client_components",

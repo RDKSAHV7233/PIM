@@ -1,7 +1,12 @@
 import { assertTrustedErrorAuthorityServerIngestionConfig } from "./lib/server/error-authority-env";
 
+const ERROR_AUTHORITY_DIAGNOSTIC_PREFIX = "[ERROR_AUTHORITY_DIAGNOSTIC]";
+const ERROR_AUTHORITY_REGISTER_MARKER = "instrumentation_register_executed";
+const ERROR_AUTHORITY_ON_REQUEST_ERROR_MARKER = "instrumentation_on_request_error_entered";
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "edge") return;
+  logErrorAuthorityDiagnostic(ERROR_AUTHORITY_REGISTER_MARKER);
 
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
   const isStrictEnv = appEnv === "staging" || appEnv === "production";
@@ -62,6 +67,14 @@ export async function register() {
 
 export async function onRequestError(error: unknown, request: unknown, context: unknown) {
   if (process.env.NEXT_RUNTIME === "edge") return;
+  logErrorAuthorityDiagnostic(ERROR_AUTHORITY_ON_REQUEST_ERROR_MARKER);
   const { captureNextServerError } = await import("./lib/server/next-server-error-capture");
   await captureNextServerError(error, request, context);
+}
+
+function logErrorAuthorityDiagnostic(marker: string): void {
+  if (String(process.env.ERROR_AUTHORITY_DIAGNOSTICS ?? "").trim().toLowerCase() !== "true") {
+    return;
+  }
+  console.info(`${ERROR_AUTHORITY_DIAGNOSTIC_PREFIX} ${marker}`);
 }
