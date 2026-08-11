@@ -11,6 +11,7 @@ import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
 import { runStorageMigrationOnce } from "./bootstrap/run-storage-migration-once";
 import { runConnectorSnapshotStorageProbeOnce } from "./bootstrap/connector-snapshot-storage-probe-once";
+import { runBulkImportStorageProbeOnce } from "./bootstrap/bulk-import-storage-probe-once";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
@@ -42,6 +43,9 @@ async function bootstrap() {
   // TEMPORARY — see connector-snapshot-storage-probe-once.ts. No-op unless
   // RUN_CONNECTOR_SNAPSHOT_PROBE_ONCE=true is explicitly set.
   await runConnectorSnapshotStorageProbeOnce();
+  // TEMPORARY — see bulk-import-storage-probe-once.ts. No-op unless
+  // RUN_BULK_IMPORT_STORAGE_PROBE_ONCE=true is explicitly set.
+  await runBulkImportStorageProbeOnce();
   const { AppModule } = await import("./app.module");
 
   if (env.SENTRY_DSN) {
