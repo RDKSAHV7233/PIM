@@ -46,6 +46,10 @@ function run() {
     proxy.includes("getApiBaseUrl"),
     "Proxy route must resolve the backend API URL through the existing getApiBaseUrl helper.",
   );
+  assert(
+    proxy.includes("pim_access_token") && proxy.includes("Authorization"),
+    "Proxy route must forward the session cookie as Authorization header for tenant context.",
+  );
 
   // --- A2: Product media tab thumbnails ---
   const mediaTab = fs.readFileSync(MEDIA_TAB, "utf8");
@@ -121,6 +125,7 @@ function run() {
           "proxy_route_allowlists_forwarded_headers",
           "proxy_route_forwards_non_2xx_truthfully",
           "proxy_route_uses_getApiBaseUrl",
+          "proxy_route_forwards_session_cookie_for_tenant",
           "media_tab_renders_thumbnails_from_proxy",
           "media_tab_uses_lazy_loading",
           "media_tab_shows_main_badge",

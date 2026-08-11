@@ -179,10 +179,11 @@ async function run() {
   const testAsset = allAssets.find(a => a.mimeType?.startsWith("image/")) ?? allAssets[0];
 
   if (testAsset && WEB_URL) {
-    // Test proxy route via web URL
+    // Test proxy route via web URL (sends session cookie for tenant context)
     try {
       const proxyUrl = `${WEB_URL}/api/media/assets/${testAsset.id}/file`;
       const res = await fetch(proxyUrl, {
+        headers: { Cookie: `pim_access_token=${token}` },
         signal: AbortSignal.timeout(15000),
         redirect: "follow",
       });
