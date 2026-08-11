@@ -38,6 +38,7 @@ export type TrustedNextServerErrorPayload = {
 
 const EVENT_IDS = new WeakMap<object, string>();
 const INGEST_TIMEOUT_MS = 1_500;
+const ERROR_AUTHORITY_DIAGNOSTIC_PREFIX = "[ERROR_AUTHORITY_DIAGNOSTIC]";
 const NEXT_CONTROL_FLOW_DIGEST_PREFIXES = ["NEXT_REDIRECT", "NEXT_NOT_FOUND", "NEXT_HTTP_ERROR_FALLBACK;404"];
 const EXPECTED_STATUS_CODES = new Set([400, 401, 403, 404, 409, 422, 429]);
 const EXPECTED_CODE_PATTERNS = [
@@ -62,13 +63,15 @@ export async function captureNextServerError(error: unknown, request?: unknown, 
   try {
     const token = String(process.env.ERROR_AUTHORITY_INGEST_TOKEN ?? "").trim();
     if (!token) {
+      logErrorAuthorityCaptureDiagnostic("next_server_capture_token_missing");
       return;
     }
     const payload = buildTrustedNextServerErrorPayload(error, request, context);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
     try {
-      await fetch(`${getApiBaseUrl()}/error-authority/ingest/next-server`, {
+      logErrorAuthorityCaptureDiagnostic("next_server_capture_transport_attempt");
+      const response = await fetch(`${getApiBaseUrl()}/error-authority/ingest/next-server`, {
         method: "POST",
         cache: "no-store",
         signal: controller.signal,
@@ -78,10 +81,21 @@ export async function captureNextServerError(error: unknown, request?: unknown, 
         },
         body: JSON.stringify(payload),
       });
+      logErrorAuthorityCaptureDiagnostic("next_server_capture_transport_response", {
+        status: response.status,
+      });
+    } catch (transportError) {
+      logErrorAuthorityCaptureDiagnostic("next_server_capture_transport_error", {
+        name: safeIdentifier(transportError instanceof Error ? transportError.name : "TransportError", "TransportError"),
+        code: safeIdentifier(readStringProperty(readObjectProperty(transportError, "cause"), "code"), "NO_CODE"),
+      });
     } finally {
       clearTimeout(timeout);
     }
-  } catch {
+  } catch (captureError) {
+    logErrorAuthorityCaptureDiagnostic("next_server_capture_internal_error", {
+      name: safeIdentifier(captureError instanceof Error ? captureError.name : "CaptureError", "CaptureError"),
+    });
     // Error Authority ingestion must fail open and must not recursively create telemetry.
   }
 }
@@ -287,4 +301,20 @@ function safeFrameText(value: unknown, maxLength: number): string | undefined {
     .replace(/\/home\/[^/]+/gi, "{userhome}")
     .trim();
   return text ? text.slice(0, maxLength) : undefined;
+}
+
+function logErrorAuthorityCaptureDiagnostic(marker: string, details: Record<string, unknown> = {}): void {
+  if (String(process.env.ERROR_AUTHORITY_DIAGNOSTICS ?? "").trim().toLowerCase() !== "true") {
+    return;
+  }
+  const safeDetails = Object.entries(details)
+    .map(([key, value]) => {
+      const safeKey = safeIdentifier(key, "detail");
+      const safeValue = String(value ?? "")
+        .replace(/[^A-Za-z0-9_.:-]/g, "_")
+        .slice(0, 80);
+      return safeValue ? `${safeKey}=${safeValue}` : undefined;
+    })
+    .filter((value): value is string => Boolean(value));
+  console.info(`${ERROR_AUTHORITY_DIAGNOSTIC_PREFIX} ${marker}${safeDetails.length ? ` ${safeDetails.join(" ")}` : ""}`);
 }

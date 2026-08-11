@@ -20,12 +20,18 @@ const {
 
 async function main() {
   const previousEnv = { ...process.env };
+  const previousConsoleInfo = console.info;
+  const diagnosticLogs = [];
   try {
     delete process.env.NEXT_RUNTIME;
     process.env.ERROR_AUTHORITY_ENABLED = "true";
+    process.env.ERROR_AUTHORITY_DIAGNOSTICS = "true";
     process.env.ERROR_AUTHORITY_RELEASE = "976ab94a9191e68800debe5b3ed312194f4b0451";
     process.env.ERROR_AUTHORITY_INGEST_TOKEN = "trusted-error-authority-token-minimum-32";
     process.env.PIM_API_BASE_URL = "https://api.example.test/api/v1";
+    console.info = (...args) => {
+      diagnosticLogs.push(args.map(String).join(" "));
+    };
 
     const routeError = new Error("route handler exploded with token=secret");
     routeError.stack = "Error: route handler exploded\n    at GET (/srv/apps/web/src/app/api/test/route.ts:10:5)";
@@ -76,12 +82,29 @@ async function main() {
     assert.equal(calls.length, 1, "unexpected server action error should be sent once");
     assert.equal(calls[0].url, "https://api.example.test/api/v1/error-authority/ingest/next-server");
     assert.equal(calls[0].init.headers["x-error-authority-ingest-token"], "trusted-error-authority-token-minimum-32");
+    assert(
+      diagnosticLogs.some((line) => line.includes("next_server_capture_transport_attempt")),
+      "diagnostics should mark capture transport attempts",
+    );
+    assert(
+      diagnosticLogs.some((line) => line.includes("next_server_capture_transport_response") && line.includes("status=401")),
+      "diagnostics should report sanitized ingest response status",
+    );
+    assert(
+      !diagnosticLogs.join("\n").includes("trusted-error-authority-token-minimum-32") &&
+        !diagnosticLogs.join("\n").includes("https://api.example.test"),
+      "capture diagnostics must not print ingest tokens or target URLs",
+    );
 
     global.fetch = async () => {
       throw new Error("api unavailable");
     };
     await assert.doesNotReject(
       captureNextServerError(new Error("api unavailable should fail open"), { method: "GET", url: "/dashboard" }, { routePath: "/dashboard" }),
+    );
+    assert(
+      diagnosticLogs.some((line) => line.includes("next_server_capture_transport_error") && line.includes("code=NO_CODE")),
+      "diagnostics should report sanitized transport error classification while failing open",
     );
 
     process.env.NEXT_RUNTIME = "edge";
@@ -108,6 +131,7 @@ async function main() {
             "vexa_domain_errors_excluded",
             "ingest_auth_failure_fails_open_for_web",
             "api_unavailable_fails_open_for_web",
+            "safe_capture_transport_diagnostics",
             "release_uses_canonical_accessor",
             "prohibited_query_header_body_fields_absent",
           ],
@@ -118,6 +142,7 @@ async function main() {
     );
   } finally {
     process.env = previousEnv;
+    console.info = previousConsoleInfo;
     delete global.fetch;
   }
 }
