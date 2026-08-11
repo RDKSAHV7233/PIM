@@ -39,7 +39,14 @@ try {
     'redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`)',
   );
   assert(createRedirectIdx > createProcessIdx, "createBulkImportJobAction: redirect must follow the process call");
-  const catchIdx = createSource.indexOf("} catch {", createTryIdx);
+  // BUG-AUTH-STALE-SESSION-001 (A1): the catch now binds `error` (was a bare
+  // "} catch {") so it can check for a session-expiry 401 before falling
+  // through to the original swallow - accept either form, since the
+  // structural guarantee this test cares about (catch precedes the redirect)
+  // is unchanged either way.
+  const createCatchMatch = createSource.slice(createTryIdx).match(/\}\s*catch\s*(?:\(error: unknown\))?\s*\{/);
+  assert(createCatchMatch, "createBulkImportJobAction: catch block must exist after the try");
+  const catchIdx = createTryIdx + createCatchMatch.index;
   assert(catchIdx > 0 && catchIdx < createRedirectIdx, "createBulkImportJobAction: catch block must precede the redirect");
 
   // --- processBulkImportJobAction: process call must be guarded ---
@@ -56,8 +63,10 @@ try {
     procCallIdx > procTryIdx,
     "processBulkImportJobAction: process call must appear after the try { block",
   );
-  const procCatchIdx = processSource.indexOf("} catch {", procTryIdx);
-  assert(procCatchIdx > 0, "processBulkImportJobAction: catch block must exist");
+  // BUG-AUTH-STALE-SESSION-001 (A1): accept either catch form, see comment above.
+  const procCatchMatch = processSource.slice(procTryIdx).match(/\}\s*catch\s*(?:\(error: unknown\))?\s*\{/);
+  assert(procCatchMatch, "processBulkImportJobAction: catch block must exist");
+  const procCatchIdx = procTryIdx + procCatchMatch.index;
   // redirect must still fire (outside the try)
   const procRedirectIdx = processSource.indexOf("redirect(returnTo);");
   assert(procRedirectIdx > procCatchIdx, "processBulkImportJobAction: redirect must be outside the catch block");

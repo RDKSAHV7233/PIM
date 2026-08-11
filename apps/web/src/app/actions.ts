@@ -481,6 +481,21 @@ function resolveSessionExpiredRedirect(basePath: string, error: unknown): string
   return buildLoginRedirect(basePath, error);
 }
 
+// BUG-AUTH-STALE-SESSION-001 (A1): the action-level primitive every migrated
+// catch block calls. Its only responsibility is resolveSessionExpiredRedirect
+// + redirect() - it never inspects any other error shape, so it can be
+// inserted into a catch block without touching that action's existing
+// semantics for 402/403/500/plain errors. Call this AFTER rethrowRedirectError
+// (where present) and BEFORE any other error-specific handling in the catch,
+// so a session-expiry redirect takes priority over, e.g., building a
+// retry-failure message from the same error.
+function handleSessionExpired(error: unknown, basePath: string): void {
+  const redirectPath = resolveSessionExpiredRedirect(basePath, error);
+  if (redirectPath) {
+    redirect(redirectPath);
+  }
+}
+
 export async function createCategoryAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const parentId = String(formData.get("parentId") ?? "").trim();
@@ -517,6 +532,7 @@ export async function deleteCategoryAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -642,6 +658,7 @@ export async function decideProductReviewAction(
     redirect(appendQueryParams(returnTo, { decisionStatus: status }));
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const body = error instanceof ApiHttpError ? (error.body as Record<string, unknown> | null) : null;
     const message = String(body?.code ?? body?.error ?? "").trim();
     const decisionError = message || "decision_failed";
@@ -804,6 +821,7 @@ export async function updateProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     if (error instanceof ApiHttpError && error.status === 409) {
       const body =
         typeof error.body === "object" && error.body !== null
@@ -852,6 +870,7 @@ export async function revertProductToDraftAction(formData: FormData) {
     redirect(appendQueryParams(basePath, { tab: "quality", updateStatus: "reverted-to-draft" }));
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     const errorMessage =
       error instanceof ApiHttpError
         ? extractApiErrorMessage(error)
@@ -923,6 +942,7 @@ export async function validateProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     redirect(
       appendQueryParams(basePath, {
         tab: currentTab,
@@ -957,6 +977,7 @@ export async function deleteProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -1003,6 +1024,7 @@ export async function purgeProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -1057,6 +1079,7 @@ export async function createVariantAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
   }
 }
@@ -1083,6 +1106,7 @@ export async function updateVariantAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
   }
 }
@@ -1245,6 +1269,7 @@ export async function installConnectorAction(formData: FormData) {
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const installError = resolveInstallConnectorError(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -1286,6 +1311,7 @@ export async function configureAmazonAction(formData: FormData) {
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     throw error;
   }
   revalidatePath("/channels/connectors");
@@ -1327,6 +1353,7 @@ export async function initiateOAuthAction(formData: FormData) {
     authorizationUrl = result.authorizationUrl;
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, "/channels/connectors");
     let code = "oauth_initiate_failed";
     if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
       const payload = error.body as Record<string, unknown>;
@@ -1362,6 +1389,7 @@ export async function updateConnectorPublicationTargetsAction(formData: FormData
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     let status = "publication-targets-error";
     if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
       const payload = error.body as Record<string, unknown>;
@@ -1448,6 +1476,7 @@ export async function grantConnectorPermissionAction(formData: FormData) {
       accountAlias: accountAlias || undefined,
     });
   } catch (error: unknown) {
+    handleSessionExpired(error, "/admin/connectors");
     const status = resolveConnectorPermissionGrantStatus(error);
     if (status) {
       redirect(`/admin/connectors?status=${status}`);
@@ -1496,6 +1525,7 @@ export async function createExportJobAction(formData: FormData) {
       fallbackAcknowledged,
     });
   } catch (error: unknown) {
+    handleSessionExpired(error, `/products/${encodeURIComponent(productId)}`);
     const redirectPath = withPlanLimitQuery(`/products/${encodeURIComponent(productId)}`, error);
     if (redirectPath) {
       redirect(redirectPath);
@@ -1622,6 +1652,7 @@ export async function publishConnectorMappingVersionAction(formData: FormData) {
       { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
     );
   } catch (error: unknown) {
+    handleSessionExpired(error, redirectTo);
     const redirectPath = withStepUpErrorQuery(redirectTo, "publish", versionId, error);
     if (redirectPath) {
       redirect(redirectPath);
@@ -1648,6 +1679,7 @@ export async function archiveConnectorMappingVersionAction(formData: FormData) {
       { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
     );
   } catch (error: unknown) {
+    handleSessionExpired(error, redirectTo);
     const redirectPath = withStepUpErrorQuery(redirectTo, "archive", versionId, error);
     if (redirectPath) {
       redirect(redirectPath);
@@ -1761,6 +1793,7 @@ export async function retrySubmissionAction(formData: FormData) {
     await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
     revalidatePath("/dashboard");
   } catch (error: unknown) {
+    handleSessionExpired(error, `/operations/jobs?${jobsParams.toString()}`);
     const rawMessage = error instanceof ApiHttpError
       ? extractApiErrorMessage(error)
       : error instanceof Error ? error.message : "Retry request failed.";
@@ -1854,7 +1887,12 @@ export async function createBulkImportJobAction(formData: FormData) {
     await postJsonForAction(formData, `/bulk-import/jobs/${createdJob.id}/process`, {
       chunkSize,
     });
-  } catch {
+  } catch (error: unknown) {
+    // BUG-AUTH-STALE-SESSION-001: a session-expiry 401 must never enter this
+    // timeout-tolerant swallow - it isn't a background-continuing timeout, and
+    // silently falling through to the success redirect below would report a
+    // failed authentication as a completed import.
+    handleSessionExpired(error, `/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
     // If inline processing fails the job stays queued; redirect so the user can start it manually.
   }
   redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
@@ -1911,7 +1949,10 @@ export async function processBulkImportJobAction(formData: FormData) {
     await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {
       chunkSize,
     });
-  } catch {
+  } catch (error: unknown) {
+    // BUG-AUTH-STALE-SESSION-001: a session-expiry 401 must never enter this
+    // timeout-tolerant swallow - see below for why the swallow itself exists.
+    handleSessionExpired(error, returnTo);
     // Process call can time out under Railway's 30 s limit while the API continues
     // processing in the background. The job moves to processing/done on its own;
     // redirect so the user can poll the status rather than seeing an error boundary.
@@ -1940,7 +1981,11 @@ export async function retryStuckRunAction(formData: FormData) {
   }
   try {
     await postJsonForAction(formData, `/bulk-import/runs/${runId}/retry-stuck`, {});
-  } catch {
+  } catch (error: unknown) {
+    // BUG-AUTH-STALE-SESSION-001: a session-expiry 401 must never enter this
+    // timeout-tolerant swallow (see processBulkImportJobAction for why the
+    // swallow itself exists).
+    handleSessionExpired(error, "/operations/imports");
     // Retry can time out while processing continues in the background.
   }
   revalidatePath("/operations/imports");
@@ -2047,6 +2092,7 @@ export async function uploadMediaAssetAction(formData: FormData) {
       channelEligibility,
     });
   } catch (error: unknown) {
+    handleSessionExpired(error, returnTo);
     const redirectPath = withPlanLimitQuery(
       returnTo,
       error,
@@ -2261,6 +2307,7 @@ export async function queueConnectorDeltaSyncAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     redirect(appendQueryParams(returnTo, { status: "delta-sync-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
@@ -2311,6 +2358,7 @@ export async function upsertConnectorSyncScheduleAction(formData: FormData) {
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     redirect(appendQueryParams(returnTo, { status: "schedule-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
@@ -2333,6 +2381,7 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
     await deleteJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     redirect(appendQueryParams(returnTo, { status: "schedule-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
@@ -2369,6 +2418,7 @@ export async function triggerBulkPublishAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     // no_eligible_products means every product in the batch failed the approval/readiness
     // gate — distinct from a transport/connector-health failure, so the operator sees why
     // nothing was queued instead of a generic failure message.
