@@ -19,6 +19,9 @@ function main() {
   const outputDir = path.join(repoRoot, ".tmp", "railway-api-service");
   const railwayToml = fs.readFileSync(path.join(outputDir, "railway.toml"), "utf8");
   const packageJson = JSON.parse(fs.readFileSync(path.join(outputDir, "package.json"), "utf8"));
+  const observabilityPackageJson = JSON.parse(
+    fs.readFileSync(path.join(outputDir, "packages", "observability-db", "package.json"), "utf8"),
+  );
   const migrateScript = fs.readFileSync(path.join(outputDir, "scripts", "prisma-migrate-deploy.cjs"), "utf8");
 
   assert.match(railwayToml, /buildCommand = "npm install && npm run build"/, "API package must use standalone build command");
@@ -35,7 +38,24 @@ function main() {
     /healthcheckPath = "\/api\/v1\/health\/ready"/,
     "API package must gate deploy cutover on the readiness check, not bare liveness",
   );
-  assert.equal(packageJson.scripts.prebuild, "prisma generate --schema prisma/schema.prisma");
+  assert.equal(
+    packageJson.dependencies["@pim1/observability-db"],
+    "file:packages/observability-db",
+    "API package must include the observability DB workspace as a local runtime dependency",
+  );
+  assert.equal(
+    packageJson.scripts.prebuild,
+    "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma",
+  );
+  assert.equal(
+    observabilityPackageJson.dependencies.prisma,
+    observabilityPackageJson.devDependencies.prisma,
+    "Packaged observability DB dependency must be able to run its postinstall Prisma generation",
+  );
+  assert.ok(
+    fs.existsSync(path.join(outputDir, "packages", "observability-db", "prisma", "schema.prisma")),
+    "API package must include the observability DB Prisma schema",
+  );
   assert.match(migrateScript, /prisma\/schema\.prisma/, "Packaged migrate helper must target the packaged Prisma schema");
   assert.doesNotMatch(
     migrateScript,
