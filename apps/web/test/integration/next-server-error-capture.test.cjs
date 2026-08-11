@@ -61,6 +61,28 @@ async function main() {
     assert.equal(renderPayload.category, "rendering");
     assert.equal(renderPayload.routeTemplate, "/products/[id]");
 
+    const plainHeaderPayload = buildTrustedNextServerErrorPayload(
+      new Error("server component failed with plain request headers"),
+      {
+        method: "GET",
+        url: "https://app.example.test/internal/error-authority/runtime-proof",
+        headers: { "x-request-id": "plain-safe-123" },
+      },
+      { routePath: "/internal/error-authority/runtime-proof", renderSource: "server-component" },
+    );
+    assert.equal(plainHeaderPayload.requestId, "plain-safe-123");
+
+    const brokenHeaderPayload = buildTrustedNextServerErrorPayload(
+      new Error("server component failed with nonstandard request headers"),
+      {
+        method: "GET",
+        url: "https://app.example.test/internal/error-authority/runtime-proof",
+        headers: { get: "not-a-function" },
+      },
+      { routePath: "/internal/error-authority/runtime-proof", renderSource: "server-component" },
+    );
+    assert.equal(brokenHeaderPayload.requestId, undefined);
+
     assert.equal(shouldCaptureNextServerError(new Error("unexpected server action failure")), true);
     assert.equal(shouldCaptureNextServerError(Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login" })), false);
     assert.equal(shouldCaptureNextServerError(Object.assign(new Error("NEXT_NOT_FOUND"), { digest: "NEXT_NOT_FOUND" })), false);
@@ -125,6 +147,7 @@ async function main() {
           validated: [
             "unexpected_route_handler_error_payload",
             "unexpected_server_component_render_payload",
+            "nonstandard_next_request_headers_do_not_break_capture",
             "unexpected_server_action_capture_send",
             "duplicate_source_event_id_stability",
             "next_control_flow_excluded",
