@@ -37,10 +37,6 @@ async function api(method, path, opts = {}) {
 async function run() {
   console.log("\n=== Resend Delivery Check ===\n");
 
-  const before = await api("GET", "/api/v1/queue/auth-email/lanes/default/failed?limit=20", {});
-  const beforeIds = new Set((before.json?.items ?? []).map((j) => j.id));
-  console.log(`  failed jobs before: ${beforeIds.size} (status=${before.status})`);
-
   const login = await api("POST", "/api/v1/auth/login", {
     body: { workspaceSlug: WORKSPACE, userId: USER, password: PASSWORD },
   });
@@ -50,6 +46,10 @@ async function run() {
     process.exit(1);
   }
   const auth = { Authorization: `Bearer ${token}` };
+
+  const before = await api("GET", "/api/v1/queue/auth-email/lanes/default/failed?limit=20", { headers: auth });
+  const beforeIds = new Set((before.json?.items ?? []).map((j) => j.id));
+  console.log(`  failed jobs before: ${beforeIds.size} (status=${before.status})`);
 
   const reqRes = await api("POST", "/api/v1/auth/password-reset/request", { body: { email: USER } });
   console.log(`  password-reset/request: status=${reqRes.status} body=${reqRes.text.slice(0, 200)}`);
