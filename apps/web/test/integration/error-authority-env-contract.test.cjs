@@ -56,8 +56,9 @@ try {
   assert(
     instrumentation.includes("assertTrustedErrorAuthorityServerIngestionConfig") &&
       instrumentation.includes("NEXT_RUNTIME") &&
-      instrumentation.includes("nodejs"),
-    "Next instrumentation must validate trusted Error Authority server-ingestion config only in the Node.js runtime.",
+      instrumentation.includes('NEXT_RUNTIME !== "nodejs"') === false &&
+      instrumentation.includes('NEXT_RUNTIME === "edge"'),
+    "Next instrumentation must validate trusted Error Authority server-ingestion config when NEXT_RUNTIME is unset or Node.js, and skip only Edge runtime.",
   );
   assert(
     !read("apps/web/src/lib/server/error-authority-env.ts").includes("NEXT_PUBLIC_ERROR_AUTHORITY_INGEST_TOKEN") &&

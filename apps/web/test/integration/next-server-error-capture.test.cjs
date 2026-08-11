@@ -21,7 +21,7 @@ const {
 async function main() {
   const previousEnv = { ...process.env };
   try {
-    process.env.NEXT_RUNTIME = "nodejs";
+    delete process.env.NEXT_RUNTIME;
     process.env.ERROR_AUTHORITY_ENABLED = "true";
     process.env.ERROR_AUTHORITY_RELEASE = "976ab94a9191e68800debe5b3ed312194f4b0451";
     process.env.ERROR_AUTHORITY_INGEST_TOKEN = "trusted-error-authority-token-minimum-32";
@@ -83,6 +83,17 @@ async function main() {
     await assert.doesNotReject(
       captureNextServerError(new Error("api unavailable should fail open"), { method: "GET", url: "/dashboard" }, { routePath: "/dashboard" }),
     );
+
+    process.env.NEXT_RUNTIME = "edge";
+    let edgeFetchCalls = 0;
+    global.fetch = async () => {
+      edgeFetchCalls += 1;
+      throw new Error("edge runtime must not send");
+    };
+    await assert.doesNotReject(
+      captureNextServerError(new Error("edge runtime ignored"), { method: "GET", url: "/edge" }, { routePath: "/edge" }),
+    );
+    assert.equal(edgeFetchCalls, 0, "edge runtime must not send Next server Error Authority events");
 
     console.log(
       JSON.stringify(

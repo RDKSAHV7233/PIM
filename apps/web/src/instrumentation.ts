@@ -1,7 +1,7 @@
 import { assertTrustedErrorAuthorityServerIngestionConfig } from "./lib/server/error-authority-env";
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.NEXT_RUNTIME === "edge") return;
 
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
   const isStrictEnv = appEnv === "staging" || appEnv === "production";
@@ -61,7 +61,7 @@ export async function register() {
 }
 
 export async function onRequestError(error: unknown, request: unknown, context: unknown) {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.NEXT_RUNTIME === "edge") return;
   const { captureNextServerError } = await import("./lib/server/next-server-error-capture");
   await captureNextServerError(error, request, context);
 }

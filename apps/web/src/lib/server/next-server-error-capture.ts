@@ -52,7 +52,7 @@ const EXPECTED_CODE_PATTERNS = [
 ];
 
 export async function captureNextServerError(error: unknown, request?: unknown, context?: unknown): Promise<void> {
-  if (process.env.NEXT_RUNTIME !== "nodejs" || !isErrorAuthorityEnabled()) {
+  if (process.env.NEXT_RUNTIME === "edge" || !isErrorAuthorityEnabled()) {
     return;
   }
   if (!shouldCaptureNextServerError(error)) {
