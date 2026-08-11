@@ -4,6 +4,7 @@ const ACCESS_COOKIE = "pim_access_token";
 const REFRESH_COOKIE = "pim_refresh_token";
 const CSRF_COOKIE = "pim_csrf_token";
 const REFRESH_THRESHOLD_SECONDS = 90;
+const ERROR_AUTHORITY_RUNTIME_PROOF_PATH = "/internal/error-authority/runtime-proof";
 
 function useSecureCookies(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
@@ -64,9 +65,18 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
+function isErrorAuthorityRuntimeProofPath(pathname: string): boolean {
+  return pathname === ERROR_AUTHORITY_RUNTIME_PROOF_PATH || pathname.startsWith(`${ERROR_AUTHORITY_RUNTIME_PROOF_PATH}/`);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.includes(".")) {
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api") ||
+    pathname.includes(".") ||
+    isErrorAuthorityRuntimeProofPath(pathname)
+  ) {
     return NextResponse.next();
   }
 

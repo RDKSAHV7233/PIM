@@ -17,9 +17,11 @@ const PAGE_PATH = path.join(
   "runtime-proof",
   "page.tsx",
 );
+const MIDDLEWARE_PATH = path.join(REPO_ROOT, "apps", "web", "src", "middleware.ts");
 
 function main() {
   const source = fs.readFileSync(PAGE_PATH, "utf8");
+  const middleware = fs.readFileSync(MIDDLEWARE_PATH, "utf8");
 
   assert.match(source, /export const runtime = "nodejs"/, "Render proof page must execute in the Node.js runtime.");
   assert.match(source, /export const dynamic = "force-dynamic"/, "Render proof page must not be statically optimized.");
@@ -46,6 +48,16 @@ function main() {
     source,
     /ERR_04B_NEXT_SERVER_RENDER_RUNTIME_PROOF/,
     "Render proof error must be identifiable without including secrets or user payload.",
+  );
+  assert.match(
+    middleware,
+    /ERROR_AUTHORITY_RUNTIME_PROOF_PATH = "\/internal\/error-authority\/runtime-proof"/,
+    "Middleware must name the exact Error Authority runtime proof path.",
+  );
+  assert.match(
+    middleware,
+    /isErrorAuthorityRuntimeProofPath\(pathname\)/,
+    "Middleware must let the proof-token gate reach the render proof page before auth redirect.",
   );
 
   console.log("error-authority-render-runtime-proof-page.test.cjs: PASS");
