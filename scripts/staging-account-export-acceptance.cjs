@@ -114,12 +114,17 @@ async function run() {
   }
 
   // ── Poll privacy-status until this job completes ──
+  // Note: latestExport is the most-recently-requested export for this user, which may
+  // not be *this* job if something else concurrently requested one — always compare
+  // latest.id to jobId, and log latest.id on failure so a mismatch is diagnosable.
   let completed = false;
   let lastStatus = "unknown";
+  let lastSeenId = "none";
   for (let attempt = 1; attempt <= 30; attempt++) {
     const res = await api("GET", "/api/v1/auth/account/privacy-status", { headers: auth });
     const latest = res.json?.latestExport;
     lastStatus = latest?.status ?? "unknown";
+    lastSeenId = latest?.id ?? "none";
     if (latest?.id === jobId && latest?.status === "completed") {
       completed = true;
       break;
@@ -134,7 +139,11 @@ async function run() {
   if (completed) {
     pass("[export] job_completes", `jobId=${jobId} status=${lastStatus}`);
   } else {
-    fail("[export] job_completes", `jobId=${jobId} still status=${lastStatus} after 150s`);
+    fail(
+      "[export] job_completes",
+      `requestedJobId=${jobId} latestExport.id=${lastSeenId} latestExport.status=${lastStatus} after 150s` +
+        (lastSeenId !== jobId ? " — latestExport does not match the job this run requested (concurrent export from another process?)" : ""),
+    );
     console.log(JSON.stringify({ status: "FAIL", results, checkedAt: new Date().toISOString() }, null, 2));
     process.exit(1);
   }
