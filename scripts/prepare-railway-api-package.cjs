@@ -7,6 +7,7 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..");
 const sourceDir = path.join(repoRoot, "apps", "api");
 const schemaSource = path.join(repoRoot, "packages", "db", "prisma", "schema.prisma");
+const observabilityPackageSource = path.join(repoRoot, "packages", "observability-db");
 const migrateScriptSource = path.join(repoRoot, "scripts", "prisma-migrate-deploy.cjs");
 const tsconfigBaseSource = path.join(repoRoot, "tsconfig.base.json");
 const outputDir = path.join(repoRoot, ".tmp", "railway-api-service");
@@ -43,6 +44,9 @@ function main() {
   if (!fs.existsSync(schemaSource)) {
     throw new Error(`Prisma schema not found: ${schemaSource}`);
   }
+  if (!fs.existsSync(observabilityPackageSource)) {
+    throw new Error(`Observability DB package not found: ${observabilityPackageSource}`);
+  }
   if (!fs.existsSync(tsconfigBaseSource)) {
     throw new Error(`Root tsconfig.base.json not found: ${tsconfigBaseSource}`);
   }
@@ -64,6 +68,20 @@ function main() {
   ensureDir(prismaDir);
   fs.copyFileSync(schemaSource, path.join(prismaDir, "schema.prisma"));
 
+  const packageJsonPath = path.join(outputDir, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+  const observabilityPackageTarget = path.join(outputDir, "packages", "observability-db");
+  copyDir(observabilityPackageSource, observabilityPackageTarget);
+  const observabilityPackageJsonPath = path.join(observabilityPackageTarget, "package.json");
+  const observabilityPackageJson = JSON.parse(fs.readFileSync(observabilityPackageJsonPath, "utf8"));
+  const prismaVersion = observabilityPackageJson.devDependencies?.prisma ?? packageJson?.devDependencies?.prisma ?? "6.19.3";
+  observabilityPackageJson.dependencies = {
+    ...(observabilityPackageJson.dependencies ?? {}),
+    prisma: observabilityPackageJson.dependencies?.prisma ?? prismaVersion,
+  };
+  fs.writeFileSync(observabilityPackageJsonPath, `${JSON.stringify(observabilityPackageJson, null, 2)}\n`, "utf8");
+
   const outputScriptsDir = path.join(outputDir, "scripts");
   ensureDir(outputScriptsDir);
   const migrateScriptContents = fs
@@ -72,15 +90,18 @@ function main() {
   const migrateScriptPath = path.join(outputScriptsDir, "prisma-migrate-deploy.cjs");
   fs.writeFileSync(migrateScriptPath, migrateScriptContents, "utf8");
 
-  const packageJsonPath = path.join(outputDir, "package.json");
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  packageJson.dependencies = {
+    ...(packageJson.dependencies ?? {}),
+    "@pim1/observability-db": "file:packages/observability-db",
+  };
   packageJson.devDependencies = {
     ...(packageJson.devDependencies ?? {}),
     prisma: packageJson.devDependencies?.prisma ?? "^6.16.3",
   };
   packageJson.scripts = {
     ...(packageJson.scripts ?? {}),
-    prebuild: "prisma generate --schema prisma/schema.prisma",
+    prebuild:
+      "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma",
   };
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
 
@@ -140,6 +161,7 @@ function main() {
         tsconfig: path.relative(repoRoot, tsconfigPath),
         schema: path.relative(repoRoot, path.join(prismaDir, "schema.prisma")),
         packageJson: path.relative(repoRoot, packageJsonPath),
+        observabilityPackage: path.relative(repoRoot, observabilityPackageTarget),
         railwayToml: path.relative(repoRoot, railwayTomlPath),
         railwayTomlMirror: path.relative(repoRoot, railwayTomlMirrorPath),
         migrateScript: path.relative(repoRoot, migrateScriptPath),
