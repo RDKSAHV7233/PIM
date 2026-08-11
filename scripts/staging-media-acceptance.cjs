@@ -105,9 +105,19 @@ async function run() {
   const auth = { Authorization: `Bearer ${token}` };
 
   // ── B1: Find products with media assets ──
+  // Note: the products list endpoint (ListProductsQueryDto) has no includeMedia
+  // param and never has — it only ever counts variants, not media assets. The
+  // global ValidationPipe's forbidNonWhitelisted rejects unrecognized query
+  // params with a 400, so passing includeMedia=true here always failed this
+  // check. Dropped it; product_with_media below still can't find a real
+  // mediaCount from this endpoint (the API doesn't expose one), so it will
+  // keep skipping rather than running — that's a pre-existing gap in what this
+  // endpoint can prove, not something this fix resolves. B1 governance itself
+  // is still verified by list_media_assets/governed_main_exists below, which
+  // query the media-assets endpoint directly.
   let products;
   try {
-    const res = await api("GET", "/api/v1/products?limit=50&includeMedia=true", { headers: auth });
+    const res = await api("GET", "/api/v1/products?limit=50", { headers: auth });
     if (res.status !== 200) throw new Error(`${res.status}`);
     products = res.json?.data ?? res.json?.products ?? res.json ?? [];
     if (!Array.isArray(products)) products = [];
