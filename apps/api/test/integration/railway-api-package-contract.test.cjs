@@ -23,6 +23,10 @@ function main() {
     fs.readFileSync(path.join(outputDir, "packages", "observability-db", "package.json"), "utf8"),
   );
   const migrateScript = fs.readFileSync(path.join(outputDir, "scripts", "prisma-migrate-deploy.cjs"), "utf8");
+  const observabilityGeneratedClientSyncScript = fs.readFileSync(
+    path.join(outputDir, "scripts", "sync-observability-generated-client.cjs"),
+    "utf8",
+  );
 
   assert.match(railwayToml, /buildCommand = "npm install && npm run build"/, "API package must use standalone build command");
   assert.doesNotMatch(railwayToml, /--workspace/, "API package railway.toml must not use monorepo workspace flags");
@@ -45,7 +49,12 @@ function main() {
   );
   assert.equal(
     packageJson.scripts.prebuild,
-    "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma",
+    "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma && node scripts/sync-observability-generated-client.cjs",
+  );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /node_modules['"], ['"]@pim1['"], ['"]observability-db['"], ['"]generated/,
+    "Packaged API build must sync the generated observability Prisma client into the installed runtime dependency",
   );
   assert.equal(
     observabilityPackageJson.dependencies.prisma,
