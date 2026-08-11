@@ -10,6 +10,7 @@ import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
 import { runStorageMigrationOnce } from "./bootstrap/run-storage-migration-once";
+import { runConnectorSnapshotStorageProbeOnce } from "./bootstrap/connector-snapshot-storage-probe-once";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
@@ -38,6 +39,9 @@ async function bootstrap() {
   // RUN_STORAGE_MIGRATION_ONCE=true is explicitly set. Runs before the app
   // starts serving traffic so readiness can't report true mid-migration.
   await runStorageMigrationOnce();
+  // TEMPORARY — see connector-snapshot-storage-probe-once.ts. No-op unless
+  // RUN_CONNECTOR_SNAPSHOT_PROBE_ONCE=true is explicitly set.
+  await runConnectorSnapshotStorageProbeOnce();
   const { AppModule } = await import("./app.module");
 
   if (env.SENTRY_DSN) {
