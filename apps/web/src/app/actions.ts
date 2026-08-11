@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerSession } from "@/lib/server-session";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 import {
   IN_DEVELOPMENT_CHANNEL_NOTICE,
   isChannelInDevelopment,
@@ -455,6 +456,29 @@ function withPlanLimitQuery(basePath: string, error: unknown): string | null {
     query += `&planContact=${encodeURIComponent(payload.contact_url)}`;
   }
   return query;
+}
+
+// BUG-AUTH-STALE-SESSION-001: a mutation action's API call can fail with 401
+// when the caller's session expired after the page was loaded but before this
+// submission (e.g. a stale tab left open past token expiry). Before this,
+// every server action either had no 401 handling at all (uncaught -> generic
+// error boundary), or - in a few cases - a catch block that swallows or
+// misclassifies any error it receives, which would turn a 401 into a false
+// "success" redirect or a misleading retry-failure message.
+//
+// Deliberately mirrors withPlanLimitQuery's exact contract above: pure,
+// synchronous, no side effects, never calls redirect() itself. The calling
+// action decides whether and how to redirect, exactly like the 402 path
+// already does - this only adds a new classification, not a new control-flow
+// mechanism. A NEXT_REDIRECT control-flow signal (thrown by an in-flight
+// redirect() call elsewhere in the same try block) is not an ApiHttpError
+// instance, so this returns null for it and never interferes with the
+// existing rethrowRedirectError convention.
+function resolveSessionExpiredRedirect(basePath: string, error: unknown): string | null {
+  if (!(error instanceof ApiHttpError) || error.status !== 401) {
+    return null;
+  }
+  return buildLoginRedirect(basePath, error);
 }
 
 export async function createCategoryAction(formData: FormData) {
