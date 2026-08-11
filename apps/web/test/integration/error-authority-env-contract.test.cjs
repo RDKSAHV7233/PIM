@@ -33,6 +33,7 @@ function walkFiles(dir) {
 try {
   const serverHelper = read("apps/web/src/lib/server/error-authority-env.ts");
   const instrumentation = read("apps/web/src/instrumentation.ts");
+  const renderRuntimeProofPage = read("apps/web/src/app/internal/error-authority/runtime-proof/page.tsx");
   const packageScript = read("scripts/prepare-railway-web-package.cjs");
   const deployScript = read("scripts/railway-deploy.cjs");
   const webFiles = walkFiles(WEB_SRC).filter((file) => /\.(ts|tsx|js|jsx)$/.test(file));
@@ -89,6 +90,11 @@ try {
     `Trusted Error Authority ingest token must stay in the server config boundary. Users: ${ingestTokenUsers
       .map((file) => path.relative(REPO_ROOT, file))
       .join(", ")}`,
+  );
+  assert(
+    renderRuntimeProofPage.includes("ERROR_AUTHORITY_RUNTIME_PROOF_TOKEN") &&
+      !renderRuntimeProofPage.includes("ERROR_AUTHORITY_INGEST_TOKEN"),
+    "Render runtime proof page must use the dedicated proof token and must not reference the trusted ingest token.",
   );
 
   console.log(
