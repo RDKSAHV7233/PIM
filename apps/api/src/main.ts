@@ -9,7 +9,6 @@ import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
-import { runMediaStorageDiagnosticOnce } from "./bootstrap/media-storage-diagnostic-once";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
@@ -34,9 +33,6 @@ async function bootstrap() {
     queueBackend: env.QUEUE_BACKEND,
     port: env.PORT,
   });
-  // TEMPORARY — see media-storage-diagnostic-once.ts. No-op unless
-  // RUN_MEDIA_STORAGE_DIAGNOSTIC_ONCE=true is explicitly set. Read-only.
-  await runMediaStorageDiagnosticOnce();
   const { AppModule } = await import("./app.module");
 
   if (env.SENTRY_DSN) {
