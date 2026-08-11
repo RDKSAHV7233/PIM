@@ -89,6 +89,27 @@ function main() {
     .replaceAll("packages/db/prisma/schema.prisma", "prisma/schema.prisma");
   const migrateScriptPath = path.join(outputScriptsDir, "prisma-migrate-deploy.cjs");
   fs.writeFileSync(migrateScriptPath, migrateScriptContents, "utf8");
+  const syncObservabilityClientScript = [
+    "#!/usr/bin/env node",
+    "/* eslint-disable no-console */",
+    'const fs = require("node:fs");',
+    'const path = require("node:path");',
+    "",
+    "const packageRoot = path.resolve(__dirname, '..');",
+    "const generatedSource = path.join(packageRoot, 'packages', 'observability-db', 'generated');",
+    "const generatedTarget = path.join(packageRoot, 'node_modules', '@pim1', 'observability-db', 'generated');",
+    "",
+    "if (!fs.existsSync(generatedSource)) {",
+    "  throw new Error(`Observability Prisma generated client not found: ${generatedSource}`);",
+    "}",
+    "fs.rmSync(generatedTarget, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });",
+    "fs.mkdirSync(path.dirname(generatedTarget), { recursive: true });",
+    "fs.cpSync(generatedSource, generatedTarget, { recursive: true });",
+    "console.log('observability generated client synced');",
+    "",
+  ].join("\n");
+  const syncObservabilityClientScriptPath = path.join(outputScriptsDir, "sync-observability-generated-client.cjs");
+  fs.writeFileSync(syncObservabilityClientScriptPath, syncObservabilityClientScript, "utf8");
 
   packageJson.dependencies = {
     ...(packageJson.dependencies ?? {}),
@@ -101,7 +122,7 @@ function main() {
   packageJson.scripts = {
     ...(packageJson.scripts ?? {}),
     prebuild:
-      "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma",
+      "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma && node scripts/sync-observability-generated-client.cjs",
   };
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
 
