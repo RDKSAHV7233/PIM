@@ -116,7 +116,9 @@ async function run() {
   // ── Poll privacy-status until this job completes ──
   // Note: latestExport is the most-recently-requested export for this user, which may
   // not be *this* job if something else concurrently requested one — always compare
-  // latest.id to jobId, and log latest.id on failure so a mismatch is diagnosable.
+  // latest.jobId to jobId (toPrivacyExportSummary in auth.service.ts maps the DB row's
+  // `id` to a `jobId` field on the response, not `id`), and log it on failure so a
+  // mismatch is diagnosable.
   let completed = false;
   let lastStatus = "unknown";
   let lastSeenId = "none";
@@ -124,12 +126,12 @@ async function run() {
     const res = await api("GET", "/api/v1/auth/account/privacy-status", { headers: auth });
     const latest = res.json?.latestExport;
     lastStatus = latest?.status ?? "unknown";
-    lastSeenId = latest?.id ?? "none";
-    if (latest?.id === jobId && latest?.status === "completed") {
+    lastSeenId = latest?.jobId ?? "none";
+    if (latest?.jobId === jobId && latest?.status === "completed") {
       completed = true;
       break;
     }
-    if (latest?.id === jobId && latest?.status === "failed") {
+    if (latest?.jobId === jobId && latest?.status === "failed") {
       fail("[export] job_completes", `job failed: ${latest?.errorMessage ?? "no error message"}`);
       console.log(JSON.stringify({ status: "FAIL", results, checkedAt: new Date().toISOString() }, null, 2));
       process.exit(1);
@@ -141,7 +143,7 @@ async function run() {
   } else {
     fail(
       "[export] job_completes",
-      `requestedJobId=${jobId} latestExport.id=${lastSeenId} latestExport.status=${lastStatus} after 150s` +
+      `requestedJobId=${jobId} latestExport.jobId=${lastSeenId} latestExport.status=${lastStatus} after 150s` +
         (lastSeenId !== jobId ? " — latestExport does not match the job this run requested (concurrent export from another process?)" : ""),
     );
     console.log(JSON.stringify({ status: "FAIL", results, checkedAt: new Date().toISOString() }, null, 2));
