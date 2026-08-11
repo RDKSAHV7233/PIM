@@ -13,7 +13,7 @@ const FORWARDED_HEADERS = new Set([
 ]);
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -25,9 +25,15 @@ export async function GET(
   const apiBase = getApiBaseUrl();
   const upstream = `${apiBase}/media/assets/${encodeURIComponent(id)}/file`;
 
+  const fetchHeaders: Record<string, string> = {};
+  const accessToken = request.cookies.get("pim_access_token")?.value;
+  if (accessToken) {
+    fetchHeaders["Authorization"] = `Bearer ${accessToken}`;
+  }
+
   let response: globalThis.Response;
   try {
-    response = await fetch(upstream, { redirect: "follow" });
+    response = await fetch(upstream, { headers: fetchHeaders, redirect: "follow" });
   } catch {
     return NextResponse.json(
       { error: "MEDIA_UPSTREAM_UNREACHABLE" },
