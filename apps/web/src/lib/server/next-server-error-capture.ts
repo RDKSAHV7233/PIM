@@ -5,7 +5,7 @@ type NextRequestLike = {
   method?: unknown;
   url?: unknown;
   nextUrl?: { pathname?: unknown };
-  headers?: { get(name: string): string | null };
+  headers?: unknown;
 };
 
 type NextErrorContextLike = {
@@ -124,7 +124,7 @@ export function buildTrustedNextServerErrorPayload(
     routeTemplate,
     method: safeMethod(requestLike?.method),
     statusCode: 500,
-    requestId: safeRequestId(requestLike?.headers?.get("x-request-id")),
+    requestId: safeRequestId(readHeaderValue(requestLike?.headers, "x-request-id")),
     errorName: safeIdentifier(error instanceof Error ? error.name : "NextServerError", "NextServerError"),
     errorCode: safeIdentifier(readStringProperty(error, "code") ?? readStringProperty(error, "name"), "NextServerError"),
     category: isRenderContext(contextLike) ? "rendering" : "internal",
@@ -287,6 +287,35 @@ function safeMethod(value: unknown): string | undefined {
 function safeRequestId(value: unknown): string | undefined {
   const text = String(value ?? "").trim();
   return /^[A-Za-z0-9._:-]{6,128}$/.test(text) ? text : undefined;
+}
+
+function readHeaderValue(headers: unknown, name: string): string | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+  const getter = (headers as { get?: unknown }).get;
+  if (typeof getter === "function") {
+    try {
+      const value = getter.call(headers, name);
+      return typeof value === "string" ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  const lowerName = name.toLowerCase();
+  const record = headers as Record<string, unknown>;
+  for (const [key, value] of Object.entries(record)) {
+    if (key.toLowerCase() !== lowerName) {
+      continue;
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    if (Array.isArray(value) && typeof value[0] === "string") {
+      return value[0];
+    }
+  }
+  return undefined;
 }
 
 function safeIdentifier(value: unknown, fallback: string): string {
