@@ -104,11 +104,9 @@ function run() {
   // it BEFORE handleSessionExpired - a control-flow redirect signal is not an
   // ApiHttpError, so ordering doesn't change correctness here, but this
   // asserts the existing convention was not disturbed or reordered.
-  // deleteCategoryAction and deleteProductAction are excluded here - A2b (below)
-  // moved them off the unconditional handleSessionExpired() contract.
   const rethrowActions = [
-    "decideProductReviewAction", "updateProductAction",
-    "revertProductToDraftAction", "validateProductAction",
+    "deleteCategoryAction", "decideProductReviewAction", "updateProductAction",
+    "revertProductToDraftAction", "validateProductAction", "deleteProductAction",
     "purgeProductAction", "createVariantAction", "updateVariantAction",
     "installConnectorAction", "configureAmazonAction", "initiateOAuthAction",
     "updateConnectorPublicationTargetsAction", "queueConnectorDeltaSyncAction",
@@ -127,15 +125,13 @@ function run() {
       `${name}: rethrowRedirectError(error) must run before handleSessionExpired - a redirect control-flow signal must propagate before any new classification runs.`,
     );
   }
-  validated.push("rethrow_redirect_error_ordering_preserved_in_15_actions");
+  validated.push("rethrow_redirect_error_ordering_preserved_in_17_actions");
 
   // --- 401 must preempt existing action-specific handling -------------------
   // (402/403/step-up/misclassification) - each of these must still exist
   // unchanged, but handleSessionExpired must run first.
-  // createExportJobAction is excluded here - A2b (below) moved it off the
-  // unconditional handleSessionExpired() contract; its precedence over
-  // withPlanLimitQuery/403 handling is re-asserted in the A2b block instead.
   const precedenceChecks = [
+    { fn: "createExportJobAction", other: "withPlanLimitQuery(", label: "the existing 402 plan-limit check" },
     { fn: "uploadMediaAssetAction", other: "withPlanLimitQuery(", label: "the existing 402 plan-limit check" },
     { fn: "grantConnectorPermissionAction", other: "resolveConnectorPermissionGrantStatus(", label: "the existing permission-grant status handling" },
     { fn: "publishConnectorMappingVersionAction", other: "withStepUpErrorQuery(", label: "the existing step-up error handling" },
@@ -152,65 +148,7 @@ function run() {
     /error instanceof ApiHttpError && error\.status === 403/.test(exportJobBody),
     "createExportJobAction must retain its existing 403 handling unchanged.",
   );
-  validated.push("session_expiry_preempts_402_403_step_up_handling_in_4_actions");
-
-  // --- BUG-AUTH-STALE-SESSION-001 (A2b): dual-path contract for the 3 actions --
-  // also invoked directly by client components via startTransition() rather
-  // than exclusively through a native <form action>. A2's live-browser
-  // reproduction found that calling redirect() from inside such an
-  // RPC-invoked action (specifically the redirect to /login on session expiry)
-  // produces a broken client navigation instead of a clean one, even though
-  // the same action's other redirect() branches (success, 403) work fine
-  // under the same invocation style. These 3 actions therefore no longer call
-  // the unconditional handleSessionExpired() primitive; instead they call
-  // resolveSessionExpiredRedirect() directly and branch on an explicit
-  // "__viaTransition" formData marker the RPC-caller sets: the native
-  // form-bound path still gets a plain redirect(), but the transition-invoked
-  // path gets a structured { sessionExpired: true, loginPath } RETURN value
-  // (never a throw, since Server Action thrown-error messages are not a
-  // trustworthy transport in production), letting the client perform a hard
-  // window.location.assign() navigation instead.
-  const transitionDualPathActions = [
-    { fn: "deleteCategoryAction", hasRethrow: true },
-    { fn: "deleteProductAction", hasRethrow: true },
-    { fn: "createExportJobAction", hasRethrow: false, otherCallSubstring: "withPlanLimitQuery(", otherLabel: "the existing 402 plan-limit check" },
-  ];
-  for (const { fn, hasRethrow, otherCallSubstring, otherLabel } of transitionDualPathActions) {
-    const fnBody = extractFunctionBody(source, `export async function ${fn}(`, "actions.ts");
-    const catchBody = extractCatchBody(fnBody, fn);
-    assert(
-      !catchBody.includes("handleSessionExpired("),
-      `${fn}: must not call handleSessionExpired() - A2b requires an explicit resolveSessionExpiredRedirect() branch so the __viaTransition signal can intercept it before any redirect() runs.`,
-    );
-    const resolveIdx = catchBody.indexOf("resolveSessionExpiredRedirect(");
-    assert(resolveIdx !== -1, `${fn}: catch block must call resolveSessionExpiredRedirect() directly.`);
-    const viaTransitionIdx = catchBody.indexOf('formData.get("__viaTransition")');
-    assert(viaTransitionIdx !== -1, `${fn}: must branch on the __viaTransition formData marker.`);
-    assert(resolveIdx < viaTransitionIdx, `${fn}: must classify the session-expiry redirect path before checking __viaTransition.`);
-    const returnIdx = catchBody.indexOf("return { sessionExpired: true");
-    assert(returnIdx !== -1, `${fn}: must return a structured { sessionExpired, loginPath } signal for the transition-invoked path instead of throwing or redirecting.`);
-    assert(viaTransitionIdx < returnIdx, `${fn}: the __viaTransition check must guard the structured-return branch.`);
-    const redirectIdx = catchBody.indexOf("redirect(sessionRedirectPath)");
-    assert(redirectIdx !== -1, `${fn}: must still call redirect(sessionRedirectPath) for the non-transition (native form) path.`);
-    assert(returnIdx < redirectIdx, `${fn}: the structured-return branch must be checked before falling through to redirect().`);
-    if (hasRethrow) {
-      const rethrowIdx = catchBody.indexOf("rethrowRedirectError(error);");
-      assert(rethrowIdx !== -1, `${fn}: rethrowRedirectError(error) must still be present.`);
-      assert(rethrowIdx < resolveIdx, `${fn}: rethrowRedirectError(error) must run before the session-expiry classification.`);
-    }
-    if (otherCallSubstring) {
-      const otherIdx = catchBody.indexOf(otherCallSubstring);
-      assert(otherIdx !== -1, `${fn}: expected to find "${otherCallSubstring}" in the catch block.`);
-      assert(resolveIdx < otherIdx, `${fn}: session-expiry classification must run before ${otherLabel}, so a 401 never reaches it.`);
-    }
-  }
-  assert(
-    /error instanceof ApiHttpError && error\.status === 403/.test(
-      extractFunctionBody(source, "export async function createExportJobAction(", "actions.ts"),
-    ),
-    "createExportJobAction must retain its existing 403 handling unchanged.",
-  );
-  validated.push("three_transition_invoked_actions_use_a2b_dual_path_contract");
+  validated.push("session_expiry_preempts_402_403_step_up_handling_in_5_actions");
 
   // --- retrySubmissionAction: the misclassification fix ----------------------
   // 401 must be classified BEFORE the generic retryError/retryErrorMessage
