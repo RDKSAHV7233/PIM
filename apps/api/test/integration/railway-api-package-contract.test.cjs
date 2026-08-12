@@ -66,8 +66,38 @@ function main() {
     /observability generated client already present/,
     "Packaged API build must not fail when npm has already generated the client in the installed dependency",
   );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /fs\.realpathSync\(generatedSource\)/,
+    "Packaged API build must compare real paths before deleting a possibly symlinked target",
+  );
   const generatedSource = path.join(outputDir, "packages", "observability-db", "generated");
   const generatedTarget = path.join(outputDir, "node_modules", "@pim1", "observability-db", "generated");
+  const generatedModuleTarget = path.dirname(generatedTarget);
+  fs.rmSync(generatedModuleTarget, { recursive: true, force: true });
+  fs.mkdirSync(generatedSource, { recursive: true });
+  fs.writeFileSync(path.join(generatedSource, "client.js"), "module.exports = {};\n", "utf8");
+  fs.mkdirSync(path.dirname(generatedModuleTarget), { recursive: true });
+  fs.symlinkSync(path.join(outputDir, "packages", "observability-db"), generatedModuleTarget, "dir");
+  const symlinkedSyncResult = spawnSync(
+    process.execPath,
+    [path.join(outputDir, "scripts", "sync-observability-generated-client.cjs")],
+    {
+      cwd: outputDir,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(
+    symlinkedSyncResult.status,
+    0,
+    symlinkedSyncResult.stderr || symlinkedSyncResult.stdout || "generated observability client symlink sync failed",
+  );
+  assert.ok(
+    fs.existsSync(path.join(generatedSource, "client.js")),
+    "Generated observability client source must survive symlinked dependency sync",
+  );
+
+  fs.rmSync(generatedModuleTarget, { recursive: true, force: true });
   fs.rmSync(generatedSource, { recursive: true, force: true });
   fs.mkdirSync(generatedTarget, { recursive: true });
   fs.writeFileSync(path.join(generatedTarget, "client.js"), "module.exports = {};\n", "utf8");
