@@ -516,8 +516,12 @@ export function ProductsTab({
       formData.set("productId", productId);
       formData.set("confirmDelete", "yes");
       formData.set("returnTo", returnTo);
+      formData.set("__viaTransition", "1");
       startTransition(async () => {
-        await deleteProductAction(formData);
+        const result = await deleteProductAction(formData);
+        if (result?.sessionExpired) {
+          window.location.assign(result.loginPath);
+        }
       });
     }
     setPendingArchive(null);
