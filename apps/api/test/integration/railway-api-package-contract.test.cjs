@@ -56,6 +56,30 @@ function main() {
     /node_modules['"], ['"]@pim1['"], ['"]observability-db['"], ['"]generated/,
     "Packaged API build must sync the generated observability Prisma client into the installed runtime dependency",
   );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /generatedSources = \[/,
+    "Packaged API build must allow multiple generated observability client locations",
+  );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /observability generated client already present/,
+    "Packaged API build must not fail when npm has already generated the client in the installed dependency",
+  );
+  const generatedSource = path.join(outputDir, "packages", "observability-db", "generated");
+  const generatedTarget = path.join(outputDir, "node_modules", "@pim1", "observability-db", "generated");
+  fs.rmSync(generatedSource, { recursive: true, force: true });
+  fs.mkdirSync(generatedTarget, { recursive: true });
+  fs.writeFileSync(path.join(generatedTarget, "client.js"), "module.exports = {};\n", "utf8");
+  const noOpSyncResult = spawnSync(process.execPath, [path.join(outputDir, "scripts", "sync-observability-generated-client.cjs")], {
+    cwd: outputDir,
+    encoding: "utf8",
+  });
+  assert.equal(
+    noOpSyncResult.status,
+    0,
+    noOpSyncResult.stderr || noOpSyncResult.stdout || "generated observability client no-op sync failed",
+  );
   assert.equal(
     observabilityPackageJson.dependencies.prisma,
     observabilityPackageJson.devDependencies.prisma,
