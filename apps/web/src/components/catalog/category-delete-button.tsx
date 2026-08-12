@@ -35,12 +35,8 @@ export function CategoryDeleteButton({
     formData.set("categoryId", categoryId);
     formData.set("confirmDelete", "yes");
     formData.set("returnTo", returnTo);
-    formData.set("__viaTransition", "1");
     startTransition(async () => {
-      const result = await deleteCategoryAction(formData);
-      if (result?.sessionExpired) {
-        window.location.assign(result.loginPath);
-      }
+      await deleteCategoryAction(formData);
     });
   }
 

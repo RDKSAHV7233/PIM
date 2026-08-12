@@ -532,13 +532,7 @@ export async function deleteCategoryAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
-    const sessionRedirectPath = resolveSessionExpiredRedirect(returnTo, error);
-    if (sessionRedirectPath) {
-      if (String(formData.get("__viaTransition") ?? "") === "1") {
-        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
-      }
-      redirect(sessionRedirectPath);
-    }
+    handleSessionExpired(error, returnTo);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -983,13 +977,7 @@ export async function deleteProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
-    const sessionRedirectPath = resolveSessionExpiredRedirect(returnTo, error);
-    if (sessionRedirectPath) {
-      if (String(formData.get("__viaTransition") ?? "") === "1") {
-        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
-      }
-      redirect(sessionRedirectPath);
-    }
+    handleSessionExpired(error, returnTo);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -1537,13 +1525,7 @@ export async function createExportJobAction(formData: FormData) {
       fallbackAcknowledged,
     });
   } catch (error: unknown) {
-    const sessionRedirectPath = resolveSessionExpiredRedirect(`/products/${encodeURIComponent(productId)}`, error);
-    if (sessionRedirectPath) {
-      if (String(formData.get("__viaTransition") ?? "") === "1") {
-        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
-      }
-      redirect(sessionRedirectPath);
-    }
+    handleSessionExpired(error, `/products/${encodeURIComponent(productId)}`);
     const redirectPath = withPlanLimitQuery(`/products/${encodeURIComponent(productId)}`, error);
     if (redirectPath) {
       redirect(redirectPath);
