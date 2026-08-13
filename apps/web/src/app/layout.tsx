@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { AuthenticatedShell } from "@/components/nav/authenticated-shell";
 import { BillingStatusBanner } from "@/components/nav/billing-status-banner";
+import { BrowserErrorCapture } from "@/components/error-authority/browser-error-capture";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { getServerSessionClaims } from "@/lib/server-session";
 import "./globals.css";
@@ -28,6 +29,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
+        <BrowserErrorCapture />
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md focus:ring-2 focus:ring-indigo-500"
