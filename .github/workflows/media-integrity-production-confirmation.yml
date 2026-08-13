@@ -26,6 +26,12 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Install system redis-server (for redis-memory-server)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          echo "REDISMS_SYSTEM_BINARY=$(command -v redis-server)" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: npm ci
 
