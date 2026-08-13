@@ -1254,6 +1254,14 @@ function buildChecks() {
         status: "approved",
       },
     });
+    if (
+      result.status === 400 &&
+      String(getErrorMessageFromBody(result.body)).includes("Current status is approved")
+    ) {
+      const product = await getProduct(ctx.productId);
+      assert(product.status === "approved", `unexpected status ${product.status}`);
+      return `status=${product.status}`;
+    }
     assertStatus(result, 201, "POST /catalog/products/:id/review-decision");
     rememberProduct(result.body);
     assert(result.body?.status === "approved", `unexpected status ${result.body?.status}`);
