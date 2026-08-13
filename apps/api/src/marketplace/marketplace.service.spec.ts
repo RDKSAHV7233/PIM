@@ -467,6 +467,47 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(result.excluded).toHaveLength(1);
     expect(result.excluded[0]).toMatchObject({ productId: "bad-1", reason: "readiness check failed" });
   });
+
+  // ─── TC-06 / #545: non-BULK_PUBLISH batch-size ceiling ──────────────────────
+  // Wave 1 fix for the timeout that made bulk publish fail atomically at 46
+  // products for connectors without a native batch-feed API (Shopify, WooCommerce).
+
+  it("rejects a non-BULK_PUBLISH batch over the 50-product ceiling before any product lookup runs", async () => {
+    const productIds = Array.from({ length: 51 }, (_, i) => `p${i}`);
+    const productsById: Record<string, { status: string; categoryId: string }> = {};
+    for (const id of productIds) {
+      productsById[id] = { status: "approved", categoryId: "cat1" };
+    }
+    const { svc, tenantDb } = makeBulkPublishService(productsById, {
+      connectorSlug: "shopify",
+      capabilities: ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"],
+    });
+
+    await expect(svc.triggerBulkPublish("inst_1", productIds)).rejects.toMatchObject({
+      response: expect.objectContaining({ error: "batch_too_large", ceiling: 50, submittedCount: 51 }),
+    });
+    // the ceiling must reject up front — the expensive per-product eligibility loop
+    // (the actual root cause of the timeout) must never run for an oversized batch.
+    expect(tenantDb.product.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("does not apply the non-BULK_PUBLISH ceiling to a native BULK_PUBLISH connector (Amazon)", async () => {
+    const productIds = Array.from({ length: 60 }, (_, i) => `p${i}`);
+    const productsById: Record<string, { status: string; categoryId: string }> = {};
+    for (const id of productIds) {
+      productsById[id] = { status: "approved", categoryId: "cat1" };
+    }
+    const { svc, connectorFramework } = makeBulkPublishService(productsById, {
+      connectorSlug: "amazon",
+      capabilities: ["BULK_PUBLISH"],
+    });
+
+    const result = await svc.triggerBulkPublish("inst_1", productIds);
+
+    expect(result.excluded).toHaveLength(0);
+    expect(result.submissionIds).toHaveLength(60);
+    expect(connectorFramework.publishBulk).toHaveBeenCalled();
+  });
 });
 
 describe("MarketplaceService.getBatchReadiness", () => {

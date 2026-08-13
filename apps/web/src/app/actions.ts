@@ -2451,6 +2451,26 @@ export async function triggerBulkPublishAction(formData: FormData) {
           }),
         );
       }
+      // batch_too_large (TC-06 / #545): the batch exceeded the non-native-BULK_PUBLISH
+      // ceiling and was rejected before any per-product work ran. Distinct from a timeout —
+      // this is an immediate, cheap rejection, not the request dying partway through.
+      if (payload.error === "batch_too_large") {
+        const ceiling = typeof payload.ceiling === "number" ? payload.ceiling : 0;
+        const submittedCount = typeof payload.submittedCount === "number" ? payload.submittedCount : 0;
+        redirect(
+          appendQueryParams(returnTo, {
+            status: "bulk-publish-too-large",
+            ceiling: String(ceiling),
+            submittedCount: String(submittedCount),
+          }),
+        );
+      }
+    }
+    // TC-06 (#545): AbortSignal.timeout on the web->API call surfaces as a raw DOMException
+    // (never wrapped into an ApiHttpError, since no HTTP response was ever received) — show
+    // the operator "this timed out," not the same generic message as an unrelated failure.
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      redirect(appendQueryParams(returnTo, { status: "bulk-publish-timeout" }));
     }
     redirect(appendQueryParams(returnTo, { status: "bulk-publish-error" }));
   }

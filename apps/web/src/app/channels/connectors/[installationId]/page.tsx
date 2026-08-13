@@ -47,7 +47,7 @@ export const dynamic = "force-dynamic";
 
 interface ChannelConnectorDetailPageProps {
   params: Promise<{ installationId: string }>;
-  searchParams: Promise<{ tab?: string; status?: string; action?: string; queuedCount?: string; excludedCount?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; action?: string; queuedCount?: string; excludedCount?: string; ceiling?: string; submittedCount?: string }>;
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access" | "sync" | "schedule" | "catalog-link";
@@ -350,7 +350,7 @@ function formatDateTime(value: string | null | undefined): string {
 
 function connectorDetailStatusMessage(
   status: string | undefined,
-  counts?: { queuedCount?: string; excludedCount?: string },
+  counts?: { queuedCount?: string; excludedCount?: string; ceiling?: string; submittedCount?: string },
 ): {
   tone: "success" | "warning" | "danger";
   message: string;
@@ -458,6 +458,24 @@ function connectorDetailStatusMessage(
     return {
       tone: "danger",
       message: `${countLabel} in this batch failed the approval or publish-readiness check — nothing was queued. Review approval status and destination mapping before retrying.`,
+    };
+  }
+  if (normalized === "bulk-publish-too-large") {
+    const ceiling = Number(counts?.ceiling ?? "");
+    const submittedCount = Number(counts?.submittedCount ?? "");
+    const sizeLabel =
+      Number.isFinite(ceiling) && Number.isFinite(submittedCount) && ceiling > 0 && submittedCount > 0
+        ? `${submittedCount} products, over the ${ceiling}-product limit`
+        : "too many products";
+    return {
+      tone: "danger",
+      message: `Bulk publish batch too large: ${sizeLabel} for this connector. Split into smaller batches and retry.`,
+    };
+  }
+  if (normalized === "bulk-publish-timeout") {
+    return {
+      tone: "danger",
+      message: "Bulk publish timed out before completing. Nothing was queued — split into a smaller batch and retry, or try again in a moment.",
     };
   }
   if (normalized === "bulk-publish-error") {
@@ -683,6 +701,8 @@ export default async function ChannelConnectorDetailPage({
   const statusMessage = connectorDetailStatusMessage(query.status, {
     queuedCount: query.queuedCount,
     excludedCount: query.excludedCount,
+    ceiling: query.ceiling,
+    submittedCount: query.submittedCount,
   });
 
   try {
