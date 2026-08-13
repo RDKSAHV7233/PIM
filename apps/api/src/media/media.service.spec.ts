@@ -49,6 +49,40 @@ describe("MediaService.getAssetFile", () => {
     expect(readLocalFile).toHaveBeenCalledWith("/app/storage/media/admin/asset.jpg");
   });
 
+  it("serves legacy local paths even when new uploads use object storage", async () => {
+    const buffer = Buffer.from("legacy-media");
+    const { service, readLocalFile, resolveDownloadUrl } = makeService({
+      asset: { storagePath: "/app/storage/media/admin/legacy.jpg", mimeType: "image/jpeg", fileName: "legacy.jpg" },
+      fileBuffer: buffer,
+      localMode: false,
+    });
+
+    await expect(service.getAssetFile("legacy-asset")).resolves.toEqual({
+      buffer,
+      mimeType: "image/jpeg",
+      fileName: "legacy.jpg",
+    });
+
+    expect(readLocalFile).toHaveBeenCalledWith("/app/storage/media/admin/legacy.jpg");
+    expect(resolveDownloadUrl).not.toHaveBeenCalled();
+  });
+
+  it("keeps object-backed assets on the R2 download path", async () => {
+    const { service, readLocalFile, resolveDownloadUrl } = makeService({
+      asset: { storagePath: "media/admin/object.jpg", mimeType: "image/jpeg", fileName: "object.jpg" },
+      localMode: false,
+    });
+
+    await expect(service.getAssetFile("object-asset")).resolves.toEqual({
+      redirectUrl: "https://cdn.example.test/media/image.jpg",
+      mimeType: "image/jpeg",
+      fileName: "object.jpg",
+    });
+
+    expect(readLocalFile).not.toHaveBeenCalled();
+    expect(resolveDownloadUrl).toHaveBeenCalledWith("media/admin/object.jpg", "object.jpg");
+  });
+
   it("still returns not found when the asset id does not exist", async () => {
     const { service } = makeService({ asset: null });
 

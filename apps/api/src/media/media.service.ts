@@ -430,7 +430,7 @@ export class MediaService {
     if (!asset) {
       throw new NotFoundException("Media asset not found");
     }
-    if (this.mediaStorage.isLocalMode()) {
+    if (path.isAbsolute(asset.storagePath) || asset.storagePath.startsWith("storage/") || this.mediaStorage.isLocalMode()) {
       const buffer = await this.mediaStorage.readLocalFile(asset.storagePath);
       return { buffer, mimeType: asset.mimeType, fileName: asset.fileName };
     }
@@ -1169,4 +1169,3 @@ export class MediaService {
     return parseMarketplaceChannel(value);
   }
 }
-
