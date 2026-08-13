@@ -21,7 +21,8 @@ function main() {
 
   assert(
     moduleSource.includes("BrowserErrorIngestController") &&
-      moduleSource.includes("controllers: [NextServerErrorIngestController, BrowserErrorIngestController]"),
+      moduleSource.includes("ErrorAuthorityOpsController") &&
+      moduleSource.includes("controllers: [NextServerErrorIngestController, BrowserErrorIngestController, ErrorAuthorityOpsController]"),
     "ErrorAuthorityModule must register BrowserErrorIngestController beside the existing Next server owner.",
   );
 
