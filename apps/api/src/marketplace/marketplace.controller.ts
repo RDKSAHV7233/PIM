@@ -604,8 +604,9 @@ export class MarketplaceController {
   triggerBulkPublish(
     @Param("installationId") installationId: string,
     @Body() dto: TriggerBulkPublishDto,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.marketplaceService.triggerBulkPublish(installationId, dto.productIds);
+    return this.marketplaceService.triggerBulkPublish(installationId, dto.productIds, this.resolveActor(request));
   }
 
   // ─── Meesho Excel export ─────────────────────────────────────────────────

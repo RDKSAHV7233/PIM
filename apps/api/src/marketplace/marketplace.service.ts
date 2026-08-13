@@ -4905,6 +4905,7 @@ export class MarketplaceService implements OnModuleInit {
   async triggerBulkPublish(
     installationId: string,
     productIds: string[],
+    actor?: PolicyActor,
   ): Promise<{
     feedId: string;
     feedDocumentId: string;
@@ -5021,7 +5022,7 @@ export class MarketplaceService implements OnModuleInit {
     // createExportJob already uses for the single-product "Queue channel export" action —
     // proven to work for Shopify — instead of forcing them through the Amazon-shaped path.
     if (!hasNativeBulkPublish) {
-      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded);
+      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded, actor);
     }
 
     const products = await Promise.all(
@@ -5109,6 +5110,7 @@ export class MarketplaceService implements OnModuleInit {
     installationId: string,
     eligibleProductIds: string[],
     excluded: Array<{ productId: string; reason: string }>,
+    actor?: PolicyActor,
   ): Promise<{
     feedId: string;
     feedDocumentId: string;
@@ -5121,7 +5123,7 @@ export class MarketplaceService implements OnModuleInit {
     const outcomes = await this.runWithConcurrency(
       eligibleProductIds.map((productId) => async () => {
         try {
-          const job = await this.createExportJob(productId, { channel, installationId }, undefined);
+          const job = await this.createExportJob(productId, { channel, installationId }, actor);
           return { productId, jobId: job.id as string };
         } catch (error: unknown) {
           const reason = error instanceof Error ? error.message : String(error);
