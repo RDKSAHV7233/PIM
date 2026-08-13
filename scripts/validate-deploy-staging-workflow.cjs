@@ -98,8 +98,27 @@ function main() {
     "Apply migrations",
   );
   requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
+  const observabilityUrlStep = requireStep(steps, "Resolve observability database URL");
+  assert(
+    String(observabilityUrlStep?.id ?? "").trim() === "resolve_observability_database_url",
+    "Resolve observability database URL step must expose id=resolve_observability_database_url",
+  );
+  requireEnvVar(observabilityUrlStep, "OBSERVABILITY_DATABASE_URL", "Resolve observability database URL");
+  requireAnyEnvVar(observabilityUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve observability database URL");
+  requireEnvVar(observabilityUrlStep, "RAILWAY_PROJECT_ID", "Resolve observability database URL");
+  requireAnyEnvVar(observabilityUrlStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Resolve observability database URL");
+  requireRunContains(
+    observabilityUrlStep,
+    "node scripts/resolve-observability-database-url.cjs",
+    "Resolve observability database URL",
+  );
   const observabilityMigrationsStep = requireStep(steps, "Apply observability migrations");
   requireEnvVar(observabilityMigrationsStep, "OBSERVABILITY_DATABASE_URL", "Apply observability migrations");
+  assert(
+    String(observabilityMigrationsStep.env?.OBSERVABILITY_DATABASE_URL ?? "").trim() ===
+      "${{ steps.resolve_observability_database_url.outputs.observability_database_url }}",
+    "Apply observability migrations must use the resolved observability database URL output.",
+  );
   requireRunContains(
     observabilityMigrationsStep,
     "Missing OBSERVABILITY_DATABASE_URL secret for Error Authority migrations.",
@@ -111,6 +130,8 @@ function main() {
     "Apply observability migrations",
   );
   requireStepOrder(steps, "Apply migrations", "Apply observability migrations");
+  requireStepOrder(steps, "Apply migrations", "Resolve observability database URL");
+  requireStepOrder(steps, "Resolve observability database URL", "Apply observability migrations");
   requireStepOrder(steps, "Apply observability migrations", "Build API");
   const authHashBackfillStep = requireStep(steps, "Backfill legacy auth hashes");
   requireEnvVar(authHashBackfillStep, "DATABASE_URL_DIRECT", "Backfill legacy auth hashes");
@@ -335,6 +356,7 @@ function main() {
           "push_to_main_autodeploy_trigger_present",
           "deploy_job_serialized_with_environment_protection",
           "migration_step_has_database_secret_guard",
+          "observability_database_url_resolver_reads_github_secret_or_railway_api_variable",
           "observability_migration_step_has_secret_guard",
           "legacy_auth_hash_backfill_runs_before_builds",
           "railway_cli_install_step_present_before_deploy",
