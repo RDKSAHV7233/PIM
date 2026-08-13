@@ -74,6 +74,10 @@ function main() {
   assert(script.includes("/error-authority/ops/issues"), "Acceptance script must verify ops issue reads.");
   assert(script.includes("/internal/ops/errors"), "Acceptance script must verify the Web console route.");
   assert(script.includes("createTemporaryViewer"), "Acceptance script must verify non-admin denial with a real temporary viewer.");
+  assert(
+    script.includes('String(viewerPage.text).toLowerCase().includes("system admin")'),
+    "Acceptance script must allow product copy casing while still requiring system-admin boundary language.",
+  );
   assert(script.includes("findProhibitedKeys"), "Acceptance script must verify prohibited fields are absent.");
   assert(!script.includes("OBSERVABILITY_DATABASE_URL"), "Acceptance script must not receive or print the observability DB URL.");
 

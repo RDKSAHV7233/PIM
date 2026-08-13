@@ -385,7 +385,7 @@ async function main() {
       retries: 1,
     });
     assertStatus(viewerPage, 200, "viewer internal ops page denied card");
-    assert(String(viewerPage.text).includes("System admin") || String(viewerPage.text).includes("system admin"), "viewer did not see system-admin access boundary");
+    assert(String(viewerPage.text).toLowerCase().includes("system admin"), "viewer did not see system-admin access boundary");
     assert(!String(viewerPage.text).includes("INTERNAL_OPS_ERRORS_ACCEPTANCE"), "viewer page exposed Error Authority issue content");
     pass("viewer_web_internal_ops_errors_denied");
 
