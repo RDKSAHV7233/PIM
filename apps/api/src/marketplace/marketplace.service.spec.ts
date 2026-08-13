@@ -426,16 +426,21 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     const createExportJobSpy = jest
       .spyOn(svc as unknown as Record<string, jest.Mock>, "createExportJob")
       .mockImplementation((productId: unknown) => Promise.resolve({ id: `job_${productId as string}` }));
+    const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
 
-    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"]);
+    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor);
 
     // the Amazon feed path must never be invoked for a connector lacking BULK_PUBLISH
     expect(connectorFramework.publishBulk).not.toHaveBeenCalled();
     expect(createExportJobSpy).toHaveBeenCalledTimes(2);
+    // #550: the request actor must reach createExportJob per-product — passing undefined here
+    // causes createExportJob's assertSensitivePayloadAccessAllowed(actor ?? {}, ...) check to
+    // deny every product (an actor with no actorRole can never satisfy canExportToMarketplace),
+    // which is exactly what made bulk publish 0% functional for Shopify/WooCommerce in production.
     expect(createExportJobSpy).toHaveBeenCalledWith(
       "a1",
       expect.objectContaining({ channel: "shopify", installationId: "inst_1" }),
-      undefined,
+      actor,
     );
     expect(result.excluded).toHaveLength(0);
     expect(result.submissionIds.sort()).toEqual(["job_a1", "job_a2"]);
