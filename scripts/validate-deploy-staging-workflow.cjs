@@ -98,6 +98,8 @@ function main() {
     "Apply migrations",
   );
   requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
+  requireStep(steps, "Install Railway CLI");
+  requireStepOrder(steps, "Apply migrations", "Install Railway CLI");
   const observabilityUrlStep = requireStep(steps, "Resolve observability database URL");
   assert(
     String(observabilityUrlStep?.id ?? "").trim() === "resolve_observability_database_url",
@@ -131,6 +133,7 @@ function main() {
   );
   requireStepOrder(steps, "Apply migrations", "Apply observability migrations");
   requireStepOrder(steps, "Apply migrations", "Resolve observability database URL");
+  requireStepOrder(steps, "Install Railway CLI", "Resolve observability database URL");
   requireStepOrder(steps, "Resolve observability database URL", "Apply observability migrations");
   requireStepOrder(steps, "Apply observability migrations", "Build API");
   const authHashBackfillStep = requireStep(steps, "Backfill legacy auth hashes");
@@ -156,7 +159,6 @@ function main() {
   requireStepOrder(steps, "Backfill legacy auth hashes", "Build API");
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
-  requireStep(steps, "Install Railway CLI");
   requireStepOrder(steps, "Install Railway CLI", "Resolve staging API URL");
   requireStepOrder(steps, "Resolve staging API URL", "Deploy to staging");
 

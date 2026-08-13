@@ -60,6 +60,7 @@ function main() {
   requireEnvVar(resolveStep, "RAILWAY_API_SERVICE", "Resolve observability database URL");
   requireEnvVar(resolveStep, "RAILWAY_API_SERVICE_ID", "Resolve observability database URL");
   requireRunContains(resolveStep, "node scripts/resolve-observability-database-url.cjs", "Resolve observability database URL");
+  requireStepOrder(steps, "Install Railway CLI", "Resolve observability database URL");
 
   const migrationStep = requireStep(steps, "Apply observability migrations");
   assert(

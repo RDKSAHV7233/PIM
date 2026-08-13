@@ -60,6 +60,9 @@ jobs:
           fi
           npm run prisma:migrate:deploy
 
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
       - name: Resolve observability database URL
         id: resolve_observability_database_url
         shell: bash
@@ -145,9 +148,6 @@ jobs:
 
       - name: Build Web
         run: npm run build --workspace @pim1/web
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
 
       - name: Resolve staging API URL
         id: resolve_staging_api_url
