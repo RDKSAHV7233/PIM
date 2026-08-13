@@ -4924,40 +4924,86 @@ export class MarketplaceService implements OnModuleInit {
       throw new NotFoundException("Connector installation not found.");
     }
 
+    const installation = await this.connectorFramework.requireInstallation(
+      tenantKey,
+      installationRow.connectorSlug,
+      installationId,
+    );
+    const hasNativeBulkPublish = installation.capabilities.includes("BULK_PUBLISH");
+
+    // TC-06 (BUG-BULK-PUBLISH-TIMEOUT-001): connectors without a native batch-feed API fall
+    // through to bulkPublishViaQueuedExportJobs below, which does per-product DB + connector
+    // work rather than Amazon's single-call batch feed. That path was timing out (20s web
+    // ceiling) once the eligibility loop below covered ~46+ products. Reject oversized batches
+    // for that path up front, before running the expensive loop at all, rather than letting the
+    // request die partway through with a generic error. This ceiling is a deliberately
+    // conservative operational limit (see #545), not a permanent architectural maximum — raise
+    // only from measured production-latency evidence. Native BULK_PUBLISH connectors (Amazon)
+    // are unaffected: their 200-product DTO ceiling already governs them.
+    const NON_BULK_PUBLISH_BATCH_CEILING = 50;
+    if (!hasNativeBulkPublish && productIds.length > NON_BULK_PUBLISH_BATCH_CEILING) {
+      throw new BadRequestException({
+        error: "batch_too_large",
+        message:
+          `This connector queues one export job per product and supports at most ` +
+          `${NON_BULK_PUBLISH_BATCH_CEILING} products per bulk-publish batch. ` +
+          `Submitted ${productIds.length} products — split into smaller batches.`,
+        ceiling: NON_BULK_PUBLISH_BATCH_CEILING,
+        submittedCount: productIds.length,
+      });
+    }
+
     // Bulk-publish previously skipped both the internal-approval-status check and the
     // destination-readiness check that the single-product path (createExportJob, above)
     // enforces — a product could reach a live marketplace feed without ever being
     // approved or without a valid mapping/credentials. Gate each product independently
     // here rather than failing the whole batch for one ineligible product.
+    //
+    // TC-06: this loop was previously sequential (one await chain per product), which made
+    // the whole request scale linearly with batch size against a DB path that isn't privately
+    // networked (see #531 item 4) — 46 products alone exceeded the web layer's 20s timeout.
+    // Evaluate concurrently instead, same runWithConcurrency pattern already used for the
+    // per-product export-job queuing a few lines below.
+    const eligibilityResults = await this.runWithConcurrency(
+      productIds.map((productId) => async (): Promise<
+        { productId: string; eligible: true } | { productId: string; eligible: false; reason: string }
+      > => {
+        const product = await db.product.findUnique({
+          where: { id: productId },
+          select: { id: true, status: true, categoryId: true },
+        });
+        if (!product) {
+          return { productId, eligible: false, reason: "Product not found." };
+        }
+        if (product.status !== "approved" && product.status !== "active") {
+          return {
+            productId,
+            eligible: false,
+            reason: `Product must be approved before publishing. Current status: ${product.status}.`,
+          };
+        }
+        const readiness = await this.connectorMappingService.evaluatePublishReadiness({
+          connectorSlug: installationRow.connectorSlug,
+          categoryScope: product.categoryId,
+          installationId,
+          productId,
+        });
+        if (!readiness.ok) {
+          return { productId, eligible: false, reason: readiness.blockers.join("; ") || "Not ready for this destination." };
+        }
+        return { productId, eligible: true };
+      }),
+      5,
+    );
+
     const excluded: Array<{ productId: string; reason: string }> = [];
     const eligibleProductIds: string[] = [];
-    for (const productId of productIds) {
-      const product = await db.product.findUnique({
-        where: { id: productId },
-        select: { id: true, status: true, categoryId: true },
-      });
-      if (!product) {
-        excluded.push({ productId, reason: "Product not found." });
-        continue;
+    for (const result of eligibilityResults) {
+      if (result.eligible) {
+        eligibleProductIds.push(result.productId);
+      } else {
+        excluded.push({ productId: result.productId, reason: result.reason });
       }
-      if (product.status !== "approved" && product.status !== "active") {
-        excluded.push({
-          productId,
-          reason: `Product must be approved before publishing. Current status: ${product.status}.`,
-        });
-        continue;
-      }
-      const readiness = await this.connectorMappingService.evaluatePublishReadiness({
-        connectorSlug: installationRow.connectorSlug,
-        categoryScope: product.categoryId,
-        installationId,
-        productId,
-      });
-      if (!readiness.ok) {
-        excluded.push({ productId, reason: readiness.blockers.join("; ") || "Not ready for this destination." });
-        continue;
-      }
-      eligibleProductIds.push(productId);
     }
 
     if (!eligibleProductIds.length) {
@@ -4968,19 +5014,13 @@ export class MarketplaceService implements OnModuleInit {
       });
     }
 
-    const installation = await this.connectorFramework.requireInstallation(
-      tenantKey,
-      installationRow.connectorSlug,
-      installationId,
-    );
-
     // Connectors without a native async feed API (Shopify, WooCommerce, ...) can't produce
     // a single BulkSubmissionRef the way Amazon's Feeds API does — each product publishes
     // synchronously via its own GraphQL/REST call. For those, fall back to queuing one
     // MarketplaceExportJob per eligible product through the same connector-agnostic pipeline
     // createExportJob already uses for the single-product "Queue channel export" action —
     // proven to work for Shopify — instead of forcing them through the Amazon-shaped path.
-    if (!installation.capabilities.includes("BULK_PUBLISH")) {
+    if (!hasNativeBulkPublish) {
       return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded);
     }
 
