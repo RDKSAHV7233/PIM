@@ -208,9 +208,15 @@ export function ExportWithPreviewForm({
     if (canonicalInstallationId) {
       pendingFormData.set("installationId", canonicalInstallationId);
     }
+    pendingFormData.set("__viaTransition", "1");
     setPreview(null);
     setConfirmMode(null);
-    startTransition(() => createExportJobAction(pendingFormData));
+    startTransition(async () => {
+      const result = await createExportJobAction(pendingFormData);
+      if (result?.sessionExpired) {
+        window.location.assign(result.loginPath);
+      }
+    });
   };
 
   const handleCancel = () => {
