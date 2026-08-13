@@ -2123,7 +2123,8 @@ paths:
         "200":
           description: Submissions fetched
       summary: List submissions
-      tags: *a15
+      tags: &a16
+        - Marketplace
   /api/v1/submissions/count:
     get:
       operationId: SubmissionsController_countSubmissions
@@ -2157,7 +2158,7 @@ paths:
         "200":
           description: Submission count fetched
       summary: Count submissions
-      tags: *a15
+      tags: *a16
   /api/v1/submissions/dead-letter:
     get:
       operationId: SubmissionsController_listDeadLetterSubmissions
@@ -2166,7 +2167,7 @@ paths:
         "200":
           description: Dead-letter submissions fetched
       summary: List dead-letter submissions/jobs
-      tags: *a15
+      tags: *a16
   /api/v1/submissions/{id}:
     get:
       operationId: SubmissionsController_getSubmission
@@ -2180,7 +2181,7 @@ paths:
         "200":
           description: Submission detail fetched
       summary: Get submission detail
-      tags: *a15
+      tags: *a16
   /api/v1/submissions/{id}/issues:
     get:
       operationId: SubmissionsController_getSubmissionIssues
@@ -2194,7 +2195,7 @@ paths:
         "200":
           description: Submission issues fetched
       summary: List normalized issues for a submission
-      tags: *a15
+      tags: *a16
   /api/v1/submissions/{id}/sync:
     post:
       operationId: SubmissionsController_syncSubmission
@@ -2208,7 +2209,7 @@ paths:
         "201":
           description: Submission status synced
       summary: Sync a submission status from the provider
-      tags: *a15
+      tags: *a16
   /api/v1/submissions/{id}/retry:
     post:
       operationId: SubmissionsController_retrySubmission
@@ -2222,7 +2223,7 @@ paths:
         "201":
           description: Submission retry queued
       summary: Retry submission by requeuing underlying export job
-      tags: *a15
+      tags: *a16
   /api/v1/notifications:
     get:
       operationId: NotificationsController_listNotifications
@@ -2230,7 +2231,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a16
+      tags: &a17
         - Notifications
   /api/v1/notifications/read-all:
     patch:
@@ -2239,7 +2240,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a16
+      tags: *a17
   /api/v1/notifications/{id}/read:
     patch:
       operationId: NotificationsController_markRead
@@ -2252,7 +2253,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a16
+      tags: *a17
   /api/v1/admin/webhooks:
     get:
       operationId: OutboundWebhooksController_listEndpoints
@@ -2260,7 +2261,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a17
+      tags: &a18
         - OutboundWebhooks
     post:
       operationId: OutboundWebhooksController_createEndpoint
@@ -2274,7 +2275,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a17
+      tags: *a18
   /api/v1/admin/webhooks/deliveries:
     get:
       operationId: OutboundWebhooksController_listDeliveries
@@ -2282,7 +2283,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a17
+      tags: *a18
   /api/v1/admin/webhooks/{id}:
     patch:
       operationId: OutboundWebhooksController_updateEndpoint
@@ -2301,7 +2302,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a17
+      tags: *a18
     delete:
       operationId: OutboundWebhooksController_deleteEndpoint
       parameters:
@@ -2313,7 +2314,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a17
+      tags: *a18
   /api/v1/admin/webhooks/{id}/test:
     post:
       operationId: OutboundWebhooksController_sendTestDelivery
@@ -2326,7 +2327,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a17
+      tags: *a18
   /api/v1/admin/webhooks/deliveries/{id}/retry:
     post:
       operationId: OutboundWebhooksController_retryFailedDelivery
@@ -2339,7 +2340,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a17
+      tags: *a18
   /api/v1/media/assets:
     post:
       operationId: MediaController_createAsset
@@ -2353,7 +2354,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a18
+      tags: &a19
         - Media
     get:
       operationId: MediaController_listAssets
@@ -2361,7 +2362,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a18
+      tags: *a19
   /api/v1/media/assets/{id}:
     get:
       operationId: MediaController_getAsset
@@ -2374,7 +2375,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a18
+      tags: *a19
   /api/v1/media/assets/{id}/file:
     get:
       operationId: MediaController_getAssetFile
@@ -2387,7 +2388,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a18
+      tags: *a19
   /api/v1/media/assets/{id}/validation:
     get:
       operationId: MediaController_validateAsset
@@ -2400,7 +2401,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a18
+      tags: *a19
   /api/v1/media/assets/{id}/governance:
     patch:
       operationId: MediaController_updateGovernance
@@ -2419,7 +2420,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a18
+      tags: *a19
   /api/v1/media/bulk-associations:
     post:
       operationId: MediaController_bulkAssociate
@@ -2433,7 +2434,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a18
+      tags: *a19
   /api/v1/bulk-import/validate:
     post:
       operationId: BulkImportController_validateJobInput
@@ -2447,7 +2448,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a19
+      tags: &a20
         - BulkImport
   /api/v1/bulk-import/jobs:
     post:
@@ -2462,7 +2463,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
     get:
       operationId: BulkImportController_listJobs
       parameters:
@@ -2474,7 +2475,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/validate/preflight:
     post:
       operationId: BulkImportController_validateImport
@@ -2488,7 +2489,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/templates:
     post:
       operationId: BulkImportController_createTemplate
@@ -2502,7 +2503,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
     get:
       operationId: BulkImportController_listTemplates
       parameters:
@@ -2519,7 +2520,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/templates/{id}:
     get:
       operationId: BulkImportController_getTemplate
@@ -2537,7 +2538,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/mapping-suggestions:
     post:
       operationId: BulkImportController_suggestMapping
@@ -2551,7 +2552,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}:
     get:
       operationId: BulkImportController_getJob
@@ -2564,7 +2565,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/rows:
     get:
       operationId: BulkImportController_listRows
@@ -2587,7 +2588,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/error-report:
     get:
       operationId: BulkImportController_getErrorReport
@@ -2600,7 +2601,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/validate:
     post:
       operationId: BulkImportController_validateJob
@@ -2613,7 +2614,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/process:
     post:
       operationId: BulkImportController_processJob
@@ -2632,7 +2633,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/requeue-dlq:
     post:
       operationId: BulkImportController_requeueDlq
@@ -2651,7 +2652,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/rows/{rowId}/process:
     post:
       operationId: BulkImportController_processRow
@@ -2669,7 +2670,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/jobs/{id}/rows/{rowId}/repair:
     post:
       operationId: BulkImportController_repairRow
@@ -2693,7 +2694,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs:
     post:
       operationId: BulkImportController_createRunFromJson
@@ -2707,7 +2708,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
     get:
       operationId: BulkImportController_listRuns
       parameters:
@@ -2719,7 +2720,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/upload:
     post:
       operationId: BulkImportController_uploadRun
@@ -2733,7 +2734,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/{id}:
     get:
       operationId: BulkImportController_getRun
@@ -2746,7 +2747,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/{id}/validate:
     post:
       operationId: BulkImportController_validateRun
@@ -2759,7 +2760,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/{id}/start:
     post:
       operationId: BulkImportController_startRun
@@ -2772,7 +2773,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/{id}/retry-stuck:
     post:
       operationId: BulkImportController_retryStuckRows
@@ -2785,7 +2786,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/{id}/rows:
     get:
       operationId: BulkImportController_listRunRows
@@ -2803,7 +2804,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-import/runs/{id}/error-report:
     get:
       operationId: BulkImportController_getRunErrorReport
@@ -2816,7 +2817,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/bulk-edit/preview:
     post:
       operationId: BulkEditController_preview
@@ -2830,7 +2831,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a20
+      tags: &a21
         - BulkEdit
   /api/v1/bulk-edit/apply:
     post:
@@ -2845,7 +2846,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a20
+      tags: *a21
   /api/v1/bulk-edit/operations:
     get:
       operationId: BulkEditController_listOperations
@@ -2858,7 +2859,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a20
+      tags: *a21
   /api/v1/bulk-edit/operations/{id}:
     get:
       operationId: BulkEditController_getOperation
@@ -2881,7 +2882,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a20
+      tags: *a21
   /api/v1/catalog/stats:
     get:
       operationId: CatalogController_stats
@@ -2889,7 +2890,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a21
+      tags: &a22
         - Catalog
   /api/v1/catalog/products:
     get:
@@ -2899,7 +2900,7 @@ paths:
         "200":
           description: Products fetched
       summary: List products
-      tags: *a21
+      tags: *a22
     post:
       operationId: CatalogController_createProduct
       parameters: []
@@ -2915,7 +2916,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create product
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/search:
     get:
       operationId: CatalogController_searchProducts
@@ -2934,7 +2935,7 @@ paths:
         "200":
           description: Product search results fetched
       summary: Search products by title or SKU
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/advanced-search:
     get:
       operationId: CatalogController_advancedSearchProducts
@@ -2943,7 +2944,7 @@ paths:
         "200":
           description: Filtered product page fetched
       summary: Advanced product search with faceted filtering (RG-C6)
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}:
     get:
       operationId: CatalogController_getProduct
@@ -2957,7 +2958,7 @@ paths:
         "200":
           description: Product fetched
       summary: Get product by id
-      tags: *a21
+      tags: *a22
     patch:
       operationId: CatalogController_updateProduct
       parameters:
@@ -2976,7 +2977,7 @@ paths:
         "200":
           description: Product updated
       summary: Update product
-      tags: *a21
+      tags: *a22
     delete:
       operationId: CatalogController_deleteProduct
       parameters:
@@ -2988,7 +2989,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/revisions:
     get:
       operationId: CatalogController_getProductRevisions
@@ -3002,7 +3003,7 @@ paths:
         "200":
           description: Product revision history fetched
       summary: Get product revision history
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/review-decision:
     post:
       operationId: CatalogController_decideProductReview
@@ -3022,7 +3023,7 @@ paths:
         "201":
           description: Review decision applied
       summary: Approve or reject an in-review product
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/review-comments:
     post:
       operationId: CatalogController_addApprovalComment
@@ -3042,7 +3043,7 @@ paths:
         "201":
           description: Comment added
       summary: Add a comment to the approval thread for a product
-      tags: *a21
+      tags: *a22
     get:
       operationId: CatalogController_listApprovalComments
       parameters:
@@ -3055,7 +3056,7 @@ paths:
         "200":
           description: Comments fetched
       summary: List approval comments for a product
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/activity:
     get:
       operationId: CatalogController_getProductActivity
@@ -3074,7 +3075,7 @@ paths:
         "200":
           description: Activity events fetched
       summary: Get activity timeline for a product
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/assignee:
     patch:
       operationId: CatalogController_assignProduct
@@ -3094,7 +3095,7 @@ paths:
         "200":
           description: Assignee updated
       summary: Assign a product to a reviewer
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/change-requests:
     post:
       operationId: CatalogController_requestChanges
@@ -3114,7 +3115,7 @@ paths:
         "201":
           description: Change request created
       summary: Request changes on a product before approving
-      tags: *a21
+      tags: *a22
     get:
       operationId: CatalogController_listChangeRequests
       parameters:
@@ -3127,7 +3128,7 @@ paths:
         "200":
           description: Change requests fetched
       summary: List change requests for a product
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/change-requests/{requestId}/resolve:
     post:
       operationId: CatalogController_resolveChangeRequest
@@ -3146,7 +3147,7 @@ paths:
         "200":
           description: Change request resolved
       summary: Resolve an open change request
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/workflow/sla:
     put:
       operationId: CatalogController_upsertWorkflowSla
@@ -3155,7 +3156,7 @@ paths:
         "200":
           description: SLA config saved
       summary: Upsert the workflow SLA configuration for this tenant
-      tags: *a21
+      tags: *a22
     get:
       operationId: CatalogController_getWorkflowSla
       parameters: []
@@ -3163,7 +3164,7 @@ paths:
         "200":
           description: SLA config fetched
       summary: Get workflow SLA configuration for this tenant
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/workflow/sla/overdue:
     get:
       operationId: CatalogController_getOverdueCount
@@ -3172,7 +3173,7 @@ paths:
         "200":
           description: Overdue count
       summary: Count products past their SLA review deadline
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/purge:
     delete:
       operationId: CatalogController_purgeProduct
@@ -3185,7 +3186,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/variants:
     get:
       operationId: CatalogController_listVariants
@@ -3198,7 +3199,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
     post:
       operationId: CatalogController_createVariant
       parameters:
@@ -3216,7 +3217,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/variants/{id}:
     patch:
       operationId: CatalogController_updateVariant
@@ -3235,7 +3236,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
     delete:
       operationId: CatalogController_deleteVariant
       parameters:
@@ -3247,7 +3248,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/products/{id}/relationships:
     post:
       operationId: CatalogController_createRelationship
@@ -3267,7 +3268,7 @@ paths:
         "201":
           description: Relationship created
       summary: Create a product relationship (bundle, kit, accessory, etc.)
-      tags: *a21
+      tags: *a22
     get:
       operationId: CatalogController_listRelationships
       parameters:
@@ -3280,7 +3281,7 @@ paths:
         "200":
           description: Relationships fetched
       summary: List outgoing and incoming product relationships
-      tags: *a21
+      tags: *a22
   /api/v1/catalog/relationships/{relationshipId}:
     delete:
       operationId: CatalogController_deleteRelationship
@@ -3294,7 +3295,7 @@ paths:
         "200":
           description: Relationship deleted
       summary: Delete a product relationship
-      tags: *a21
+      tags: *a22
   /api/v1/products:
     get:
       operationId: ProductsController_listProducts
@@ -3303,7 +3304,7 @@ paths:
         "200":
           description: Products fetched
       summary: List products
-      tags: &a22
+      tags: &a23
         - Products
     post:
       operationId: ProductsController_createProduct
@@ -3320,7 +3321,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create product
-      tags: *a22
+      tags: *a23
   /api/v1/products/{id}:
     get:
       operationId: ProductsController_getProduct
@@ -3334,7 +3335,7 @@ paths:
         "200":
           description: Product fetched
       summary: Get product by id
-      tags: *a22
+      tags: *a23
     patch:
       operationId: ProductsController_updateProduct
       parameters:
@@ -3353,7 +3354,7 @@ paths:
         "200":
           description: Product updated
       summary: Update product
-      tags: *a22
+      tags: *a23
   /api/v1/products/{id}/revisions:
     get:
       operationId: ProductsController_getProductRevisions
@@ -3367,7 +3368,7 @@ paths:
         "200":
           description: Revisions fetched
       summary: Get product revision history
-      tags: *a22
+      tags: *a23
   /api/v1/platform/tenants:
     post:
       operationId: PlatformAdminController_createTenant
@@ -3391,7 +3392,7 @@ paths:
         "200":
           description: ""
       summary: List all markets for this tenant
-      tags: &a23
+      tags: &a24
         - Pricing
     post:
       operationId: PricingController_createMarket
@@ -3408,7 +3409,7 @@ paths:
         "409":
           description: Market code+locale already exists
       summary: Create a market
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/markets/{id}:
     get:
       operationId: PricingController_getMarket
@@ -3424,7 +3425,7 @@ paths:
         "404":
           description: ""
       summary: Get a single market
-      tags: *a23
+      tags: *a24
     patch:
       operationId: PricingController_updateMarket
       parameters:
@@ -3445,7 +3446,7 @@ paths:
         "404":
           description: ""
       summary: Update a market
-      tags: *a23
+      tags: *a24
     delete:
       operationId: PricingController_deleteMarket
       parameters:
@@ -3460,7 +3461,7 @@ paths:
         "409":
           description: Market still referenced by price lists
       summary: Delete a market (fails if price lists reference it)
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/currencies:
     get:
       operationId: PricingController_listCurrencies
@@ -3469,7 +3470,7 @@ paths:
         "200":
           description: ""
       summary: List all currencies for this tenant
-      tags: *a23
+      tags: *a24
     post:
       operationId: PricingController_createCurrency
       parameters: []
@@ -3485,7 +3486,7 @@ paths:
         "409":
           description: Currency code already exists for this tenant
       summary: Create a currency
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/currencies/{id}:
     get:
       operationId: PricingController_getCurrency
@@ -3499,7 +3500,7 @@ paths:
         "404":
           description: ""
       summary: Get a single currency
-      tags: *a23
+      tags: *a24
     patch:
       operationId: PricingController_updateCurrency
       parameters:
@@ -3518,7 +3519,7 @@ paths:
         "200":
           description: ""
       summary: Update a currency
-      tags: *a23
+      tags: *a24
     delete:
       operationId: PricingController_deleteCurrency
       parameters:
@@ -3531,7 +3532,7 @@ paths:
         "204":
           description: ""
       summary: Delete a currency (fails if price lists reference it)
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/price-lists:
     get:
       operationId: PricingController_listPriceLists
@@ -3540,7 +3541,7 @@ paths:
         "200":
           description: ""
       summary: List all price lists (with market + currency)
-      tags: *a23
+      tags: *a24
     post:
       operationId: PricingController_createPriceList
       parameters: []
@@ -3558,7 +3559,7 @@ paths:
         "409":
           description: Duplicate market+currency combination
       summary: Create a price list
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/price-lists/{id}:
     get:
       operationId: PricingController_getPriceList
@@ -3572,7 +3573,7 @@ paths:
         "404":
           description: ""
       summary: Get a single price list
-      tags: *a23
+      tags: *a24
     patch:
       operationId: PricingController_updatePriceList
       parameters:
@@ -3591,7 +3592,7 @@ paths:
         "200":
           description: ""
       summary: Update a price list
-      tags: *a23
+      tags: *a24
     delete:
       operationId: PricingController_deletePriceList
       parameters:
@@ -3604,7 +3605,7 @@ paths:
         "204":
           description: ""
       summary: Delete a price list and all its product prices
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/price-lists/{id}/prices:
     get:
       operationId: PricingController_listPrices
@@ -3618,7 +3619,7 @@ paths:
         "404":
           description: Price list not found
       summary: List all product prices in a price list
-      tags: *a23
+      tags: *a24
     put:
       description: Creates or updates ProductPrice rows for the given variantIds.
         Sending the same variantId twice in one request is a validation error.
@@ -3641,7 +3642,7 @@ paths:
         "400":
           description: Unknown variantId(s)
       summary: Bulk-upsert prices for a price list
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/price-lists/{id}/prices/template:
     get:
       description: Returns a UTF-8 CSV file with all tenant variant SKUs as rows.
@@ -3661,7 +3662,7 @@ paths:
         "404":
           description: Price list not found
       summary: Download a price list CSV template
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/coverage:
     get:
       description: Returns how many variants have prices set in each active price
@@ -3673,7 +3674,7 @@ paths:
         "200":
           description: PricingCoverage snapshot
       summary: Pricing coverage by price list
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/bootstrap:
     post:
       description: "Idempotent. Creates one India market, one INR currency, and one
@@ -3686,7 +3687,7 @@ paths:
           description: "{ created: boolean }"
       summary: Bootstrap default pricing config (India market + INR + default price
         list)
-      tags: *a23
+      tags: *a24
   /api/v1/pricing/price-lists/{id}/prices/import:
     post:
       description: "Upload a CSV file to bulk-set MRP and selling price for all
@@ -3706,7 +3707,7 @@ paths:
         "400":
           description: Parse error, missing column, or file too large
       summary: Import prices from a CSV file
-      tags: *a23
+      tags: *a24
   /api/v1/rejection-intelligence/products/{id}/score:
     get:
       operationId: RejectionIntelligenceController_scoreProduct
@@ -3733,7 +3734,7 @@ paths:
         "200":
           description: Workspace availability evaluated
       summary: Check whether a workspace slug is available for public signup
-      tags: &a24
+      tags: &a25
         - Public Signup
   /api/v1/signup/workspace:
     post:
@@ -3749,7 +3750,7 @@ paths:
         "200":
           description: Signup request accepted and pending verification
       summary: Create a pending public signup request
-      tags: *a24
+      tags: *a25
   /api/v1/signup/verify:
     post:
       operationId: SignupController_verifyPublicSignup
@@ -3764,7 +3765,7 @@ paths:
         "200":
           description: Signup verified and workspace provisioned
       summary: Verify a public signup token and provision the workspace
-      tags: *a24
+      tags: *a25
   /api/v1/signup/resend-verification:
     post:
       operationId: SignupController_resendVerification
@@ -3779,7 +3780,7 @@ paths:
         "200":
           description: Verification email resent when a pending signup exists
       summary: Resend the verification email for a pending public signup
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users:
     get:
       operationId: WorkspaceUsersController_listUsers
@@ -3787,7 +3788,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a25
+      tags: &a26
         - WorkspaceUsers
     post:
       operationId: WorkspaceUsersController_createUser
@@ -3801,7 +3802,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/users/role-capabilities:
     get:
       operationId: WorkspaceUsersController_getRoleCapabilities
@@ -3809,7 +3810,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/users/{userId}/role:
     patch:
       operationId: WorkspaceUsersController_updateUserRole
@@ -3828,7 +3829,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/users/{userId}/lock:
     post:
       operationId: WorkspaceUsersController_lockUser
@@ -3847,7 +3848,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/users/{userId}/unlock:
     post:
       operationId: WorkspaceUsersController_unlockUser
@@ -3860,7 +3861,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/users/{userId}/deactivate:
     post:
       operationId: WorkspaceUsersController_deactivateUser
@@ -3873,7 +3874,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/users/{userId}/password:
     post:
       operationId: WorkspaceUsersController_setUserPassword
@@ -3892,7 +3893,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/access-scopes:
     get:
       operationId: WorkspaceAccessScopesController_listAccessScopes
@@ -3900,7 +3901,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a26
+      tags: &a27
         - WorkspaceAccessScopes
     post:
       operationId: WorkspaceAccessScopesController_createAccessScope
@@ -3914,7 +3915,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a26
+      tags: *a27
   /api/v1/admin/workspace/access-scopes/{assignmentId}:
     delete:
       operationId: WorkspaceAccessScopesController_deleteAccessScope
@@ -3927,7 +3928,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a26
+      tags: *a27
   /api/v1/auto-suggestions/products/{id}/title-suggestion:
     get:
       operationId: AutoSuggestionsController_getTitleSuggestion
@@ -3940,7 +3941,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a27
+      tags: &a28
         - AutoSuggestions
   /api/v1/auto-suggestions/products/{id}/attribute-enrichment:
     get:
@@ -3954,7 +3955,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a27
+      tags: *a28
   /api/v1/auto-suggestions/products/{id}/category-suggestion:
     get:
       operationId: AutoSuggestionsController_getCategorySuggestion
@@ -3967,7 +3968,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a27
+      tags: *a28
   /api/v1/auto-suggestions/products/{id}/repair:
     post:
       operationId: AutoSuggestionsController_applyRepair
@@ -3980,7 +3981,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a27
+      tags: *a28
 info:
   title: Vexa PIM API
   description: Vexa PIM API OpenAPI specification
