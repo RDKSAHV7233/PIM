@@ -366,6 +366,133 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     return { svc, connectorFramework, connectorMappingService, tenantDb };
   }
 
+  // Builds a service where createExportJob runs for real (not spied away), with a
+  // behaviorally-realistic access-policy double instead of the blanket-allow stub used
+  // above. #550 escaped the existing suite specifically because every test spied over
+  // createExportJob entirely (bypassing its actor/permission check) or stubbed
+  // assertSensitivePayloadAccessAllowed to unconditionally resolve — so a broken actor
+  // could never surface as a failure. This harness exists to make that class of
+  // regression observable again.
+  function makeRealExportPipelineService(
+    productsById: Record<string, { status: string; categoryId: string }>,
+    options: { connectorSlug?: string; capabilities?: string[] } = {},
+  ) {
+    const connectorSlug = options.connectorSlug ?? "shopify";
+    const capabilities = options.capabilities ?? ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"];
+
+    const tenantDb = {
+      $queryRaw: jest.fn().mockResolvedValue([{ ...MOCK_RESOLVED_ROW, connectorSlug }]),
+      product: {
+        findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
+          Promise.resolve(productsById[id] ? { id, version: 1, updatedAt: new Date("2026-01-01"), brand: "B", ...productsById[id] } : null),
+        ),
+      },
+      connectorSubmission: {
+        upsert: jest.fn(({ create }: { create: { id?: string } }) =>
+          Promise.resolve({ id: `sub_${create.id ?? Math.random()}` }),
+        ),
+      },
+      marketplaceExportJob: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }: { data: { productId: string } }) =>
+          Promise.resolve({ id: `job_${data.productId}`, retryCount: 0 }),
+        ),
+      },
+    };
+
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
+
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireInstallation: jest.fn().mockResolvedValue({ id: "inst_1", slug: connectorSlug, capabilities }),
+    };
+
+    const connectorMappingService = {
+      evaluatePublishReadiness: jest.fn().mockResolvedValue({ ok: true, blockers: [], warnings: [] }),
+      assertPublishReadyForExport: jest.fn().mockResolvedValue(undefined),
+    };
+
+    // Mirrors the real AccessPolicyService.canExportToMarketplace gate (admin/publisher/
+    // channel_manager only) instead of unconditionally allowing every actor — the one
+    // check #550 broke.
+    const accessPolicy = {
+      assertSensitivePayloadAccessAllowed: jest.fn(
+        async (actor: { actorRole?: string } | undefined, opts: { action: string }) => {
+          if (opts.action !== "marketplace.export") return;
+          const role = String(actor?.actorRole ?? "").trim().toLowerCase();
+          if (role === "admin" || role === "publisher" || role === "channel_manager") return;
+          throw new Error("SENSITIVE_PAYLOAD_RESTRICTED: marketplace.export denied for this actor");
+        },
+      ),
+      assertProductAccess: jest.fn().mockResolvedValue(undefined),
+      assertChannelAccess: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      connectorMappingService as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      accessPolicy as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
+    );
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "simulateProduct").mockResolvedValue({
+      channel: connectorSlug,
+      templateId: undefined,
+      mappingSource: "default",
+      missingFields: [],
+      complianceSummary: {},
+      mappedPayload: { sku: "SKU-x" },
+    });
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "enqueueExportJobForExecution").mockResolvedValue(undefined);
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
+      .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
+
+    return { svc };
+  }
+
+  // #550: bulkPublishViaQueuedExportJobs called createExportJob(productId, dto, undefined)
+  // — dropping the actor entirely — so every product was denied by the real permission
+  // check regardless of readiness. Wiring-level tests that spy over createExportJob (like
+  // "falls back to queued per-product export jobs" above) can verify the argument is
+  // passed correctly, but can't prove the *consequence* of dropping it, since they never
+  // let the real check run. This test does, with a behaviorally-realistic access-policy
+  // double: it is the concrete regression guard for the invariant that a batch of
+  // genuinely ready products must never come back fully excluded.
+  it("never returns an all-excluded result for an all-ready Shopify batch with a valid actor (regression guard for #550)", async () => {
+    const { svc } = makeRealExportPipelineService({
+      "a1": { status: "approved", categoryId: "cat1" },
+      "a2": { status: "active", categoryId: "cat1" },
+    });
+    const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
+
+    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor);
+
+    expect(result.productCount).toBeGreaterThan(0);
+    expect(result.excluded).toHaveLength(0);
+    expect(result.submissionIds).toHaveLength(2);
+  });
+
+  it("returns an all-excluded result when the actor is missing, even though every product is ready — proves the guard above is meaningful", async () => {
+    const { svc } = makeRealExportPipelineService({
+      "a1": { status: "approved", categoryId: "cat1" },
+      "a2": { status: "active", categoryId: "cat1" },
+    });
+
+    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], undefined);
+
+    expect(result.productCount).toBe(0);
+    expect(result.excluded).toHaveLength(2);
+    expect(result.excluded.every((e) => e.reason.includes("SENSITIVE_PAYLOAD_RESTRICTED"))).toBe(true);
+  });
+
   it("excludes a draft product and only submits the approved, ready one", async () => {
     const { svc, connectorFramework, connectorMappingService } = makeBulkPublishService({
       "draft-1": { status: "draft", categoryId: "cat1" },
