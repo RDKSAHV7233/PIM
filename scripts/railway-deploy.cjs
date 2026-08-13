@@ -980,6 +980,7 @@ module.exports = {
   normalizeServiceTarget,
   normalizeRailwayVariablesPayload,
   prepareRailwayDeployRoot,
+  readRailwayVariablesAcrossServiceTargets,
   resolveApiDatabaseVariables,
   resolveConfig,
   resolveErrorAuthorityServiceVariables,

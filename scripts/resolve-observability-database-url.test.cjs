@@ -41,10 +41,15 @@ function requireRunContains(step, fragment, label) {
 
 function main() {
   const script = read("scripts/resolve-observability-database-url.cjs");
+  const deployScript = read("scripts/railway-deploy.cjs");
   const workflow = YAML.parse(read(".github/workflows/deploy-staging.yml"));
   const steps = workflow.jobs["deploy-staging"].steps;
 
   assert(script.includes("readRailwayVariablesAcrossServiceTargets"), "Resolver must read Railway service variables as fallback.");
+  assert(
+    /readRailwayVariablesAcrossServiceTargets,\s*\n/.test(deployScript),
+    "railway-deploy.cjs must export readRailwayVariablesAcrossServiceTargets for the resolver.",
+  );
   assert(script.includes("::add-mask::"), "Resolver must mask the resolved database URL.");
   assert(!script.includes("console.log(value)"), "Resolver must not print the raw database URL.");
 
