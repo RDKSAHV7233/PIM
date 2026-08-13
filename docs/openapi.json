@@ -1493,6 +1493,43 @@
         ]
       }
     },
+    "/api/v1/error-authority/ops/issues": {
+      "get": {
+        "operationId": "ErrorAuthorityOpsController_listIssues",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ErrorAuthorityOps"
+        ]
+      }
+    },
+    "/api/v1/error-authority/ops/issues/{issueId}/occurrences": {
+      "get": {
+        "operationId": "ErrorAuthorityOpsController_listOccurrences",
+        "parameters": [
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ErrorAuthorityOps"
+        ]
+      }
+    },
     "/api/v1/connector-webhooks/relay/{tenantKey}/installations/{installationId}": {
       "post": {
         "operationId": "ConnectorWebhookRelayController_relayWebhook",

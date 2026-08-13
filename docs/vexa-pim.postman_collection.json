@@ -9226,6 +9226,73 @@
       ]
     },
     {
+      "name": "ErrorAuthorityOps",
+      "description": "",
+      "item": [
+        {
+          "name": "ErrorAuthorityOpsController_listIssues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/error-authority/ops/issues",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "error-authority",
+                "ops",
+                "issues"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "ErrorAuthorityOpsController_listOccurrences",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/error-authority/ops/issues/:issueId/occurrences",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "error-authority",
+                "ops",
+                "issues",
+                ":issueId",
+                "occurrences"
+              ],
+              "variable": [
+                {
+                  "key": "issueId",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "OutboundWebhooks",
       "description": "",
       "item": [
