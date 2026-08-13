@@ -24,6 +24,7 @@ async function main() {
   const lockedUsers = new Set();
   const inactiveUsers = new Set();
   const auditLogDeniedRoles = new Set();
+  let viewerCreateConflictExercised = false;
   let viewerAdminListDenied = false;
   let staleViewerLockedRejected = false;
   let staleViewerInactiveRejected = false;
@@ -159,6 +160,12 @@ async function main() {
           return;
         }
         const body = JSON.parse(raw || "{}");
+        if (body.role === "viewer" && !viewerCreateConflictExercised) {
+          viewerCreateConflictExercised = true;
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "USER_ALREADY_EXISTS" }));
+          return;
+        }
         users.set(body.userId, body.role);
         res.writeHead(201, { "content-type": "application/json" });
         res.end(JSON.stringify({ userId: body.userId, role: body.role }));
@@ -401,6 +408,7 @@ async function main() {
     ["editor", "reviewer", "viewer"],
     "non-admin staging smoke must deny audit logs for viewer/reviewer/editor",
   );
+  assert.equal(viewerCreateConflictExercised, true, "staging smoke must retry duplicate temporary viewer ids");
   assert.equal(viewerAdminListDenied, true, "viewer must be denied workspace user admin route");
   assert.equal(staleViewerLockedRejected, true, "viewer stale token must be rejected after lock");
   assert.equal(staleViewerInactiveRejected, true, "viewer stale token must be rejected after deactivation");

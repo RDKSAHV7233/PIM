@@ -117,7 +117,6 @@ function envFlagEnabled(name) {
 }
 
 async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminToken) {
-  const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`.toLowerCase();
   const tempPassword = `VexaTmp!${randomUUID().replace(/-/g, "").slice(0, 12)}#1a`;
   const adminHeaders = {
     authorization: `Bearer ${adminToken}`,
@@ -126,11 +125,11 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
     ...adminHeaders,
     "content-type": "application/json",
   };
-  const tempUsers = [
-    { userId: `access-policy-viewer-${suffix}@vexa-pim.local`, role: "viewer" },
-    { userId: `access-policy-reviewer-${suffix}@vexa-pim.local`, role: "reviewer" },
-    { userId: `access-policy-editor-${suffix}@vexa-pim.local`, role: "editor" },
-  ];
+  const makeTempUser = (role) => {
+    const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`.toLowerCase();
+    return { userId: `access-policy-${role}-${suffix}@vexa-pim.local`, role };
+  };
+  const tempUsers = ["viewer", "reviewer", "editor"].map(makeTempUser);
   const validated = [];
 
   async function deactivateUser(userId) {
@@ -147,15 +146,28 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
 
   try {
     for (const user of tempUsers) {
-      const created = await requestJson(baseUrl, "/api/v1/admin/workspace/users", {
-        method: "POST",
-        headers: adminJsonHeaders,
-        body: {
-          userId: user.userId,
-          role: user.role,
-        },
-        retries: 2,
-      });
+      let created = null;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        if (attempt > 0) {
+          user.userId = makeTempUser(user.role).userId;
+        }
+        created = await requestJson(baseUrl, "/api/v1/admin/workspace/users", {
+          method: "POST",
+          headers: adminJsonHeaders,
+          body: {
+            userId: user.userId,
+            role: user.role,
+          },
+          retries: 2,
+        });
+        if (created.status === 201) {
+          break;
+        }
+        if (created.status === 409 && String(created.payload?.error ?? "") === "USER_ALREADY_EXISTS") {
+          continue;
+        }
+        assertStatus(created, 201, `create ${user.role} workspace user`);
+      }
       assertStatus(created, 201, `create ${user.role} workspace user`);
 
       const passwordSet = await requestJson(
