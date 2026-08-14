@@ -460,6 +460,7 @@ describe("ShopifyConnector.previewChanges", () => {
   function setUpConnectorWithCredential() {
     const connector = makeConnector();
     const db = (connector as any).prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter — test mock, no real DB access
     db.$queryRawUnsafe.mockImplementation(async (sql: string) => {
       if (sql.includes("connector_credentials")) {
         return [await buildEncryptedRow("test-store.myshopify.com")];
