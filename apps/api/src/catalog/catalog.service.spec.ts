@@ -186,3 +186,58 @@ describe("CatalogService.updateProduct — approval-transition guard (F-1)", () 
     expect(tenantClient.product.updateMany).toHaveBeenCalled();
   });
 });
+
+describe("CatalogService.updateProduct — archive/restore transitions (BUG-ARCHIVE-SOFTDELETE-001)", () => {
+  it("admin: approved -> archived is allowed and records a STATUS_TRANSITION audit entry", async () => {
+    const { service, tenantClient, auditService } = makeService({ status: "approved", version: 1 });
+
+    const result = await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "archived" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(result).toBeDefined();
+    expect(tenantClient.product.updateMany).toHaveBeenCalled();
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "STATUS_TRANSITION",
+        resourceId: "prod1",
+        metadata: expect.objectContaining({ fromStatus: "approved", toStatus: "archived" }),
+      }),
+    );
+  });
+
+  it("admin: archived -> draft is allowed (this is the Restore action; the PATCH endpoint never touches deletedAt)", async () => {
+    const { service, tenantClient, auditService } = makeService({ status: "archived", version: 1 });
+
+    const result = await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "draft" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(result).toBeDefined();
+    expect(tenantClient.product.updateMany).toHaveBeenCalled();
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "STATUS_TRANSITION",
+        resourceId: "prod1",
+        metadata: expect.objectContaining({ fromStatus: "archived", toStatus: "draft" }),
+      }),
+    );
+  });
+
+  it("rejected -> archived is allowed (archived is reachable from every status)", async () => {
+    const { service, tenantClient } = makeService({ status: "rejected", version: 1 });
+
+    const result = await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "archived" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(result).toBeDefined();
+    expect(tenantClient.product.updateMany).toHaveBeenCalled();
+  });
+});

@@ -887,6 +887,99 @@ export async function revertProductToDraftAction(formData: FormData) {
   }
 }
 
+// Archive/Restore both go through this single action (status carried as a hidden
+// form field), mirroring decideProductReviewAction's approve/reject shape rather
+// than duplicating the try/catch/redirect boilerplate per direction. This replaces
+// the old DELETE-based "Archive product" flow (BUG-ARCHIVE-SOFTDELETE-001): that
+// button silently soft-deleted the row (deletedAt) instead of setting status, which
+// made archived products globally invisible via the tenant-scope soft-delete filter,
+// with no restore path. This PATCHes status instead — deletedAt is never touched, so
+// the product stays reachable and can move back to draft afterward.
+//
+// deleteProductAction (DELETE /catalog/products/:id, true soft-delete) is intentionally
+// left in place and untouched by this fix — it's still a legitimate capability, just no
+// longer wired to anything labeled "Archive." Nothing in the UI calls it as of this
+// change; if/when a real "delete" surface is reintroduced it should stay clearly
+// destructive (confirmation, distinct copy) and never share a label with this action.
+//
+// Concurrency note — the two callers have different staleness guarantees, not just
+// different plumbing: the detail-page Archive/Restore controls pass expectedVersion
+// from the version actually rendered to the operator (standard optimistic concurrency
+// — a stale click 409s). The catalog list's row-level Archive action has no version in
+// its list payload, so it fetches the current version immediately before patching —
+// meaning it archives whatever the latest version is, not necessarily the version the
+// operator was looking at when they clicked. This is a deliberate scope trade-off for
+// a coarse status-only action, not an oversight, but it means the list path does NOT
+// protect against a stale-view double-archive the way the detail page does. If that
+// gap ever matters for this action, the fix is threading `version` through
+// ProductListItem rather than adding another special case here.
+export async function updateProductStatusAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  if (!productId || (status !== "archived" && status !== "draft")) {
+    throw new Error("Product id and a valid target status (archived or draft) are required.");
+  }
+  const note = String(formData.get("statusChangeNote") ?? "").trim();
+  const basePath = `/products/${encodeURIComponent(productId)}`;
+  // The detail-page controls submit without a returnTo (stay on the product page after
+  // archiving/restoring). The catalog list's row-level Archive action passes one so the
+  // user stays on the list instead of being navigated to the product's own detail page.
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : basePath;
+
+  try {
+    // The detail-page Archive/Restore controls already know the product's current
+    // version and pass it explicitly. The catalog list's row-level Archive action
+    // doesn't carry version in its list payload, so fall back to a fresh fetch —
+    // updateProduct()'s optimistic-concurrency check still applies either way.
+    const formExpectedVersion = parseNumber(formData.get("expectedVersion"));
+    const expectedVersion =
+      formExpectedVersion !== undefined
+        ? formExpectedVersion
+        : (await getProduct(productId, await resolveActionOptions(formData))).version;
+
+    await patchJsonForAction(formData, `/catalog/products/${productId}`, {
+      expectedVersion,
+      status,
+      ...(note ? { statusChangeNote: note } : {}),
+    });
+    revalidatePath(basePath);
+    revalidatePath("/catalog/products");
+    redirect(
+      appendQueryParams(returnTo, {
+        ...(returnTo === basePath ? { tab: "overview" } : {}),
+        updateStatus: status === "archived" ? "archived" : "restored",
+      }),
+    );
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    // Mirrors deleteProductAction's BUG-AUTH-STALE-SESSION-001 handling: the catalog
+    // list's row-level Archive action invokes this via startTransition rather than a
+    // native form submission, so a session-expiry redirect needs to be returned as a
+    // value (for the caller to window.location.assign) instead of thrown.
+    const sessionRedirectPath = resolveSessionExpiredRedirect(basePath, error);
+    if (sessionRedirectPath) {
+      if (String(formData.get("__viaTransition") ?? "") === "1") {
+        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
+      }
+      redirect(sessionRedirectPath);
+    }
+    const errorMessage =
+      error instanceof ApiHttpError
+        ? extractApiErrorMessage(error)
+        : error instanceof Error
+          ? error.message
+          : undefined;
+    redirect(
+      appendQueryParams(returnTo, {
+        ...(returnTo === basePath ? { tab: "overview" } : {}),
+        updateStatus: "error",
+        errorMessage,
+      }),
+    );
+  }
+}
+
 export async function createAttributeDefinitionAction(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
