@@ -24,7 +24,7 @@ type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archive
 const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
   draft: ["in_review", "archived"],
   in_review: ["approved", "rejected", "draft", "archived"],
-  approved: ["archived"],
+  approved: ["archived", "draft"],
   rejected: ["draft", "in_review", "archived"],
   archived: ["draft", "in_review"],
 };

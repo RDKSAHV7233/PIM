@@ -192,6 +192,19 @@ describe("BulkEditService queue handler — processApplyJob via onModuleInit reg
     expect(finalOp.failedCount).toBe(1);
   });
 
+  it("allows approved -> draft transition (issue #549)", async () => {
+    const products = [fakeProduct("p1", { status: "approved" })];
+    const { service, operations, runQueueHandler } = createService({ products });
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "draft" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const finalOp = operations.get(operation.id) as { status: string; appliedCount: number; failedCount: number };
+    expect(finalOp.status).toBe(BulkEditOperationStatus.completed);
+    expect(finalOp.appliedCount).toBe(1);
+    expect(finalOp.failedCount).toBe(0);
+  });
+
   it("finalizes as failed when every product fails", async () => {
     const products = [fakeProduct("p1", { status: "approved" }), fakeProduct("p2", { status: "approved" })];
     const { service, operations, runQueueHandler } = createService({ products });

@@ -430,3 +430,106 @@ describe("ShopifyConnector.refreshAccessToken", () => {
     await expect(connector.refreshAccessToken(ctx)).rejects.toThrow(/access_token/i);
   });
 });
+
+// ─── previewChanges ─────────────────────────────────────────────────────────
+
+describe("ShopifyConnector.previewChanges", () => {
+  async function buildEncryptedRow(value: string) {
+    const { encryptCredentialValue, loadCredentialEncryptionKeys, resolveCurrentCredentialKeyVersion } =
+      await import("../../connector-installer/credential-encryption.util");
+    const keys = loadCredentialEncryptionKeys(process.env);
+    const ver = resolveCurrentCredentialKeyVersion(process.env);
+    const cipher = encryptCredentialValue(value, keys.get(ver)!, ver);
+    return { encryptedValue: cipher, keyVersion: "v1", status: "ACTIVE", expiresAt: null, failureReason: null };
+  }
+
+  const BASE_PAYLOAD: ProductPayload = {
+    sku: "X",
+    title: "T",
+    description: "Original description",
+    brand: "B",
+    hsnCode: "",
+    attributes: {},
+    productType: "SHIRT",
+    mainImageUrl: "https://img.example.com/x.jpg",
+    mrp: 100,
+    sellingPrice: 80,
+    gstRate: 0,
+  };
+
+  function setUpConnectorWithCredential() {
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    db.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+      if (sql.includes("connector_credentials")) {
+        return [await buildEncryptedRow("test-store.myshopify.com")];
+      }
+      return [];
+    });
+    const apiClient = (connector as any).apiClient as ShopifyApiClient;
+    return { connector, apiClient };
+  }
+
+  function mockGraphqlNode(node: Record<string, unknown>) {
+    return jest.fn().mockResolvedValue({ node });
+  }
+
+  it("surfaces a description change when Shopify's descriptionHtml differs from Vexa's", async () => {
+    const { connector, apiClient } = setUpConnectorWithCredential();
+    (apiClient as any).graphqlRequest = mockGraphqlNode({
+      title: "T",
+      handle: "t",
+      descriptionHtml: "<p>Old description on Shopify</p>",
+      status: "ACTIVE",
+      variants: { nodes: [{ price: "80.00" }] },
+      images: { nodes: [] },
+    });
+
+    const ctx = makeCtx();
+    const result = await connector.previewChanges(ctx, BASE_PAYLOAD, "gid://shopify/Product/1");
+
+    const descriptionChange = result.changes.find((c) => c.field === "description");
+    expect(descriptionChange).toBeDefined();
+    expect(descriptionChange?.currentValue).toBe("<p>Old description on Shopify</p>");
+    expect(descriptionChange?.newValue).toBe("Original description");
+    expect(descriptionChange?.changeType).toBe("update");
+    expect(descriptionChange?.riskLevel).toBe("low");
+  });
+
+  it("does not surface a description entry when descriptions match", async () => {
+    const { connector, apiClient } = setUpConnectorWithCredential();
+    (apiClient as any).graphqlRequest = mockGraphqlNode({
+      title: "T",
+      handle: "t",
+      descriptionHtml: "Original description",
+      status: "ACTIVE",
+      variants: { nodes: [{ price: "80.00" }] },
+      images: { nodes: [] },
+    });
+
+    const ctx = makeCtx();
+    const result = await connector.previewChanges(ctx, BASE_PAYLOAD, "gid://shopify/Product/1");
+
+    expect(result.changes.find((c) => c.field === "description")).toBeUndefined();
+  });
+
+  it("treats a missing Shopify descriptionHtml as an add when Vexa has a description", async () => {
+    const { connector, apiClient } = setUpConnectorWithCredential();
+    (apiClient as any).graphqlRequest = mockGraphqlNode({
+      title: "T",
+      handle: "t",
+      // descriptionHtml intentionally omitted, as Shopify's GraphQL field is nullable/omittable.
+      status: "ACTIVE",
+      variants: { nodes: [{ price: "80.00" }] },
+      images: { nodes: [] },
+    });
+
+    const ctx = makeCtx();
+    const result = await connector.previewChanges(ctx, BASE_PAYLOAD, "gid://shopify/Product/1");
+
+    const descriptionChange = result.changes.find((c) => c.field === "description");
+    expect(descriptionChange).toBeDefined();
+    expect(descriptionChange?.changeType).toBe("add");
+    expect(descriptionChange?.newValue).toBe("Original description");
+  });
+});
