@@ -455,7 +455,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
       .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
 
-    return { svc };
+    return { svc, tenantDb, connectorMappingService };
   }
 
   // #550: bulkPublishViaQueuedExportJobs called createExportJob(productId, dto, undefined)
@@ -491,6 +491,27 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(result.productCount).toBe(0);
     expect(result.excluded).toHaveLength(2);
     expect(result.excluded.every((e) => e.reason.includes("SENSITIVE_PAYLOAD_RESTRICTED"))).toBe(true);
+  });
+
+  // #554: the eligibility loop and createExportJob previously each independently fetched the
+  // product and evaluated readiness for the same productId/connector/installation — twice the
+  // DB round trips per product for no behavioral reason. This asserts the actual fix, not just
+  // that wiring passes the right arguments: for an eligible product, product.findUnique and
+  // evaluatePublishReadiness must each run exactly once per product across the whole bulk-publish
+  // request, not twice.
+  it("evaluates readiness and fetches each product exactly once per product across the whole bulk-publish request (#554)", async () => {
+    const { svc, tenantDb, connectorMappingService } = makeRealExportPipelineService({
+      "a1": { status: "approved", categoryId: "cat1" },
+      "a2": { status: "active", categoryId: "cat1" },
+    });
+    const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
+
+    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor);
+
+    expect(result.excluded).toHaveLength(0);
+    expect(result.submissionIds).toHaveLength(2);
+    expect(connectorMappingService.evaluatePublishReadiness).toHaveBeenCalledTimes(2); // once per product, not 4
+    expect(tenantDb.product.findUnique).toHaveBeenCalledTimes(2); // once per product, not 4-6
   });
 
   it("excludes a draft product and only submits the approved, ready one", async () => {
@@ -564,10 +585,17 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     // causes createExportJob's assertSensitivePayloadAccessAllowed(actor ?? {}, ...) check to
     // deny every product (an actor with no actorRole can never satisfy canExportToMarketplace),
     // which is exactly what made bulk publish 0% functional for Shopify/WooCommerce in production.
+    // #554: the eligibility loop's already-fetched product + already-computed readiness must
+    // also reach createExportJob as a 4th "precomputed" argument, so it skips its own redundant
+    // product fetch and second evaluatePublishReadiness call.
     expect(createExportJobSpy).toHaveBeenCalledWith(
       "a1",
       expect.objectContaining({ channel: "shopify", installationId: "inst_1" }),
       actor,
+      {
+        product: expect.objectContaining({ id: "a1", status: "approved", categoryId: "cat1" }),
+        readiness: { ok: true, blockers: [], warnings: [] },
+      },
     );
     expect(result.excluded).toHaveLength(0);
     expect(result.submissionIds.sort()).toEqual(["job_a1", "job_a2"]);

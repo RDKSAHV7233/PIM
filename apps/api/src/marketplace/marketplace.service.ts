@@ -721,13 +721,28 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async createExportJob(productId: string, dto: CreateExportJobDto, actor?: PolicyActor) {
+  async createExportJob(
+    productId: string,
+    dto: CreateExportJobDto,
+    actor?: PolicyActor,
+    // Bulk publish (triggerBulkPublish -> bulkPublishViaQueuedExportJobs) already fetches
+    // the product and evaluates readiness once per product in its eligibility loop, with
+    // identical inputs (same connectorSlug/categoryScope/installationId/productId) to what
+    // this method would otherwise re-fetch/re-evaluate a few lines below. Accepting them
+    // here as optional pass-through avoids doing that DB work twice per product on every
+    // bulk-publish call — see #554. Every other caller (single-product "Queue channel
+    // export", retries, delta sync, ...) omits this and behaves exactly as before.
+    precomputed?: {
+      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
+      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
+    },
+  ) {
     await this.accessPolicy.assertSensitivePayloadAccessAllowed(actor ?? {}, {
       action: "marketplace.export",
       resource: "MarketplaceExportJob",
       resourceId: productId,
     });
-    const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
+    const product = precomputed?.product ?? await this.prisma.tenant().product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new NotFoundException("Product not found");
     }
@@ -760,13 +775,23 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId, resolvedInstallationId);
-    await this.connectorMappingService.assertPublishReadyForExport({
-      connectorSlug,
-      categoryScope: product.categoryId,
-      installationId: resolvedInstallationId,
-      fallbackAcknowledged: dto.fallbackAcknowledged,
-      productId,
-    });
+    if (precomputed?.readiness) {
+      if (!precomputed.readiness.ok) {
+        throw new BadRequestException({
+          error: "publish_readiness_blocked",
+          blockers: precomputed.readiness.blockers,
+          warnings: precomputed.readiness.warnings,
+        });
+      }
+    } else {
+      await this.connectorMappingService.assertPublishReadyForExport({
+        connectorSlug,
+        categoryScope: product.categoryId,
+        installationId: resolvedInstallationId,
+        fallbackAcknowledged: dto.fallbackAcknowledged,
+        productId,
+      });
+    }
 
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     try {
@@ -4965,13 +4990,21 @@ export class MarketplaceService implements OnModuleInit {
     // networked (see #531 item 4) — 46 products alone exceeded the web layer's 20s timeout.
     // Evaluate concurrently instead, same runWithConcurrency pattern already used for the
     // per-product export-job queuing a few lines below.
+    type EligibleProduct = {
+      productId: string;
+      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
+      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
+    };
     const eligibilityResults = await this.runWithConcurrency(
       productIds.map((productId) => async (): Promise<
-        { productId: string; eligible: true } | { productId: string; eligible: false; reason: string }
+        ({ eligible: true } & EligibleProduct) | { productId: string; eligible: false; reason: string }
       > => {
+        // Select every field createExportJob's own product.findUnique would otherwise
+        // re-fetch a few lines later in the same request (see #554) — carrying this
+        // object through skips that second full-row fetch for eligible products.
         const product = await db.product.findUnique({
           where: { id: productId },
-          select: { id: true, status: true, categoryId: true },
+          select: { id: true, status: true, categoryId: true, brand: true, version: true, updatedAt: true },
         });
         if (!product) {
           return { productId, eligible: false, reason: "Product not found." };
@@ -4992,20 +5025,21 @@ export class MarketplaceService implements OnModuleInit {
         if (!readiness.ok) {
           return { productId, eligible: false, reason: readiness.blockers.join("; ") || "Not ready for this destination." };
         }
-        return { productId, eligible: true };
+        return { productId, eligible: true, product, readiness };
       }),
       5,
     );
 
     const excluded: Array<{ productId: string; reason: string }> = [];
-    const eligibleProductIds: string[] = [];
+    const eligibleProducts: EligibleProduct[] = [];
     for (const result of eligibilityResults) {
       if (result.eligible) {
-        eligibleProductIds.push(result.productId);
+        eligibleProducts.push({ productId: result.productId, product: result.product, readiness: result.readiness });
       } else {
         excluded.push({ productId: result.productId, reason: result.reason });
       }
     }
+    const eligibleProductIds = eligibleProducts.map((item) => item.productId);
 
     if (!eligibleProductIds.length) {
       throw new BadRequestException({
@@ -5022,7 +5056,7 @@ export class MarketplaceService implements OnModuleInit {
     // createExportJob already uses for the single-product "Queue channel export" action —
     // proven to work for Shopify — instead of forcing them through the Amazon-shaped path.
     if (!hasNativeBulkPublish) {
-      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded, actor);
+      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProducts, excluded, actor);
     }
 
     const products = await Promise.all(
@@ -5108,7 +5142,11 @@ export class MarketplaceService implements OnModuleInit {
   private async bulkPublishViaQueuedExportJobs(
     connectorSlug: string,
     installationId: string,
-    eligibleProductIds: string[],
+    eligibleProducts: Array<{
+      productId: string;
+      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
+      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
+    }>,
     excluded: Array<{ productId: string; reason: string }>,
     actor?: PolicyActor,
   ): Promise<{
@@ -5121,9 +5159,9 @@ export class MarketplaceService implements OnModuleInit {
     const channel = this.mapConnectorSlugToChannel(connectorSlug);
 
     const outcomes = await this.runWithConcurrency(
-      eligibleProductIds.map((productId) => async () => {
+      eligibleProducts.map(({ productId, product, readiness }) => async () => {
         try {
-          const job = await this.createExportJob(productId, { channel, installationId }, actor);
+          const job = await this.createExportJob(productId, { channel, installationId }, actor, { product, readiness });
           return { productId, jobId: job.id as string };
         } catch (error: unknown) {
           const reason = error instanceof Error ? error.message : String(error);
