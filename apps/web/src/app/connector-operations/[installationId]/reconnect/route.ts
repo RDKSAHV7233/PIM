@@ -66,7 +66,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     signal: AbortSignal.timeout(20_000),
   });
 
-  const redirectUrl = new URL("/channels/connectors", request.url);
+  // Relative path, not new URL(path, request.url): behind this deployment's
+  // reverse proxy, request.url reports the internal listener origin, not the
+  // public one, so an absolute redirect built from it sends the browser to
+  // an unreachable internal host. A relative Location header is resolved by
+  // the browser against the current (public) origin instead — same fix as
+  // the sibling disable/route.ts already relies on.
+  const params = new URLSearchParams();
 
   if (!apiResponse.ok) {
     let errorCode = "reconnect_failed";
@@ -78,13 +84,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch {
       // Non-JSON or empty error body — keep the generic fallback code.
     }
-    redirectUrl.searchParams.set("reconnectError", errorCode);
+    params.set("reconnectError", errorCode);
     if (connectorSlug) {
-      redirectUrl.searchParams.set("connectorSlug", connectorSlug);
+      params.set("connectorSlug", connectorSlug);
     }
-    return NextResponse.redirect(redirectUrl, { status: 303, headers: { "Cache-Control": "no-store" } });
+    return new NextResponse(null, {
+      status: 303,
+      headers: { Location: `/channels/connectors?${params.toString()}`, "Cache-Control": "no-store" },
+    });
   }
 
-  redirectUrl.searchParams.set("status", "reconnected");
-  return NextResponse.redirect(redirectUrl, { status: 303, headers: { "Cache-Control": "no-store" } });
+  params.set("status", "reconnected");
+  return new NextResponse(null, {
+    status: 303,
+    headers: { Location: `/channels/connectors?${params.toString()}`, "Cache-Control": "no-store" },
+  });
 }
