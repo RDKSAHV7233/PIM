@@ -10,6 +10,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
+  ConnectorCredentialFields,
+  connectorAccountReferenceLabel,
+  connectorAccountReferencePlaceholder,
+} from "@/components/connectors/connector-credential-fields";
+import {
   ApiHttpError,
   type ConnectorDefinition,
   type ConnectorInstallation,
@@ -109,20 +114,6 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
     return `${connectorLabel} install failed. Check your details and try again, or contact support if this continues.`;
   }
   return `${connectorLabel} install failed: ${value}`;
-}
-
-function connectorAccountReferenceLabel(slug: string): string {
-  if (slug === "amazon-in") return "Seller ID";
-  if (slug === "myntra") return "Merchant ID";
-  if (slug === "woocommerce") return "Site URL";
-  return "External Account Ref";
-}
-
-function connectorAccountReferencePlaceholder(slug: string): string {
-  if (slug === "amazon-in") return "Enter Amazon seller ID";
-  if (slug === "myntra") return "Enter Myntra merchant ID";
-  if (slug === "woocommerce") return "https://store.example.com";
-  return "Optional";
 }
 
 function connectorLaunchTone(stage: string): StatusTone {
@@ -269,235 +260,6 @@ function connectorMatchesQuery(query: string, definition: ConnectorDefinition, i
     .join(" ")
     .toLowerCase();
   return searchable.includes(query);
-}
-
-function ConnectorCredentialFields({ definitionId, slug }: { definitionId: string; slug: string }) {
-  if (slug === "flipkart") {
-    return (
-      <>
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Flipkart live install needs validated API credentials. These values are encrypted on save and never shown again.
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Client ID
-          </label>
-          <Input id={`install-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="fk-client-id" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Client Secret
-          </label>
-          <Input id={`install-client-secret-${definitionId}`} name="clientSecret" type="password" autoComplete="new-password" placeholder="Enter Flipkart client secret" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Refresh Token
-          </label>
-          <Input id={`install-refresh-token-${definitionId}`} name="refreshToken" type="password" autoComplete="new-password" placeholder="Enter Flipkart refresh token" />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === "amazon-in") {
-    return (
-      <>
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Amazon India live install needs seller ID plus validated LWA (Login with Amazon) credentials. Values are encrypted on save and never shown again.
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Client ID
-          </label>
-          <Input id={`install-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="amzn1.application-oa2-client.xxxxxxxx" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Client Secret
-          </label>
-          <Input id={`install-client-secret-${definitionId}`} name="clientSecret" type="password" autoComplete="new-password" placeholder="Enter Amazon LWA client secret" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Refresh Token
-          </label>
-          <Input id={`install-refresh-token-${definitionId}`} name="refreshToken" type="password" autoComplete="new-password" placeholder="Enter Amazon SP-API refresh token" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-marketplace-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Marketplace ID
-          </label>
-          {/* datalist gives autocomplete while still allowing any valid ID */}
-          <datalist id={`amazon-marketplace-list-${definitionId}`}>
-            <option value="A21TJRUUN4KGV" />
-            <option value="ATVPDKIKX0DER" />
-            <option value="A2EUQ1WTGCTBG2" />
-            <option value="A1F83G8C2ARO7P" />
-            <option value="A1PA6795UKMFR9" />
-            <option value="A13V1IB3VIYZZH" />
-            <option value="APJ6JRA9NG5V4" />
-            <option value="A1VC38T7YXB528" />
-            <option value="A39IBJ37TRP1C6" />
-            <option value="A2VIGQ35RCS4UG" />
-          </datalist>
-          <Input
-            id={`install-marketplace-${definitionId}`}
-            name="marketplaceId"
-            list={`amazon-marketplace-list-${definitionId}`}
-            defaultValue="A21TJRUUN4KGV"
-            placeholder="A21TJRUUN4KGV"
-            autoComplete="off"
-          />
-          <p className="text-xs text-slate-500">
-            Pre-filled: A21TJRUUN4KGV (India). Common IDs — US: ATVPDKIKX0DER · UK: A1F83G8C2ARO7P · DE: A1PA6795UKMFR9 · JP: A1VC38T7YXB528
-          </p>
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-default-product-type-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Default Product Type <span className="font-normal text-slate-400">(optional)</span>
-          </label>
-          <datalist id={`amazon-product-type-list-${definitionId}`}>
-            <option value="SHIRT" />
-            <option value="DRESS" />
-            <option value="PANTS" />
-            <option value="SHOES" />
-            <option value="CONSUMER_ELECTRONICS" />
-            <option value="MOBILE_PHONE" />
-            <option value="HOME_FURNISHING" />
-            <option value="KITCHEN" />
-            <option value="BEAUTY" />
-            <option value="BOOKS" />
-            <option value="TOYS_AND_GAMES" />
-            <option value="BABY_PRODUCT" />
-            <option value="SPORTS" />
-          </datalist>
-          <Input
-            id={`install-default-product-type-${definitionId}`}
-            name="defaultProductType"
-            list={`amazon-product-type-list-${definitionId}`}
-            placeholder="e.g. SHIRT"
-            autoComplete="off"
-          />
-          <p className="text-xs text-slate-500">
-            Used when no per-product type is set. Leave blank if your catalog has mixed product types — you can set this per-product or update it later in the connector settings.
-          </p>
-        </div>
-      </>
-    );
-  }
-
-  if (slug === "shopify") {
-    return (
-      <>
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Shopify uses managed install. Create the Vexa connector account with store-domain context here; managed-install lanes continue in the provider callback after the connector account is created.
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-shop-domain-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Store Domain
-          </label>
-          <Input
-            id={`install-shop-domain-${definitionId}`}
-            name="shopDomain"
-            autoComplete="off"
-            placeholder="demo-store.myshopify.com"
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-access-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Admin API Access Token (SHPAT)
-          </label>
-          <Input
-            id={`install-access-token-${definitionId}`}
-            name="accessToken"
-            type="password"
-            autoComplete="new-password"
-            placeholder="shpat_xxxxxxxxxxxxxxxxxxxx"
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Client ID <span className="font-normal text-slate-400">(optional — managed OAuth only)</span>
-          </label>
-          <Input
-            id={`install-client-id-${definitionId}`}
-            name="clientId"
-            autoComplete="off"
-            placeholder="Leave blank for custom app / SHPAT installs"
-          />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === "myntra") {
-    return (
-      <>
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Myntra credentials are issued by your Myntra account manager (PPMP/Listing Management API access). Enter the Merchant ID in the field above, then Secret Key and Warehouse ID below. All three are required. Values are encrypted on save and never shown again.
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Secret Key
-          </label>
-          <Input
-            id={`install-client-secret-${definitionId}`}
-            name="clientSecret"
-            type="password"
-            autoComplete="new-password"
-            placeholder="Enter Myntra secret key"
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-warehouse-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Warehouse ID
-          </label>
-          <Input
-            id={`install-warehouse-id-${definitionId}`}
-            name="refreshToken"
-            autoComplete="off"
-            placeholder="Enter Myntra warehouse ID"
-          />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === "woocommerce") {
-    return (
-      <>
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          WooCommerce uses REST API keys from WooCommerce Settings &gt; Advanced &gt; REST API. Enter a HTTPS store URL plus Read/Write Consumer Key and Consumer Secret. Values are encrypted on save and never shown again.
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Consumer Key
-          </label>
-          <Input
-            id={`install-client-id-${definitionId}`}
-            name="clientId"
-            autoComplete="off"
-            placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Consumer Secret
-          </label>
-          <Input
-            id={`install-client-secret-${definitionId}`}
-            name="clientSecret"
-            type="password"
-            autoComplete="new-password"
-            placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          />
-        </div>
-      </>
-    );
-  }
-
-  return null;
 }
 
 export default async function ConnectorSetupPage({ searchParams }: ConnectorSetupPageProps) {
@@ -750,7 +512,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                       </div>
                     </div>
 
-                    <ConnectorCredentialFields definitionId={definition.id} slug={definition.slug} />
+                    <ConnectorCredentialFields definitionId={definition.id} slug={definition.slug} mode="install" />
 
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
                       <p className="text-xs text-slate-500">

@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
+import { canEditConnectorCredentials } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -1312,6 +1313,14 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       >
                         Mapping
                       </Link>
+                      {installation.slug !== "shopify" && canEditConnectorCredentials(actorRole) ? (
+                        <Link
+                          href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=credentials`}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Edit credentials
+                        </Link>
+                      ) : null}
                       {installation.actions?.reconnect.allowed ? (
                         <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
                           <input type="hidden" name="csrfToken" value={disableCsrfToken} />
