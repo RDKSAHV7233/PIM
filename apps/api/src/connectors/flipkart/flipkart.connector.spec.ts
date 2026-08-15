@@ -293,6 +293,130 @@ describe("FlipkartConnector.refreshAccessToken", () => {
   });
 });
 
+// ─── verifyCandidateCredentials ────────────────────────────────────────────────
+
+describe("FlipkartConnector.verifyCandidateCredentials", () => {
+  const candidate = {
+    client_id: "candidate-client-id",
+    client_secret: "candidate-client-secret",
+    refresh_token: "candidate-refresh-token",
+  };
+
+  it("returns valid with commitExtra sourced from the exchange response, not the candidate input", async () => {
+    const connector = makeConnector();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        access_token: "fresh-access-token",
+        refresh_token: "rotated-refresh-token",
+        expires_in: 3600,
+        refresh_token_expires_in: 2_592_000,
+      }),
+    } as any);
+
+    const result = await connector.verifyCandidateCredentials!(candidate);
+
+    expect(result.outcome).toBe("valid");
+    if (result.outcome === "valid") {
+      expect(result.commitExtra?.accessToken?.value).toBe("fresh-access-token");
+      // Rotated: the response's refresh_token differs from the submitted candidate — the
+      // commit value must come from the response, never silently stay the submitted one.
+      expect(result.commitExtra?.refreshToken?.value).toBe("rotated-refresh-token");
+    }
+  });
+
+  it("omits commitExtra.refreshToken when the exchange response didn't rotate it", async () => {
+    const connector = makeConnector();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ access_token: "fresh-access-token", expires_in: 3600 }),
+    } as any);
+
+    const result = await connector.verifyCandidateCredentials!(candidate);
+
+    expect(result.outcome).toBe("valid");
+    if (result.outcome === "valid") {
+      expect(result.commitExtra?.refreshToken).toBeUndefined();
+    }
+  });
+
+  it("returns invalid on a bare 401", async () => {
+    const connector = makeConnector();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({}),
+    } as any);
+
+    await expect(connector.verifyCandidateCredentials!(candidate)).resolves.toEqual({
+      outcome: "invalid",
+      reasonCode: "HTTP_401",
+    });
+  });
+
+  it("returns invalid on an explicit invalid_grant OAuth error body", async () => {
+    const connector = makeConnector();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: "invalid_grant" }),
+    } as any);
+
+    await expect(connector.verifyCandidateCredentials!(candidate)).resolves.toEqual({
+      outcome: "invalid",
+      reasonCode: "invalid_grant",
+    });
+  });
+
+  it("returns unavailable (not invalid) on a network/timeout failure", async () => {
+    const connector = makeConnector();
+    global.fetch = jest.fn().mockRejectedValue(new Error("fetch failed"));
+
+    await expect(connector.verifyCandidateCredentials!(candidate)).resolves.toEqual({
+      outcome: "unavailable",
+      reasonCode: "UNKNOWN_NETWORK_ERROR",
+    });
+  });
+
+  it("returns unavailable on an opaque 400 with no interpretable error body", async () => {
+    const connector = makeConnector();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => "",
+    } as any);
+
+    await expect(connector.verifyCandidateCredentials!(candidate)).resolves.toEqual({
+      outcome: "unavailable",
+      reasonCode: "HTTP_400",
+    });
+  });
+
+  it("candidate-purity: calls the token endpoint with the candidate's own values, not any stored credential", async () => {
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ access_token: "tok", expires_in: 3600 }),
+    } as any);
+
+    await connector.verifyCandidateCredentials!(candidate);
+
+    const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
+    const body = fetchCall[1].body as URLSearchParams;
+    expect(body.get("refresh_token")).toBe(candidate.refresh_token);
+    const authHeader = fetchCall[1].headers.Authorization as string;
+    expect(authHeader).toBe(`Basic ${Buffer.from(`${candidate.client_id}:${candidate.client_secret}`).toString("base64")}`);
+    // Purity: never touches stored credential rows.
+    expect(db.connectorCredential.findFirst).not.toHaveBeenCalled();
+    expect(db.connectorCredential.updateMany).not.toHaveBeenCalled();
+    expect(db.connectorCredential.upsert).not.toHaveBeenCalled();
+  });
+});
+
 // ─── connector metadata ───────────────────────────────────────────────────────
 
 describe("FlipkartConnector metadata", () => {

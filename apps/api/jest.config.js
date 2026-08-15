@@ -28,6 +28,7 @@ module.exports = {
     "**/connectors/shopify/shopify.connector.spec.ts",
     "**/connectors/shopify/shopify-api-client.spec.ts",
     "**/connectors/woocommerce/woocommerce.connector.spec.ts",
+    "**/connectors/myntra/myntra.connector.spec.ts",
     "**/connectors/flipkart/flipkart-category-rules.spec.ts",
     "**/connectors/flipkart/flipkart.connector.spec.ts",
     "**/connectors/meesho/meesho-category-templates.spec.ts",
@@ -63,6 +64,7 @@ module.exports = {
     "**/connector-framework/parse-capabilities.spec.ts",
     "**/auth/email-template.spec.ts",
     "**/auth/auth-policy.service.spec.ts",
+    "**/auth/jwt.step-up-scope.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

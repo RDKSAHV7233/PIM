@@ -9,9 +9,17 @@ export const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 // Mutating these without a fresh password proof would let a hijacked admin session
 // silently rewire sign-in. Added 2026-05-17 with the OIDC admin UI.
 export const STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK = "auth_config_high_risk";
+// Guards replacing a connector installation's persistent external-account
+// credentials (client secret / refresh token / consumer secret). A hijacked
+// admin session shouldn't be able to swap in attacker-controlled credentials
+// without a fresh password proof — same threat model as mapping publish, but
+// for account-level secrets rather than mapping state. Added with the
+// connector credentials-edit feature.
+export const STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK = "connector_credentials_high_risk";
 export type StepUpScope =
   | typeof STEP_UP_SCOPE_MAPPING_HIGH_RISK
-  | typeof STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK;
+  | typeof STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK
+  | typeof STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK;
 export type PimJwtTokenType = "access" | "step_up" | "mfa_pending" | "mfa_enrollment" | "refresh";
 
 interface JwtHeader {
@@ -103,7 +111,8 @@ function isTokenType(value: unknown): value is PimJwtTokenType {
 function isStepUpScope(value: unknown): value is StepUpScope {
   return (
     value === STEP_UP_SCOPE_MAPPING_HIGH_RISK ||
-    value === STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK
+    value === STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK ||
+    value === STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK
   );
 }
 

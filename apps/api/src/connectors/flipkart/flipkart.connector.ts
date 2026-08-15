@@ -45,6 +45,29 @@ type FlipkartTokenResponse = {
   token_type?: string;
 };
 
+// Carries the HTTP status + parsed body so callers (verifyCandidateCredentials)
+// can distinguish "credentials rejected" from "couldn't check right now" without
+// re-parsing an error message string. Message text is kept identical to the
+// plain-Error form exchangeToken threw before, so refreshAccessToken's existing
+// `reason.includes("status 400")` string check keeps working unchanged.
+class FlipkartTokenExchangeError extends Error {
+  readonly status: number;
+  readonly body: FlipkartTokenResponse | Record<string, unknown>;
+  constructor(status: number, body: FlipkartTokenResponse | Record<string, unknown>) {
+    super(`Flipkart token exchange failed with status ${status}.`);
+    this.name = "FlipkartTokenExchangeError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+// Mirrors persistTokenSet's own expiry math exactly so the heartbeat-driven
+// refresh path and the candidate-verification commit path can never interpret
+// expires_in differently.
+function computeTokenExpiry(expiresIn: number | undefined, now: number): Date | null {
+  return Number.isFinite(expiresIn) ? new Date(now + Math.max(1, Number(expiresIn)) * 1000) : null;
+}
+
 type FlipkartListingPayload = {
   skuId: string;
   productId?: string;
@@ -161,6 +184,70 @@ export class FlipkartConnector implements ConnectorInterface {
         reason,
       });
       return false;
+    }
+  }
+
+  // ─── optional: verifyCandidateCredentials ───────────────────────────────────
+  //
+  // NOT reusing validateCredentials() — that path calls resolveAccessToken() and
+  // unconditionally noteCredentialHealth(), both of which read/write the real
+  // STORED credential rows. This calls exchangeToken() directly with the
+  // candidate triplet: already side-effect-free (plain fetch, no DB access),
+  // the same low-level method refreshAccessToken()/validateCredentials() call
+  // under the hood — but here nothing is persisted and nothing stored is read.
+  //
+  // Classification: a response that actually names the credential as the
+  // problem (401, or an OAuth error body naming invalid_client/invalid_grant)
+  // is invalid; anything else (network failure, timeout, an opaque 400/5xx) is
+  // unavailable — a raw status code alone isn't positive evidence.
+  //
+  // On success, commitExtra sources access_token (always) and refresh_token
+  // (only if the exchange response returned one — mirrors persistTokenSet's own
+  // `if (token.refresh_token)` guard) from the REAL exchange response, not the
+  // operator-submitted values — the exchange itself may have rotated what the
+  // provider now considers valid.
+
+  async verifyCandidateCredentials(
+    candidate: Record<string, string>,
+  ): Promise<import("../../connector-framework/connector.interface").CredentialVerificationResult> {
+    const clientId = String(candidate.client_id ?? "").trim();
+    const clientSecret = String(candidate.client_secret ?? "").trim();
+    const refreshToken = String(candidate.refresh_token ?? "").trim();
+
+    try {
+      const token = await this.exchangeToken(undefined, clientId, clientSecret, {
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      });
+      if (!token.access_token) {
+        return { outcome: "unavailable", reasonCode: "FLIPKART_TOKEN_RESPONSE_INCOMPLETE" };
+      }
+      const now = Date.now();
+      return {
+        outcome: "valid",
+        commitExtra: {
+          accessToken: { value: token.access_token, expiresAt: computeTokenExpiry(token.expires_in, now) },
+          ...(token.refresh_token
+            ? {
+                refreshToken: {
+                  value: token.refresh_token,
+                  expiresAt: Number.isFinite(token.refresh_token_expires_in)
+                    ? new Date(now + Math.max(1, Number(token.refresh_token_expires_in)) * 1000)
+                    : new Date(now + DEFAULT_REFRESH_TOKEN_TTL_MS),
+                },
+              }
+            : {}),
+        },
+      };
+    } catch (err) {
+      if (err instanceof FlipkartTokenExchangeError) {
+        const bodyError = String((err.body as Record<string, unknown>)?.error ?? "").trim().toLowerCase();
+        if (err.status === 401 || bodyError === "invalid_client" || bodyError === "invalid_grant") {
+          return { outcome: "invalid", reasonCode: bodyError || `HTTP_${err.status}` };
+        }
+        return { outcome: "unavailable", reasonCode: `HTTP_${err.status}` };
+      }
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
     }
   }
 
@@ -599,7 +686,7 @@ export class FlipkartConnector implements ConnectorInterface {
   }
 
   private async exchangeToken(
-    ctx: ConnectorContext,
+    ctx: ConnectorContext | undefined,
     clientId: string,
     clientSecret: string,
     payload: Record<string, string>,
@@ -625,11 +712,11 @@ export class FlipkartConnector implements ConnectorInterface {
     }
 
     if (!response.ok) {
-      throw new Error(`Flipkart token exchange failed with status ${response.status}.`);
+      throw new FlipkartTokenExchangeError(response.status, parsed);
     }
 
     this.logger.info("Flipkart token exchange completed", {
-      installationId: ctx.installationId,
+      installationId: ctx?.installationId ?? "candidate-verification",
       grantType: payload.grant_type ?? "unknown",
       statusCode: response.status,
     });
@@ -643,9 +730,7 @@ export class FlipkartConnector implements ConnectorInterface {
   ): Promise<void> {
     const now = Date.now();
     if (token.access_token) {
-      const expiresAt = Number.isFinite(token.expires_in)
-        ? new Date(now + Math.max(1, Number(token.expires_in)) * 1000)
-        : null;
+      const expiresAt = computeTokenExpiry(token.expires_in, now);
       await this.storeCredential(ctx, "access_token", token.access_token, {
         expiresAt,
       });

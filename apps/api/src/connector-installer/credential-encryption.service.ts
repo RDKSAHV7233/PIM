@@ -44,6 +44,19 @@ export interface StoreCredentialInput {
   metadata?: Record<string, unknown> | null;
 }
 
+/**
+ * Health-metadata reset for a storeCredential() call. Additive/opt-in — omitting
+ * this param entirely (every existing call site) behaves byte-identical to
+ * before this parameter existed. Only pass it when this specific field's value
+ * was actually exercised by a live check (see the per-connector "which fields
+ * does the candidate call actually touch" table in updateCredentials()) — never
+ * a blanket "the whole set was just verified" claim when only some of it was.
+ */
+export interface StoreCredentialHealth {
+  failureReason?: string | null;
+  lastValidatedAt?: Date | null;
+}
+
 @Injectable()
 export class ConnectorCredentialEncryptionService {
   private readonly keys = loadCredentialEncryptionKeys(process.env);
@@ -77,14 +90,31 @@ export class ConnectorCredentialEncryptionService {
     return decryptCredentialValue(cipher, key);
   }
 
-  async storeCredential(input: StoreCredentialInput): Promise<{ id: string; keyVersion: string }> {
+  /**
+   * `tx` and `health` are both opt-in and additive (Checklist item B). Every
+   * existing call site passes neither and sees zero behavior change — `tx`
+   * defaults to the direct (non-transactional) client, and omitting `health`
+   * never touches failureReason/lastValidatedAt, exactly as before this
+   * parameter existed.
+   */
+  async storeCredential(
+    input: StoreCredentialInput,
+    tx?: Prisma.TransactionClient,
+    health?: StoreCredentialHealth,
+  ): Promise<{ id: string; keyVersion: string }> {
     const encrypted = this.encrypt(input.plainValue);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
     const id = `${input.installationId}:${input.credentialType}`;
-    const db = this.prismaDirect.getClient();
+    const db = tx ?? this.prismaDirect.getClient();
     const metadata: Prisma.InputJsonValue | typeof Prisma.DbNull = input.metadata
       ? (input.metadata as Prisma.InputJsonValue)
       : Prisma.DbNull;
+    const healthFields = health
+      ? {
+          ...(health.failureReason !== undefined ? { failureReason: health.failureReason } : {}),
+          ...(health.lastValidatedAt !== undefined ? { lastValidatedAt: health.lastValidatedAt } : {}),
+        }
+      : {};
 
     await db.connectorCredential.upsert({
       where: { id },
@@ -99,6 +129,7 @@ export class ConnectorCredentialEncryptionService {
         scope: input.scope ?? null,
         expiresAt: input.expiresAt ?? null,
         metadata,
+        ...healthFields,
       },
       update: {
         tenantKey: input.tenantKey,
@@ -109,6 +140,7 @@ export class ConnectorCredentialEncryptionService {
         expiresAt: input.expiresAt ?? null,
         metadata,
         updatedAt: new Date(),
+        ...healthFields,
       },
     });
 
@@ -116,6 +148,17 @@ export class ConnectorCredentialEncryptionService {
       id,
       keyVersion,
     };
+  }
+
+  /**
+   * Opens a transaction on the SAME direct-client connection storeCredential()
+   * writes through. Callers that need to atomically combine one or more
+   * storeCredential() calls with another write against a model reachable from
+   * this connection (e.g. ConnectorInstallation) pass the yielded `tx` back
+   * into storeCredential()'s second argument.
+   */
+  async transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prismaDirect.getClient().$transaction(fn);
   }
 
   async rotateKey(options: RotateCredentialKeyOptions): Promise<RotateCredentialKeyResult> {

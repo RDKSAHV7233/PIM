@@ -219,6 +219,37 @@ export class MyntraConnector implements ConnectorInterface {
     }
   }
 
+  // ─── optional: verifyCandidateCredentials ───────────────────────────────────
+  //
+  // Pure — takes the candidate merchantId/secretKey directly, never reads or
+  // writes stored credentials. Same health-endpoint shape as validateCredentials.
+  // Classification: 401/403 → invalid; any network/timeout failure → unavailable
+  // (Myntra's endpoint isn't operator-supplied, so no network failure there is
+  // deterministic evidence against the candidate).
+  //
+  // warehouse_id is not exercised by this call (see storeCredential's `health`
+  // param at the call site) — it's not part of the auth header.
+
+  async verifyCandidateCredentials(
+    candidate: Record<string, string>,
+  ): Promise<import('../../connector-framework/connector.interface').CredentialVerificationResult> {
+    const merchantId = String(candidate.merchant_id ?? '').trim();
+    const secretKey = String(candidate.secret_key ?? '').trim();
+
+    try {
+      const res = await this.callApi('GET', '/listing-api/v2/health', merchantId, secretKey);
+      if (res.status === 401 || res.status === 403) {
+        return { outcome: 'invalid', reasonCode: 'MYNTRA_CREDENTIALS_REJECTED' };
+      }
+      if (!res.ok) {
+        return { outcome: 'unavailable', reasonCode: `HTTP_${res.status}` };
+      }
+      return { outcome: 'valid' };
+    } catch {
+      return { outcome: 'unavailable', reasonCode: 'UNKNOWN_NETWORK_ERROR' };
+    }
+  }
+
   // ─── required: validateProduct ───────────────────────────────────────────────
 
   async validateProduct(

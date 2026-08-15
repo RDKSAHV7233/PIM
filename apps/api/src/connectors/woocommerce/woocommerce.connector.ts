@@ -725,6 +725,43 @@ export class WooCommerceConnector implements ConnectorInterface {
     }
   }
 
+  // ─── optional: verifyCandidateCredentials ───────────────────────────────────
+  //
+  // Pure — takes the candidate triplet directly (never reads stored credentials,
+  // never writes anything). Reuses the same GET /wp-json/wc/v3 shape as
+  // validateCredentials. Classification: 401/403 → invalid (positive evidence);
+  // malformed/non-HTTPS URL → invalid (the URL itself is operator input, so a
+  // deterministic rejection is fair); any network/timeout/DNS failure →
+  // unavailable (an unreachable endpoint isn't evidence the credentials are wrong).
+
+  async verifyCandidateCredentials(
+    candidate: Record<string, string>,
+  ): Promise<import('../../connector-framework/connector.interface').CredentialVerificationResult> {
+    const siteUrl = normalizeSiteUrl(String(candidate.site_url ?? '').trim());
+    const consumerKey = String(candidate.consumer_key ?? '').trim();
+    const consumerSecret = String(candidate.consumer_secret ?? '').trim();
+
+    if (!siteUrl.startsWith('https://')) {
+      return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' };
+    }
+
+    try {
+      const res = await this.callApi('GET', '', siteUrl, consumerKey, consumerSecret);
+      if (res.status === 401 || res.status === 403) {
+        return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_CREDENTIALS_REJECTED' };
+      }
+      if (!res.ok) {
+        return { outcome: 'unavailable', reasonCode: `HTTP_${res.status}` };
+      }
+      return { outcome: 'valid' };
+    } catch (err) {
+      if (err instanceof ConnectorNetworkError) {
+        return { outcome: 'unavailable', reasonCode: err.category };
+      }
+      return { outcome: 'unavailable', reasonCode: 'UNKNOWN_NETWORK_ERROR' };
+    }
+  }
+
   // ─── required: validateProduct ───────────────────────────────────────────────
   //
   // Local rules for W1. Live-API dry-run can be added in W2 once the
