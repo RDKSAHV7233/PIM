@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { BulkEditOperationStatus, Prisma, RecordStatus } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
@@ -37,6 +37,7 @@ type ProductSnapshot = {
   hsnCode: string | null;
   gstRate: number | null;
   categoryId: string;
+  version: number;
 };
 
 type NormalizedUpdates = {
@@ -283,9 +284,28 @@ export class BulkEditService implements OnModuleInit {
           `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
         );
       }
-      const updated = await this.prisma.tenant().product.update({
+      // Optimistic concurrency, matching catalog.service.ts's updateProduct(): bulk edit
+      // batches load a snapshot of matching products, then process each one individually,
+      // so a single-product PATCH (or another bulk edit) can land on this row in between.
+      // Without this check the later write would silently clobber it and `version` would
+      // never move, so no caller — this one included — could ever detect the collision (#559).
+      const updateResult = await this.prisma.tenant().product.updateMany({
+        where: { id: product.id, version: product.version },
+        data: { ...updateData, version: { increment: 1 } },
+      });
+      if (updateResult.count === 0) {
+        const latest = await this.prisma.tenant().product.findUnique({
+          where: { id: product.id },
+          select: { version: true },
+        });
+        throw new ConflictException(
+          `Skipped: product was changed by another operation after this bulk edit started ` +
+            `(had version ${product.version}, now ${latest?.version ?? "unknown — product may have been archived or deleted"}). ` +
+            `Reload and retry if this update still applies.`,
+        );
+      }
+      const updated = await this.prisma.tenant().product.findUniqueOrThrow({
         where: { id: product.id },
-        data: updateData,
         select: this.productSelect,
       });
 
@@ -443,6 +463,7 @@ export class BulkEditService implements OnModuleInit {
     hsnCode: true,
     gstRate: true,
     categoryId: true,
+    version: true,
   } satisfies Prisma.ProductSelect;
 
   private normalizeScope(scope?: BulkEditScopeDto) {
@@ -639,6 +660,7 @@ export class BulkEditService implements OnModuleInit {
     hsnCode: string | null;
     gstRate: number | null;
     categoryId: string;
+    version: number;
   }): ProductSnapshot {
     return {
       id: product.id,
@@ -649,6 +671,7 @@ export class BulkEditService implements OnModuleInit {
       hsnCode: product.hsnCode,
       gstRate: product.gstRate,
       categoryId: product.categoryId,
+      version: product.version,
     };
   }
 
