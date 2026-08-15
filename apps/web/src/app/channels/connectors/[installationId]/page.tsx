@@ -6,10 +6,10 @@ import {
   initiateOAuthAction,
   queueConnectorDeltaSyncAction,
   triggerBulkPublishAction,
-  updateConnectorCredentialsAction,
   updateConnectorPublicationTargetsAction,
   upsertConnectorSyncScheduleAction,
 } from "@/app/actions";
+import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { canEditConnectorCredentials, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
+import { getServerCsrfToken } from "@/lib/server-auth";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime as fmtDT } from "@/lib/format";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
@@ -760,6 +761,7 @@ export default async function ChannelConnectorDetailPage({
     reasonMessage: query.reasonMessage,
   });
   const credentialsStepUpErrorMessage = resolveCredentialsStepUpErrorMessage(query.stepUpError);
+  const credentialsCsrfToken = await getServerCsrfToken();
 
   try {
     const installations = await getInstalledConnectors({ role: actorRole, authHeader });
@@ -1683,8 +1685,12 @@ export default async function ChannelConnectorDetailPage({
                     {credentialsStepUpErrorMessage}
                   </div>
                 ) : null}
-                <form action={updateConnectorCredentialsAction} className="mt-4 space-y-4">
-                  <input type="hidden" name="installationId" value={installation.id} />
+                <form
+                  method="post"
+                  action={`/connector-operations/${encodeURIComponent(installation.id)}/credentials`}
+                  className="mt-4 space-y-4"
+                >
+                  <input type="hidden" name="csrfToken" value={credentialsCsrfToken} />
                   <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "credentials")} />
 
                   {connectorCredentialsAcceptsAccountRef(installation.slug) ? (
@@ -1717,7 +1723,7 @@ export default async function ChannelConnectorDetailPage({
                     />
                   </div>
 
-                  <PendingSubmitButton idleLabel="Verify and save credentials" pendingLabel="Verifying..." />
+                  <Button type="submit">Verify and save credentials</Button>
                 </form>
               </Card>
             ) : null}
