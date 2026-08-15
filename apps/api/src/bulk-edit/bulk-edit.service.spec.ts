@@ -17,6 +17,7 @@ type FakeProduct = {
   hsnCode: string | null;
   gstRate: number | null;
   categoryId: string;
+  version: number;
 };
 
 function fakeProduct(id: string, overrides: Partial<FakeProduct> = {}): FakeProduct {
@@ -29,6 +30,7 @@ function fakeProduct(id: string, overrides: Partial<FakeProduct> = {}): FakeProd
     hsnCode: null,
     gstRate: null,
     categoryId: "cat_1",
+    version: 1,
     ...overrides,
   };
 }
@@ -47,9 +49,31 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
     const startIndex = cursor ? products.findIndex((p) => p.id === cursor.id) + 1 : 0;
     return products.slice(startIndex, startIndex + take);
   });
-  const productUpdate = jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+  // Mirrors the real optimistic-concurrency check in applyToProduct(): only
+  // mutates the live row (and bumps version) when the caller's `where.version`
+  // still matches storage, otherwise reports count 0 like Prisma's updateMany.
+  const productUpdateMany = jest.fn(
+    async ({ where, data }: { where: { id: string; version: number }; data: Record<string, unknown> }) => {
+      const existing = products.find((p) => p.id === where.id);
+      if (!existing || existing.version !== where.version) {
+        return { count: 0 };
+      }
+      const { version: _versionOp, ...rest } = data;
+      Object.assign(existing, rest);
+      existing.version += 1;
+      return { count: 1 };
+    },
+  );
+  const productFindUnique = jest.fn(async ({ where }: { where: { id: string } }) => {
     const existing = products.find((p) => p.id === where.id);
-    return { ...existing, ...data } as FakeProduct;
+    return existing ? { ...existing } : null;
+  });
+  const productFindUniqueOrThrow = jest.fn(async ({ where }: { where: { id: string } }) => {
+    const existing = products.find((p) => p.id === where.id);
+    if (!existing) {
+      throw new Error(`Product ${where.id} not found`);
+    }
+    return { ...existing };
   });
 
   const bulkEditOperationCreate = jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -83,7 +107,13 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
   });
 
   const tenantClient = {
-    product: { count: productCount, findMany: productFindMany, update: productUpdate },
+    product: {
+      count: productCount,
+      findMany: productFindMany,
+      updateMany: productUpdateMany,
+      findUnique: productFindUnique,
+      findUniqueOrThrow: productFindUniqueOrThrow,
+    },
     bulkEditOperation: {
       create: bulkEditOperationCreate,
       findUnique: bulkEditOperationFindUnique,
@@ -257,5 +287,44 @@ describe("BulkEditService queue handler — processApplyJob via onModuleInit reg
     const { runQueueHandler, items } = createService({ products: [fakeProduct("p1")] });
     await expect(runQueueHandler({ operationId: "missing", tenantKey: "default", actor: {} })).resolves.toBeUndefined();
     expect(items).toHaveLength(0);
+  });
+
+  it("bumps the product's version on each successful apply (#559)", async () => {
+    const products = [fakeProduct("p1", { version: 1 }), fakeProduct("p2", { version: 4 })];
+    const { service, operations, runQueueHandler } = createService({ products });
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "in_review" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const finalOp = operations.get(operation.id) as { appliedCount: number; failedCount: number };
+    expect(finalOp.appliedCount).toBe(2);
+    expect(finalOp.failedCount).toBe(0);
+    // Each product's own version must have moved forward exactly once — this is
+    // the concurrency signal single-product edits and future bulk edits rely on.
+    expect(products.find((p) => p.id === "p1")?.version).toBe(2);
+    expect(products.find((p) => p.id === "p2")?.version).toBe(5);
+  });
+
+  it("fails an item with a version conflict when it changed after the batch was scanned (#559)", async () => {
+    // The live row is already at version 6 (another writer bumped it since this
+    // run's batch scan), but the scan that fed this run only saw version 5.
+    const liveProduct = fakeProduct("p1", { version: 6 });
+    const { service, prisma, operations, items, runQueueHandler } = createService({ products: [liveProduct] });
+    const staleScannedProduct = { ...liveProduct, version: 5 };
+    prisma.tenant().product.findMany.mockResolvedValueOnce([staleScannedProduct]);
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "in_review" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const finalOp = operations.get(operation.id) as { status: string; appliedCount: number; failedCount: number };
+    expect(finalOp.appliedCount).toBe(0);
+    expect(finalOp.failedCount).toBe(1);
+    expect(finalOp.status).toBe(BulkEditOperationStatus.failed);
+    // The row was never touched by this run — the live version stayed exactly
+    // where the concurrent writer left it, proving no silent overwrite happened.
+    expect(liveProduct.version).toBe(6);
+    const failedItem = items.find((item) => item.productId === "p1") as { errorMessage?: string };
+    expect(failedItem?.errorMessage).toMatch(/version/i);
+    expect(failedItem?.errorMessage).toMatch(/had version 5/);
   });
 });
