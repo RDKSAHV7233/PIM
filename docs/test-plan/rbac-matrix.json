@@ -92,6 +92,11 @@
       "roles": ["admin"],
       "source": "connector-installer.controller.ts:75,240,247,257"
     },
+    "connector_credentials_edit": {
+      "description": "Replace an installed connector account's stored credentials (step-up gated) — editor deliberately excluded, replacing persistent external-account secrets is a higher-privilege action than replacing a session",
+      "roles": ["admin", "connector_admin"],
+      "source": "connector-installer.controller.ts:139"
+    },
     "taxonomy_read": {
       "description": "List categories, attributes (read — default authenticated read)",
       "roles": ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"],
