@@ -1423,48 +1423,11 @@ export async function configureAmazonAction(formData: FormData) {
   redirect(appendQueryParams(returnTo, { status: "amazon-configured" }));
 }
 
-function resolveReconnectError(error: unknown): string {
-  if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
-    const payload = error.body as Record<string, unknown>;
-    const code = String(payload.error ?? "").trim();
-    if (code) {
-      return code;
-    }
-    return "reconnect_failed";
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-  return "reconnect_failed";
-}
-
-export async function reconnectConnectorAction(formData: FormData) {
-  const { actorRole } = await getServerSession();
-  if (!canManageConnectors(actorRole)) {
-    throw new Error("Forbidden: connector management role required.");
-  }
-  const installationId = String(formData.get("installationId") ?? "").trim();
-  if (!installationId) {
-    throw new Error("Connector installation id is required.");
-  }
-  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim();
-  const returnTo = "/channels/connectors";
-
-  try {
-    await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/reconnect`, {});
-  } catch (error: unknown) {
-    rethrowRedirectError(error);
-    handleSessionExpired(error, returnTo);
-    redirect(
-      appendQueryParams(returnTo, {
-        reconnectError: resolveReconnectError(error),
-        connectorSlug,
-      }),
-    );
-  }
-  revalidatePath("/channels");
-  redirect(appendQueryParams(returnTo, { status: "reconnected" }));
-}
+// Reconnect is a native-form POST to a Route Handler
+// (apps/web/src/app/connector-operations/[installationId]/reconnect/route.ts),
+// not a Server Action — see that route's doc comment for why (#564: a
+// Server Action's redirect() here interacted badly with this app's global
+// middleware and silently dropped the outcome query params on every call).
 
 export async function initiateOAuthAction(formData: FormData) {
   const { actorRole } = await getServerSession();

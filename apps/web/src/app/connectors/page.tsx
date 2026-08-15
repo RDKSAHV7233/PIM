@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import {
   deleteConnectorInstallationAction,
   initiateOAuthAction,
-  reconnectConnectorAction,
 } from "@/app/actions";
 import { ConnectorAccountQuickView } from "@/app/connectors/_components/connector-account-quick-view";
 import { getServerCsrfToken } from "@/lib/server-auth";
@@ -1135,15 +1134,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           This account needs attention — credentials may be expired or the connection has errors.
                         </p>
                         {installation.actions?.reconnect.allowed ? (
-                          <form action={reconnectConnectorAction}>
-                            <input type="hidden" name="installationId" value={installation.id} />
+                          <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
+                            <input type="hidden" name="csrfToken" value={disableCsrfToken} />
                             <input type="hidden" name="connectorSlug" value={installation.slug} />
-                            <PendingSubmitButton
-                              type="submit"
-                              variant="secondary"
-                              idleLabel="Reconnect"
-                              pendingLabel="Reconnecting..."
-                            />
+                            <Button type="submit" variant="secondary">
+                              Reconnect
+                            </Button>
                           </form>
                         ) : (
                           <Link
@@ -1317,15 +1313,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         Mapping
                       </Link>
                       {installation.actions?.reconnect.allowed ? (
-                        <form action={reconnectConnectorAction}>
-                          <input type="hidden" name="installationId" value={installation.id} />
+                        <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
+                          <input type="hidden" name="csrfToken" value={disableCsrfToken} />
                           <input type="hidden" name="connectorSlug" value={installation.slug} />
-                          <PendingSubmitButton
-                            type="submit"
-                            variant="secondary"
-                            idleLabel="Reconnect"
-                            pendingLabel="Reconnecting..."
-                          />
+                          <Button type="submit" variant="secondary">
+                            Reconnect
+                          </Button>
                         </form>
                       ) : null}
                       {installation.actions?.uninstall.allowed ? (
