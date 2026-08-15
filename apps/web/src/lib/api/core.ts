@@ -1350,6 +1350,7 @@ export interface BulkEditOperation {
   appliedCount: number;
   failedCount: number;
   items?: BulkEditOperationItem[];
+  itemsNextCursor?: string | null;
   createdAt: string;
   updatedAt: string;
 }
