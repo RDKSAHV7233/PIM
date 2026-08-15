@@ -28,10 +28,11 @@ import {
   isChannelInDevelopment,
   isMarketplaceChannel,
 } from "@/lib/marketplace-channels";
-import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
+import { canEditConnectorCredentials, canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { extractErrorCode } from "@/lib/errors";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
+const STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK = "connector_credentials_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
 const STEP_UP_ERROR_CODES = new Set([
   "STEP_UP_REQUIRED",
@@ -335,9 +336,13 @@ async function postJsonForAction<T>(formData: FormData, path: string, body: unkn
   });
 }
 
-async function patchJsonForAction<T>(formData: FormData, path: string, body: unknown) {
+async function patchJsonForAction<T>(formData: FormData, path: string, body: unknown, options?: ApiRequestOptions) {
   return patchJson<T>(path, body, {
     ...(await resolveActionOptions(formData)),
+    ...(options ?? {}),
+    headers: {
+      ...(options?.headers ?? {}),
+    },
   });
 }
 
@@ -437,6 +442,35 @@ async function issueMappingStepUpToken(formData: FormData): Promise<string> {
     await resolveActionOptions(formData),
   );
   return String(response.stepUpToken ?? "").trim();
+}
+
+async function issueConnectorCredentialsStepUpToken(formData: FormData): Promise<string> {
+  const password = String(formData.get("stepUpPassword") ?? "").trim();
+  if (!password) {
+    throw new Error("STEP_UP_PASSWORD_REQUIRED");
+  }
+  const response = await issueStepUp(
+    {
+      password,
+      scope: STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK,
+    },
+    await resolveActionOptions(formData),
+  );
+  return String(response.stepUpToken ?? "").trim();
+}
+
+function withCredentialsStepUpErrorQuery(basePath: string, error: unknown): string | null {
+  if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+    const payload = error.body as Record<string, unknown>;
+    const code = String(payload.error ?? "").trim();
+    if (STEP_UP_ERROR_CODES.has(code)) {
+      return appendQueryParams(basePath, { stepUpError: code });
+    }
+  }
+  if (error instanceof Error && error.message === "STEP_UP_PASSWORD_REQUIRED") {
+    return appendQueryParams(basePath, { stepUpError: "STEP_UP_PASSWORD_REQUIRED" });
+  }
+  return null;
 }
 
 function withPlanLimitQuery(basePath: string, error: unknown): string | null {
@@ -1421,6 +1455,70 @@ export async function configureAmazonAction(formData: FormData) {
   }
   revalidatePath("/channels/connectors");
   redirect(appendQueryParams(returnTo, { status: "amazon-configured" }));
+}
+
+/**
+ * Replaces an installation's stored credentials. Mirrors
+ * publishConnectorMappingVersionAction's step-up shape exactly: the step-up
+ * password field lives in the SAME form/submission as the credential fields,
+ * so a single browser round-trip mints and immediately consumes the step-up
+ * token — plaintext credentials are never held in any client state waiting
+ * on a separate re-authentication step.
+ */
+export async function updateConnectorCredentialsAction(formData: FormData) {
+  const { actorRole } = await getServerSession();
+  if (!canEditConnectorCredentials(actorRole)) {
+    throw new Error("Forbidden: connector admin role required to edit stored credentials.");
+  }
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const externalAccountRef = String(formData.get("externalAccountRef") ?? "").trim();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  const clientSecret = String(formData.get("clientSecret") ?? "").trim();
+  const refreshToken = String(formData.get("refreshToken") ?? "").trim();
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/channels/connectors/${encodeURIComponent(installationId)}?tab=credentials`;
+  if (!installationId) {
+    throw new Error("Installation ID is required.");
+  }
+
+  try {
+    const stepUpToken = await issueConnectorCredentialsStepUpToken(formData);
+    const result = await patchJsonForAction<{ id: string; status: string; verification: { outcome: string } }>(
+      formData,
+      `/connectors/${encodeURIComponent(installationId)}/credentials`,
+      {
+        externalAccountRef: externalAccountRef || undefined,
+        clientId: clientId || undefined,
+        clientSecret: clientSecret || undefined,
+        refreshToken: refreshToken || undefined,
+      },
+      { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
+    );
+    revalidatePath("/channels/connectors");
+    revalidatePath(`/channels/connectors/${encodeURIComponent(installationId)}`);
+    redirect(
+      appendQueryParams(returnTo, {
+        status: result.verification.outcome === "not_supported" ? "credentials-saved-verification-unavailable" : "credentials-updated",
+      }),
+    );
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
+    const stepUpRedirectPath = withCredentialsStepUpErrorQuery(returnTo, error);
+    if (stepUpRedirectPath) {
+      redirect(stepUpRedirectPath);
+    }
+    if (error instanceof ApiHttpError) {
+      redirect(
+        appendQueryParams(returnTo, {
+          status: error.status === 503 ? "credentials-unavailable" : "credentials-invalid",
+          reasonMessage: extractApiErrorMessage(error),
+        }),
+      );
+    }
+    throw error;
+  }
 }
 
 // Reconnect is a native-form POST to a Route Handler

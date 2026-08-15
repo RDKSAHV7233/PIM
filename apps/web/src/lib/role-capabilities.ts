@@ -24,6 +24,14 @@ export function canManageConnectors(role: AppRole): boolean {
   return role === "admin" || role === "editor" || role === "connector_admin";
 }
 
+// Narrower than canManageConnectors: editor is deliberately excluded here.
+// Replacing a connector's persistent external-account secrets is a
+// higher-privilege action than replacing a session (matches the backend's
+// @Roles("admin", "connector_admin") on PATCH /connectors/:id/credentials).
+export function canEditConnectorCredentials(role: AppRole): boolean {
+  return role === "admin" || role === "connector_admin";
+}
+
 export function canResolveIssueInboxWarnings(role: AppRole): boolean {
   return role === "admin" || role === "editor";
 }
