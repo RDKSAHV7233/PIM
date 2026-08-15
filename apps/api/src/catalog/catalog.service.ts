@@ -23,22 +23,13 @@ import { CreateVariantDto } from "./dto/create-variant.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
 import { type AppRole } from "../common/rbac/roles";
+import { canonicalWorkflowStatus, isValidWorkflowTransition } from "../common/workflow/workflow-transitions";
 
 type ActorContext = {
   id: string;
   role: AppRole;
   tenantId?: string;
   effectiveRoles?: string[];
-};
-
-type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
-
-const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
-  draft: ["in_review", "archived"],
-  in_review: ["approved", "rejected", "draft", "archived"],
-  approved: ["archived", "draft"],
-  rejected: ["draft", "in_review", "archived"],
-  archived: ["draft", "in_review"],
 };
 
 function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, right: T | undefined): T | undefined {
@@ -862,10 +853,10 @@ export class CatalogService {
         vendorScopeKey: requestedVendorScopeKey,
       });
     const nextStatus = dto.status as RecordStatus;
-    if (!this.isValidWorkflowTransition(current.status, nextStatus)) {
+    if (!isValidWorkflowTransition(current.status, nextStatus)) {
       throw new BadRequestException(`Invalid workflow transition from ${current.status} to ${nextStatus}.`);
     }
-    if (nextStatus === RecordStatus.draft && this.canonicalWorkflowStatus(current.status) === "approved") {
+    if (nextStatus === RecordStatus.draft && canonicalWorkflowStatus(current.status) === "approved") {
       if (current.status === RecordStatus.active) {
         // `active` canonicalizes to "approved" for transition-table purposes, but a live/published
         // product reverting to draft is a materially bigger decision than un-approving a draft-stage
@@ -903,8 +894,8 @@ export class CatalogService {
     // countBlockingValidationIssues persists compliance state from the CURRENT DB row,
     // not this request's not-yet-committed merged values), and require the same
     // privileged-role + blocking-issue checks decideProductReview enforces.
-    const nextCanonicalStatus = this.canonicalWorkflowStatus(nextStatus);
-    const currentCanonicalStatus = this.canonicalWorkflowStatus(current.status);
+    const nextCanonicalStatus = canonicalWorkflowStatus(nextStatus);
+    const currentCanonicalStatus = canonicalWorkflowStatus(current.status);
     const isTerminalReviewTransition =
       (nextCanonicalStatus === RecordStatus.approved || nextCanonicalStatus === RecordStatus.rejected) &&
       nextCanonicalStatus !== currentCanonicalStatus;
@@ -1642,13 +1633,6 @@ export class CatalogService {
     });
   }
 
-  private canonicalWorkflowStatus(status: RecordStatus): WorkflowStatus {
-    if (status === RecordStatus.active) {
-      return "approved";
-    }
-    return status as WorkflowStatus;
-  }
-
   /**
    * Re-runs compliance validation against the product's current persisted state and
    * counts open, error-severity ValidationIssues. Shared by decideProductReview and
@@ -1663,19 +1647,6 @@ export class CatalogService {
         severity: RuleSeverity.error,
       },
     });
-  }
-
-  private isValidWorkflowTransition(currentStatus: RecordStatus, nextStatus: RecordStatus): boolean {
-    if (currentStatus === nextStatus) {
-      return true;
-    }
-    const currentCanonical = this.canonicalWorkflowStatus(currentStatus);
-    const nextCanonical = this.canonicalWorkflowStatus(nextStatus);
-    if (currentCanonical === nextCanonical) {
-      return true;
-    }
-    const allowed = WORKFLOW_TRANSITIONS[currentCanonical] ?? [];
-    return allowed.includes(nextCanonical);
   }
 
   private assertProductContentMutationAllowed(
@@ -1740,7 +1711,7 @@ export class CatalogService {
   }
 
   private isWorkflowStateContentLocked(status: RecordStatus): boolean {
-    const canonical = this.canonicalWorkflowStatus(status);
+    const canonical = canonicalWorkflowStatus(status);
     return canonical === "approved" || canonical === "archived";
   }
 

@@ -15,45 +15,17 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { BulkEditScopeDto } from "./dto/bulk-edit-scope.dto";
+import { isValidWorkflowTransition } from "../common/workflow/workflow-transitions";
 
 const RECORD_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 const EDITABLE_FIELDS = ["title", "description", "brand", "status", "hsnCode", "gstRate"] as const;
 type EditableField = (typeof EDITABLE_FIELDS)[number];
-type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
-
-const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
-  draft: ["in_review", "archived"],
-  in_review: ["approved", "rejected", "draft", "archived"],
-  approved: ["archived", "draft"],
-  rejected: ["draft", "in_review", "archived"],
-  archived: ["draft", "in_review"],
-};
 
 function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, right: T | undefined): T | undefined {
   if (left && right) {
     return { AND: [left, right] } as unknown as T;
   }
   return left ?? right;
-}
-
-function canonicalWorkflowStatus(status: RecordStatus): WorkflowStatus {
-  if (status === RecordStatus.active) {
-    return "approved";
-  }
-  return status as WorkflowStatus;
-}
-
-function isValidStatusTransition(currentStatus: RecordStatus, nextStatus: RecordStatus): boolean {
-  if (currentStatus === nextStatus) {
-    return true;
-  }
-  const currentCanonical = canonicalWorkflowStatus(currentStatus);
-  const nextCanonical = canonicalWorkflowStatus(nextStatus);
-  if (currentCanonical === nextCanonical) {
-    return true;
-  }
-  const allowed = WORKFLOW_TRANSITIONS[currentCanonical] ?? [];
-  return allowed.includes(nextCanonical);
 }
 
 type ProductSnapshot = {
@@ -306,7 +278,7 @@ export class BulkEditService implements OnModuleInit {
         categoryId: product.categoryId,
         brand: normalizedUpdates.brand ?? product.brand,
       });
-      if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
+      if (normalizedUpdates.status && !isValidWorkflowTransition(product.status, normalizedUpdates.status)) {
         throw new BadRequestException(
           `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
         );
