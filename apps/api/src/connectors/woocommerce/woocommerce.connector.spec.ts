@@ -86,3 +86,51 @@ describe("ConnectorNetworkError", () => {
     expect(err).toBeInstanceOf(ConnectorNetworkError);
   });
 });
+
+describe("WooCommerceConnector.validateCredentials (BUG-WOO-HEALTH-001 / #472)", () => {
+  const ctx = { tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" };
+
+  function mockResolvedCredentials(connector: WooCommerceConnector) {
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: "https://example.com",
+      consumerKey: "ck_test",
+      consumerSecret: "cs_test",
+    });
+  }
+
+  it("returns true and does not treat a retryable network failure as invalid credentials", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockRejectedValue(
+      new ConnectorNetworkError("woocommerce", "NETWORK", true, "connection failed (ECONNRESET)"),
+    );
+
+    await expect(connector.validateCredentials(ctx as any)).resolves.toBe(true);
+  });
+
+  it("still returns false for a non-retryable network failure (DNS/TLS)", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockRejectedValue(
+      new ConnectorNetworkError("woocommerce", "DNS", false, "DNS resolution failed (ENOTFOUND)"),
+    );
+
+    await expect(connector.validateCredentials(ctx as any)).resolves.toBe(false);
+  });
+
+  it("still returns false on a 401/403 auth rejection", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({ status: 401, ok: false } as Response);
+
+    await expect(connector.validateCredentials(ctx as any)).resolves.toBe(false);
+  });
+
+  it("still returns true on a healthy response", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({ status: 200, ok: true } as Response);
+
+    await expect(connector.validateCredentials(ctx as any)).resolves.toBe(true);
+  });
+});
