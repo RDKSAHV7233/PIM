@@ -78,6 +78,7 @@ describe("ConnectorInstallerService", () => {
       auditService,
       connectorPermissionService,
       credentialEncryptionService,
+      connectorRegistry,
     };
   }
 
@@ -109,6 +110,63 @@ describe("ConnectorInstallerService", () => {
       }),
     );
     expect(executeMock).toHaveBeenCalled();
+  });
+
+  describe("reconnect (#564)", () => {
+    function mockRuntimeRecordRow(overrides: Partial<{ slug: string }> = {}) {
+      return [{
+        id: "inst_1",
+        tenantKey: "acme",
+        connectorId: "def_1",
+        accountAlias: "primary",
+        externalAccountRef: null,
+        metadata: {},
+        slug: overrides.slug ?? "woocommerce",
+      }];
+    }
+
+    it("validates credentials before marking the installation ACTIVE", async () => {
+      const { service, queryMock, executeMock, auditService, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      executeMock.mockResolvedValue(1);
+      const validateCredentials = jest.fn().mockResolvedValue(true);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ validateCredentials });
+
+      const result = await service.reconnect("inst_1", { actorId: "user_1", actorRole: "admin" });
+
+      expect(connectorRegistry.getConnector).toHaveBeenCalledWith("woocommerce");
+      expect(validateCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({ installationId: "inst_1", tenantId: "acme" }),
+      );
+      expect(executeMock).toHaveBeenCalled();
+      expect(result).toEqual({ id: "inst_1", status: "ACTIVE" });
+      expect(auditService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_SUCCESS", resourceId: "inst_1" }),
+      );
+    });
+
+    it("refuses to mark the installation ACTIVE when credentials still don't validate", async () => {
+      const { service, queryMock, executeMock, auditService, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      const validateCredentials = jest.fn().mockResolvedValue(false);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ validateCredentials });
+
+      await expect(
+        service.reconnect("inst_1", { actorId: "user_1", actorRole: "admin" }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "CONNECTOR_CREDENTIALS_STILL_INVALID" }),
+      });
+
+      // The status update must never run — this is the whole point of the fix:
+      // a still-broken connector should not get cosmetically flipped to ACTIVE.
+      expect(executeMock).not.toHaveBeenCalled();
+      expect(auditService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_FAILURE", resourceId: "inst_1" }),
+      );
+      expect(auditService.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_SUCCESS" }),
+      );
+    });
   });
 
   it("listAvailableDefinitions delegates to buildDefinitionActionsForSlugs (batch path)", async () => {

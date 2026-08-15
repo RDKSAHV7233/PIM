@@ -1423,6 +1423,21 @@ export async function configureAmazonAction(formData: FormData) {
   redirect(appendQueryParams(returnTo, { status: "amazon-configured" }));
 }
 
+function resolveReconnectError(error: unknown): string {
+  if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+    const payload = error.body as Record<string, unknown>;
+    const code = String(payload.error ?? "").trim();
+    if (code) {
+      return code;
+    }
+    return "reconnect_failed";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return "reconnect_failed";
+}
+
 export async function reconnectConnectorAction(formData: FormData) {
   const { actorRole } = await getServerSession();
   if (!canManageConnectors(actorRole)) {
@@ -1432,10 +1447,23 @@ export async function reconnectConnectorAction(formData: FormData) {
   if (!installationId) {
     throw new Error("Connector installation id is required.");
   }
+  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim();
+  const returnTo = "/channels/connectors";
 
-  await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/reconnect`, {});
+  try {
+    await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/reconnect`, {});
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
+    redirect(
+      appendQueryParams(returnTo, {
+        reconnectError: resolveReconnectError(error),
+        connectorSlug,
+      }),
+    );
+  }
   revalidatePath("/channels");
-  redirect("/channels/connectors?status=reconnected");
+  redirect(appendQueryParams(returnTo, { status: "reconnected" }));
 }
 
 export async function initiateOAuthAction(formData: FormData) {
