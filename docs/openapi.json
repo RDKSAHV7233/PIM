@@ -1759,6 +1759,46 @@
         ]
       }
     },
+    "/api/v1/connectors/{id}/credentials": {
+      "patch": {
+        "operationId": "ConnectorInstallerController_updateCredentials",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectorCredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials verified and updated"
+          },
+          "400": {
+            "description": "Candidate credentials were rejected"
+          },
+          "503": {
+            "description": "Candidate credentials could not be verified right now"
+          }
+        },
+        "summary": "Replace an installed connector account's stored credentials",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
     "/api/v1/connectors/{id}/configure": {
       "patch": {
         "operationId": "ConnectorInstallerController_configure",
@@ -7418,6 +7458,10 @@
         "properties": {}
       },
       "InstallConnectorDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateConnectorCredentialsDto": {
         "type": "object",
         "properties": {}
       },

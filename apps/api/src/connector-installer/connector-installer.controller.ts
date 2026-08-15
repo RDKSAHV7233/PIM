@@ -6,6 +6,9 @@ import { PlanGuard } from "../billing/plan-guard.guard";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { Public } from "../auth/public.decorator";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
+import { RequireStepUp } from "../auth/step-up.decorator";
+import { StepUpGuard } from "../auth/step-up.guard";
+import { STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK } from "../auth/jwt";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -24,6 +27,7 @@ import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dt
 import { InstallConnectorDto } from "./dto/install-connector.dto";
 import { ListConnectorPermissionsDto } from "./dto/list-connector-permissions.dto";
 import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto";
+import { UpdateConnectorCredentialsDto } from "./dto/update-connector-credentials.dto";
 import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 import { ConnectorInstallerService } from "./connector-installer.service";
 
@@ -129,6 +133,22 @@ export class ConnectorInstallerController {
   @Roles("admin", "editor", "connector_admin")
   reconnect(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.reconnect(installationId, this.resolveActor(request));
+  }
+
+  @Patch(":id/credentials")
+  @Roles("admin", "connector_admin")
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK, "connector.credentials.update")
+  @ApiOperation({ summary: "Replace an installed connector account's stored credentials" })
+  @ApiResponse({ status: 200, description: "Credentials verified and updated" })
+  @ApiResponse({ status: 400, description: "Candidate credentials were rejected" })
+  @ApiResponse({ status: 503, description: "Candidate credentials could not be verified right now" })
+  updateCredentials(
+    @Param("id") installationId: string,
+    @Body() dto: UpdateConnectorCredentialsDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.connectorInstallerService.updateCredentials(installationId, dto, this.resolveActor(request));
   }
 
   @Patch(":id/configure")

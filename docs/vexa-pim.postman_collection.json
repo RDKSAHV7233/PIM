@@ -4109,6 +4109,48 @@
           }
         },
         {
+          "name": "Replace an installed connector account's stored credentials",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/:id/credentials",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                ":id",
+                "credentials"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": "Replace an installed connector account's stored credentials",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Update connector installation configuration (marketplace ID, default product type, etc.)",
           "request": {
             "method": "PATCH",
