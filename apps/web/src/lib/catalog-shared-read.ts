@@ -27,6 +27,16 @@ export function isCatalogProductsApiUnavailable(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
+  // fetchJson's AbortSignal.timeout(FETCH_TIMEOUT_MS) rejects with a DOMException
+  // named "TimeoutError" (or "AbortError" on manual cancellation) — instanceof Error
+  // is true (confirmed empirically on Node 22/24), but the substring checks below
+  // never matched it, so it fell through to the `throw error` in loadSharedRead()
+  // uncaught. Reproduced under real CI execution in
+  // catalog-shared-read-timeout-classification.test.ts before this fix was applied —
+  // see that test and PIM#578 for the full causal chain.
+  if (error.name === "TimeoutError" || error.name === "AbortError") {
+    return true;
+  }
   const message = error.message.toLowerCase();
   const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
   const causeDetails =
@@ -35,9 +45,12 @@ export function isCatalogProductsApiUnavailable(error: unknown): boolean {
       : String(cause ?? "").toLowerCase();
   return (
     message.includes("fetch failed") ||
+    message.includes("timeout") ||
+    message.includes("aborted") ||
     causeDetails.includes("econnrefused") ||
     causeDetails.includes("enotfound") ||
-    causeDetails.includes("socket hang up")
+    causeDetails.includes("socket hang up") ||
+    causeDetails.includes("timeout")
   );
 }
 
