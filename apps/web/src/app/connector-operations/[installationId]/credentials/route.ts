@@ -11,6 +11,13 @@ interface RouteContext {
 const INSTALLATION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK = "connector_credentials_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
+// Comfortably longer than the backend's own internal per-connector HTTP
+// timeout (WooCommerce's callApi uses 30s) — this route calling the PATCH
+// with a SHORTER timeout than the backend's own outbound check could abort
+// the request while the backend is still genuinely working, turning a slow
+// but real verification into an unhandled failure here.
+const STEP_UP_TIMEOUT_MS = 20_000;
+const CREDENTIALS_TIMEOUT_MS = 45_000;
 
 /**
  * Native-form (URL-action) POST endpoint for replacing a connector
@@ -67,26 +74,37 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const params = redirectUrl.searchParams;
   const redirectPath = redirectUrl.pathname;
 
-  const password = String(formData.get("stepUpPassword") ?? "").trim();
-  if (!password) {
-    params.set("stepUpError", "STEP_UP_PASSWORD_REQUIRED");
+  const redirect = (extra: Record<string, string>) => {
+    for (const [key, value] of Object.entries(extra)) {
+      params.set(key, value);
+    }
     return new NextResponse(null, {
       status: 303,
       headers: { Location: `${redirectPath}?${params.toString()}`, "Cache-Control": "no-store" },
     });
+  };
+
+  const password = String(formData.get("stepUpPassword") ?? "").trim();
+  if (!password) {
+    return redirect({ stepUpError: "STEP_UP_PASSWORD_REQUIRED" });
   }
 
-  const stepUpResponse = await fetch(`${getApiBaseUrl()}/auth/step-up`, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ password, scope: STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  });
+  let stepUpResponse: Response;
+  try {
+    stepUpResponse = await fetch(`${getApiBaseUrl()}/auth/step-up`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password, scope: STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(STEP_UP_TIMEOUT_MS),
+    });
+  } catch {
+    return redirect({ stepUpError: "STEP_UP_REQUIRED" });
+  }
 
   if (!stepUpResponse.ok) {
     let errorCode = stepUpResponse.status === 401 ? "STEP_UP_INVALID_CREDENTIALS" : "STEP_UP_REQUIRED";
@@ -98,11 +116,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch {
       // Non-JSON or empty error body — keep the status-derived fallback code.
     }
-    params.set("stepUpError", errorCode);
-    return new NextResponse(null, {
-      status: 303,
-      headers: { Location: `${redirectPath}?${params.toString()}`, "Cache-Control": "no-store" },
-    });
+    return redirect({ stepUpError: errorCode });
   }
 
   const stepUpBody = (await stepUpResponse.json()) as { stepUpToken?: string };
@@ -113,56 +127,51 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const clientSecret = String(formData.get("clientSecret") ?? "").trim();
   const refreshToken = String(formData.get("refreshToken") ?? "").trim();
 
-  const apiResponse = await fetch(`${getApiBaseUrl()}/connectors/${encodeURIComponent(installationId)}/credentials`, {
-    method: "PATCH",
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      [STEP_UP_TOKEN_HEADER]: stepUpToken,
-    },
-    body: JSON.stringify({
-      externalAccountRef: externalAccountRef || undefined,
-      clientId: clientId || undefined,
-      clientSecret: clientSecret || undefined,
-      refreshToken: refreshToken || undefined,
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  });
+  let apiResponse: Response;
+  try {
+    apiResponse = await fetch(`${getApiBaseUrl()}/connectors/${encodeURIComponent(installationId)}/credentials`, {
+      method: "PATCH",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        [STEP_UP_TOKEN_HEADER]: stepUpToken,
+      },
+      body: JSON.stringify({
+        externalAccountRef: externalAccountRef || undefined,
+        clientId: clientId || undefined,
+        clientSecret: clientSecret || undefined,
+        refreshToken: refreshToken || undefined,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(CREDENTIALS_TIMEOUT_MS),
+    });
+  } catch {
+    // Timeout, connection reset, DNS failure, etc. — the credential check
+    // itself may still be running server-side, but we can't wait forever on
+    // this request. No positive evidence either way, so this is "unavailable"
+    // (not "invalid") — existing credentials are untouched either way.
+    return redirect({ status: "credentials-unavailable", reasonMessage: "The request timed out before Vexa could confirm the result. Existing credentials were not changed — try again shortly." });
+  }
 
   if (!apiResponse.ok) {
-    let errorCode = "credentials_update_failed";
     let reasonMessage = "";
     try {
-      const body = (await apiResponse.json()) as { error?: string; message?: string };
-      if (body && typeof body.error === "string" && body.error.trim()) {
-        errorCode = body.error.trim();
-      }
+      const body = (await apiResponse.json()) as { message?: string };
       if (body && typeof body.message === "string" && body.message.trim()) {
         reasonMessage = body.message.trim();
       }
     } catch {
-      // Non-JSON or empty error body — keep the generic fallback code.
+      // Non-JSON or empty error body — keep the generic fallback message.
     }
-    params.set("status", apiResponse.status === 503 ? "credentials-unavailable" : "credentials-invalid");
-    if (reasonMessage) {
-      params.set("reasonMessage", reasonMessage);
-    }
-    void errorCode;
-    return new NextResponse(null, {
-      status: 303,
-      headers: { Location: `${redirectPath}?${params.toString()}`, "Cache-Control": "no-store" },
+    return redirect({
+      status: apiResponse.status === 503 ? "credentials-unavailable" : "credentials-invalid",
+      ...(reasonMessage ? { reasonMessage } : {}),
     });
   }
 
   const resultBody = (await apiResponse.json()) as { verification?: { outcome?: string } };
-  params.set(
-    "status",
-    resultBody.verification?.outcome === "not_supported" ? "credentials-saved-verification-unavailable" : "credentials-updated",
-  );
-  return new NextResponse(null, {
-    status: 303,
-    headers: { Location: `${redirectPath}?${params.toString()}`, "Cache-Control": "no-store" },
+  return redirect({
+    status: resultBody.verification?.outcome === "not_supported" ? "credentials-saved-verification-unavailable" : "credentials-updated",
   });
 }
