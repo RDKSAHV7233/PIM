@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
@@ -117,6 +118,21 @@ function resolveHideTestData(value: string | undefined): boolean {
     return false;
   }
   return true;
+}
+
+function operationStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "completed_with_errors":
+      return "warning";
+    case "failed":
+      return "danger";
+    case "processing":
+      return "info";
+    default:
+      return "neutral";
+  }
 }
 
 function parseList(value: string): string[] {
@@ -267,11 +283,37 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     let previewErrorMessage: string | null = null;
     let parsedUpdates: Record<string, unknown> = {};
     const operationColumns: Column<(typeof operations)[number]>[] = [
-      { key: "operation", header: "Operation", render: (operation) => <span className="font-mono text-xs">{operation.id}</span> },
-      { key: "status", header: "Status", render: (operation) => translateBulkEditStatus(operation.status) },
+      {
+        key: "operation",
+        header: "Operation",
+        render: (operation) => (
+          <Link href={`/operations/bulk-edit/${encodeURIComponent(operation.id)}`} className="font-mono text-xs text-blue-700 underline hover:text-blue-900">
+            {operation.id}
+          </Link>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (operation) => <StatusChip label={translateBulkEditStatus(operation.status)} tone={operationStatusTone(operation.status)} />,
+      },
       { key: "requested", header: "Requested", render: (operation) => String(operation.requestedCount ?? 0) },
       { key: "applied", header: "Applied", render: (operation) => String(operation.appliedCount ?? 0) },
-      { key: "failed", header: "Failed", render: (operation) => String(operation.failedCount ?? 0) },
+      {
+        key: "failed",
+        header: "Failed",
+        render: (operation) =>
+          operation.failedCount > 0 ? (
+            <Link
+              href={`/operations/bulk-edit/${encodeURIComponent(operation.id)}`}
+              className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+            >
+              {operation.failedCount} failed
+            </Link>
+          ) : (
+            <span className="text-slate-500">0</span>
+          ),
+      },
       { key: "updates", header: "Updates", render: (operation) => <span className="text-xs">{JSON.stringify(operation.updates)}</span> },
     ];
 

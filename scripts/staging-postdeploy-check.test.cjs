@@ -24,10 +24,12 @@ async function main() {
   const lockedUsers = new Set();
   const inactiveUsers = new Set();
   const auditLogDeniedRoles = new Set();
+  let viewerCreateConflictExercised = false;
   let viewerAdminListDenied = false;
   let staleViewerLockedRejected = false;
   let staleViewerInactiveRejected = false;
   let deactivatedViewerLoginRejected = false;
+  let viewerLoginRateLimitExercised = false;
 
   const validCookie = "pim_access_token=web-session-token";
 
@@ -93,6 +95,12 @@ async function main() {
         }
         const role = users.get(parsedBody.userId);
         const expectedPassword = passwords.get(parsedBody.userId);
+        if (role === "viewer" && !viewerLoginRateLimitExercised) {
+          viewerLoginRateLimitExercised = true;
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "IP_RATE_LIMITED" }));
+          return;
+        }
         if (inactiveUsers.has(parsedBody.userId)) {
           deactivatedViewerLoginRejected = true;
           res.writeHead(401, { "content-type": "application/json" });
@@ -159,6 +167,12 @@ async function main() {
           return;
         }
         const body = JSON.parse(raw || "{}");
+        if (body.role === "viewer" && !viewerCreateConflictExercised) {
+          viewerCreateConflictExercised = true;
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "USER_ALREADY_EXISTS" }));
+          return;
+        }
         users.set(body.userId, body.role);
         res.writeHead(201, { "content-type": "application/json" });
         res.end(JSON.stringify({ userId: body.userId, role: body.role }));
@@ -351,6 +365,7 @@ async function main() {
       STAGING_SMOKE_PASSWORD: "vexa-pim-demo-password",
       STAGING_EXPECTED_ENV: "development",
       STAGING_VALIDATE_NON_ADMIN: "true",
+      STAGING_POSTDEPLOY_RETRY_BASE_MS: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -401,6 +416,8 @@ async function main() {
     ["editor", "reviewer", "viewer"],
     "non-admin staging smoke must deny audit logs for viewer/reviewer/editor",
   );
+  assert.equal(viewerCreateConflictExercised, true, "staging smoke must retry duplicate temporary viewer ids");
+  assert.equal(viewerLoginRateLimitExercised, true, "staging smoke must retry viewer login rate limits");
   assert.equal(viewerAdminListDenied, true, "viewer must be denied workspace user admin route");
   assert.equal(staleViewerLockedRejected, true, "viewer stale token must be rejected after lock");
   assert.equal(staleViewerInactiveRejected, true, "viewer stale token must be rejected after deactivation");

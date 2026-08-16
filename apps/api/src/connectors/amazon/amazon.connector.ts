@@ -56,6 +56,27 @@ type AmazonTokenResponse = {
   token_type?: string;
 };
 
+// Carries the HTTP status + parsed body so verifyCandidateCredentials can
+// distinguish "credentials rejected" from "couldn't check right now" without
+// re-parsing an error message string.
+class AmazonTokenExchangeError extends Error {
+  readonly status: number;
+  readonly body: AmazonTokenResponse | Record<string, unknown>;
+  constructor(status: number, body: AmazonTokenResponse | Record<string, unknown>) {
+    super(`Amazon token exchange failed with status ${status}.`);
+    this.name = "AmazonTokenExchangeError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+// Mirrors persistTokenSet's own expiry math exactly so the heartbeat-driven
+// refresh path and the candidate-verification commit path can never interpret
+// expires_in differently.
+function computeTokenExpiry(expiresIn: number | undefined, now: number): Date | null {
+  return Number.isFinite(expiresIn) ? new Date(now + Math.max(1, Number(expiresIn)) * 1000) : null;
+}
+
 type AmazonListingSubmitResponse = {
   submissionId?: string;
   status?: string;
@@ -779,10 +800,68 @@ export class AmazonConnector implements ConnectorInterface {
     }
 
     if (!response.ok) {
-      throw new Error(`Amazon token exchange failed with status ${response.status}.`);
+      throw new AmazonTokenExchangeError(response.status, parsed);
     }
 
     return parsed as AmazonTokenResponse;
+  }
+
+  // ─── optional: verifyCandidateCredentials ───────────────────────────────────
+  //
+  // NOT reusing validateCredentials() — that path calls resolveAccessToken() and
+  // unconditionally noteCredentialHealth(), both of which read/write the real
+  // STORED credential rows. This calls exchangeToken() directly with the
+  // candidate triplet: already side-effect-free (plain fetch, no ctx/DB
+  // parameter at all).
+  //
+  // Classification: Amazon LWA refresh-token exchange failures return 400 with
+  // an `error` body (invalid_client/invalid_grant) or a bare 401 — either is
+  // positive evidence the candidate is wrong. Anything else (network failure,
+  // timeout, an opaque 5xx) is unavailable.
+  //
+  // On success, commitExtra sources access_token (always) and refresh_token
+  // (only if the exchange response returned one — mirrors persistTokenSet's own
+  // `if (token.refresh_token)` guard) from the REAL exchange response. Per
+  // researched LWA semantics, an ordinary refresh-token exchange does not
+  // invalidate the existing refresh token, so this is a low-risk path for
+  // Amazon specifically — but the same commit-from-response discipline is kept
+  // for consistency with Flipkart's higher-risk rotation window.
+
+  async verifyCandidateCredentials(
+    candidate: Record<string, string>,
+  ): Promise<import("../../connector-framework/connector.interface").CredentialVerificationResult> {
+    const clientId = String(candidate.client_id ?? "").trim();
+    const clientSecret = String(candidate.client_secret ?? "").trim();
+    const refreshToken = String(candidate.refresh_token ?? "").trim();
+
+    try {
+      const token = await this.exchangeToken(clientId, clientSecret, {
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      });
+      if (!token.access_token) {
+        return { outcome: "unavailable", reasonCode: "AMAZON_TOKEN_RESPONSE_INCOMPLETE" };
+      }
+      const now = Date.now();
+      return {
+        outcome: "valid",
+        commitExtra: {
+          accessToken: { value: token.access_token, expiresAt: computeTokenExpiry(token.expires_in, now) },
+          ...(token.refresh_token
+            ? { refreshToken: { value: token.refresh_token, expiresAt: new Date(now + DEFAULT_REFRESH_TOKEN_TTL_MS) } }
+            : {}),
+        },
+      };
+    } catch (err) {
+      if (err instanceof AmazonTokenExchangeError) {
+        const bodyError = String((err.body as Record<string, unknown>)?.error ?? "").trim().toLowerCase();
+        if (err.status === 401 || bodyError === "invalid_client" || bodyError === "invalid_grant") {
+          return { outcome: "invalid", reasonCode: bodyError || `HTTP_${err.status}` };
+        }
+        return { outcome: "unavailable", reasonCode: `HTTP_${err.status}` };
+      }
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
+    }
   }
 
   private async submitListing(
@@ -833,9 +912,7 @@ export class AmazonConnector implements ConnectorInterface {
   ): Promise<void> {
     const now = Date.now();
     if (token.access_token) {
-      const expiresAt = Number.isFinite(token.expires_in)
-        ? new Date(now + Math.max(1, Number(token.expires_in)) * 1000)
-        : null;
+      const expiresAt = computeTokenExpiry(token.expires_in, now);
       await this.storeCredential(ctx, "access_token", token.access_token, {
         expiresAt,
       });

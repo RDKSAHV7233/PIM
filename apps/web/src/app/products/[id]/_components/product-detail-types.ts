@@ -10,6 +10,7 @@ import type {
   MarketplaceChannelMapping,
   MarketplaceExportJob,
   MarketplaceSimulation,
+  MediaAsset,
   Product,
   ProductActivityEvent,
   Variant,
@@ -39,6 +40,7 @@ export type ProductDetailPageData = {
   simulation: MarketplaceSimulation;
   categoryAttributes: AttributeDefinition[];
   readiness: ConnectorPublishReadiness;
+  mediaAssets: MediaAsset[];
   mediaAssetCount: number;
   imageAssetCount: number;
   actorRole: AppRole;

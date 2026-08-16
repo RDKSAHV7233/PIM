@@ -14,6 +14,7 @@ import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { AppRole } from "../common/rbac/roles";
+import { LoggerService } from "../common/logging/logger.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -22,6 +23,7 @@ import {
   ConnectorCap,
   ConnectorPublicationTarget,
   ConnectorImplementationStatus,
+  CredentialVerificationResult,
 } from "../connector-framework/connector.interface";
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { resolveConnectorLaunchPolicy, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
@@ -44,6 +46,7 @@ import { ConfigureConnectorDto } from "./dto/configure-connector.dto";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
 import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto";
+import { UpdateConnectorCredentialsDto } from "./dto/update-connector-credentials.dto";
 import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 
 const DEFAULT_PAGE_LIMIT = 50;
@@ -113,6 +116,7 @@ export class ConnectorInstallerService {
     private readonly accessPolicy: AccessPolicyService,
     private readonly credentialService: ConnectorCredentialService,
     private readonly httpClient: ConnectorHttpClient,
+    private readonly logger: LoggerService,
   ) {}
 
   private getTenantKey(): string {
@@ -799,7 +803,7 @@ export class ConnectorInstallerService {
 
   async reconnect(installationId: string, actor: ConnectorActor) {
     const tenantKey = this.getTenantKey();
-    const installation = await this.requireInstallationForAction(installationId, tenantKey);
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
 
     await this.auditService.record({
       actorId: actor.actorId,
@@ -819,6 +823,19 @@ export class ConnectorInstallerService {
         action: "reconnect",
         accountAlias: installation.accountAlias,
       });
+
+      // #564: this used to flip the badge to ACTIVE unconditionally — a genuinely
+      // broken connector would look "reconnected" without anything ever being
+      // checked. Reuse the same validateCredentials() call the heartbeat already
+      // makes for every installation, so Reconnect actually proves the account works.
+      const connector = this.connectorRegistry.getConnector(installation.slug);
+      const validated = await connector.validateCredentials(this.buildConnectorContext(installation));
+      if (!validated) {
+        throw new BadRequestException({
+          error: "CONNECTOR_CREDENTIALS_STILL_INVALID",
+          message: `${installation.slug} credentials could not be validated. Update the stored credentials via setup, then try reconnecting again.`,
+        });
+      }
 
       const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         UPDATE connector_installations
@@ -860,6 +877,417 @@ export class ConnectorInstallerService {
         },
       });
       throw error;
+    }
+  }
+
+  /**
+   * Replace an existing installation's credential set. Unlike install(), this
+   * targets an already-live installation and verifies the CANDIDATE credentials
+   * live before persisting anything — a rejected or unreachable check leaves the
+   * stored credentials and installation status completely untouched (see the
+   * per-connector helpers below for the exact zero-mutation guarantee).
+   *
+   * Roles are enforced at the controller (`admin`, `connector_admin` — `editor`
+   * deliberately excluded, replacing persistent external-account secrets is a
+   * higher-privilege action than replacing a session). Step-up is enforced at
+   * the controller too, via StepUpGuard + STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK.
+   */
+  async updateCredentials(
+    installationId: string,
+    dto: UpdateConnectorCredentialsDto,
+    actor: ConnectorActor,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+
+    await this.auditService.record({
+      actorId: actor.actorId,
+      actorRole: actor.actorRole,
+      action: "CONNECTOR_CREDENTIALS_UPDATE_ATTEMPT",
+      resource: "CONNECTOR_CREDENTIAL",
+      resourceId: installationId,
+      metadata: {
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
+        changedCredentialTypes: this.describeChangedCredentialTypes(installation.slug, dto),
+        externalAccountRefChanged: dto.externalAccountRef !== undefined && dto.externalAccountRef.trim().length > 0,
+      },
+    });
+
+    try {
+      await this.connectorPermissionService.assertActionAllowed(actor, {
+        connectorSlug: installation.slug,
+        action: "reconnect",
+        accountAlias: installation.accountAlias,
+      });
+
+      const result = await this.dispatchUpdateCredentials(tenantKey, installation, dto);
+
+      await this.auditService.record({
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        action: "CONNECTOR_CREDENTIALS_UPDATE_SUCCESS",
+        resource: "CONNECTOR_CREDENTIAL",
+        resourceId: installationId,
+        metadata: {
+          connectorSlug: installation.slug,
+          accountAlias: installation.accountAlias,
+          verificationOutcome: result.verification.outcome,
+          previousStatus: installation.status,
+          newStatus: result.status,
+        },
+      });
+
+      return result;
+    } catch (error: unknown) {
+      await this.auditService.record({
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        action: "CONNECTOR_CREDENTIALS_UPDATE_FAILURE",
+        resource: "CONNECTOR_CREDENTIAL",
+        resourceId: installationId,
+        metadata: {
+          connectorSlug: installation.slug,
+          accountAlias: installation.accountAlias,
+          failureCode: this.extractFailureCode(error),
+        },
+      });
+      throw error;
+    }
+  }
+
+  /** Storage-type names only — never the DTO property names, never values. */
+  private describeChangedCredentialTypes(slug: string, dto: UpdateConnectorCredentialsDto): string[] {
+    const types: string[] = [];
+    const has = (v: string | undefined) => v !== undefined && v.trim().length > 0;
+    if (slug === "woocommerce") {
+      if (has(dto.externalAccountRef)) types.push("site_url");
+      if (has(dto.clientId)) types.push("consumer_key");
+      if (has(dto.clientSecret)) types.push("consumer_secret");
+      if (has(dto.refreshToken)) types.push("webhook_secret");
+    } else if (slug === "myntra") {
+      if (has(dto.externalAccountRef)) types.push("merchant_id");
+      if (has(dto.clientSecret)) types.push("secret_key");
+      if (has(dto.refreshToken)) types.push("warehouse_id");
+    } else if (slug === "meesho") {
+      if (has(dto.clientId)) types.push("merchant_id");
+      if (has(dto.clientSecret)) types.push("secret_key");
+    } else if (slug === "flipkart" || slug === "amazon-in") {
+      if (has(dto.clientId)) types.push("client_id");
+      if (has(dto.clientSecret)) types.push("client_secret");
+      if (has(dto.refreshToken)) types.push("refresh_token");
+    }
+    return types;
+  }
+
+  private extractFailureCode(error: unknown): string {
+    if (error instanceof BadRequestException || error instanceof ServiceUnavailableException || error instanceof NotFoundException) {
+      const response = error.getResponse();
+      if (typeof response === "object" && response !== null && "error" in response) {
+        return String((response as Record<string, unknown>).error);
+      }
+    }
+    return error instanceof Error ? error.name : "UNKNOWN_ERROR";
+  }
+
+  private assertNoDisallowedFields(
+    dto: UpdateConnectorCredentialsDto,
+    allowed: Array<keyof UpdateConnectorCredentialsDto>,
+    slug: string,
+  ): void {
+    const allowedSet = new Set<string>(allowed);
+    const allFields: Array<keyof UpdateConnectorCredentialsDto> = [
+      "externalAccountRef", "clientId", "clientSecret", "refreshToken",
+    ];
+    for (const field of allFields) {
+      if (allowedSet.has(field)) continue;
+      const value = dto[field];
+      if (value !== undefined && value.trim().length > 0) {
+        throw new BadRequestException({
+          error: "CONNECTOR_CREDENTIALS_FIELD_NOT_ALLOWED",
+          message: `${slug} credentials do not accept '${field}'.`,
+        });
+      }
+    }
+  }
+
+  private async dispatchUpdateCredentials(
+    tenantKey: string,
+    installation: { id: string; slug: string; status: string; metadata: Record<string, unknown> },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    switch (installation.slug) {
+      case "woocommerce":
+        return this.updateWooCommerceCredentials(tenantKey, installation, dto);
+      case "myntra":
+        return this.updateMyntraCredentials(tenantKey, installation, dto);
+      case "meesho":
+        return this.updateMeeshoCredentials(tenantKey, installation, dto);
+      case "flipkart":
+      case "amazon-in":
+        return this.updateOAuthTokenExchangeCredentials(tenantKey, installation, dto);
+      default:
+        throw new BadRequestException({
+          error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
+          message: `Editing stored credentials is not supported for ${installation.slug}.`,
+        });
+    }
+  }
+
+  private async updateWooCommerceCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "clientSecret", "refreshToken"], "woocommerce");
+
+    const suppliedExternalAccountRef = dto.externalAccountRef?.trim();
+    const consumerKey = dto.clientId?.trim();
+    const consumerSecret = dto.clientSecret;
+    const webhookSecret = dto.refreshToken;
+
+    const missing = [
+      !suppliedExternalAccountRef && "Site URL",
+      !consumerKey && "Consumer Key",
+      !(consumerSecret && consumerSecret.trim()) && "Consumer Secret",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "WOOCOMMERCE_CREDENTIALS_INCOMPLETE",
+        message: `WooCommerce credentials require Site URL, Consumer Key, and Consumer Secret. Missing: ${missing}.`,
+      });
+    }
+    if (!suppliedExternalAccountRef!.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "WOOCOMMERCE_SITE_URL_NOT_HTTPS",
+        message: "WooCommerce Site URL must use HTTPS.",
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("woocommerce");
+    const verification = await connector.verifyCandidateCredentials!({
+      site_url: suppliedExternalAccountRef!,
+      consumer_key: consumerKey!,
+      consumer_secret: consumerSecret!,
+    });
+
+    this.throwOnUnverified("WOOCOMMERCE", verification);
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "site_url", plainValue: suppliedExternalAccountRef!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "consumer_key", plainValue: consumerKey!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "consumer_secret", plainValue: consumerSecret!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      if (webhookSecret) {
+        // webhook_secret isn't exercised by the candidate check — no health stamp.
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "webhook_secret", plainValue: webhookSecret, metadata: { source: "credentials_update" } },
+          tx,
+        );
+      }
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  private async updateMyntraCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientSecret", "refreshToken"], "myntra");
+
+    const suppliedExternalAccountRef = dto.externalAccountRef?.trim();
+    const secretKey = dto.clientSecret;
+    const warehouseId = dto.refreshToken?.trim();
+
+    const missing = [
+      !suppliedExternalAccountRef && "Merchant ID",
+      !(secretKey && secretKey.trim()) && "Secret Key",
+      !warehouseId && "Warehouse ID",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "MYNTRA_CREDENTIALS_INCOMPLETE",
+        message: `Myntra credentials require Merchant ID, Secret Key, and Warehouse ID. Missing: ${missing}.`,
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("myntra");
+    const verification = await connector.verifyCandidateCredentials!({
+      merchant_id: suppliedExternalAccountRef!,
+      secret_key: secretKey!,
+    });
+
+    this.throwOnUnverified("MYNTRA", verification);
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "merchant_id", plainValue: suppliedExternalAccountRef!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "secret_key", plainValue: secretKey!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      // warehouse_id isn't exercised by the candidate check — no health stamp.
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "warehouse_id", plainValue: warehouseId!, metadata: { source: "credentials_update" } },
+        tx,
+      );
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  private async updateMeeshoCredentials(
+    tenantKey: string,
+    installation: { id: string; status: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["clientId", "clientSecret"], "meesho");
+
+    const merchantId = dto.clientId?.trim();
+    const secretKey = dto.clientSecret;
+
+    const missing = [
+      !merchantId && "Merchant ID",
+      !(secretKey && secretKey.trim()) && "Secret Key",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "MEESHO_CREDENTIALS_INCOMPLETE",
+        message: `Meesho credentials require both Merchant ID and Secret Key. Missing: ${missing}.`,
+      });
+    }
+
+    // No live check exists for Meesho (RD-MEESHO-1) — store unconditionally,
+    // never claim health, never touch installation status.
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey, installationId: installation.id, credentialType: "merchant_id",
+      plainValue: merchantId!, metadata: { source: "credentials_update" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey, installationId: installation.id, credentialType: "secret_key",
+      plainValue: secretKey!, metadata: { source: "credentials_update" },
+    });
+
+    return { id: installation.id, status: installation.status, verification: { outcome: "not_supported" } };
+  }
+
+  private async updateOAuthTokenExchangeCredentials(
+    tenantKey: string,
+    installation: { id: string; slug: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    const prefix = installation.slug === "flipkart" ? "FLIPKART" : "AMAZON";
+    this.assertNoDisallowedFields(dto, ["clientId", "clientSecret", "refreshToken"], installation.slug);
+
+    const clientId = dto.clientId?.trim();
+    const clientSecret = dto.clientSecret;
+    const refreshToken = dto.refreshToken;
+
+    const missing = [
+      !clientId && "Client ID",
+      !(clientSecret && clientSecret.trim()) && "Client Secret",
+      !(refreshToken && refreshToken.trim()) && "Refresh Token",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: `${prefix}_CREDENTIALS_INCOMPLETE`,
+        message: `${installation.slug} credentials require Client ID, Client Secret, and Refresh Token. Missing: ${missing}.`,
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    const verification = await connector.verifyCandidateCredentials!({
+      client_id: clientId!,
+      client_secret: clientSecret!,
+      refresh_token: refreshToken!,
+    });
+
+    this.throwOnUnverified(prefix, verification);
+
+    // Narrowed by throwOnUnverified: only "valid" reaches here.
+    const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
+    const rotatedRefreshToken = commitExtra?.refreshToken;
+    const refreshTokenToStore = rotatedRefreshToken?.value ?? refreshToken!;
+    const refreshTokenExpiry = rotatedRefreshToken?.expiresAt ?? null;
+
+    const now = new Date();
+    try {
+      await this.credentialEncryptionService.transaction(async (tx) => {
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "client_id", plainValue: clientId!, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "client_secret", plainValue: clientSecret!, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "refresh_token", plainValue: refreshTokenToStore, expiresAt: refreshTokenExpiry, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        if (commitExtra?.accessToken) {
+          await this.credentialEncryptionService.storeCredential(
+            { tenantKey, installationId: installation.id, credentialType: "access_token", plainValue: commitExtra.accessToken.value, expiresAt: commitExtra.accessToken.expiresAt, metadata: { source: "credentials_update" } },
+            tx,
+          );
+        }
+        await tx.connectorInstallation.updateMany({
+          where: { id: installation.id, tenantKey },
+          data: { status: "ACTIVE", updatedAt: new Date() },
+        });
+      });
+    } catch (txError) {
+      if (rotatedRefreshToken) {
+        // The provider already rotated the refresh token server-side before this
+        // transaction failed — that's not "nothing changed," it needs to be
+        // operationally visible so it can be manually reconciled.
+        this.logger.error("connector_credentials_rotation_commit_failed", {
+          installationId: installation.id,
+          connectorSlug: installation.slug,
+        });
+      }
+      throw txError;
+    }
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  private throwOnUnverified(prefix: string, verification: CredentialVerificationResult): void {
+    if (verification.outcome === "invalid") {
+      throw new BadRequestException({
+        error: `${prefix}_CREDENTIALS_INVALID`,
+        message: `${prefix} rejected these credentials. Existing credentials were not changed.`,
+        verification,
+      });
+    }
+    if (verification.outcome === "unavailable") {
+      throw new ServiceUnavailableException({
+        error: `${prefix}_CREDENTIALS_UNAVAILABLE`,
+        message: `${prefix} couldn't be reached to verify these credentials right now. Existing credentials were not changed — try again shortly.`,
+        verification,
+      });
     }
   }
 
@@ -1900,6 +2328,7 @@ export class ConnectorInstallerService {
     slug: string;
     accountAlias: string;
     externalAccountRef: string | null;
+    status: string;
     metadata: Record<string, unknown>;
   }> {
     const rows = await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(tenantKey), `
@@ -1909,6 +2338,7 @@ export class ConnectorInstallerService {
         ci.connector_id AS "connectorId",
         ci.account_alias AS "accountAlias",
         ci.external_account_ref AS "externalAccountRef",
+        ci.status,
         ci.metadata,
         cd.slug
       FROM connector_installations ci
@@ -1930,6 +2360,7 @@ export class ConnectorInstallerService {
       slug: String(row.slug),
       accountAlias: String(row.accountAlias),
       externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
+      status: String(row.status),
       metadata: parseMetadata(row.metadata),
     };
   }

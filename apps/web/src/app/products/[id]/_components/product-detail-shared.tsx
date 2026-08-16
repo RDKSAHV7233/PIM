@@ -123,7 +123,7 @@ export function translateReadinessBlocker(code: string): string {
 
 export function lifecycleStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
   const normalized = status.toLowerCase();
-  if (normalized === "active" || normalized === "ready" || normalized === "accepted") {
+  if (normalized === "active" || normalized === "ready" || normalized === "accepted" || normalized === "completed") {
     return "success";
   }
   if (normalized === "failed" || normalized === "dead_letter" || normalized === "rejected") {

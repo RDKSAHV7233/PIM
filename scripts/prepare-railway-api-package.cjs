@@ -7,6 +7,7 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..");
 const sourceDir = path.join(repoRoot, "apps", "api");
 const schemaSource = path.join(repoRoot, "packages", "db", "prisma", "schema.prisma");
+const observabilityPackageSource = path.join(repoRoot, "packages", "observability-db");
 const migrateScriptSource = path.join(repoRoot, "scripts", "prisma-migrate-deploy.cjs");
 const tsconfigBaseSource = path.join(repoRoot, "tsconfig.base.json");
 const outputDir = path.join(repoRoot, ".tmp", "railway-api-service");
@@ -43,6 +44,9 @@ function main() {
   if (!fs.existsSync(schemaSource)) {
     throw new Error(`Prisma schema not found: ${schemaSource}`);
   }
+  if (!fs.existsSync(observabilityPackageSource)) {
+    throw new Error(`Observability DB package not found: ${observabilityPackageSource}`);
+  }
   if (!fs.existsSync(tsconfigBaseSource)) {
     throw new Error(`Root tsconfig.base.json not found: ${tsconfigBaseSource}`);
   }
@@ -64,6 +68,20 @@ function main() {
   ensureDir(prismaDir);
   fs.copyFileSync(schemaSource, path.join(prismaDir, "schema.prisma"));
 
+  const packageJsonPath = path.join(outputDir, "package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+  const observabilityPackageTarget = path.join(outputDir, "packages", "observability-db");
+  copyDir(observabilityPackageSource, observabilityPackageTarget);
+  const observabilityPackageJsonPath = path.join(observabilityPackageTarget, "package.json");
+  const observabilityPackageJson = JSON.parse(fs.readFileSync(observabilityPackageJsonPath, "utf8"));
+  const prismaVersion = observabilityPackageJson.devDependencies?.prisma ?? packageJson?.devDependencies?.prisma ?? "6.19.3";
+  observabilityPackageJson.dependencies = {
+    ...(observabilityPackageJson.dependencies ?? {}),
+    prisma: observabilityPackageJson.dependencies?.prisma ?? prismaVersion,
+  };
+  fs.writeFileSync(observabilityPackageJsonPath, `${JSON.stringify(observabilityPackageJson, null, 2)}\n`, "utf8");
+
   const outputScriptsDir = path.join(outputDir, "scripts");
   ensureDir(outputScriptsDir);
   const migrateScriptContents = fs
@@ -71,16 +89,50 @@ function main() {
     .replaceAll("packages/db/prisma/schema.prisma", "prisma/schema.prisma");
   const migrateScriptPath = path.join(outputScriptsDir, "prisma-migrate-deploy.cjs");
   fs.writeFileSync(migrateScriptPath, migrateScriptContents, "utf8");
+  const syncObservabilityClientScript = [
+    "#!/usr/bin/env node",
+    "/* eslint-disable no-console */",
+    'const fs = require("node:fs");',
+    'const path = require("node:path");',
+    "",
+    "const packageRoot = path.resolve(__dirname, '..');",
+    "const generatedTarget = path.join(packageRoot, 'node_modules', '@pim1', 'observability-db', 'generated');",
+    "const generatedSources = [",
+    "  path.join(packageRoot, 'packages', 'observability-db', 'generated'),",
+    "  generatedTarget,",
+    "];",
+    "const generatedSource = generatedSources.find((candidate) => fs.existsSync(candidate));",
+    "",
+    "if (!generatedSource) {",
+    "  throw new Error(`Observability Prisma generated client not found in any expected location: ${generatedSources.join(', ')}`);",
+    "}",
+    "const generatedSourceRealPath = fs.realpathSync(generatedSource);",
+    "const generatedTargetRealPath = fs.existsSync(generatedTarget) ? fs.realpathSync(generatedTarget) : null;",
+    "if (generatedTargetRealPath && generatedSourceRealPath === generatedTargetRealPath) {",
+    "  console.log('observability generated client already present');",
+    "  process.exit(0);",
+    "}",
+    "fs.rmSync(generatedTarget, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });",
+    "fs.mkdirSync(path.dirname(generatedTarget), { recursive: true });",
+    "fs.cpSync(generatedSource, generatedTarget, { recursive: true });",
+    "console.log('observability generated client synced');",
+    "",
+  ].join("\n");
+  const syncObservabilityClientScriptPath = path.join(outputScriptsDir, "sync-observability-generated-client.cjs");
+  fs.writeFileSync(syncObservabilityClientScriptPath, syncObservabilityClientScript, "utf8");
 
-  const packageJsonPath = path.join(outputDir, "package.json");
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  packageJson.dependencies = {
+    ...(packageJson.dependencies ?? {}),
+    "@pim1/observability-db": "file:packages/observability-db",
+  };
   packageJson.devDependencies = {
     ...(packageJson.devDependencies ?? {}),
     prisma: packageJson.devDependencies?.prisma ?? "^6.16.3",
   };
   packageJson.scripts = {
     ...(packageJson.scripts ?? {}),
-    prebuild: "prisma generate --schema prisma/schema.prisma",
+    prebuild:
+      "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma && node scripts/sync-observability-generated-client.cjs",
   };
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
 
@@ -94,9 +146,18 @@ function main() {
   // preDeployCommand requires DATABASE_URL to be injected into a separate
   // Railway container — if that env var is missing the whole deploy fails.
   //
-  // Zero-downtime is still achieved: startCommand boots directly to
-  // "node dist/main.js" (no migration blocking startup), so the healthcheck
-  // passes in ~5s and Railway switches traffic before stopping the old container.
+  // startCommand boots directly to "node dist/main.js" (no migration blocking
+  // startup), so in the healthy case the healthcheck passes in ~5s.
+  //
+  // IMPORTANT (INCIDENT-CREDENTIAL-KEY-BOOT-001, #480/#473): that fast-happy-path
+  // timing says nothing about the failure case. When the process can't boot at all
+  // (e.g. env validation failing before the HTTP listener opens), the healthcheck
+  // never returns 200 — see TECH-DEPLOY-READINESS-001 (#473) for evidence that this
+  // service's old instance was observed torn down before a failed replacement ever
+  // attempted its first boot, not gated on a health signal. Do not assume "healthcheck
+  // passes fast when things work" implies "old instance survives when things don't."
+  // healthcheckPath below points at a real readiness check (DB reachability), not bare
+  // liveness, specifically so a boot failure has something meaningful to fail against.
   const railwayTomlContents = [
     "[build]",
     'buildCommand = "npm install && npm run build"',
@@ -105,7 +166,7 @@ function main() {
     // Cap heap to 400 MB — stays within Railway Hobby's billing model and
     // prevents Node from attempting to allocate beyond available container memory.
     'startCommand = "node --max-old-space-size=400 dist/main.js"',
-    'healthcheckPath = "/api/v1/health"',
+    'healthcheckPath = "/api/v1/health/ready"',
     "healthcheckTimeout = 300",
     'restartPolicyType = "ON_FAILURE"',
     "restartPolicyMaxRetries = 10",
@@ -131,6 +192,7 @@ function main() {
         tsconfig: path.relative(repoRoot, tsconfigPath),
         schema: path.relative(repoRoot, path.join(prismaDir, "schema.prisma")),
         packageJson: path.relative(repoRoot, packageJsonPath),
+        observabilityPackage: path.relative(repoRoot, observabilityPackageTarget),
         railwayToml: path.relative(repoRoot, railwayTomlPath),
         railwayTomlMirror: path.relative(repoRoot, railwayTomlMirrorPath),
         migrateScript: path.relative(repoRoot, migrateScriptPath),

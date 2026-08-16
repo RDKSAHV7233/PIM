@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -10,11 +11,17 @@ const {
   buildDeployCommands,
   classifyDeployTargets,
   findOverlappingServiceTargets,
+  formatRailwayVariablePairs,
   isRetryableRailwayDeployError,
+  normalizeRailwayVariablesPayload,
   normalizeServiceTarget,
   prepareRailwayDeployRoot,
   resolveApiDatabaseVariables,
   resolveConfig,
+  resolveErrorAuthorityServiceVariables,
+  resolveWebSessionAuthVariables,
+  setRailwayVariablesAcrossServiceTargets,
+  syncWebSessionAuthVariables,
 } = require("./railway-deploy.cjs");
 
 function main() {
@@ -230,6 +237,183 @@ function main() {
       ["DATABASE_URL_DIRECT", "postgresql://fallback:pass@localhost:5432/db"],
     ],
   );
+  assert.deepEqual(
+    resolveErrorAuthorityServiceVariables({
+      GITHUB_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+      ERROR_AUTHORITY_INGEST_TOKEN: "error-authority-ingest-token-minimum-32",
+    }),
+    [
+      ["ERROR_AUTHORITY_RELEASE", "260a89cc3475152d27821ae2334389ae88084f67"],
+      ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
+    ],
+    "Railway deploy should derive Error Authority release from the immutable GitHub SHA and include the server-only ingest token when configured.",
+  );
+  assert.deepEqual(
+    formatRailwayVariablePairs([
+      ["ERROR_AUTHORITY_RELEASE", "260a89cc3475152d27821ae2334389ae88084f67"],
+      ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
+    ]),
+    [
+      "ERROR_AUTHORITY_RELEASE=260a89cc3475152d27821ae2334389ae88084f67",
+      "ERROR_AUTHORITY_INGEST_TOKEN=error-authority-ingest-token-minimum-32",
+    ],
+    "Railway variable set arguments must use KEY=VALUE format.",
+  );
+
+  const originalSpawnSync = childProcess.spawnSync;
+  const variableSetCalls = [];
+  childProcess.spawnSync = (command, args, options) => {
+    variableSetCalls.push({ command, args, cwd: options.cwd });
+    const serviceTarget = args[args.indexOf("--service") + 1];
+    if (serviceTarget === "stale-service-name") {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: "Service 'stale-service-name' not found",
+        error: null,
+      };
+    }
+    return {
+      status: 0,
+      stdout: "Variables set successfully\n",
+      stderr: "",
+      error: null,
+    };
+  };
+  try {
+    assert.equal(
+      setRailwayVariablesAcrossServiceTargets(config, { RAILWAY_TOKEN: "token_123" }, {
+        label: "API Error Authority env vars",
+        serviceTargets: ["stale-service-name", "vexa-api-slug"],
+        pairs: [
+          ["ERROR_AUTHORITY_RELEASE", "260a89cc3475152d27821ae2334389ae88084f67"],
+          ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
+        ],
+        safeDisplayPairs: ["ERROR_AUTHORITY_RELEASE", "ERROR_AUTHORITY_INGEST_TOKEN"],
+        failureMessage: "manual fallback required",
+        successMessage: "fallback sync succeeded",
+      }),
+      true,
+      "Railway variable sync should try fallback service targets after Service '<target>' not found.",
+    );
+  } finally {
+    childProcess.spawnSync = originalSpawnSync;
+  }
+  assert.equal(variableSetCalls.length, 2);
+  assert.equal(variableSetCalls[0].args[variableSetCalls[0].args.indexOf("--service") + 1], "stale-service-name");
+  assert.equal(variableSetCalls[1].args[variableSetCalls[1].args.indexOf("--service") + 1], "vexa-api-slug");
+  assert.deepEqual(
+    variableSetCalls[1].args.slice(0, 5),
+    [
+      "variables",
+      "set",
+      "ERROR_AUTHORITY_RELEASE=260a89cc3475152d27821ae2334389ae88084f67",
+      "ERROR_AUTHORITY_INGEST_TOKEN=error-authority-ingest-token-minimum-32",
+      "--service",
+    ],
+  );
+
+  assert.deepEqual(
+    resolveErrorAuthorityServiceVariables({
+      ERROR_AUTHORITY_RELEASE: "explicit-release-sha",
+      GITHUB_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+    }),
+    [["ERROR_AUTHORITY_RELEASE", "explicit-release-sha"]],
+    "Explicit ERROR_AUTHORITY_RELEASE should take precedence over GITHUB_SHA for controlled rollback/redeploy cases.",
+  );
+
+  assert.deepEqual(
+    normalizeRailwayVariablesPayload([
+      { name: "JWT_SECRET", value: "shared-jwt-secret-minimum-32-characters" },
+      { key: "PIM_DEFAULT_WORKSPACE_SLUG", value: "admin" },
+    ]),
+    {
+      JWT_SECRET: "shared-jwt-secret-minimum-32-characters",
+      PIM_DEFAULT_WORKSPACE_SLUG: "admin",
+    },
+    "Railway variable JSON arrays should normalize to a key/value object.",
+  );
+  assert.deepEqual(
+    resolveWebSessionAuthVariables({
+      JWT_SECRET: "shared-jwt-secret-minimum-32-characters",
+      AUTH_MODE: "db",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_AUTH_WORKSPACES_JSON: "",
+      PIM_DEFAULT_TENANT_KEY: "pim1",
+      PIM_DEFAULT_WORKSPACE_SLUG: "admin",
+      PIM_DEFAULT_ROLE: "viewer",
+      DATABASE_URL: "postgresql://must-not-be-copied",
+      ERROR_AUTHORITY_INGEST_TOKEN: "must-not-be-copied",
+    }),
+    [
+      ["JWT_SECRET", "shared-jwt-secret-minimum-32-characters"],
+      ["AUTH_MODE", "db"],
+      ["PIM_AUTH_IDENTITIES_JSON", ""],
+      ["PIM_AUTH_WORKSPACES_JSON", ""],
+      ["PIM_DEFAULT_TENANT_KEY", "pim1"],
+      ["PIM_DEFAULT_WORKSPACE_SLUG", "admin"],
+      ["PIM_DEFAULT_ROLE", "viewer"],
+    ],
+    "Web session auth sync must copy only JWT/fingerprint inputs required for SSR cookie verification.",
+  );
+  assert.deepEqual(
+    resolveWebSessionAuthVariables({ AUTH_MODE: "db", PIM_DEFAULT_WORKSPACE_SLUG: "admin" }),
+    [],
+    "Web session auth sync must not run without a JWT secret.",
+  );
+
+  const originalSpawnSyncForSessionAuth = childProcess.spawnSync;
+  const sessionAuthCalls = [];
+  childProcess.spawnSync = (command, args, options) => {
+    sessionAuthCalls.push({ command, args, cwd: options.cwd });
+    const serviceTarget = args[args.indexOf("--service") + 1];
+    const isRead = args.includes("--json") && !args.includes("set");
+    if (isRead && serviceTarget === "stale-api-service") {
+      return { status: 1, stdout: "", stderr: "Service 'stale-api-service' not found", error: null };
+    }
+    if (isRead && serviceTarget === "api-fallback-service") {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          JWT_SECRET: "shared-jwt-secret-minimum-32-characters",
+          AUTH_MODE: "db",
+          PIM_AUTH_IDENTITIES_JSON: "",
+          PIM_AUTH_WORKSPACES_JSON: "",
+          PIM_DEFAULT_TENANT_KEY: "pim1",
+          PIM_DEFAULT_WORKSPACE_SLUG: "admin",
+          PIM_DEFAULT_ROLE: "viewer",
+          DATABASE_URL: "postgresql://must-not-be-copied",
+        }),
+        stderr: "",
+        error: null,
+      };
+    }
+    if (args.includes("set") && serviceTarget === "stale-web-service") {
+      return { status: 1, stdout: "", stderr: "Service 'stale-web-service' not found", error: null };
+    }
+    if (args.includes("set") && serviceTarget === "web-fallback-service") {
+      return { status: 0, stdout: "Variables set successfully\n", stderr: "", error: null };
+    }
+    return { status: 1, stdout: "", stderr: `Unexpected service target ${serviceTarget}`, error: null };
+  };
+  try {
+    syncWebSessionAuthVariables(
+      {
+        ...config,
+        apiServiceTargets: ["stale-api-service", "api-fallback-service"],
+        webServiceTargets: ["stale-web-service", "web-fallback-service"],
+      },
+      { RAILWAY_TOKEN: "token_123" },
+    );
+  } finally {
+    childProcess.spawnSync = originalSpawnSyncForSessionAuth;
+  }
+  assert.equal(sessionAuthCalls.length, 4);
+  const webSessionSetCall = sessionAuthCalls[3];
+  assert.equal(webSessionSetCall.args[webSessionSetCall.args.indexOf("--service") + 1], "web-fallback-service");
+  assert(webSessionSetCall.args.includes("JWT_SECRET=shared-jwt-secret-minimum-32-characters"));
+  assert(webSessionSetCall.args.includes("PIM_DEFAULT_WORKSPACE_SLUG=admin"));
+  assert(!webSessionSetCall.args.some((arg) => arg.startsWith("DATABASE_URL=")));
 
   assert.deepEqual(
     classifyDeployTargets([

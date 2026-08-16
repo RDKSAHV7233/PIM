@@ -136,11 +136,32 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
           <CardTitle>Delete product</CardTitle>
           <div className="mt-3 space-y-4 text-sm text-slate-700">
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="font-medium text-slate-900">Archive (soft delete)</p>
-              <p className="mt-1 text-xs text-slate-600">
-                Archived products are hidden from the catalog and can be restored by changing status.
-              </p>
-              <ArchiveProductButton productId={data.productId} />
+              {data.product.status === "archived" ? (
+                <>
+                  <p className="font-medium text-slate-900">Archived</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    This product is archived. Restore it to draft to resume editing and move it back through review.
+                  </p>
+                  <ArchiveProductButton
+                    productId={data.productId}
+                    expectedVersion={data.product.version}
+                    mode="restore"
+                  />
+                </>
+              ) : (
+                <>
+                  <p className="font-medium text-slate-900">Archive product</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Archiving removes the product from active workflows. It stays viewable and can be restored to
+                    draft at any time.
+                  </p>
+                  <ArchiveProductButton
+                    productId={data.productId}
+                    expectedVersion={data.product.version}
+                    mode="archive"
+                  />
+                </>
+              )}
             </div>
             {data.actorRole === "admin" ? (
               <div className="rounded-md border border-red-200 bg-red-50 p-3">

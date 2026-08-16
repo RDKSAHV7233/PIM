@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerSession } from "@/lib/server-session";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 import {
   IN_DEVELOPMENT_CHANNEL_NOTICE,
   isChannelInDevelopment,
@@ -334,9 +335,13 @@ async function postJsonForAction<T>(formData: FormData, path: string, body: unkn
   });
 }
 
-async function patchJsonForAction<T>(formData: FormData, path: string, body: unknown) {
+async function patchJsonForAction<T>(formData: FormData, path: string, body: unknown, options?: ApiRequestOptions) {
   return patchJson<T>(path, body, {
     ...(await resolveActionOptions(formData)),
+    ...(options ?? {}),
+    headers: {
+      ...(options?.headers ?? {}),
+    },
   });
 }
 
@@ -457,6 +462,44 @@ function withPlanLimitQuery(basePath: string, error: unknown): string | null {
   return query;
 }
 
+// BUG-AUTH-STALE-SESSION-001: a mutation action's API call can fail with 401
+// when the caller's session expired after the page was loaded but before this
+// submission (e.g. a stale tab left open past token expiry). Before this,
+// every server action either had no 401 handling at all (uncaught -> generic
+// error boundary), or - in a few cases - a catch block that swallows or
+// misclassifies any error it receives, which would turn a 401 into a false
+// "success" redirect or a misleading retry-failure message.
+//
+// Deliberately mirrors withPlanLimitQuery's exact contract above: pure,
+// synchronous, no side effects, never calls redirect() itself. The calling
+// action decides whether and how to redirect, exactly like the 402 path
+// already does - this only adds a new classification, not a new control-flow
+// mechanism. A NEXT_REDIRECT control-flow signal (thrown by an in-flight
+// redirect() call elsewhere in the same try block) is not an ApiHttpError
+// instance, so this returns null for it and never interferes with the
+// existing rethrowRedirectError convention.
+function resolveSessionExpiredRedirect(basePath: string, error: unknown): string | null {
+  if (!(error instanceof ApiHttpError) || error.status !== 401) {
+    return null;
+  }
+  return buildLoginRedirect(basePath, error);
+}
+
+// BUG-AUTH-STALE-SESSION-001 (A1): the action-level primitive every migrated
+// catch block calls. Its only responsibility is resolveSessionExpiredRedirect
+// + redirect() - it never inspects any other error shape, so it can be
+// inserted into a catch block without touching that action's existing
+// semantics for 402/403/500/plain errors. Call this AFTER rethrowRedirectError
+// (where present) and BEFORE any other error-specific handling in the catch,
+// so a session-expiry redirect takes priority over, e.g., building a
+// retry-failure message from the same error.
+function handleSessionExpired(error: unknown, basePath: string): void {
+  const redirectPath = resolveSessionExpiredRedirect(basePath, error);
+  if (redirectPath) {
+    redirect(redirectPath);
+  }
+}
+
 export async function createCategoryAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const parentId = String(formData.get("parentId") ?? "").trim();
@@ -493,6 +536,13 @@ export async function deleteCategoryAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    const sessionRedirectPath = resolveSessionExpiredRedirect(returnTo, error);
+    if (sessionRedirectPath) {
+      if (String(formData.get("__viaTransition") ?? "") === "1") {
+        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
+      }
+      redirect(sessionRedirectPath);
+    }
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -618,6 +668,7 @@ export async function decideProductReviewAction(
     redirect(appendQueryParams(returnTo, { decisionStatus: status }));
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const body = error instanceof ApiHttpError ? (error.body as Record<string, unknown> | null) : null;
     const message = String(body?.code ?? body?.error ?? "").trim();
     const decisionError = message || "decision_failed";
@@ -780,6 +831,7 @@ export async function updateProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     if (error instanceof ApiHttpError && error.status === 409) {
       const body =
         typeof error.body === "object" && error.body !== null
@@ -828,6 +880,7 @@ export async function revertProductToDraftAction(formData: FormData) {
     redirect(appendQueryParams(basePath, { tab: "quality", updateStatus: "reverted-to-draft" }));
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     const errorMessage =
       error instanceof ApiHttpError
         ? extractApiErrorMessage(error)
@@ -835,6 +888,99 @@ export async function revertProductToDraftAction(formData: FormData) {
           ? error.message
           : undefined;
     redirect(appendQueryParams(basePath, { tab: "quality", updateStatus: "error", errorMessage }));
+  }
+}
+
+// Archive/Restore both go through this single action (status carried as a hidden
+// form field), mirroring decideProductReviewAction's approve/reject shape rather
+// than duplicating the try/catch/redirect boilerplate per direction. This replaces
+// the old DELETE-based "Archive product" flow (BUG-ARCHIVE-SOFTDELETE-001): that
+// button silently soft-deleted the row (deletedAt) instead of setting status, which
+// made archived products globally invisible via the tenant-scope soft-delete filter,
+// with no restore path. This PATCHes status instead — deletedAt is never touched, so
+// the product stays reachable and can move back to draft afterward.
+//
+// deleteProductAction (DELETE /catalog/products/:id, true soft-delete) is intentionally
+// left in place and untouched by this fix — it's still a legitimate capability, just no
+// longer wired to anything labeled "Archive." Nothing in the UI calls it as of this
+// change; if/when a real "delete" surface is reintroduced it should stay clearly
+// destructive (confirmation, distinct copy) and never share a label with this action.
+//
+// Concurrency note — the two callers have different staleness guarantees, not just
+// different plumbing: the detail-page Archive/Restore controls pass expectedVersion
+// from the version actually rendered to the operator (standard optimistic concurrency
+// — a stale click 409s). The catalog list's row-level Archive action has no version in
+// its list payload, so it fetches the current version immediately before patching —
+// meaning it archives whatever the latest version is, not necessarily the version the
+// operator was looking at when they clicked. This is a deliberate scope trade-off for
+// a coarse status-only action, not an oversight, but it means the list path does NOT
+// protect against a stale-view double-archive the way the detail page does. If that
+// gap ever matters for this action, the fix is threading `version` through
+// ProductListItem rather than adding another special case here.
+export async function updateProductStatusAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  if (!productId || (status !== "archived" && status !== "draft")) {
+    throw new Error("Product id and a valid target status (archived or draft) are required.");
+  }
+  const note = String(formData.get("statusChangeNote") ?? "").trim();
+  const basePath = `/products/${encodeURIComponent(productId)}`;
+  // The detail-page controls submit without a returnTo (stay on the product page after
+  // archiving/restoring). The catalog list's row-level Archive action passes one so the
+  // user stays on the list instead of being navigated to the product's own detail page.
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : basePath;
+
+  try {
+    // The detail-page Archive/Restore controls already know the product's current
+    // version and pass it explicitly. The catalog list's row-level Archive action
+    // doesn't carry version in its list payload, so fall back to a fresh fetch —
+    // updateProduct()'s optimistic-concurrency check still applies either way.
+    const formExpectedVersion = parseNumber(formData.get("expectedVersion"));
+    const expectedVersion =
+      formExpectedVersion !== undefined
+        ? formExpectedVersion
+        : (await getProduct(productId, await resolveActionOptions(formData))).version;
+
+    await patchJsonForAction(formData, `/catalog/products/${productId}`, {
+      expectedVersion,
+      status,
+      ...(note ? { statusChangeNote: note } : {}),
+    });
+    revalidatePath(basePath);
+    revalidatePath("/catalog/products");
+    redirect(
+      appendQueryParams(returnTo, {
+        ...(returnTo === basePath ? { tab: "overview" } : {}),
+        updateStatus: status === "archived" ? "archived" : "restored",
+      }),
+    );
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    // Mirrors deleteProductAction's BUG-AUTH-STALE-SESSION-001 handling: the catalog
+    // list's row-level Archive action invokes this via startTransition rather than a
+    // native form submission, so a session-expiry redirect needs to be returned as a
+    // value (for the caller to window.location.assign) instead of thrown.
+    const sessionRedirectPath = resolveSessionExpiredRedirect(basePath, error);
+    if (sessionRedirectPath) {
+      if (String(formData.get("__viaTransition") ?? "") === "1") {
+        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
+      }
+      redirect(sessionRedirectPath);
+    }
+    const errorMessage =
+      error instanceof ApiHttpError
+        ? extractApiErrorMessage(error)
+        : error instanceof Error
+          ? error.message
+          : undefined;
+    redirect(
+      appendQueryParams(returnTo, {
+        ...(returnTo === basePath ? { tab: "overview" } : {}),
+        updateStatus: "error",
+        errorMessage,
+      }),
+    );
   }
 }
 
@@ -899,6 +1045,7 @@ export async function validateProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     redirect(
       appendQueryParams(basePath, {
         tab: currentTab,
@@ -933,6 +1080,13 @@ export async function deleteProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    const sessionRedirectPath = resolveSessionExpiredRedirect(returnTo, error);
+    if (sessionRedirectPath) {
+      if (String(formData.get("__viaTransition") ?? "") === "1") {
+        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
+      }
+      redirect(sessionRedirectPath);
+    }
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -979,6 +1133,7 @@ export async function purgeProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -1033,6 +1188,7 @@ export async function createVariantAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
   }
 }
@@ -1059,6 +1215,7 @@ export async function updateVariantAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, basePath);
     redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
   }
 }
@@ -1221,6 +1378,7 @@ export async function installConnectorAction(formData: FormData) {
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     const installError = resolveInstallConnectorError(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -1262,26 +1420,25 @@ export async function configureAmazonAction(formData: FormData) {
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     throw error;
   }
   revalidatePath("/channels/connectors");
   redirect(appendQueryParams(returnTo, { status: "amazon-configured" }));
 }
 
-export async function reconnectConnectorAction(formData: FormData) {
-  const { actorRole } = await getServerSession();
-  if (!canManageConnectors(actorRole)) {
-    throw new Error("Forbidden: connector management role required.");
-  }
-  const installationId = String(formData.get("installationId") ?? "").trim();
-  if (!installationId) {
-    throw new Error("Connector installation id is required.");
-  }
+// Credentials-edit is a native-form POST to a Route Handler
+// (apps/web/src/app/connector-operations/[installationId]/credentials/route.ts),
+// not a Server Action — same reasoning as reconnect below: a Server Action's
+// redirect() here silently dropped the outcome query params (matches #564),
+// live-confirmed as a real regression on this flow specifically, not just
+// assumed from the reconnect precedent.
 
-  await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/reconnect`, {});
-  revalidatePath("/channels");
-  redirect("/channels/connectors?status=reconnected");
-}
+// Reconnect is a native-form POST to a Route Handler
+// (apps/web/src/app/connector-operations/[installationId]/reconnect/route.ts),
+// not a Server Action — see that route's doc comment for why (#564: a
+// Server Action's redirect() here interacted badly with this app's global
+// middleware and silently dropped the outcome query params on every call).
 
 export async function initiateOAuthAction(formData: FormData) {
   const { actorRole } = await getServerSession();
@@ -1303,6 +1460,7 @@ export async function initiateOAuthAction(formData: FormData) {
     authorizationUrl = result.authorizationUrl;
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, "/channels/connectors");
     let code = "oauth_initiate_failed";
     if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
       const payload = error.body as Record<string, unknown>;
@@ -1338,6 +1496,7 @@ export async function updateConnectorPublicationTargetsAction(formData: FormData
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     let status = "publication-targets-error";
     if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
       const payload = error.body as Record<string, unknown>;
@@ -1424,6 +1583,7 @@ export async function grantConnectorPermissionAction(formData: FormData) {
       accountAlias: accountAlias || undefined,
     });
   } catch (error: unknown) {
+    handleSessionExpired(error, "/admin/connectors");
     const status = resolveConnectorPermissionGrantStatus(error);
     if (status) {
       redirect(`/admin/connectors?status=${status}`);
@@ -1472,6 +1632,13 @@ export async function createExportJobAction(formData: FormData) {
       fallbackAcknowledged,
     });
   } catch (error: unknown) {
+    const sessionRedirectPath = resolveSessionExpiredRedirect(`/products/${encodeURIComponent(productId)}`, error);
+    if (sessionRedirectPath) {
+      if (String(formData.get("__viaTransition") ?? "") === "1") {
+        return { sessionExpired: true as const, loginPath: sessionRedirectPath };
+      }
+      redirect(sessionRedirectPath);
+    }
     const redirectPath = withPlanLimitQuery(`/products/${encodeURIComponent(productId)}`, error);
     if (redirectPath) {
       redirect(redirectPath);
@@ -1598,6 +1765,7 @@ export async function publishConnectorMappingVersionAction(formData: FormData) {
       { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
     );
   } catch (error: unknown) {
+    handleSessionExpired(error, redirectTo);
     const redirectPath = withStepUpErrorQuery(redirectTo, "publish", versionId, error);
     if (redirectPath) {
       redirect(redirectPath);
@@ -1624,6 +1792,7 @@ export async function archiveConnectorMappingVersionAction(formData: FormData) {
       { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
     );
   } catch (error: unknown) {
+    handleSessionExpired(error, redirectTo);
     const redirectPath = withStepUpErrorQuery(redirectTo, "archive", versionId, error);
     if (redirectPath) {
       redirect(redirectPath);
@@ -1737,6 +1906,7 @@ export async function retrySubmissionAction(formData: FormData) {
     await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
     revalidatePath("/dashboard");
   } catch (error: unknown) {
+    handleSessionExpired(error, `/operations/jobs?${jobsParams.toString()}`);
     const rawMessage = error instanceof ApiHttpError
       ? extractApiErrorMessage(error)
       : error instanceof Error ? error.message : "Retry request failed.";
@@ -1830,7 +2000,12 @@ export async function createBulkImportJobAction(formData: FormData) {
     await postJsonForAction(formData, `/bulk-import/jobs/${createdJob.id}/process`, {
       chunkSize,
     });
-  } catch {
+  } catch (error: unknown) {
+    // BUG-AUTH-STALE-SESSION-001: a session-expiry 401 must never enter this
+    // timeout-tolerant swallow - it isn't a background-continuing timeout, and
+    // silently falling through to the success redirect below would report a
+    // failed authentication as a completed import.
+    handleSessionExpired(error, `/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
     // If inline processing fails the job stays queued; redirect so the user can start it manually.
   }
   redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
@@ -1887,7 +2062,10 @@ export async function processBulkImportJobAction(formData: FormData) {
     await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {
       chunkSize,
     });
-  } catch {
+  } catch (error: unknown) {
+    // BUG-AUTH-STALE-SESSION-001: a session-expiry 401 must never enter this
+    // timeout-tolerant swallow - see below for why the swallow itself exists.
+    handleSessionExpired(error, returnTo);
     // Process call can time out under Railway's 30 s limit while the API continues
     // processing in the background. The job moves to processing/done on its own;
     // redirect so the user can poll the status rather than seeing an error boundary.
@@ -1916,7 +2094,11 @@ export async function retryStuckRunAction(formData: FormData) {
   }
   try {
     await postJsonForAction(formData, `/bulk-import/runs/${runId}/retry-stuck`, {});
-  } catch {
+  } catch (error: unknown) {
+    // BUG-AUTH-STALE-SESSION-001: a session-expiry 401 must never enter this
+    // timeout-tolerant swallow (see processBulkImportJobAction for why the
+    // swallow itself exists).
+    handleSessionExpired(error, "/operations/imports");
     // Retry can time out while processing continues in the background.
   }
   revalidatePath("/operations/imports");
@@ -2023,6 +2205,7 @@ export async function uploadMediaAssetAction(formData: FormData) {
       channelEligibility,
     });
   } catch (error: unknown) {
+    handleSessionExpired(error, returnTo);
     const redirectPath = withPlanLimitQuery(
       returnTo,
       error,
@@ -2237,6 +2420,7 @@ export async function queueConnectorDeltaSyncAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     redirect(appendQueryParams(returnTo, { status: "delta-sync-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
@@ -2287,6 +2471,7 @@ export async function upsertConnectorSyncScheduleAction(formData: FormData) {
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     redirect(appendQueryParams(returnTo, { status: "schedule-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
@@ -2309,6 +2494,7 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
     await deleteJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`);
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     redirect(appendQueryParams(returnTo, { status: "schedule-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
@@ -2345,6 +2531,7 @@ export async function triggerBulkPublishAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
+    handleSessionExpired(error, returnTo);
     // no_eligible_products means every product in the batch failed the approval/readiness
     // gate — distinct from a transport/connector-health failure, so the operator sees why
     // nothing was queued instead of a generic failure message.
@@ -2359,6 +2546,26 @@ export async function triggerBulkPublishAction(formData: FormData) {
           }),
         );
       }
+      // batch_too_large (TC-06 / #545): the batch exceeded the non-native-BULK_PUBLISH
+      // ceiling and was rejected before any per-product work ran. Distinct from a timeout —
+      // this is an immediate, cheap rejection, not the request dying partway through.
+      if (payload.error === "batch_too_large") {
+        const ceiling = typeof payload.ceiling === "number" ? payload.ceiling : 0;
+        const submittedCount = typeof payload.submittedCount === "number" ? payload.submittedCount : 0;
+        redirect(
+          appendQueryParams(returnTo, {
+            status: "bulk-publish-too-large",
+            ceiling: String(ceiling),
+            submittedCount: String(submittedCount),
+          }),
+        );
+      }
+    }
+    // TC-06 (#545): AbortSignal.timeout on the web->API call surfaces as a raw DOMException
+    // (never wrapped into an ApiHttpError, since no HTTP response was ever received) — show
+    // the operator "this timed out," not the same generic message as an unrelated failure.
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      redirect(appendQueryParams(returnTo, { status: "bulk-publish-timeout" }));
     }
     redirect(appendQueryParams(returnTo, { status: "bulk-publish-error" }));
   }

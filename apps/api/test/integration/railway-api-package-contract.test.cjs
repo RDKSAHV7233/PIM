@@ -19,7 +19,14 @@ function main() {
   const outputDir = path.join(repoRoot, ".tmp", "railway-api-service");
   const railwayToml = fs.readFileSync(path.join(outputDir, "railway.toml"), "utf8");
   const packageJson = JSON.parse(fs.readFileSync(path.join(outputDir, "package.json"), "utf8"));
+  const observabilityPackageJson = JSON.parse(
+    fs.readFileSync(path.join(outputDir, "packages", "observability-db", "package.json"), "utf8"),
+  );
   const migrateScript = fs.readFileSync(path.join(outputDir, "scripts", "prisma-migrate-deploy.cjs"), "utf8");
+  const observabilityGeneratedClientSyncScript = fs.readFileSync(
+    path.join(outputDir, "scripts", "sync-observability-generated-client.cjs"),
+    "utf8",
+  );
 
   assert.match(railwayToml, /buildCommand = "npm install && npm run build"/, "API package must use standalone build command");
   assert.doesNotMatch(railwayToml, /--workspace/, "API package railway.toml must not use monorepo workspace flags");
@@ -30,8 +37,88 @@ function main() {
     /startCommand = "node --max-old-space-size=400 dist\/main\.js"/,
     "API package must start from the packaged dist output with heap cap to prevent OOM on Railway Hobby",
   );
-  assert.match(railwayToml, /healthcheckPath = "\/api\/v1\/health"/, "API package must expose the staging health path");
-  assert.equal(packageJson.scripts.prebuild, "prisma generate --schema prisma/schema.prisma");
+  assert.match(
+    railwayToml,
+    /healthcheckPath = "\/api\/v1\/health\/ready"/,
+    "API package must gate deploy cutover on the readiness check, not bare liveness",
+  );
+  assert.equal(
+    packageJson.dependencies["@pim1/observability-db"],
+    "file:packages/observability-db",
+    "API package must include the observability DB workspace as a local runtime dependency",
+  );
+  assert.equal(
+    packageJson.scripts.prebuild,
+    "prisma generate --schema prisma/schema.prisma && prisma generate --schema packages/observability-db/prisma/schema.prisma && node scripts/sync-observability-generated-client.cjs",
+  );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /node_modules['"], ['"]@pim1['"], ['"]observability-db['"], ['"]generated/,
+    "Packaged API build must sync the generated observability Prisma client into the installed runtime dependency",
+  );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /generatedSources = \[/,
+    "Packaged API build must allow multiple generated observability client locations",
+  );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /observability generated client already present/,
+    "Packaged API build must not fail when npm has already generated the client in the installed dependency",
+  );
+  assert.match(
+    observabilityGeneratedClientSyncScript,
+    /fs\.realpathSync\(generatedSource\)/,
+    "Packaged API build must compare real paths before deleting a possibly symlinked target",
+  );
+  const generatedSource = path.join(outputDir, "packages", "observability-db", "generated");
+  const generatedTarget = path.join(outputDir, "node_modules", "@pim1", "observability-db", "generated");
+  const generatedModuleTarget = path.dirname(generatedTarget);
+  fs.rmSync(generatedModuleTarget, { recursive: true, force: true });
+  fs.mkdirSync(generatedSource, { recursive: true });
+  fs.writeFileSync(path.join(generatedSource, "client.js"), "module.exports = {};\n", "utf8");
+  fs.mkdirSync(path.dirname(generatedModuleTarget), { recursive: true });
+  fs.symlinkSync(path.join(outputDir, "packages", "observability-db"), generatedModuleTarget, "dir");
+  const symlinkedSyncResult = spawnSync(
+    process.execPath,
+    [path.join(outputDir, "scripts", "sync-observability-generated-client.cjs")],
+    {
+      cwd: outputDir,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(
+    symlinkedSyncResult.status,
+    0,
+    symlinkedSyncResult.stderr || symlinkedSyncResult.stdout || "generated observability client symlink sync failed",
+  );
+  assert.ok(
+    fs.existsSync(path.join(generatedSource, "client.js")),
+    "Generated observability client source must survive symlinked dependency sync",
+  );
+
+  fs.rmSync(generatedModuleTarget, { recursive: true, force: true });
+  fs.rmSync(generatedSource, { recursive: true, force: true });
+  fs.mkdirSync(generatedTarget, { recursive: true });
+  fs.writeFileSync(path.join(generatedTarget, "client.js"), "module.exports = {};\n", "utf8");
+  const noOpSyncResult = spawnSync(process.execPath, [path.join(outputDir, "scripts", "sync-observability-generated-client.cjs")], {
+    cwd: outputDir,
+    encoding: "utf8",
+  });
+  assert.equal(
+    noOpSyncResult.status,
+    0,
+    noOpSyncResult.stderr || noOpSyncResult.stdout || "generated observability client no-op sync failed",
+  );
+  assert.equal(
+    observabilityPackageJson.dependencies.prisma,
+    observabilityPackageJson.devDependencies.prisma,
+    "Packaged observability DB dependency must be able to run its postinstall Prisma generation",
+  );
+  assert.ok(
+    fs.existsSync(path.join(outputDir, "packages", "observability-db", "prisma", "schema.prisma")),
+    "API package must include the observability DB Prisma schema",
+  );
   assert.match(migrateScript, /prisma\/schema\.prisma/, "Packaged migrate helper must target the packaged Prisma schema");
   assert.doesNotMatch(
     migrateScript,

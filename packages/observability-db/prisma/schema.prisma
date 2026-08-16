@@ -70,6 +70,9 @@ model ErrorIssue {
   @@unique([environment, runtime, service, fingerprintVersion, fingerprint], map: "error_issues_group_unique")
   @@index([environment, state, lastSeenAt(sort: Desc)], map: "idx_error_issues_env_state_last_seen")
   @@index([runtime, category, lastSeenAt(sort: Desc)], map: "idx_error_issues_runtime_category_last_seen")
+  @@index([environment, runtime, service, severity, state, lastSeenAt(sort: Desc), id(sort: Desc)], map: "idx_error_issues_ops_filters")
+  @@index([environment, lastSeenRelease, lastSeenAt(sort: Desc), id(sort: Desc)], map: "idx_error_issues_ops_release")
+  @@index([environment, errorCode, lastSeenAt(sort: Desc), id(sort: Desc)], map: "idx_error_issues_ops_error_code")
   @@map("error_issues")
 }
 
@@ -109,6 +112,9 @@ model ErrorOccurrence {
   @@index([correlationId], map: "idx_error_occurrences_correlation")
   @@index([requestId], map: "idx_error_occurrences_request")
   @@index([jobId], map: "idx_error_occurrences_job")
+  @@index([routeTemplate, occurredAt(sort: Desc), id(sort: Desc)], map: "idx_error_occurrences_ops_route")
+  @@index([release, occurredAt(sort: Desc), id(sort: Desc)], map: "idx_error_occurrences_ops_release")
+  @@index([errorCode, occurredAt(sort: Desc), id(sort: Desc)], map: "idx_error_occurrences_ops_error_code")
   @@map("error_occurrences")
 }
 

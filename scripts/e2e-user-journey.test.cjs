@@ -67,6 +67,12 @@ try {
       script.includes("productPurge=${purgeStats.purged}/${purgeStats.attempted}"),
     "category cleanup must hard-purge journey-created products via the DELETE purge route before deleting temporary categories",
   );
+  assert(
+    script.includes('String(getErrorMessageFromBody(result.body)).includes("Current status is approved")') &&
+      script.includes("const product = await getProduct(ctx.productId);") &&
+      script.includes('assert(product.status === "approved"'),
+    "workflow approval smoke must tolerate only the already-approved post-condition after proving current product status",
+  );
 
   console.log(
     JSON.stringify(
@@ -83,6 +89,7 @@ try {
           "admin_users_page_check_targets_non_admin_fallback",
           "variant_cleanup_normalizes_parent_product",
           "category_cleanup_purges_journey_products",
+          "workflow_approval_smoke_tolerates_already_approved_postcondition",
         ],
       },
       null,

@@ -702,11 +702,63 @@ export class WooCommerceConnector implements ConnectorInterface {
       this.logger.info('WooCommerce credentials validated', { installationId: ctx.installationId });
       return true;
     } catch (err) {
+      if (err instanceof ConnectorNetworkError && err.retryable) {
+        // A transient network blip (timeout, connection reset, etc.) isn't proof the
+        // stored credentials are actually invalid — reporting it as CREDENTIAL_EXPIRED
+        // sends the operator toward "reconnect your store," the wrong remediation for
+        // something the next heartbeat will likely clear on its own (BUG-WOO-HEALTH-001 / #472).
+        // Only a confirmed auth rejection (401/403, handled above) or a non-retryable
+        // failure (DNS/TLS — usually a real config problem, e.g. wrong site URL) should
+        // downgrade the installation.
+        this.logger.warn('WooCommerce credential validation inconclusive: transient network failure, not marking expired', {
+          installationId: ctx.installationId,
+          category: err.category,
+          detail: err.detail,
+        });
+        return true;
+      }
       this.logger.warn('WooCommerce credential validation error', {
         installationId: ctx.installationId,
         reason: err instanceof Error ? err.message : String(err),
       });
       return false;
+    }
+  }
+
+  // ─── optional: verifyCandidateCredentials ───────────────────────────────────
+  //
+  // Pure — takes the candidate triplet directly (never reads stored credentials,
+  // never writes anything). Reuses the same GET /wp-json/wc/v3 shape as
+  // validateCredentials. Classification: 401/403 → invalid (positive evidence);
+  // malformed/non-HTTPS URL → invalid (the URL itself is operator input, so a
+  // deterministic rejection is fair); any network/timeout/DNS failure →
+  // unavailable (an unreachable endpoint isn't evidence the credentials are wrong).
+
+  async verifyCandidateCredentials(
+    candidate: Record<string, string>,
+  ): Promise<import('../../connector-framework/connector.interface').CredentialVerificationResult> {
+    const siteUrl = normalizeSiteUrl(String(candidate.site_url ?? '').trim());
+    const consumerKey = String(candidate.consumer_key ?? '').trim();
+    const consumerSecret = String(candidate.consumer_secret ?? '').trim();
+
+    if (!siteUrl.startsWith('https://')) {
+      return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' };
+    }
+
+    try {
+      const res = await this.callApi('GET', '', siteUrl, consumerKey, consumerSecret);
+      if (res.status === 401 || res.status === 403) {
+        return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_CREDENTIALS_REJECTED' };
+      }
+      if (!res.ok) {
+        return { outcome: 'unavailable', reasonCode: `HTTP_${res.status}` };
+      }
+      return { outcome: 'valid' };
+    } catch (err) {
+      if (err instanceof ConnectorNetworkError) {
+        return { outcome: 'unavailable', reasonCode: err.category };
+      }
+      return { outcome: 'unavailable', reasonCode: 'UNKNOWN_NETWORK_ERROR' };
     }
   }
 

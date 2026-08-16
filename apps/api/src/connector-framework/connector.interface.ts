@@ -215,6 +215,27 @@ export type ExportFile = {
   mimeType: string;
 };
 
+/**
+ * Commit material derived from a live token exchange during candidate credential
+ * verification — sourced from the provider's actual response, never the operator's
+ * typed input. Only Flipkart/Amazon's `valid` outcome populates this (their
+ * candidate check is a real token exchange, which may itself rotate the refresh
+ * token — see FlipkartTokenResponse/AmazonTokenResponse `refresh_token`).
+ */
+export type TokenCommitMaterial = { value: string; expiresAt: Date | null };
+
+/**
+ * Outcome of a candidate-credential verification call. Distinguishes "the
+ * credentials are wrong" (invalid — positive evidence, e.g. 401/403) from
+ * "couldn't check right now" (unavailable — network/infra failure, no evidence
+ * either way) so a transient blip never gets reported as bad credentials.
+ */
+export type CredentialVerificationResult =
+  | { outcome: "valid"; commitExtra?: { accessToken?: TokenCommitMaterial; refreshToken?: TokenCommitMaterial } }
+  | { outcome: "invalid"; reasonCode?: string }
+  | { outcome: "unavailable"; reasonCode?: string }
+  | { outcome: "not_supported" };
+
 // Returned by publishBulkProducts — one ref per bulk feed submission.
 // Each product gets its own ConnectorSubmission row with externalRef:
 // "feed::{feedId}::{1-based messageId}::{sku}"
@@ -385,6 +406,24 @@ export interface ConnectorInterface {
    * Export-only connectors (Meesho) and connectors with static API keys do not need this.
    */
   refreshAccessToken?(ctx: ConnectorContext): Promise<string>;
+
+  /**
+   * Verify a CANDIDATE credential set live, without touching any stored state.
+   *
+   * Distinct from validateCredentials(): that method reads and health-checks the
+   * STORED credentials (and for Flipkart/Amazon, refreshes + persists a token as a
+   * side effect). This method checks credentials the operator just typed, before
+   * they're committed — it must never read stored credentials, never write to
+   * ConnectorCredential, and never call noteCredentialHealth or persistTokenSet.
+   *
+   * `candidate` is ephemeral request-scoped plaintext: never log it, never include
+   * it in a thrown error or audit metadata.
+   *
+   * Absent (undefined) for connectors with no live-checkable credentials (Meesho —
+   * validateCredentials is a permanent stub) and for OAuth-managed-install connectors
+   * (Shopify) where this feature isn't offered.
+   */
+  verifyCandidateCredentials?(candidate: Record<string, string>): Promise<CredentialVerificationResult>;
 }
 
 // ─────────────────────────────────────────────

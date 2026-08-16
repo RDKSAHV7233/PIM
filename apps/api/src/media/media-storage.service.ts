@@ -118,6 +118,16 @@ export class MediaStorageService {
   }
 
   private shouldUseLocalFallback(): boolean {
+    // Per-service override takes priority over the global STORAGE_BACKEND flag,
+    // matching the existing AuthExportStorageService (ACCOUNT_EXPORT_STORAGE_MODE)
+    // pattern — lets this service migrate to R2 independently of the others.
+    const explicitMode = String(process.env.MEDIA_STORAGE_MODE ?? "").trim().toLowerCase();
+    if (explicitMode === "filesystem") {
+      return true;
+    }
+    if (explicitMode === "object_storage") {
+      return false;
+    }
     if (String(process.env.STORAGE_BACKEND ?? "").trim().toLowerCase() === "local") {
       return true;
     }

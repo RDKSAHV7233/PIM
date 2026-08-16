@@ -920,7 +920,7 @@ export function translateExportStatus(status: string): string {
   const map: Record<string, string> = {
     queued: "Queued for export",
     processing: "Preparing export",
-    completed: "Ready to submit",
+    completed: "Export complete",
     retrying: "Retrying",
     skipped: "Skipped while workspace is suspended",
     dead_letter: "Export blocked. Fix errors first",

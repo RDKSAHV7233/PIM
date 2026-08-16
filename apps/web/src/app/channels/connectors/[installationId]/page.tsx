@@ -9,6 +9,7 @@ import {
   updateConnectorPublicationTargetsAction,
   upsertConnectorSyncScheduleAction,
 } from "@/app/actions";
+import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,11 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
+import {
+  ConnectorCredentialFields,
+  connectorAccountReferenceLabel,
+  connectorCredentialsAcceptsAccountRef,
+} from "@/components/connectors/connector-credential-fields";
 import {
   ApiHttpError,
   getCategoryAttributes,
@@ -36,7 +42,8 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
-import { canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
+import { canEditConnectorCredentials, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
+import { getServerCsrfToken } from "@/lib/server-auth";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime as fmtDT } from "@/lib/format";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
@@ -47,7 +54,7 @@ export const dynamic = "force-dynamic";
 
 interface ChannelConnectorDetailPageProps {
   params: Promise<{ installationId: string }>;
-  searchParams: Promise<{ tab?: string; status?: string; action?: string; queuedCount?: string; excludedCount?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; action?: string; queuedCount?: string; excludedCount?: string; ceiling?: string; submittedCount?: string; reasonMessage?: string; stepUpError?: string }>;
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access" | "sync" | "schedule" | "catalog-link";
@@ -350,12 +357,36 @@ function formatDateTime(value: string | null | undefined): string {
 
 function connectorDetailStatusMessage(
   status: string | undefined,
-  counts?: { queuedCount?: string; excludedCount?: string },
+  counts?: { queuedCount?: string; excludedCount?: string; ceiling?: string; submittedCount?: string; reasonMessage?: string },
 ): {
   tone: "success" | "warning" | "danger";
   message: string;
 } | null {
   const normalized = String(status ?? "").trim().toLowerCase();
+  if (normalized === "credentials-updated") {
+    return {
+      tone: "success",
+      message: "Credentials verified and updated.",
+    };
+  }
+  if (normalized === "credentials-saved-verification-unavailable") {
+    return {
+      tone: "warning",
+      message: "Credentials saved. Live verification isn't available for this connector yet.",
+    };
+  }
+  if (normalized === "credentials-invalid") {
+    return {
+      tone: "danger",
+      message: counts?.reasonMessage || "The credentials were rejected. Existing credentials were not changed.",
+    };
+  }
+  if (normalized === "credentials-unavailable") {
+    return {
+      tone: "warning",
+      message: counts?.reasonMessage || "Credentials couldn't be verified right now. Existing credentials were not changed — try again shortly.",
+    };
+  }
   if (normalized === "publication-targets-saved") {
     return {
       tone: "success",
@@ -460,6 +491,24 @@ function connectorDetailStatusMessage(
       message: `${countLabel} in this batch failed the approval or publish-readiness check — nothing was queued. Review approval status and destination mapping before retrying.`,
     };
   }
+  if (normalized === "bulk-publish-too-large") {
+    const ceiling = Number(counts?.ceiling ?? "");
+    const submittedCount = Number(counts?.submittedCount ?? "");
+    const sizeLabel =
+      Number.isFinite(ceiling) && Number.isFinite(submittedCount) && ceiling > 0 && submittedCount > 0
+        ? `${submittedCount} products, over the ${ceiling}-product limit`
+        : "too many products";
+    return {
+      tone: "danger",
+      message: `Bulk publish batch too large: ${sizeLabel} for this connector. Split into smaller batches and retry.`,
+    };
+  }
+  if (normalized === "bulk-publish-timeout") {
+    return {
+      tone: "danger",
+      message: "Bulk publish timed out before completing. Nothing was queued — split into a smaller batch and retry, or try again in a moment.",
+    };
+  }
   if (normalized === "bulk-publish-error") {
     return {
       tone: "danger",
@@ -467,6 +516,30 @@ function connectorDetailStatusMessage(
     };
   }
   return null;
+}
+
+function resolveCredentialsStepUpErrorMessage(code: string | undefined): string | null {
+  const normalized = String(code ?? "").trim();
+  if (!normalized) {
+    return null;
+  }
+  switch (normalized) {
+    case "STEP_UP_PASSWORD_REQUIRED":
+      return "Enter your password to save credential changes.";
+    case "STEP_UP_INVALID_CREDENTIALS":
+      return "The password was not accepted. Re-enter your password and try again.";
+    case "STEP_UP_REQUIRED":
+      return "Confirm your password before saving credential changes.";
+    case "STEP_UP_TOKEN_INVALID":
+    case "STEP_UP_TOKEN_REVOKED":
+      return "Your elevated session expired before the change completed. Re-enter your password and try again.";
+    case "STEP_UP_TOKEN_SESSION_MISMATCH":
+      return "Your session changed before the change completed. Reload the page, re-enter your password, and try again.";
+    case "STEP_UP_SCOPE_MISMATCH":
+      return "Step-up authorization did not match this action. Re-enter your password and try again.";
+    default:
+      return "Re-authentication failed. Re-enter your password and try again.";
+  }
 }
 
 function toneClassForBanner(tone: "success" | "warning" | "danger"): string {
@@ -683,7 +756,12 @@ export default async function ChannelConnectorDetailPage({
   const statusMessage = connectorDetailStatusMessage(query.status, {
     queuedCount: query.queuedCount,
     excludedCount: query.excludedCount,
+    ceiling: query.ceiling,
+    submittedCount: query.submittedCount,
+    reasonMessage: query.reasonMessage,
   });
+  const credentialsStepUpErrorMessage = resolveCredentialsStepUpErrorMessage(query.stepUpError);
+  const credentialsCsrfToken = await getServerCsrfToken();
 
   try {
     const installations = await getInstalledConnectors({ role: actorRole, authHeader });
@@ -1594,6 +1672,61 @@ export default async function ChannelConnectorDetailPage({
                 </div>
               </Card>
             </section>
+
+            {installation.slug !== "shopify" && canEditConnectorCredentials(actorRole) ? (
+              <Card>
+                <CardTitle>Replace Credentials</CardTitle>
+                <p className="mt-1 text-sm text-slate-600">
+                  Replace this installation&apos;s stored credentials. Requires your password to confirm — Vexa verifies the new
+                  credentials before saving, and existing credentials are never changed if verification fails.
+                </p>
+                {credentialsStepUpErrorMessage ? (
+                  <div className={`mt-3 rounded-lg border px-4 py-3 text-sm ${toneClassForBanner("danger")}`}>
+                    {credentialsStepUpErrorMessage}
+                  </div>
+                ) : null}
+                <form
+                  method="post"
+                  action={`/connector-operations/${encodeURIComponent(installation.id)}/credentials`}
+                  className="mt-4 space-y-4"
+                >
+                  <input type="hidden" name="csrfToken" value={credentialsCsrfToken} />
+                  <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "credentials")} />
+
+                  {connectorCredentialsAcceptsAccountRef(installation.slug) ? (
+                    <div className="space-y-1">
+                      <label htmlFor={`creds-external-account-${installation.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {connectorAccountReferenceLabel(installation.slug)}
+                      </label>
+                      <Input
+                        id={`creds-external-account-${installation.id}`}
+                        name="externalAccountRef"
+                        autoComplete="off"
+                        defaultValue={installation.externalAccountRef ?? ""}
+                      />
+                    </div>
+                  ) : null}
+
+                  <ConnectorCredentialFields definitionId={installation.id} slug={installation.slug} mode="credentials" />
+
+                  <div className="space-y-1 border-t border-slate-200 pt-4">
+                    <label htmlFor={`creds-step-up-password-${installation.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Confirm your password
+                    </label>
+                    <Input
+                      id={`creds-step-up-password-${installation.id}`}
+                      name="stepUpPassword"
+                      type="password"
+                      autoComplete="current-password"
+                      placeholder="Enter your password"
+                      required
+                    />
+                  </div>
+
+                  <Button type="submit">Verify and save credentials</Button>
+                </form>
+              </Card>
+            ) : null}
 
             <Card>
               <CardTitle>Connection Recovery Checklist</CardTitle>

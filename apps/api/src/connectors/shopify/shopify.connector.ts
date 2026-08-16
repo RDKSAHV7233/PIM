@@ -1638,6 +1638,7 @@ export class ShopifyConnector implements ConnectorInterface {
 
     const candidates = [
       compareField("title", node.title, String(newInput.title ?? ""), "low"),
+      compareField("description", node.descriptionHtml ?? null, String(newInput.descriptionHtml ?? ""), "low"),
       compareField("handle", node.handle, String(newInput.handle ?? ""), "medium"),
       compareField("status", node.status, String(newInput.status ?? ""), "high"),
       compareField("vendor", node.vendor ?? null, (newInput.vendor as string | undefined) ?? null, "low"),

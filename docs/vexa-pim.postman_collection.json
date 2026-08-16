@@ -77,6 +77,31 @@
           }
         },
         {
+          "name": "Readiness check — can this instance safely receive real traffic (used for deploy-cutover gating)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health/ready",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health",
+                "ready"
+              ]
+            },
+            "description": "Readiness check — can this instance safely receive real traffic (used for deploy-cutover gating)"
+          }
+        },
+        {
           "name": "Internal health — db pool, queue metrics, auth mode (admin only)",
           "request": {
             "method": "GET",
@@ -4081,6 +4106,48 @@
               ]
             },
             "description": ""
+          }
+        },
+        {
+          "name": "Replace an installed connector account's stored credentials",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/:id/credentials",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                ":id",
+                "credentials"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": "Replace an installed connector account's stored credentials",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -9196,6 +9263,73 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ErrorAuthorityOps",
+      "description": "",
+      "item": [
+        {
+          "name": "ErrorAuthorityOpsController_listIssues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/error-authority/ops/issues",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "error-authority",
+                "ops",
+                "issues"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "ErrorAuthorityOpsController_listOccurrences",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/error-authority/ops/issues/:issueId/occurrences",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "error-authority",
+                "ops",
+                "issues",
+                ":issueId",
+                "occurrences"
+              ],
+              "variable": [
+                {
+                  "key": "issueId",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
           }
         }
       ]

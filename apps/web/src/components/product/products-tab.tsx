@@ -7,7 +7,7 @@ import type { AdvancedSearchQuery } from "@/lib/api/catalog";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useEffect, useMemo, useState } from "react";
-import { deleteProductAction } from "@/app/actions";
+import { updateProductStatusAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
@@ -514,10 +514,14 @@ export function ProductsTab({
       const { productId } = pendingArchive;
       const formData = new FormData();
       formData.set("productId", productId);
-      formData.set("confirmDelete", "yes");
+      formData.set("status", "archived");
       formData.set("returnTo", returnTo);
+      formData.set("__viaTransition", "1");
       startTransition(async () => {
-        await deleteProductAction(formData);
+        const result = await updateProductStatusAction(formData);
+        if (result?.sessionExpired) {
+          window.location.assign(result.loginPath);
+        }
       });
     }
     setPendingArchive(null);

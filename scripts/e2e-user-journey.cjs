@@ -1254,6 +1254,14 @@ function buildChecks() {
         status: "approved",
       },
     });
+    if (
+      result.status === 400 &&
+      String(getErrorMessageFromBody(result.body)).includes("Current status is approved")
+    ) {
+      const product = await getProduct(ctx.productId);
+      assert(product.status === "approved", `unexpected status ${product.status}`);
+      return `status=${product.status}`;
+    }
     assertStatus(result, 201, "POST /catalog/products/:id/review-decision");
     rememberProduct(result.body);
     assert(result.body?.status === "approved", `unexpected status ${result.body?.status}`);
@@ -1264,7 +1272,11 @@ function buildChecks() {
     if (!ctx.productId) {
       skip("product not created");
     }
-    const result = await patchProduct(ctx.productId, { status: "draft" });
+    // ctx.productId is "approved" here. approved->draft is an intentional revert path
+    // (see WORKFLOW_TRANSITIONS in catalog.service.ts), so it no longer belongs here.
+    // approved->in_review is still rejected by the transition table on both sides of
+    // that change, so it's the transition that actually stays invalid.
+    const result = await patchProduct(ctx.productId, { status: "in_review" });
     assertStatus(result, [400, 422], "PATCH /catalog/products/:id invalid transition");
     return `status=${result.status}`;
   });

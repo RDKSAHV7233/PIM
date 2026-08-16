@@ -1,10 +1,10 @@
 [build]
-buildCommand = "npm ci --workspace @pim1/api --workspace @pim1/db && npm run prisma:generate --workspace @pim1/db && npm run build --workspace @pim1/api"
+buildCommand = "npm ci --workspace @pim1/api --workspace @pim1/db --workspace @pim1/observability-db && npm run prisma:generate --workspace @pim1/db && npm run prisma:generate --workspace @pim1/observability-db && npm run build --workspace @pim1/api"
 
 [deploy]
 preDeployCommand = ["node scripts/prisma-migrate-deploy.cjs"]
 startCommand = "node --max-old-space-size=400 apps/api/dist/main.js"
-healthcheckPath = "/api/v1/health"
+healthcheckPath = "/api/v1/health/ready"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

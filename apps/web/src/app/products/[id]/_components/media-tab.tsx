@@ -8,8 +8,47 @@ import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { formatMarketplaceChannelLabel } from "@/lib/marketplace-channels";
 import type { ProductDetailPageData } from "./product-detail-types";
 
+function MediaThumbnail({ asset }: { asset: ProductDetailPageData["mediaAssets"][number] }) {
+  const isImage = asset.mimeType.startsWith("image/");
+  const dimensions =
+    asset.width && asset.height ? `${asset.width}×${asset.height}` : null;
+
+  return (
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-2">
+      <div className="relative h-20 w-20 overflow-hidden rounded-md bg-slate-100">
+        {isImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/media/assets/${encodeURIComponent(asset.id)}/file`}
+            alt={asset.altText ?? asset.fileName}
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+            {asset.mimeType.split("/")[1]?.toUpperCase() ?? "FILE"}
+          </div>
+        )}
+        {asset.isMain && (
+          <span className="absolute bottom-0.5 left-0.5 rounded bg-blue-600 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
+            Main
+          </span>
+        )}
+      </div>
+      <p className="w-20 truncate text-center text-[11px] text-slate-600" title={asset.fileName}>
+        {asset.fileName}
+      </p>
+      {dimensions && (
+        <p className="text-[10px] text-slate-400">{dimensions}</p>
+      )}
+    </div>
+  );
+}
+
 export function MediaTab({ data }: { data: ProductDetailPageData }) {
   const returnTo = `/products/${encodeURIComponent(data.productId)}?tab=media`;
+  const imageAssets = data.mediaAssets.filter((a) => a.mimeType.startsWith("image/"));
+  const nonImageAssets = data.mediaAssets.filter((a) => !a.mimeType.startsWith("image/"));
 
   return (
     <Card hidden={data.activeTab !== "media"}>
@@ -20,13 +59,40 @@ export function MediaTab({ data }: { data: ProductDetailPageData }) {
             {data.imageAssetCount} image asset{data.imageAssetCount === 1 ? "" : "s"} linked across {data.mediaAssetCount} total asset{data.mediaAssetCount === 1 ? "" : "s"}.
           </p>
         </div>
-        <Link
-          href={`/catalog/media?productId=${encodeURIComponent(data.productId)}`}
-          className="inline-flex w-fit rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Open Media Library
-        </Link>
+        <div className="flex flex-col items-end gap-1">
+          <Link
+            href={`/catalog/media?productId=${encodeURIComponent(data.productId)}`}
+            className="inline-flex w-fit rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Open Media Library
+          </Link>
+          <p className="text-xs text-slate-500">
+            Manage alt text, main image selection, gallery ordering, and channel eligibility in the Media Library.
+          </p>
+        </div>
       </div>
+
+      {imageAssets.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-900">Images</h3>
+          <div className="flex flex-wrap gap-2">
+            {imageAssets.map((asset) => (
+              <MediaThumbnail key={asset.id} asset={asset} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {nonImageAssets.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-900">Other assets</h3>
+          <div className="flex flex-wrap gap-2">
+            {nonImageAssets.map((asset) => (
+              <MediaThumbnail key={asset.id} asset={asset} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 border-t border-slate-100 pt-5">
         <h3 className="text-sm font-semibold text-slate-900">Add Media</h3>

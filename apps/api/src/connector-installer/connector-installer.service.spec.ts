@@ -29,8 +29,18 @@ describe("ConnectorInstallerService", () => {
         validateCredentials: jest.fn().mockResolvedValue(true),
       }),
     };
+    const txConnectorInstallationUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      connectorInstallation: { updateMany: txConnectorInstallationUpdateMany },
+    };
     const credentialEncryptionService = {
       storeCredential: jest.fn().mockResolvedValue({ id: "cred_1", keyVersion: "v1" }),
+      transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
+    };
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
     };
     const planUsageService = {
       checkLimit: jest.fn().mockResolvedValue({ allowed: true }),
@@ -69,6 +79,7 @@ describe("ConnectorInstallerService", () => {
       accessPolicy as never,
       {} as never, // credentialService
       {} as never, // httpClient
+      logger as never,
     );
     return {
       service,
@@ -78,6 +89,10 @@ describe("ConnectorInstallerService", () => {
       auditService,
       connectorPermissionService,
       credentialEncryptionService,
+      connectorRegistry,
+      logger,
+      tx,
+      txConnectorInstallationUpdateMany,
     };
   }
 
@@ -109,6 +124,63 @@ describe("ConnectorInstallerService", () => {
       }),
     );
     expect(executeMock).toHaveBeenCalled();
+  });
+
+  describe("reconnect (#564)", () => {
+    function mockRuntimeRecordRow(overrides: Partial<{ slug: string }> = {}) {
+      return [{
+        id: "inst_1",
+        tenantKey: "acme",
+        connectorId: "def_1",
+        accountAlias: "primary",
+        externalAccountRef: null,
+        metadata: {},
+        slug: overrides.slug ?? "woocommerce",
+      }];
+    }
+
+    it("validates credentials before marking the installation ACTIVE", async () => {
+      const { service, queryMock, executeMock, auditService, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      executeMock.mockResolvedValue(1);
+      const validateCredentials = jest.fn().mockResolvedValue(true);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ validateCredentials });
+
+      const result = await service.reconnect("inst_1", { actorId: "user_1", actorRole: "admin" });
+
+      expect(connectorRegistry.getConnector).toHaveBeenCalledWith("woocommerce");
+      expect(validateCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({ installationId: "inst_1", tenantId: "acme" }),
+      );
+      expect(executeMock).toHaveBeenCalled();
+      expect(result).toEqual({ id: "inst_1", status: "ACTIVE" });
+      expect(auditService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_SUCCESS", resourceId: "inst_1" }),
+      );
+    });
+
+    it("refuses to mark the installation ACTIVE when credentials still don't validate", async () => {
+      const { service, queryMock, executeMock, auditService, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      const validateCredentials = jest.fn().mockResolvedValue(false);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ validateCredentials });
+
+      await expect(
+        service.reconnect("inst_1", { actorId: "user_1", actorRole: "admin" }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "CONNECTOR_CREDENTIALS_STILL_INVALID" }),
+      });
+
+      // The status update must never run — this is the whole point of the fix:
+      // a still-broken connector should not get cosmetically flipped to ACTIVE.
+      expect(executeMock).not.toHaveBeenCalled();
+      expect(auditService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_FAILURE", resourceId: "inst_1" }),
+      );
+      expect(auditService.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_SUCCESS" }),
+      );
+    });
   });
 
   it("listAvailableDefinitions delegates to buildDefinitionActionsForSlugs (batch path)", async () => {
@@ -656,6 +728,289 @@ describe("ConnectorInstallerService", () => {
         expect(url.hostname).toMatch(/\.myshopify\.com$/);
         expect(url.pathname).toBe("/admin/oauth/authorize");
       } finally { restore(); }
+    });
+  });
+
+  describe("updateCredentials", () => {
+    function mockRuntimeRecordRow(overrides: Partial<{ slug: string; status: string; externalAccountRef: string | null }> = {}) {
+      return [{
+        id: "inst_1",
+        tenantKey: "acme",
+        connectorId: "def_1",
+        accountAlias: "primary",
+        externalAccountRef: overrides.externalAccountRef ?? null,
+        status: overrides.status ?? "CREDENTIAL_EXPIRED",
+        metadata: {},
+        slug: overrides.slug ?? "woocommerce",
+      }];
+    }
+
+    const ACTOR = { actorId: "user_1", actorRole: "admin" as const };
+
+    it("rejects when the caller lacks connector-credentials permission", async () => {
+      const { service, queryMock, connectorPermissionService, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      connectorPermissionService.assertActionAllowed.mockRejectedValue(new Error("forbidden"));
+
+      await expect(
+        service.updateCredentials("inst_1", { clientId: "x", clientSecret: "y", refreshToken: "z" }, ACTOR),
+      ).rejects.toThrow("forbidden");
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("404s for an unknown installation", async () => {
+      const { service, queryMock } = createService();
+      queryMock.mockResolvedValue([]);
+
+      await expect(
+        service.updateCredentials("missing", { clientId: "x", clientSecret: "y", refreshToken: "z" }, ACTOR),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it("Shopify is unsupported", async () => {
+      const { service, queryMock, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "shopify" }));
+
+      await expect(
+        service.updateCredentials("inst_1", { clientId: "x" }, ACTOR),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED" }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("rejects a disallowed non-empty field for Meesho (refreshToken) with zero writes", async () => {
+      const { service, queryMock, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "meesho" }));
+
+      await expect(
+        service.updateCredentials("inst_1", { clientId: "m", clientSecret: "s", refreshToken: "not-allowed" }, ACTOR),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "CONNECTOR_CREDENTIALS_FIELD_NOT_ALLOWED" }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("rejects a missing required field with zero writes", async () => {
+      const { service, queryMock, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "flipkart" }));
+
+      await expect(
+        service.updateCredentials("inst_1", { clientId: "id-only" }, ACTOR),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "FLIPKART_CREDENTIALS_INCOMPLETE" }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("WooCommerce: rejects a blank externalAccountRef as a missing required field, never silently inheriting the old value", async () => {
+      const { service, queryMock, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce", externalAccountRef: "https://old-store.example.com" }));
+
+      await expect(
+        service.updateCredentials("inst_1", { externalAccountRef: "   ", clientId: "ck", clientSecret: "cs" }, ACTOR),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "WOOCOMMERCE_CREDENTIALS_INCOMPLETE" }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("WooCommerce valid: persists with health only on candidate-exercised fields, sets ACTIVE, updates externalAccountRef", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, txConnectorInstallationUpdateMany } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce", externalAccountRef: "https://old-store.example.com" }));
+      const verifyCandidateCredentials = jest.fn().mockResolvedValue({ outcome: "valid" });
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ verifyCandidateCredentials });
+
+      const dto = { externalAccountRef: "https://new-store.example.com", clientId: "ck_new", clientSecret: "cs_new" };
+      const result = await service.updateCredentials("inst_1", dto, ACTOR);
+
+      expect(verifyCandidateCredentials).toHaveBeenCalledWith({
+        site_url: "https://new-store.example.com",
+        consumer_key: "ck_new",
+        consumer_secret: "cs_new",
+      });
+      expect(result).toEqual({ id: "inst_1", status: "ACTIVE", verification: { outcome: "valid" } });
+
+      const calls = (credentialEncryptionService.storeCredential as jest.Mock).mock.calls;
+      const byType = Object.fromEntries(calls.map((c) => [c[0].credentialType, c]));
+      expect(byType.site_url[2]).toEqual(expect.objectContaining({ lastValidatedAt: expect.any(Date) }));
+      expect(byType.consumer_key[2]).toEqual(expect.objectContaining({ lastValidatedAt: expect.any(Date) }));
+      expect(byType.consumer_secret[2]).toEqual(expect.objectContaining({ lastValidatedAt: expect.any(Date) }));
+      // webhook_secret wasn't supplied here, so it shouldn't be written at all.
+      expect(byType.webhook_secret).toBeUndefined();
+
+      expect(txConnectorInstallationUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: "inst_1" }),
+          data: expect.objectContaining({ status: "ACTIVE", externalAccountRef: "https://new-store.example.com" }),
+        }),
+      );
+    });
+
+    it("WooCommerce: webhook_secret, when supplied, is stored WITHOUT a health stamp (not exercised by the candidate check)", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({ outcome: "valid" }),
+      });
+
+      await service.updateCredentials(
+        "inst_1",
+        { externalAccountRef: "https://store.example.com", clientId: "ck", clientSecret: "cs", refreshToken: "whsec_new" },
+        ACTOR,
+      );
+
+      const calls = (credentialEncryptionService.storeCredential as jest.Mock).mock.calls;
+      const webhookCall = calls.find((c) => c[0].credentialType === "webhook_secret");
+      expect(webhookCall).toBeDefined();
+      expect(webhookCall![1]).toBeDefined(); // tx passed
+      expect(webhookCall![2]).toBeUndefined(); // no health param
+    });
+
+    it("WooCommerce invalid: zero storeCredential calls, status untouched, 4xx with verification in the response", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, txConnectorInstallationUpdateMany } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({ outcome: "invalid", reasonCode: "WOOCOMMERCE_CREDENTIALS_REJECTED" }),
+      });
+
+      await expect(
+        service.updateCredentials("inst_1", { externalAccountRef: "https://store.example.com", clientId: "ck", clientSecret: "wrong" }, ACTOR),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: expect.objectContaining({
+          error: "WOOCOMMERCE_CREDENTIALS_INVALID",
+          verification: { outcome: "invalid", reasonCode: "WOOCOMMERCE_CREDENTIALS_REJECTED" },
+        }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+      expect(txConnectorInstallationUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("WooCommerce unavailable: zero mutation, distinct 503", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({ outcome: "unavailable", reasonCode: "NETWORK" }),
+      });
+
+      await expect(
+        service.updateCredentials("inst_1", { externalAccountRef: "https://store.example.com", clientId: "ck", clientSecret: "cs" }, ACTOR),
+      ).rejects.toMatchObject({
+        status: 503,
+        response: expect.objectContaining({ error: "WOOCOMMERCE_CREDENTIALS_UNAVAILABLE" }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("Meesho: always persists without calling verifyCandidateCredentials, verification is not_supported, status untouched", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, txConnectorInstallationUpdateMany } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "meesho", status: "ACTIVE" }));
+      const verifyCandidateCredentials = jest.fn();
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ verifyCandidateCredentials });
+
+      const result = await service.updateCredentials("inst_1", { clientId: "merchant", clientSecret: "secret" }, ACTOR);
+
+      expect(verifyCandidateCredentials).not.toHaveBeenCalled();
+      expect(result).toEqual({ id: "inst_1", status: "ACTIVE", verification: { outcome: "not_supported" } });
+      expect(credentialEncryptionService.storeCredential).toHaveBeenCalledTimes(2);
+      // storeCredential called with no tx/health args at all for Meesho.
+      for (const call of (credentialEncryptionService.storeCredential as jest.Mock).mock.calls) {
+        expect(call[1]).toBeUndefined();
+        expect(call[2]).toBeUndefined();
+      }
+      expect(txConnectorInstallationUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("Flipkart derived-token commit: stores the exchange response's access_token/refresh_token, not the operator-submitted refresh_token", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, txConnectorInstallationUpdateMany } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "flipkart" }));
+      const verifyCandidateCredentials = jest.fn().mockResolvedValue({
+        outcome: "valid",
+        commitExtra: {
+          accessToken: { value: "fresh-access-token", expiresAt: new Date("2026-01-01T00:00:00Z") },
+          refreshToken: { value: "rotated-refresh-token", expiresAt: new Date("2027-01-01T00:00:00Z") },
+        },
+      });
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ verifyCandidateCredentials });
+
+      const result = await service.updateCredentials(
+        "inst_1",
+        { clientId: "id", clientSecret: "secret", refreshToken: "operator-submitted-refresh-token" },
+        ACTOR,
+      );
+
+      expect(result.status).toBe("ACTIVE");
+      const calls = (credentialEncryptionService.storeCredential as jest.Mock).mock.calls;
+      const byType = Object.fromEntries(calls.map((c) => [c[0].credentialType, c[0]]));
+      expect(byType.refresh_token.plainValue).toBe("rotated-refresh-token");
+      expect(byType.access_token.plainValue).toBe("fresh-access-token");
+      expect(txConnectorInstallationUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: "ACTIVE" }) }),
+      );
+    });
+
+    it("Flipkart: when the response didn't rotate the refresh token, the operator-submitted value is stored unchanged", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "flipkart" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({
+          outcome: "valid",
+          commitExtra: { accessToken: { value: "fresh-access-token", expiresAt: null } },
+        }),
+      });
+
+      await service.updateCredentials(
+        "inst_1",
+        { clientId: "id", clientSecret: "secret", refreshToken: "operator-submitted-refresh-token" },
+        ACTOR,
+      );
+
+      const calls = (credentialEncryptionService.storeCredential as jest.Mock).mock.calls;
+      const byType = Object.fromEntries(calls.map((c) => [c[0].credentialType, c[0]]));
+      expect(byType.refresh_token.plainValue).toBe("operator-submitted-refresh-token");
+    });
+
+    it("rotation-commit-failure: logs a distinct event when the transaction fails after a rotated refresh token was returned", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, logger } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "flipkart" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({
+          outcome: "valid",
+          commitExtra: {
+            accessToken: { value: "fresh-access-token", expiresAt: null },
+            refreshToken: { value: "rotated-refresh-token", expiresAt: null },
+          },
+        }),
+      });
+      (credentialEncryptionService.transaction as jest.Mock).mockRejectedValue(new Error("db unavailable"));
+
+      await expect(
+        service.updateCredentials("inst_1", { clientId: "id", clientSecret: "secret", refreshToken: "submitted" }, ACTOR),
+      ).rejects.toThrow("db unavailable");
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "connector_credentials_rotation_commit_failed",
+        expect.objectContaining({ installationId: "inst_1", connectorSlug: "flipkart" }),
+      );
+    });
+
+    it("does not log a rotation-commit-failure event when the transaction fails and no refresh token was rotated", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, logger } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "flipkart" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({
+          outcome: "valid",
+          commitExtra: { accessToken: { value: "fresh-access-token", expiresAt: null } },
+        }),
+      });
+      (credentialEncryptionService.transaction as jest.Mock).mockRejectedValue(new Error("db unavailable"));
+
+      await expect(
+        service.updateCredentials("inst_1", { clientId: "id", clientSecret: "secret", refreshToken: "submitted" }, ACTOR),
+      ).rejects.toThrow("db unavailable");
+
+      expect(logger.error).not.toHaveBeenCalledWith("connector_credentials_rotation_commit_failed", expect.anything());
     });
   });
 });

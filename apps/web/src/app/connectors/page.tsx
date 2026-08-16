@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import {
   deleteConnectorInstallationAction,
   initiateOAuthAction,
-  reconnectConnectorAction,
 } from "@/app/actions";
 import { ConnectorAccountQuickView } from "@/app/connectors/_components/connector-account-quick-view";
 import { getServerCsrfToken } from "@/lib/server-auth";
@@ -26,6 +25,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
+import { canEditConnectorCredentials } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -38,6 +38,7 @@ interface ConnectorsPageProps {
     status?: string;
     connectorSlug?: string;
     installError?: string;
+    reconnectError?: string;
     q?: string;
   }>;
 }
@@ -137,6 +138,34 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
     return `${connectorLabel} Site URL must use HTTPS. Update the store URL and retry.`;
   }
   return `${connectorLabel} install failed: ${value}`;
+}
+
+function formatReconnectErrorMessage(raw: string, connectorSlug?: string): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    return null;
+  }
+  const connectorLabel =
+    connectorSlug === "flipkart"
+      ? "Flipkart"
+      : connectorSlug === "amazon-in"
+      ? "Amazon India"
+      : connectorSlug === "meesho"
+      ? "Meesho"
+      : connectorSlug === "myntra"
+      ? "Myntra"
+      : connectorSlug === "nykaa"
+      ? "Nykaa"
+      : connectorSlug === "woocommerce"
+      ? "WooCommerce"
+      : connectorSlug === "shopify"
+      ? "Shopify"
+      : "connector";
+
+  if (value === "CONNECTOR_CREDENTIALS_STILL_INVALID") {
+    return `${connectorLabel} reconnect failed: credentials still could not be validated. Update the stored credentials via setup, then try again.`;
+  }
+  return `${connectorLabel} reconnect failed: ${value}`;
 }
 
 function isPlanBlockedReason(reason: string | null | undefined): boolean {
@@ -547,6 +576,10 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     String(query.installError ?? ""),
     String(query.connectorSlug ?? "").trim().toLowerCase(),
   );
+  const reconnectErrorMessage = formatReconnectErrorMessage(
+    String(query.reconnectError ?? ""),
+    String(query.connectorSlug ?? "").trim().toLowerCase(),
+  );
   const searchValue = String(query.q ?? "").trim();
   const normalizedSearch = searchValue.toLowerCase();
 
@@ -698,6 +731,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         {installErrorMessage ? (
           <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
             {installErrorMessage}
+          </div>
+        ) : null}
+        {reconnectErrorMessage ? (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            {reconnectErrorMessage}
           </div>
         ) : null}
 
@@ -1097,14 +1135,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           This account needs attention — credentials may be expired or the connection has errors.
                         </p>
                         {installation.actions?.reconnect.allowed ? (
-                          <form action={reconnectConnectorAction}>
-                            <input type="hidden" name="installationId" value={installation.id} />
-                            <PendingSubmitButton
-                              type="submit"
-                              variant="secondary"
-                              idleLabel="Reconnect"
-                              pendingLabel="Reconnecting..."
-                            />
+                          <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
+                            <input type="hidden" name="csrfToken" value={disableCsrfToken} />
+                            <input type="hidden" name="connectorSlug" value={installation.slug} />
+                            <Button type="submit" variant="secondary">
+                              Reconnect
+                            </Button>
                           </form>
                         ) : (
                           <Link
@@ -1277,15 +1313,21 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       >
                         Mapping
                       </Link>
+                      {installation.slug !== "shopify" && canEditConnectorCredentials(actorRole) ? (
+                        <Link
+                          href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=credentials`}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Edit credentials
+                        </Link>
+                      ) : null}
                       {installation.actions?.reconnect.allowed ? (
-                        <form action={reconnectConnectorAction}>
-                          <input type="hidden" name="installationId" value={installation.id} />
-                          <PendingSubmitButton
-                            type="submit"
-                            variant="secondary"
-                            idleLabel="Reconnect"
-                            pendingLabel="Reconnecting..."
-                          />
+                        <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
+                          <input type="hidden" name="csrfToken" value={disableCsrfToken} />
+                          <input type="hidden" name="connectorSlug" value={installation.slug} />
+                          <Button type="submit" variant="secondary">
+                            Reconnect
+                          </Button>
                         </form>
                       ) : null}
                       {installation.actions?.uninstall.allowed ? (
@@ -1321,7 +1363,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     {actorRole === "admin" && installation.status === "DISABLED" ? (
                       <form action={deleteConnectorInstallationAction} className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-3">
                         <input type="hidden" name="installationId" value={installation.id} />
-                        <input type="hidden" name="connectorSlug" value={installation.slug} />
                         <label className="flex items-center gap-2 text-xs text-slate-600">
                           <input
                             type="checkbox"

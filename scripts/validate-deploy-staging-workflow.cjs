@@ -98,6 +98,44 @@ function main() {
     "Apply migrations",
   );
   requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
+  requireStep(steps, "Install Railway CLI");
+  requireStepOrder(steps, "Apply migrations", "Install Railway CLI");
+  const observabilityUrlStep = requireStep(steps, "Resolve observability database URL");
+  assert(
+    String(observabilityUrlStep?.id ?? "").trim() === "resolve_observability_database_url",
+    "Resolve observability database URL step must expose id=resolve_observability_database_url",
+  );
+  requireEnvVar(observabilityUrlStep, "OBSERVABILITY_DATABASE_URL", "Resolve observability database URL");
+  requireAnyEnvVar(observabilityUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve observability database URL");
+  requireEnvVar(observabilityUrlStep, "RAILWAY_PROJECT_ID", "Resolve observability database URL");
+  requireAnyEnvVar(observabilityUrlStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Resolve observability database URL");
+  requireRunContains(
+    observabilityUrlStep,
+    "node scripts/resolve-observability-database-url.cjs",
+    "Resolve observability database URL",
+  );
+  const observabilityMigrationsStep = requireStep(steps, "Apply observability migrations");
+  requireEnvVar(observabilityMigrationsStep, "OBSERVABILITY_DATABASE_URL", "Apply observability migrations");
+  assert(
+    String(observabilityMigrationsStep.env?.OBSERVABILITY_DATABASE_URL ?? "").trim() ===
+      "${{ steps.resolve_observability_database_url.outputs.observability_database_url }}",
+    "Apply observability migrations must use the resolved observability database URL output.",
+  );
+  requireRunContains(
+    observabilityMigrationsStep,
+    "Missing OBSERVABILITY_DATABASE_URL secret for Error Authority migrations.",
+    "Apply observability migrations",
+  );
+  requireRunContains(
+    observabilityMigrationsStep,
+    "npm run prisma:migrate:deploy --workspace @pim1/observability-db",
+    "Apply observability migrations",
+  );
+  requireStepOrder(steps, "Apply migrations", "Apply observability migrations");
+  requireStepOrder(steps, "Apply migrations", "Resolve observability database URL");
+  requireStepOrder(steps, "Install Railway CLI", "Resolve observability database URL");
+  requireStepOrder(steps, "Resolve observability database URL", "Apply observability migrations");
+  requireStepOrder(steps, "Apply observability migrations", "Build API");
   const authHashBackfillStep = requireStep(steps, "Backfill legacy auth hashes");
   requireEnvVar(authHashBackfillStep, "DATABASE_URL_DIRECT", "Backfill legacy auth hashes");
   requireEnvVar(authHashBackfillStep, "DATABASE_URL", "Backfill legacy auth hashes");
@@ -121,7 +159,6 @@ function main() {
   requireStepOrder(steps, "Backfill legacy auth hashes", "Build API");
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
-  requireStep(steps, "Install Railway CLI");
   requireStepOrder(steps, "Install Railway CLI", "Resolve staging API URL");
   requireStepOrder(steps, "Resolve staging API URL", "Deploy to staging");
 
@@ -151,6 +188,9 @@ function main() {
   requireEnvVar(deployStep, "DATABASE_URL_DIRECT", "Deploy to staging");
   requireEnvVar(deployStep, "DATABASE_URL", "Deploy to staging");
   requireEnvVar(deployStep, "STAGING_BASE_URL", "Deploy to staging");
+  requireEnvVar(deployStep, "GITHUB_SHA", "Deploy to staging");
+  requireEnvVar(deployStep, "ERROR_AUTHORITY_RELEASE", "Deploy to staging");
+  requireEnvVar(deployStep, "ERROR_AUTHORITY_INGEST_TOKEN", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to staging");
@@ -159,6 +199,10 @@ function main() {
   assert(
     String(deployStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
     "Deploy to staging must use the resolved staging API URL output.",
+  );
+  assert(
+    String(deployStep.env?.ERROR_AUTHORITY_RELEASE ?? "").trim() === "${{ github.sha }}",
+    "Deploy to staging must use github.sha as ERROR_AUTHORITY_RELEASE.",
   );
   const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");
   assert(String(resolveWebUrlStep?.id ?? "").trim() === "resolve_staging_web_url", "Resolve staging web URL step must expose id=resolve_staging_web_url");
@@ -184,6 +228,10 @@ function main() {
     "Staging smoke test must use the resolved staging API URL output.",
   );
   requireRunContains(smokeStep, "/api/v1/health", "Staging smoke test");
+  requireRunContains(smokeStep, "for attempt in $(seq 1 30)", "Staging smoke test");
+  requireRunContains(smokeStep, "--max-time 20", "Staging smoke test");
+  requireRunContains(smokeStep, "waiting for Railway readiness", "Staging smoke test");
+  requireRunContains(smokeStep, "Staging health did not become ready after 30 attempts.", "Staging smoke test");
   requireRunMatches(smokeStep, /status.{0,8}ok/i, "Staging smoke test", 'health status ok assertion');
   requireRunMatches(smokeStep, /env.{0,12}staging/i, "Staging smoke test", 'health env staging assertion');
 
@@ -204,6 +252,31 @@ function main() {
     "Post-deploy verification must enable STAGING_VALIDATE_NON_ADMIN=true",
   );
   requireRunContains(postDeployStep, "node scripts/staging-postdeploy-check.cjs", "Post-deploy verification");
+
+  const opsErrorsAcceptanceStep = requireStep(steps, "Internal Ops Errors staging acceptance");
+  requireEnvVar(opsErrorsAcceptanceStep, "STAGING_BASE_URL", "Internal Ops Errors staging acceptance");
+  assert(
+    String(opsErrorsAcceptanceStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Internal Ops Errors staging acceptance must use the resolved staging API URL output.",
+  );
+  requireEnvVar(opsErrorsAcceptanceStep, "STAGING_WEB_URL", "Internal Ops Errors staging acceptance");
+  assert(
+    String(opsErrorsAcceptanceStep.env?.STAGING_WEB_URL ?? "").trim() === "${{ steps.resolve_staging_web_url.outputs.web_url }}",
+    "Internal Ops Errors staging acceptance must use the resolved staging Web URL output.",
+  );
+  requireEnvVar(opsErrorsAcceptanceStep, "STAGING_SMOKE_WORKSPACE", "Internal Ops Errors staging acceptance");
+  requireEnvVar(opsErrorsAcceptanceStep, "STAGING_SMOKE_USER", "Internal Ops Errors staging acceptance");
+  requireEnvVar(opsErrorsAcceptanceStep, "STAGING_SMOKE_PASSWORD", "Internal Ops Errors staging acceptance");
+  requireEnvVar(opsErrorsAcceptanceStep, "ERROR_AUTHORITY_INGEST_TOKEN", "Internal Ops Errors staging acceptance");
+  requireEnvVar(opsErrorsAcceptanceStep, "ERROR_AUTHORITY_RELEASE", "Internal Ops Errors staging acceptance");
+  requireEnvVar(opsErrorsAcceptanceStep, "OPS_ERRORS_ACCEPTANCE_OUTPUT", "Internal Ops Errors staging acceptance");
+  requireRunContains(
+    opsErrorsAcceptanceStep,
+    "node scripts/staging-error-authority-ops-errors-acceptance.cjs",
+    "Internal Ops Errors staging acceptance",
+  );
+  requireStepOrder(steps, "Staging post-deploy verification (auth + trust boundary)", "Internal Ops Errors staging acceptance");
+  requireStepOrder(steps, "Internal Ops Errors staging acceptance", "Public signup smoke check");
 
   const publicSignupStep = requireStep(steps, "Public signup smoke check");
   requireEnvVar(publicSignupStep, "STAGING_BASE_URL", "Public signup smoke check");
@@ -269,6 +342,7 @@ function main() {
   assert(uploadPath.includes("docs/execution/gates/*.json"), "Upload step missing gate artifact path");
   assert(uploadPath.includes("docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json"), "Upload step missing rollout snapshot path");
   assert(uploadPath.includes(".run-logs/queue-failure-diagnostics-*.json"), "Upload step missing queue failure diagnostics path");
+  assert(uploadPath.includes(".run-logs/internal-ops-errors-acceptance-*.json"), "Upload step missing Internal Ops Errors acceptance path");
   assert(uploadPath.includes(".run-logs/e2e-smoke-*.log"), "Upload step missing E2E smoke log path");
   assert(uploadPath.includes(".run-logs/e2e-result-*.json"), "Upload step missing E2E smoke result path");
   assert(uploadWith["include-hidden-files"] === true, "Upload step must include hidden files");
@@ -284,6 +358,8 @@ function main() {
           "push_to_main_autodeploy_trigger_present",
           "deploy_job_serialized_with_environment_protection",
           "migration_step_has_database_secret_guard",
+          "observability_database_url_resolver_reads_github_secret_or_railway_api_variable",
+          "observability_migration_step_has_secret_guard",
           "legacy_auth_hash_backfill_runs_before_builds",
           "railway_cli_install_step_present_before_deploy",
           "deploy_step_uses_checked_in_railway_script",
@@ -291,6 +367,7 @@ function main() {
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
           "postdeploy_verification_enables_non_admin_access_policy_smoke",
+          "internal_ops_errors_acceptance_runs_with_live_api_web_and_masked_ingest_secret",
           "public_signup_smoke_check_runs_after_postdeploy_verification",
           "postdeploy_e2e_smoke_runs_before_gate_recording",
           "gate_artifact_step_records_staging_postcheck_suite",

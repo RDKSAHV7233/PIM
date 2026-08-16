@@ -16,6 +16,7 @@ import {
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace/marketplace-channels";
+import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
@@ -175,6 +176,7 @@ function asStringArray(value: unknown): string[] {
 export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly prismaDirect: PrismaDirectService,
     private readonly accessPolicy: AccessPolicyService,
     private readonly mediaStorage: MediaStorageService,
   ) {}
@@ -421,14 +423,14 @@ export class MediaService {
    * the file; use getAsset() for the governed, actor-scoped read path.
    */
   async getAssetFile(assetId: string): Promise<{ buffer?: Buffer; redirectUrl?: string; mimeType: string; fileName: string }> {
-    const asset = await this.prisma.tenant().mediaAsset.findUnique({
+    const asset = await this.prismaDirect.getClient().mediaAsset.findUnique({
       where: { id: assetId },
       select: { storagePath: true, mimeType: true, fileName: true },
     });
     if (!asset) {
       throw new NotFoundException("Media asset not found");
     }
-    if (this.mediaStorage.isLocalMode()) {
+    if (path.isAbsolute(asset.storagePath) || asset.storagePath.startsWith("storage/") || this.mediaStorage.isLocalMode()) {
       const buffer = await this.mediaStorage.readLocalFile(asset.storagePath);
       return { buffer, mimeType: asset.mimeType, fileName: asset.fileName };
     }
@@ -1167,4 +1169,3 @@ export class MediaService {
     return parseMarketplaceChannel(value);
   }
 }
-

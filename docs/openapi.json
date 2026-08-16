@@ -16,6 +16,24 @@
         ]
       }
     },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "AppController_readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Instance is ready to serve traffic"
+          },
+          "503": {
+            "description": "Instance is not yet ready (e.g. database unreachable)"
+          }
+        },
+        "summary": "Readiness check — can this instance safely receive real traffic (used for deploy-cutover gating)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/health/internal": {
       "get": {
         "operationId": "AppController_healthInternal",
@@ -1475,6 +1493,43 @@
         ]
       }
     },
+    "/api/v1/error-authority/ops/issues": {
+      "get": {
+        "operationId": "ErrorAuthorityOpsController_listIssues",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ErrorAuthorityOps"
+        ]
+      }
+    },
+    "/api/v1/error-authority/ops/issues/{issueId}/occurrences": {
+      "get": {
+        "operationId": "ErrorAuthorityOpsController_listOccurrences",
+        "parameters": [
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ErrorAuthorityOps"
+        ]
+      }
+    },
     "/api/v1/connector-webhooks/relay/{tenantKey}/installations/{installationId}": {
       "post": {
         "operationId": "ConnectorWebhookRelayController_relayWebhook",
@@ -1699,6 +1754,46 @@
             "description": ""
           }
         },
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{id}/credentials": {
+      "patch": {
+        "operationId": "ConnectorInstallerController_updateCredentials",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectorCredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials verified and updated"
+          },
+          "400": {
+            "description": "Candidate credentials were rejected"
+          },
+          "503": {
+            "description": "Candidate credentials could not be verified right now"
+          }
+        },
+        "summary": "Replace an installed connector account's stored credentials",
         "tags": [
           "Connectors"
         ]
@@ -7363,6 +7458,10 @@
         "properties": {}
       },
       "InstallConnectorDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateConnectorCredentialsDto": {
         "type": "object",
         "properties": {}
       },

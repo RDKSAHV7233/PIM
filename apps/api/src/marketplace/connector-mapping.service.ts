@@ -66,6 +66,10 @@ export interface MappingPreflightResult {
   fallbackApplied: boolean;
   fallbackAckRequired: boolean;
   matchedVersionIds: string[];
+  // The mapping this preflight already resolved — exposed so callers that need
+  // the merged mapping right after a preflight check (e.g. evaluatePublishReadiness)
+  // don't have to call resolveEffectiveMapping a second time for the same input.
+  resolvedMapping: Record<string, unknown>;
 }
 
 const lifecycleTransitions: Record<MappingLifecycle, MappingLifecycle[]> = {
@@ -1195,6 +1199,7 @@ export class ConnectorMappingService {
       fallbackApplied: resolved.fallbackApplied,
       fallbackAckRequired: resolved.fallbackAckRequired,
       matchedVersionIds: resolved.matchedVersions.map((item) => item.id),
+      resolvedMapping: resolved.resolvedMapping,
     };
   }
 
@@ -1339,15 +1344,14 @@ export class ConnectorMappingService {
       }
     }
 
-    const resolved = await this.resolveEffectiveMapping({
-      connectorSlug: input.connectorSlug,
-      categoryScope: input.categoryScope,
-      installationId: input.installationId,
-    });
-    const fieldMappings = parseObject(resolved.resolvedMapping.field_mappings);
+    // evaluateMappingPreflight above already resolved the effective mapping for this
+    // exact (connectorSlug, categoryScope, installationId) — reuse it instead of
+    // resolving it a second time (was a duplicate connectorMappingVersion.findMany
+    // on every call; see #554).
+    const fieldMappings = parseObject(preflight.resolvedMapping.field_mappings);
     const channelRequiredFields = uniqueStrings([
-      ...asStringArray(resolved.resolvedMapping.required_fields),
-      ...asStringArray(resolved.resolvedMapping.taxonomy_required_attributes),
+      ...asStringArray(preflight.resolvedMapping.required_fields),
+      ...asStringArray(preflight.resolvedMapping.taxonomy_required_attributes),
     ]);
     const requiredDefs = await this.prisma.tenant(tenantKey).attributeDefinition.findMany({
       where: {

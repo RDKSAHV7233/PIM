@@ -1,6 +1,7 @@
 import { IsIn, IsString, MaxLength, MinLength } from "class-validator";
 import {
   STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK,
+  STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK,
   STEP_UP_SCOPE_MAPPING_HIGH_RISK,
   StepUpScope,
 } from "../jwt";
@@ -11,6 +12,10 @@ export class StepUpChallengeDto {
   @MaxLength(1000)
   password!: string;
 
-  @IsIn([STEP_UP_SCOPE_MAPPING_HIGH_RISK, STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK])
+  @IsIn([
+    STEP_UP_SCOPE_MAPPING_HIGH_RISK,
+    STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK,
+    STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK,
+  ])
   scope!: StepUpScope;
 }

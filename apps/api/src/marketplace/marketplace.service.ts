@@ -77,6 +77,37 @@ type ConnectorProductPayloadOptions = {
   templateId?: string;
 };
 
+// BUG-MKT-EXPORT-003: locked status contract (dashboard.service.ts's readiness
+// buckets and marketplace.service.ts's own emitConnectorOutcomeMetrics already
+// agree on this classification independently):
+//   SUCCESS               -> success        -> ExportJob completed
+//   PENDING                -> accepted_async -> ExportJob completed (status-sync
+//                             owns the provider's eventual resolution; the
+//                             export job row is never revisited by that loop)
+//   REJECTED/ERROR/SUPPRESSED -> provider_failure -> ExportJob failed
+// "recorded" covers submissions whose status was computed locally from
+// simulation.exportReady rather than from a live connector round-trip (the
+// non-PUBLISH / EXPORT_ONLY path, and the dead "PUBLISH but not exportReady"
+// ternary branch alongside it) - that status carries no information beyond
+// what simulation.exportReady already encodes, so it must never trigger the
+// provider_failure short-circuit; processExportJob's existing
+// exportReady-gated completion/retry logic remains authoritative for it.
+type SubmissionOutcome =
+  | { kind: "success"; installationId: string; submissionId: string }
+  | { kind: "accepted_async"; installationId: string; submissionId: string }
+  | { kind: "recorded"; installationId: string; submissionId: string }
+  | {
+      kind: "provider_failure";
+      installationId: string;
+      submissionId: string;
+      // Widened beyond the three known failure statuses on purpose: the
+      // fail-closed default in classifyPublishSubmissionStatus can also route
+      // an unrecognized future connector status here, and this field must be
+      // able to hold that value honestly rather than mis-typing it.
+      status: string;
+      reason: string;
+    };
+
 type AuthoritativeChannelIssue = {
   severity: "error" | "warning";
   code: string;
@@ -690,13 +721,28 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async createExportJob(productId: string, dto: CreateExportJobDto, actor?: PolicyActor) {
+  async createExportJob(
+    productId: string,
+    dto: CreateExportJobDto,
+    actor?: PolicyActor,
+    // Bulk publish (triggerBulkPublish -> bulkPublishViaQueuedExportJobs) already fetches
+    // the product and evaluates readiness once per product in its eligibility loop, with
+    // identical inputs (same connectorSlug/categoryScope/installationId/productId) to what
+    // this method would otherwise re-fetch/re-evaluate a few lines below. Accepting them
+    // here as optional pass-through avoids doing that DB work twice per product on every
+    // bulk-publish call — see #554. Every other caller (single-product "Queue channel
+    // export", retries, delta sync, ...) omits this and behaves exactly as before.
+    precomputed?: {
+      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
+      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
+    },
+  ) {
     await this.accessPolicy.assertSensitivePayloadAccessAllowed(actor ?? {}, {
       action: "marketplace.export",
       resource: "MarketplaceExportJob",
       resourceId: productId,
     });
-    const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
+    const product = precomputed?.product ?? await this.prisma.tenant().product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new NotFoundException("Product not found");
     }
@@ -729,13 +775,23 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId, resolvedInstallationId);
-    await this.connectorMappingService.assertPublishReadyForExport({
-      connectorSlug,
-      categoryScope: product.categoryId,
-      installationId: resolvedInstallationId,
-      fallbackAcknowledged: dto.fallbackAcknowledged,
-      productId,
-    });
+    if (precomputed?.readiness) {
+      if (!precomputed.readiness.ok) {
+        throw new BadRequestException({
+          error: "publish_readiness_blocked",
+          blockers: precomputed.readiness.blockers,
+          warnings: precomputed.readiness.warnings,
+        });
+      }
+    } else {
+      await this.connectorMappingService.assertPublishReadyForExport({
+        connectorSlug,
+        categoryScope: product.categoryId,
+        installationId: resolvedInstallationId,
+        fallbackAcknowledged: dto.fallbackAcknowledged,
+        productId,
+      });
+    }
 
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     try {
@@ -1737,11 +1793,33 @@ export class MarketplaceService implements OnModuleInit {
         existing.templateId ?? undefined,
         effectiveInstallationId ?? undefined,
       );
-      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(
+      const submissionOutcome = await this.recordConnectorSubmission(
         { ...existing, installationId: effectiveInstallationId },
         simulation,
       );
-      effectiveInstallationId = effectiveInstallationId ?? resolvedInstallationId ?? null;
+      effectiveInstallationId = effectiveInstallationId ?? submissionOutcome.installationId ?? null;
+
+      // BUG-MKT-EXPORT-003: a submission the connector truthfully rejected
+      // (REJECTED/ERROR/SUPPRESSED returned without throwing) must never be
+      // reported as a completed export - previously this branch didn't exist
+      // and completion was decided by simulation.exportReady alone, so a
+      // provider-side rejection could be silently reported as success.
+      if (submissionOutcome.kind === "provider_failure") {
+        const updated = await this.prisma.tenant().marketplaceExportJob.update({
+          where: { id: jobId },
+          data: {
+            status: ExportJobStatus.failed,
+            failureReason: submissionOutcome.reason,
+            dlqReason: null,
+            exportPayload: Prisma.JsonNull,
+          },
+          include: { template: true },
+        });
+        await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
+        await this.notificationsService.emitPublishStatus(updated.id, "failed");
+        await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        return updated;
+      }
 
       if (simulation.exportReady) {
         const updated = await this.prisma.tenant().marketplaceExportJob.update({
@@ -3006,9 +3084,38 @@ export class MarketplaceService implements OnModuleInit {
     }
   }
 
-  // Returns the resolved installationId so the caller can write sync state even when
-  // job.installationId is null (legacy jobs created before the column was added). (P3-4)
-  private async recordConnectorSubmissionIfInstalled(
+  // BUG-MKT-EXPORT-003: this function's return value is the invariant boundary
+  // between "a ConnectorSubmission definitely exists" and "no legitimate handoff
+  // occurred." It must never let the caller believe a submission exists when it
+  // doesn't (that was the bug: missing installation silently produced `null`,
+  // and the caller marked the job completed anyway). The contract now is:
+  //   - returns a SubmissionOutcome  -> a ConnectorSubmission row was recorded.
+  //   - throws                      -> no submission was recorded at all.
+  // A recorded submission that the provider truthfully rejected (REJECTED /
+  // ERROR / SUPPRESSED, returned without the connector throwing) is still a
+  // *return*, not a throw - the outcome's `kind: "provider_failure"` carries
+  // that distinction so the caller can decide the export job's terminal status
+  // instead of this function silently picking one.
+  private classifyPublishSubmissionStatus(
+    status: string,
+  ): "success" | "accepted_async" | "provider_failure" {
+    switch (status) {
+      case "SUCCESS":
+        return "success";
+      case "PENDING":
+        return "accepted_async";
+      case "REJECTED":
+      case "ERROR":
+      case "SUPPRESSED":
+        return "provider_failure";
+      default:
+        // Fail closed: an unrecognized future connector status must not be
+        // silently treated as success. (BUG-MKT-EXPORT-003 Case 6.)
+        return "provider_failure";
+    }
+  }
+
+  private async recordConnectorSubmission(
     job: {
       id: string;
       productId: string;
@@ -3028,11 +3135,16 @@ export class MarketplaceService implements OnModuleInit {
       }>;
       validationSource: "local_rules" | "amazon_sp_api";
     },
-  ): Promise<string | null> {
+  ): Promise<SubmissionOutcome> {
     const connectorSlug = this.mapChannelToConnectorSlug(job.channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     if (!job.installationId) {
-      return null;
+      // No legitimate handoff can occur without a resolved installation - the
+      // caller (processExportJob) always resolves installationId before this
+      // call today, so this is defensive, not a live path. Throwing (rather
+      // than silently no-op-ing, as this branch previously did) keeps that
+      // guarantee explicit for any future caller.
+      throw new InstallationNotFoundError(connectorSlug);
     }
     let installation;
     try {
@@ -3043,7 +3155,11 @@ export class MarketplaceService implements OnModuleInit {
       );
     } catch (error) {
       if (error instanceof InstallationNotFoundError) {
-        return null;
+        // BUG-MKT-EXPORT-003: previously returned null here and the caller
+        // proceeded to mark the export job completed with zero submission
+        // ever recorded. Re-throwing lets processExportJob's existing outer
+        // catch mark the job failed with a truthful, typed reason instead.
+        throw error;
       }
       throw error;
     }
@@ -3052,6 +3168,7 @@ export class MarketplaceService implements OnModuleInit {
     const source = simulation.validationSource === "amazon_sp_api" ? "LIVE_API" : "LOCAL_RULES";
 
     let submission;
+    let outcome: SubmissionOutcome;
     if (operation === "PUBLISH" && simulation.exportReady) {
       // Defaults to the mapping preview so a submission is still recorded with useful
       // context if buildConnectorProductPayload itself throws before any payload exists.
@@ -3159,6 +3276,17 @@ export class MarketplaceService implements OnModuleInit {
         ) {
           await this.queueSubmissionStatusSync(submission.id, connectorSlug, 1);
         }
+        const publishClassification = this.classifyPublishSubmissionStatus(submission.status);
+        outcome =
+          publishClassification === "provider_failure"
+            ? {
+                kind: "provider_failure",
+                installationId: installation.id,
+                submissionId: submission.id,
+                status: submission.status,
+                reason: `Connector ${connectorSlug} reported ${submission.status} for this submission.`,
+              }
+            : { kind: publishClassification, installationId: installation.id, submissionId: submission.id };
       } catch (error) {
         // ShopifyPublishError carries parsed ConnectorIssue[] with real fieldPaths.
         // Generic errors fall back to a single CONNECTOR_PUBLISH_FAILED issue.
@@ -3229,6 +3357,13 @@ export class MarketplaceService implements OnModuleInit {
           sellerMessage: issue.sellerMessage,
         })),
       });
+      // `status` here is always derived from simulation.exportReady, never from
+      // a live connector round-trip - it carries no information the caller's
+      // existing exportReady-gated logic doesn't already have, so this must
+      // never classify as provider_failure (that would bypass the legitimate
+      // retry/dead_letter path for EXPORT_ONLY connectors and any PUBLISH
+      // connector that simply isn't ready yet - BUG-MKT-EXPORT-003 Case 5).
+      outcome = { kind: "recorded", installationId: installation.id, submissionId: submission.id };
     }
 
     await this.emitConnectorOutcomeMetrics({
@@ -3237,7 +3372,7 @@ export class MarketplaceService implements OnModuleInit {
       submissionStatus: submission.status,
       attemptNumber: submission.attemptNumber,
     });
-    return installation.id;
+    return outcome;
   }
 
   private async buildConnectorProductPayload(
@@ -3846,7 +3981,7 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const mainAsset = await this.prisma.tenant().mediaAsset.findFirst({
-      where: { productId, metadata: { path: ["isMain"], equals: true } },
+      where: { productId, metadata: { path: ["governance", "isMain"], equals: true } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: { id: true, storagePath: true },
     });
@@ -4795,6 +4930,7 @@ export class MarketplaceService implements OnModuleInit {
   async triggerBulkPublish(
     installationId: string,
     productIds: string[],
+    actor?: PolicyActor,
   ): Promise<{
     feedId: string;
     feedDocumentId: string;
@@ -4814,41 +4950,96 @@ export class MarketplaceService implements OnModuleInit {
       throw new NotFoundException("Connector installation not found.");
     }
 
+    const installation = await this.connectorFramework.requireInstallation(
+      tenantKey,
+      installationRow.connectorSlug,
+      installationId,
+    );
+    const hasNativeBulkPublish = installation.capabilities.includes("BULK_PUBLISH");
+
+    // TC-06 (BUG-BULK-PUBLISH-TIMEOUT-001): connectors without a native batch-feed API fall
+    // through to bulkPublishViaQueuedExportJobs below, which does per-product DB + connector
+    // work rather than Amazon's single-call batch feed. That path was timing out (20s web
+    // ceiling) once the eligibility loop below covered ~46+ products. Reject oversized batches
+    // for that path up front, before running the expensive loop at all, rather than letting the
+    // request die partway through with a generic error. This ceiling is a deliberately
+    // conservative operational limit (see #545), not a permanent architectural maximum — raise
+    // only from measured production-latency evidence. Native BULK_PUBLISH connectors (Amazon)
+    // are unaffected: their 200-product DTO ceiling already governs them.
+    const NON_BULK_PUBLISH_BATCH_CEILING = 50;
+    if (!hasNativeBulkPublish && productIds.length > NON_BULK_PUBLISH_BATCH_CEILING) {
+      throw new BadRequestException({
+        error: "batch_too_large",
+        message:
+          `This connector queues one export job per product and supports at most ` +
+          `${NON_BULK_PUBLISH_BATCH_CEILING} products per bulk-publish batch. ` +
+          `Submitted ${productIds.length} products — split into smaller batches.`,
+        ceiling: NON_BULK_PUBLISH_BATCH_CEILING,
+        submittedCount: productIds.length,
+      });
+    }
+
     // Bulk-publish previously skipped both the internal-approval-status check and the
     // destination-readiness check that the single-product path (createExportJob, above)
     // enforces — a product could reach a live marketplace feed without ever being
     // approved or without a valid mapping/credentials. Gate each product independently
     // here rather than failing the whole batch for one ineligible product.
-    const excluded: Array<{ productId: string; reason: string }> = [];
-    const eligibleProductIds: string[] = [];
-    for (const productId of productIds) {
-      const product = await db.product.findUnique({
-        where: { id: productId },
-        select: { id: true, status: true, categoryId: true },
-      });
-      if (!product) {
-        excluded.push({ productId, reason: "Product not found." });
-        continue;
-      }
-      if (product.status !== "approved" && product.status !== "active") {
-        excluded.push({
-          productId,
-          reason: `Product must be approved before publishing. Current status: ${product.status}.`,
+    //
+    // TC-06: this loop was previously sequential (one await chain per product), which made
+    // the whole request scale linearly with batch size against a DB path that isn't privately
+    // networked (see #531 item 4) — 46 products alone exceeded the web layer's 20s timeout.
+    // Evaluate concurrently instead, same runWithConcurrency pattern already used for the
+    // per-product export-job queuing a few lines below.
+    type EligibleProduct = {
+      productId: string;
+      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
+      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
+    };
+    const eligibilityResults = await this.runWithConcurrency(
+      productIds.map((productId) => async (): Promise<
+        ({ eligible: true } & EligibleProduct) | { productId: string; eligible: false; reason: string }
+      > => {
+        // Select every field createExportJob's own product.findUnique would otherwise
+        // re-fetch a few lines later in the same request (see #554) — carrying this
+        // object through skips that second full-row fetch for eligible products.
+        const product = await db.product.findUnique({
+          where: { id: productId },
+          select: { id: true, status: true, categoryId: true, brand: true, version: true, updatedAt: true },
         });
-        continue;
+        if (!product) {
+          return { productId, eligible: false, reason: "Product not found." };
+        }
+        if (product.status !== "approved" && product.status !== "active") {
+          return {
+            productId,
+            eligible: false,
+            reason: `Product must be approved before publishing. Current status: ${product.status}.`,
+          };
+        }
+        const readiness = await this.connectorMappingService.evaluatePublishReadiness({
+          connectorSlug: installationRow.connectorSlug,
+          categoryScope: product.categoryId,
+          installationId,
+          productId,
+        });
+        if (!readiness.ok) {
+          return { productId, eligible: false, reason: readiness.blockers.join("; ") || "Not ready for this destination." };
+        }
+        return { productId, eligible: true, product, readiness };
+      }),
+      5,
+    );
+
+    const excluded: Array<{ productId: string; reason: string }> = [];
+    const eligibleProducts: EligibleProduct[] = [];
+    for (const result of eligibilityResults) {
+      if (result.eligible) {
+        eligibleProducts.push({ productId: result.productId, product: result.product, readiness: result.readiness });
+      } else {
+        excluded.push({ productId: result.productId, reason: result.reason });
       }
-      const readiness = await this.connectorMappingService.evaluatePublishReadiness({
-        connectorSlug: installationRow.connectorSlug,
-        categoryScope: product.categoryId,
-        installationId,
-        productId,
-      });
-      if (!readiness.ok) {
-        excluded.push({ productId, reason: readiness.blockers.join("; ") || "Not ready for this destination." });
-        continue;
-      }
-      eligibleProductIds.push(productId);
     }
+    const eligibleProductIds = eligibleProducts.map((item) => item.productId);
 
     if (!eligibleProductIds.length) {
       throw new BadRequestException({
@@ -4858,20 +5049,14 @@ export class MarketplaceService implements OnModuleInit {
       });
     }
 
-    const installation = await this.connectorFramework.requireInstallation(
-      tenantKey,
-      installationRow.connectorSlug,
-      installationId,
-    );
-
     // Connectors without a native async feed API (Shopify, WooCommerce, ...) can't produce
     // a single BulkSubmissionRef the way Amazon's Feeds API does — each product publishes
     // synchronously via its own GraphQL/REST call. For those, fall back to queuing one
     // MarketplaceExportJob per eligible product through the same connector-agnostic pipeline
     // createExportJob already uses for the single-product "Queue channel export" action —
     // proven to work for Shopify — instead of forcing them through the Amazon-shaped path.
-    if (!installation.capabilities.includes("BULK_PUBLISH")) {
-      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProductIds, excluded);
+    if (!hasNativeBulkPublish) {
+      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProducts, excluded, actor);
     }
 
     const products = await Promise.all(
@@ -4957,8 +5142,13 @@ export class MarketplaceService implements OnModuleInit {
   private async bulkPublishViaQueuedExportJobs(
     connectorSlug: string,
     installationId: string,
-    eligibleProductIds: string[],
+    eligibleProducts: Array<{
+      productId: string;
+      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
+      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
+    }>,
     excluded: Array<{ productId: string; reason: string }>,
+    actor?: PolicyActor,
   ): Promise<{
     feedId: string;
     feedDocumentId: string;
@@ -4969,9 +5159,9 @@ export class MarketplaceService implements OnModuleInit {
     const channel = this.mapConnectorSlugToChannel(connectorSlug);
 
     const outcomes = await this.runWithConcurrency(
-      eligibleProductIds.map((productId) => async () => {
+      eligibleProducts.map(({ productId, product, readiness }) => async () => {
         try {
-          const job = await this.createExportJob(productId, { channel, installationId }, undefined);
+          const job = await this.createExportJob(productId, { channel, installationId }, actor, { product, readiness });
           return { productId, jobId: job.id as string };
         } catch (error: unknown) {
           const reason = error instanceof Error ? error.message : String(error);
