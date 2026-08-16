@@ -11,17 +11,12 @@ import {
 } from "@/lib/api";
 import { getAdvancedSearchProducts } from "@/lib/api/catalog";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { loadSharedRead } from "@/lib/catalog-shared-read";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
-
-type SharedReadState = "available" | "restricted" | "unavailable";
-type SharedReadResult<T> =
-  | { state: "available"; value: T }
-  | { state: "restricted" }
-  | { state: "unavailable" };
 
 interface CatalogProductsPageProps {
   searchParams: Promise<{
@@ -67,49 +62,6 @@ function resolvePositiveInteger(value: string | undefined, fallback: number, max
     return fallback;
   }
   return Math.min(max, parsed);
-}
-
-function isCatalogProductsApiUnavailable(error: unknown): boolean {
-  if (error instanceof ApiHttpError) {
-    return error.status === 429 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
-  }
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message.toLowerCase();
-  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
-  const causeDetails =
-    cause && typeof cause === "object"
-      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
-      : String(cause ?? "").toLowerCase();
-  return (
-    message.includes("fetch failed") ||
-    causeDetails.includes("econnrefused") ||
-    causeDetails.includes("enotfound") ||
-    causeDetails.includes("socket hang up")
-  );
-}
-
-async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
-  try {
-    return {
-      state: "available",
-      value: await promise,
-    };
-  } catch (error) {
-    if (error instanceof ApiHttpError) {
-      if (error.status === 401) {
-        throw error;
-      }
-      if (error.status === 403) {
-        return { state: "restricted" };
-      }
-    }
-    if (isCatalogProductsApiUnavailable(error)) {
-      return { state: "unavailable" };
-    }
-    throw error;
-  }
 }
 
 export default async function CatalogProductsPage({ searchParams }: CatalogProductsPageProps) {
