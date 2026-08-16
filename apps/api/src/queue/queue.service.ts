@@ -211,6 +211,17 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     return this.workerEnabled;
   }
 
+  async checkRedisReady(): Promise<void> {
+    if (this.backend !== "bullmq") {
+      return;
+    }
+    const client = await this.ensureMetadataRedis();
+    if (!client) {
+      throw new Error("Redis client not available");
+    }
+    await client.ping();
+  }
+
   processScheduledSync(handler: QueueHandler<unknown>): void {
     this.scheduledSyncHandler = handler;
     if (this.backend === "bullmq" && this.workerEnabled && this.bullConnection && !this.scheduledSyncWorker) {
