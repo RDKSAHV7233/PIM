@@ -1,4 +1,4 @@
-import { ApiHttpError } from "@/lib/api";
+import { ApiHttpError } from "./api/core";
 
 /**
  * Extracted from apps/web/src/app/catalog/products/page.tsx (byte-for-byte behavior
@@ -8,7 +8,10 @@ import { ApiHttpError } from "@/lib/api";
  *
  * This module has no React/Next.js dependency and no side effects, by design: that's
  * what makes it possible to run it under plain ts-node in CI without a browser or a
- * Next.js request context. Investigation for PIM#578.
+ * Next.js request context. Imports directly from ./api/core (not the @/lib/api barrel
+ * or the @/ tsconfig path alias) so this file has zero dependency on Next.js-specific
+ * module resolution and can be loaded by a plain `ts-node`/`tsc` process. Investigation
+ * for PIM#578.
  */
 
 export type SharedReadState = "available" | "restricted" | "unavailable";
