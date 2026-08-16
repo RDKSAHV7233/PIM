@@ -9,6 +9,7 @@ import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
+import { QueueService } from "./queue/queue.service";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
@@ -115,7 +116,10 @@ async function bootstrap() {
     "/health/ready",
     async (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
       try {
-        await app.get(PrismaService).getPoolStats();
+        await Promise.all([
+          app.get(PrismaService).getPoolStats(),
+          app.get(QueueService).checkRedisReady(),
+        ]);
         response.status(200).json({ status: "ready" });
       } catch {
         response.status(503).json({ status: "not_ready" });

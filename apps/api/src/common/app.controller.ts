@@ -46,10 +46,11 @@ export class AppController {
   @ApiResponse({ status: 503, description: "Instance is not yet ready (e.g. database unreachable)" })
   async readiness() {
     try {
-      await this.prismaService.getPoolStats();
+      await Promise.all([
+        this.prismaService.getPoolStats(),
+        this.queueService.checkRedisReady(),
+      ]);
     } catch {
-      // Deliberately generic: never surface the underlying DB error (may contain
-      // connection details) to an unauthenticated infra probe.
       throw new ServiceUnavailableException({ status: "not_ready" });
     }
     return { status: "ready" };
