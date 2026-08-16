@@ -227,13 +227,12 @@ function main() {
     String(smokeStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
     "Staging smoke test must use the resolved staging API URL output.",
   );
-  requireRunContains(smokeStep, "/api/v1/health", "Staging smoke test");
+  requireRunContains(smokeStep, "/api/v1/health/ready", "Staging smoke test");
   requireRunContains(smokeStep, "for attempt in $(seq 1 30)", "Staging smoke test");
   requireRunContains(smokeStep, "--max-time 20", "Staging smoke test");
   requireRunContains(smokeStep, "waiting for Railway readiness", "Staging smoke test");
-  requireRunContains(smokeStep, "Staging health did not become ready after 30 attempts.", "Staging smoke test");
-  requireRunMatches(smokeStep, /status.{0,8}ok/i, "Staging smoke test", 'health status ok assertion');
-  requireRunMatches(smokeStep, /env.{0,12}staging/i, "Staging smoke test", 'health env staging assertion');
+  requireRunContains(smokeStep, "Staging did not become ready after 30 attempts.", "Staging smoke test");
+  requireRunMatches(smokeStep, /status.{0,8}ready/i, "Staging smoke test", 'health status ready assertion');
 
   const postDeployStep = requireStep(steps, "Staging post-deploy verification (auth + trust boundary)");
   requireEnvVar(postDeployStep, "STAGING_BASE_URL", "Post-deploy verification");

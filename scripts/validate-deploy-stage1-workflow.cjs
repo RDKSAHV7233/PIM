@@ -80,7 +80,7 @@ function main() {
 
   const healthStep = requireStep(steps, "Staging health smoke test");
   requireEnvVar(healthStep, "STAGING_URL", "Staging health smoke test");
-  requireRunContains(healthStep, "/api/v1/health", "Staging health smoke test");
+  requireRunContains(healthStep, "/api/v1/health/ready", "Staging health smoke test");
 
   const postDeployStep = requireStep(steps, "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_BASE_URL", "Post-deploy verification");

@@ -64,9 +64,9 @@ jobs:
         env:
           STAGING_URL: ${{ inputs.staging_url }}
         run: |
-          response="$(curl -fsS "${STAGING_URL}/api/v1/health")"
-          echo "health=${response}"
-          echo "${response}" | grep -q "\"status\":\"ok\""
+          response="$(curl -fsS "${STAGING_URL}/api/v1/health/ready")"
+          echo "ready=${response}"
+          echo "${response}" | grep -q "\"status\":\"ready\""
 
       - name: Post-deploy verification
         shell: bash
