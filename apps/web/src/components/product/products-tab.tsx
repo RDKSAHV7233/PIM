@@ -6,8 +6,9 @@ import type { AdvancedSearchQuery } from "@/lib/api/catalog";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { startTransition, useEffect, useMemo, useState } from "react";
-import { updateProductStatusAction } from "@/app/actions";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { triggerBulkPublishAction, updateProductStatusAction } from "@/app/actions";
+import { BulkPublishConfirmForm } from "@/app/channels/connectors/[installationId]/bulk-publish-confirm-form";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
@@ -19,6 +20,10 @@ import { SkeletonBlock } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/status-chip";
 import { usePlanUsage } from "@/hooks/use-plan-usage";
 import type { AppRole, CatalogStats, Category, MarketplaceChannel, ProductListItem } from "@/lib/api";
+import {
+  bulkPublishStatusBannerToneClass,
+  type BulkPublishStatusMessage,
+} from "@/lib/bulk-publish-status";
 import { formatDateTime } from "@/lib/format";
 import {
   bestChannelReadinessStatus,
@@ -30,7 +35,8 @@ import {
   type ProductReadinessBatchResponse,
   type ReadinessStatus,
 } from "@/lib/channel-readiness";
-import { canEditWorkspace } from "@/lib/role-capabilities";
+import { formatMarketplaceChannelLabel } from "@/lib/marketplace-channels";
+import { canEditWorkspace, canPublishToChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 
 type ProductFilter = "all" | "needs_attention" | "ready";
@@ -46,6 +52,18 @@ interface ProductWithCompliance extends ProductWorkbenchItem {
 }
 
 type ProductReadinessState = Record<string, Partial<Record<MarketplaceChannel, ChannelReadinessResult>>>;
+
+// PIM#595: a connector the Products workbench's manual bulk-publish selector can target.
+// `hasNativeBulkPublish` mirrors installation.capabilities.includes("BULK_PUBLISH") on the
+// connector Sync tab — used only to pick which soft-warning ceiling to show (see
+// BULK_PUBLISH_SOFT_WARNING_CEILING below), never to gate submission itself.
+export interface PublishConnectorOption {
+  id: string;
+  slug: string;
+  displayName: string;
+  channel: MarketplaceChannel;
+  hasNativeBulkPublish: boolean;
+}
 
 /**
  * Build a ProductReadinessState where every product × channel slot is set to
@@ -114,6 +132,8 @@ interface ProductsTabProps {
   installedConnectorCount: number | null;
   mappingManagerHref: string | null;
   connectorManagementHref: string;
+  publishConnectors: PublishConnectorOption[];
+  bulkPublishStatusMessage: BulkPublishStatusMessage | null;
   initialView?: ProductFilter;
   initialSearch?: string;
   initialCreate?: boolean;
@@ -262,6 +282,8 @@ export function ProductsTab({
   installedConnectorCount,
   mappingManagerHref,
   connectorManagementHref,
+  publishConnectors,
+  bulkPublishStatusMessage,
   initialView = "all",
   initialSearch = "",
   initialCreate = false,
@@ -270,12 +292,20 @@ export function ProductsTab({
   pageSize = 50,
 }: ProductsTabProps) {
   const canWrite = canEditWorkspace(role);
+  const canPublish = canPublishToChannels(role);
   const { skuUsagePercent } = usePlanUsage(role);
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [showCreateProduct, setShowCreateProduct] = useState(initialCreate);
   const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
   const [pendingArchive, setPendingArchive] = useState<{ productId: string; title: string } | null>(null);
+  // PIM#595: manual bulk-publish selection state. Scoped to the currently visible page only —
+  // reset (below) whenever the visible product set or the target connector changes, so there is
+  // no cross-page persisted selection to accidentally carry into a different batch.
+  const [selectedPublishConnectorId, setSelectedPublishConnectorId] = useState<string>(
+    () => publishConnectors[0]?.id ?? "",
+  );
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(() => new Set());
   // Sprint 1: faceted search
   const [facetOpen, setFacetOpen] = useState(false);
   const [facets, setFacets] = useState<AdvancedSearchQuery>({});
@@ -436,6 +466,77 @@ export function ProductsTab({
     );
   }, [readinessMap, selectedFilter, sortedProducts]);
 
+  const visibleProductIdKey = useMemo(() => visibleProducts.map((p) => p.id).join(","), [visibleProducts]);
+
+  // PIM#595: manual bulk-publish selection. Reuses the same per-channel readiness data the
+  // "Channel Readiness" column already renders (readinessState) rather than re-deriving
+  // eligibility — a product is selectable only when it's approved/active AND the batch API's
+  // own evaluatePublishReadiness check for the selected channel already reports "ready"
+  // (apps/api/src/marketplace/marketplace.service.ts, triggerBulkPublish). The server
+  // independently re-validates every product on submit regardless of this client-side gate.
+  const selectedPublishConnector = useMemo(
+    () => publishConnectors.find((connector) => connector.id === selectedPublishConnectorId) ?? null,
+    [publishConnectors, selectedPublishConnectorId],
+  );
+  const selectedPublishChannel = selectedPublishConnector?.channel ?? null;
+
+  const isEligibleForBulkPublish = useCallback(
+    (product: ProductWithCompliance): boolean => {
+      if (!selectedPublishChannel) {
+        return false;
+      }
+      const approved = product.status === "approved" || product.status === "active";
+      const channelReady = readinessState[product.id]?.[selectedPublishChannel]?.status === "ready";
+      return approved && channelReady;
+    },
+    [readinessState, selectedPublishChannel],
+  );
+
+  const eligiblePublishProductIds = useMemo(
+    () => visibleProducts.filter((product) => isEligibleForBulkPublish(product)).map((product) => product.id),
+    [visibleProducts, isEligibleForBulkPublish],
+  );
+
+  // Selection is scoped to the current page only — clear it whenever the visible product set
+  // (new page, search, filter, or facet) or the target connector changes, instead of trying to
+  // persist a selection across a different batch of rows.
+  useEffect(() => {
+    setSelectedProductIds(new Set());
+  }, [visibleProductIdKey, selectedPublishConnectorId]);
+
+  const allEligibleSelected =
+    eligiblePublishProductIds.length > 0 &&
+    eligiblePublishProductIds.every((id) => selectedProductIds.has(id));
+
+  function toggleSelectAllEligibleVisible() {
+    setSelectedProductIds(allEligibleSelected ? new Set() : new Set(eligiblePublishProductIds));
+  }
+
+  function toggleProductSelected(productId: string) {
+    setSelectedProductIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }
+
+  const selectedPublishCount = selectedProductIds.size;
+  // UX-only soft-warning ceiling — NOT authoritative. The server enforces the real ceiling
+  // per connector: 50 for connectors without native BULK_PUBLISH (NON_BULK_PUBLISH_BATCH_CEILING
+  // in apps/api/src/marketplace/marketplace.service.ts) and a 200-product DTO hard cap
+  // (@ArrayMaxSize(200) in trigger-bulk-publish.dto.ts) for native BULK_PUBLISH connectors like
+  // Amazon. This constant only decides when to show an early warning before submit; changing it
+  // does not change what the backend accepts or rejects.
+  const bulkPublishSoftWarningCeiling = selectedPublishConnector?.hasNativeBulkPublish ? 200 : 50;
+  const isNearBulkPublishCeiling =
+    selectedPublishCount >= Math.ceil(bulkPublishSoftWarningCeiling * 0.8) &&
+    selectedPublishCount <= bulkPublishSoftWarningCeiling;
+  const isOverBulkPublishCeiling = selectedPublishCount > bulkPublishSoftWarningCeiling;
+
   const onboardingSteps = useMemo(() => {
     const hasProducts = productFeedState === "available" && filteredProducts.length > 0;
     const hasCompleteness =
@@ -563,8 +664,39 @@ export function ProductsTab({
     statsFeedState === "restricted" ||
     connectorFeedState === "restricted";
 
+  const showBulkPublishColumn = canPublish && publishConnectors.length > 0;
+
   const productColumns = useMemo<Column<ProductWithCompliance>[]>(
     () => [
+      ...(showBulkPublishColumn
+        ? [
+            {
+              key: "bulkPublishSelect",
+              header: "Publish",
+              mobileHide: true,
+              render: (product: ProductWithCompliance) => {
+                const eligible = isEligibleForBulkPublish(product);
+                return (
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    checked={selectedProductIds.has(product.id)}
+                    disabled={!eligible}
+                    onChange={() => toggleProductSelected(product.id)}
+                    aria-label={`Select ${product.title} for bulk publish`}
+                    title={
+                      eligible
+                        ? "Selected for bulk publish"
+                        : selectedPublishChannel
+                          ? "Not approved, or not publish-ready for the selected channel yet."
+                          : "Choose a channel above to enable selection."
+                    }
+                  />
+                );
+              },
+            } satisfies Column<ProductWithCompliance>,
+          ]
+        : []),
       {
         key: "title",
         header: "Title",
@@ -659,7 +791,16 @@ export function ProductsTab({
           ]
         : []),
     ],
-    [canWrite, readinessMap, readinessState, returnTo],
+    [
+      canWrite,
+      readinessMap,
+      readinessState,
+      returnTo,
+      showBulkPublishColumn,
+      isEligibleForBulkPublish,
+      selectedProductIds,
+      selectedPublishChannel,
+    ],
   );
 
   return (
@@ -854,6 +995,98 @@ export function ProductsTab({
           open={facetOpen}
         />
       )}
+
+      {/* PIM#595: bulk-publish redirect outcome — mirrors the connector Sync tab's own banner. */}
+      {bulkPublishStatusMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`rounded-lg border px-4 py-3 text-sm ${bulkPublishStatusBannerToneClass(bulkPublishStatusMessage.tone)}`}
+        >
+          {bulkPublishStatusMessage.message}
+        </div>
+      ) : null}
+
+      {/* PIM#595: manual per-connector bulk-publish selection. Replaces the connector Sync
+          tab's auto-computed "every approved product in this workspace" batch with an explicit
+          operator-chosen subset, submitted through the same unchanged backend endpoint. */}
+      {showBulkPublishColumn ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-amber-900">Bulk publish to a channel</h2>
+              <p className="mt-1 max-w-2xl text-xs text-amber-700">
+                Choose a connector, then check exactly the products on this page you want to
+                publish to it. Only products approved and publish-ready for the selected channel
+                can be checked — this reuses the same Channel Readiness data shown in the table.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-medium text-amber-900">
+                Channel
+                <select
+                  value={selectedPublishConnectorId}
+                  onChange={(event) => setSelectedPublishConnectorId(event.target.value)}
+                  className="rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+                >
+                  {publishConnectors.map((connector) => (
+                    <option key={connector.id} value={connector.id}>
+                      {connector.displayName} ({formatMarketplaceChannelLabel(connector.channel)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={toggleSelectAllEligibleVisible}
+                disabled={eligiblePublishProductIds.length === 0}
+                className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {allEligibleSelected
+                  ? "Clear selection"
+                  : `Select all ${eligiblePublishProductIds.length} eligible on this page`}
+              </button>
+            </div>
+          </div>
+          <p
+            className={`mt-2 text-xs font-semibold ${
+              isOverBulkPublishCeiling
+                ? "text-red-700"
+                : isNearBulkPublishCeiling
+                  ? "text-amber-900"
+                  : "text-amber-700"
+            }`}
+          >
+            {selectedPublishCount} selected
+            {isOverBulkPublishCeiling
+              ? ` — over this connector's ${bulkPublishSoftWarningCeiling}-product batch limit. The connector will reject this batch; deselect some products or submit a smaller batch.`
+              : isNearBulkPublishCeiling
+                ? ` — approaching this connector's ${bulkPublishSoftWarningCeiling}-product batch limit.`
+                : "."}
+          </p>
+          {selectedPublishConnector ? (
+            <BulkPublishConfirmForm
+              installationId={selectedPublishConnector.id}
+              channel={selectedPublishConnector.channel}
+              productIds={Array.from(selectedProductIds)}
+              returnTo={returnTo}
+              action={triggerBulkPublishAction}
+              idleLabelWhenEmpty="No products selected"
+              hintWhenEmpty="Check at least one eligible product above before bulk publish."
+              summaryLabel={(count) =>
+                `${count} product${count === 1 ? "" : "s"} selected for ${formatMarketplaceChannelLabel(selectedPublishConnector.channel)}.`
+              }
+              confirmDescription={(count) =>
+                `This will submit ${count} selected product${count === 1 ? "" : "s"} to ${selectedPublishConnector.displayName}. Native feed connectors send one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.`
+              }
+            />
+          ) : (
+            <p className="mt-3 text-xs text-amber-700">
+              No active, publish-capable connector is installed yet.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       <section className="space-y-3">
 

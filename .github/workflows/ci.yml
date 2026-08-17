@@ -155,6 +155,9 @@ jobs:
           node apps/api/test/integration/plan-usage-sku-definition.test.cjs
           node apps/web/test/integration/plan-usage-sku-meter-copy.test.cjs
 
+      - name: Products workbench bulk-publish manual selection test (PIM#595)
+        run: node apps/web/test/integration/products-workbench-bulk-publish-selection.test.cjs
+
       - name: Seam tests (RBAC parity, plan-limit coverage, error contract)
         run: |
           if [ -d "apps/api/test/seam" ] && [ -n "$(ls apps/api/test/seam/*.cjs 2>/dev/null)" ]; then
