@@ -854,8 +854,7 @@ export async function updateProductAction(formData: FormData) {
       appendQueryParams(basePath, {
         tab: currentTab,
         returnTo,
-        updateStatus: "error",
-        errorMessage: error instanceof ApiHttpError ? extractApiErrorMessage(error) : undefined,
+        ...resolveProductWriteErrorParams(error),
       }),
     );
   }
@@ -1145,14 +1144,14 @@ export async function purgeProductAction(formData: FormData) {
 }
 
 /**
- * Shared by createVariantAction/updateVariantAction: maps a caught error to the query params
- * their catch blocks redirect with. Known governance codes pass through as-is (they already
- * have entries in lib/errors.ts ERROR_MAP); anything else runs through extractErrorCode() so a
- * generic backend message like "SKU code already exists" resolves to a real, informative code
- * (e.g. SKU_DUPLICATE) instead of an opaque bucket — and the raw message is always included too,
- * so the UI never has to guess when a code isn't precise enough.
+ * Shared by product/variant write actions: maps a caught error to the query params their catch
+ * blocks redirect with. Known governance codes pass through as-is (they already have entries in
+ * lib/errors.ts ERROR_MAP); anything else runs through extractErrorCode() so a generic backend
+ * message like "SKU code already exists" resolves to a real, informative code (e.g. SKU_DUPLICATE)
+ * instead of an opaque bucket — and the raw message is always included too, so the UI never has
+ * to guess when a code isn't precise enough.
  */
-function resolveVariantErrorParams(error: unknown): { error: string; errorMessage?: string } {
+function resolveProductWriteErrorParams(error: unknown): { error: string; errorMessage?: string } {
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (message.includes("must be valid JSON object")) {
     return { error: "VARIANT_ATTRIBUTES_INVALID", errorMessage: message };
@@ -1189,7 +1188,7 @@ export async function createVariantAction(formData: FormData) {
   } catch (error: unknown) {
     rethrowRedirectError(error);
     handleSessionExpired(error, basePath);
-    redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
+    redirect(appendQueryParams(basePath, { tab: "variants", ...resolveProductWriteErrorParams(error) }));
   }
 }
 
@@ -1216,7 +1215,7 @@ export async function updateVariantAction(formData: FormData) {
   } catch (error: unknown) {
     rethrowRedirectError(error);
     handleSessionExpired(error, basePath);
-    redirect(appendQueryParams(basePath, { tab: "variants", ...resolveVariantErrorParams(error) }));
+    redirect(appendQueryParams(basePath, { tab: "variants", ...resolveProductWriteErrorParams(error) }));
   }
 }
 

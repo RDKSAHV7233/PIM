@@ -854,7 +854,15 @@ export class CatalogService {
       });
     const nextStatus = dto.status as RecordStatus;
     if (!isValidWorkflowTransition(current.status, nextStatus)) {
-      throw new BadRequestException(`Invalid workflow transition from ${current.status} to ${nextStatus}.`);
+      // Structured body (matching WORKFLOW_CONTENT_LOCKED below) so the web client's
+      // extractErrorCode()/ERROR_MAP can render the real "choose a valid next step"
+      // guidance instead of a raw string. See PIM#581.
+      throw new BadRequestException({
+        code: "WORKFLOW_ENTRY_INVALID",
+        message: `Products in ${current.status} status cannot move directly to ${nextStatus}.`,
+        currentStatus: current.status,
+        requestedStatus: nextStatus,
+      });
     }
     if (nextStatus === RecordStatus.draft && canonicalWorkflowStatus(current.status) === "approved") {
       if (current.status === RecordStatus.active) {
