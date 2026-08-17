@@ -137,6 +137,9 @@ interface ProductsTabProps {
   initialView?: ProductFilter;
   initialSearch?: string;
   initialCreate?: boolean;
+  initialCategoryId?: string;
+  initialBrand?: string;
+  initialFacetStatus?: string;
   totalCount?: number | null;
   currentPage?: number;
   pageSize?: number;
@@ -287,6 +290,9 @@ export function ProductsTab({
   initialView = "all",
   initialSearch = "",
   initialCreate = false,
+  initialCategoryId = "",
+  initialBrand = "",
+  initialFacetStatus = "",
   totalCount,
   currentPage = 1,
   pageSize = 50,
@@ -308,7 +314,25 @@ export function ProductsTab({
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(() => new Set());
   // Sprint 1: faceted search
   const [facetOpen, setFacetOpen] = useState(false);
-  const [facets, setFacets] = useState<AdvancedSearchQuery>({});
+  // PIM#598 follow-up: `facets` used to always start blank (`{}`) on mount, with nothing ever
+  // rehydrating it from the incoming URL — unlike `selectedFilter`/`searchQuery` just above,
+  // which both resync from `initialView`/`initialSearch` server props. That was harmless for an
+  // ordinary page load (blank facets matched a blank URL), but broke after a Server Action
+  // redirect: triggerBulkPublishAction's redirect() lands on a *new* URL that already has
+  // `status=approved` (or another facet) correctly applied, but causes this component to
+  // remount fresh — confirmed by direct reproduction, not assumed — so `facets` reset to `{}`
+  // on that fresh mount. The "push facet params to URL" effect below always runs at least once
+  // per mount and, seeing `facets.status` undefined while the URL already had `status=approved`,
+  // "corrected" the URL by deleting it — a second, genuine router.push() that raced the tail of
+  // the redirect's own navigation and won, silently dropping the operator's active filter after
+  // a successful bulk publish. Seeding (and resyncing, below) `facets` from the server-derived
+  // initial* props closes that gap: local facet state can no longer diverge from the URL's own
+  // truth on a fresh mount, so the sync effect has nothing left to "correct".
+  const [facets, setFacets] = useState<AdvancedSearchQuery>(() => ({
+    categoryId: initialCategoryId || undefined,
+    brand: initialBrand || undefined,
+    status: initialFacetStatus || undefined,
+  }));
   const activeFacetCount = Object.entries(facets).filter(([k, v]) => k !== "q" && v).length;
   const pathname = usePathname();
   const router = useRouter();
@@ -337,6 +361,18 @@ export function ProductsTab({
   useEffect(() => {
     setSearchQuery(initialSearch);
   }, [initialSearch]);
+
+  // PIM#598 follow-up: resync facets from the server-derived initial* props whenever they
+  // change — same pattern as the two resync effects just above. Without this, a fresh mount
+  // (e.g. after a Server Action redirect) always starts facets blank regardless of what the
+  // landed URL actually contains, and the facet-push effect below "corrects" the URL to match.
+  useEffect(() => {
+    setFacets({
+      categoryId: initialCategoryId || undefined,
+      brand: initialBrand || undefined,
+      status: initialFacetStatus || undefined,
+    });
+  }, [initialCategoryId, initialBrand, initialFacetStatus]);
 
   // Sprint 1: push facet params to URL for server re-fetch via getAdvancedSearchProducts
   useEffect(() => {

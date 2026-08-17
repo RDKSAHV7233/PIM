@@ -213,6 +213,9 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           initialView={initialView}
           initialSearch={initialSearch}
           initialCreate={initialCreate}
+          initialCategoryId={categoryId ?? ""}
+          initialBrand={brand ?? ""}
+          initialFacetStatus={facetStatus ?? ""}
           totalCount={productWindow.totalCount}
           currentPage={currentPage}
           pageSize={limit}
