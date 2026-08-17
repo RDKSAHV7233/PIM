@@ -6,7 +6,17 @@ function percent(current: number, limit: number): number {
   return Math.min(999, Math.round((current / limit) * 100));
 }
 
-function Meter({ label, current, limit }: { label: string; current: number; limit: number }) {
+function Meter({
+  label,
+  current,
+  limit,
+  description,
+}: {
+  label: string;
+  current: number;
+  limit: number;
+  description?: string;
+}) {
   const p = percent(current, limit);
   const isWarning = p >= 80 && p < 100;
   const isExceeded = p >= 100;
@@ -37,6 +47,7 @@ function Meter({ label, current, limit }: { label: string; current: number; limi
           <span className="text-xs font-medium text-amber-700">Approaching limit</span>
         ) : null}
       </div>
+      {description ? <p className="text-xs text-slate-500">{description}</p> : null}
     </div>
   );
 }
@@ -91,7 +102,12 @@ export function UsageMeters({ usage }: UsageMetersProps) {
         </div>
       ) : null}
       <div className="grid gap-3 md:grid-cols-2">
-        <Meter label="SKUs" current={usage.skus.current} limit={usage.skus.limit} />
+        <Meter
+          label="SKUs"
+          current={usage.skus.current}
+          limit={usage.skus.limit}
+          description="Counts sellable variants, not product records — a product with no variants yet contributes 0."
+        />
         <Meter label="Submissions" current={usage.submissions.current} limit={usage.submissions.limit} />
         <Meter
           label="Storage (GB)"
