@@ -4,6 +4,8 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import type { AppRole } from "@/lib/api";
+import { canDecideApproval } from "@/lib/role-capabilities";
 import {
   formatAttributeLabel,
   formatAttributeValue,
@@ -22,6 +24,43 @@ const INTL_TAX_ROWS = [
   { market: "US", key: "TAX_CATEGORY",   marketLabel: "US",        codeLabel: "Tax Category"               },
   { market: "AU", key: "COMMODITY_CODE", marketLabel: "Australia", codeLabel: "Commodity Code"             },
 ] as const;
+
+/**
+ * Mirrors WORKFLOW_TRANSITIONS in apps/api/src/common/workflow/workflow-transitions.ts.
+ * "active" canonicalizes to "approved" server-side and is never a valid transition
+ * *target* through this form — products go active through a separate publish path,
+ * not by picking it here.
+ */
+const WORKFLOW_TRANSITIONS: Record<string, readonly string[]> = {
+  draft: ["in_review", "archived"],
+  in_review: ["approved", "rejected", "draft", "archived"],
+  approved: ["archived", "draft"],
+  active: ["archived", "draft"],
+  rejected: ["draft", "in_review", "archived"],
+  archived: ["draft", "in_review"],
+};
+
+/**
+ * The Status field must only ever offer transitions the backend will actually accept.
+ * Previously it listed all 5 statuses unconditionally, so an operator on an approved
+ * product would naturally pick "in_review" (the intuitive "go back a step") and hit a
+ * dead-end "Invalid workflow transition" error — "draft" was the one transition that
+ * actually works, and nothing said so. See PIM#581.
+ */
+function getSelectableStatuses(currentStatus: string, actorRole: AppRole): string[] {
+  const options = [currentStatus];
+  const targets = WORKFLOW_TRANSITIONS[currentStatus] ?? [];
+  for (const target of targets) {
+    const isApprovedRevert = target === "draft" && (currentStatus === "approved" || currentStatus === "active");
+    if (isApprovedRevert && !canDecideApproval(actorRole)) {
+      // Matches allowedRevertRoles in catalog.service.ts — don't offer an option that
+      // will just come back as a 403.
+      continue;
+    }
+    options.push(target);
+  }
+  return options;
+}
 
 export function ContentTab({ data }: { data: ProductDetailPageData }) {
   const undefinedAttributeEntries = getUndefinedAttributeEntries(
@@ -161,12 +200,18 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
               Status
             </label>
             <Select id="product-status" name="status" data-field="status" defaultValue={data.product.status}>
-              <option value="draft">draft</option>
-              <option value="in_review">in_review</option>
-              <option value="approved">approved</option>
-              <option value="active">active</option>
-              <option value="archived">archived</option>
+              {getSelectableStatuses(data.product.status, data.actorRole).map((statusOption) => (
+                <option key={statusOption} value={statusOption}>
+                  {statusOption}
+                </option>
+              ))}
             </Select>
+            {(data.product.status === "approved" || data.product.status === "active") ? (
+              <p className="text-xs text-slate-500">
+                Content is locked while {data.product.status}. Change status to draft, save, then edit content in a
+                second step.
+              </p>
+            ) : null}
           </div>
           <p className="text-xs text-slate-500">Submitting with expected version: {data.product.version}</p>
           <div className="space-y-2 md:col-span-2">
