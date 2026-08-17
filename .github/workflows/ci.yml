@@ -144,6 +144,9 @@ jobs:
       - name: Build Web
         run: npm run build --workspace @pim1/web
 
+      - name: Catalog shared-read timeout classification — controlled reproduction (PIM#578)
+        run: npm run test:integration:catalog-shared-read-timeout-classification
+
       - name: Product workflow edit-lock UI test (PIM#581)
         run: node apps/web/test/integration/product-workflow-edit-lock-ui.test.cjs
 
