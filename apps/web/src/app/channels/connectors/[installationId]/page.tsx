@@ -54,7 +54,11 @@ export const dynamic = "force-dynamic";
 
 interface ChannelConnectorDetailPageProps {
   params: Promise<{ installationId: string }>;
-  searchParams: Promise<{ tab?: string; status?: string; action?: string; queuedCount?: string; excludedCount?: string; ceiling?: string; submittedCount?: string; reasonMessage?: string; stepUpError?: string }>;
+  // PIM#596: triggerBulkPublishAction (actions.ts, shared with the Products workbench) writes
+  // its outcome under `bulkPublishStatus`, a dedicated key distinct from this page's own
+  // `status` (used by every other action on this page — credentials, publication targets,
+  // delta sync, schedule, ...). See the statusMessage derivation below for how they're merged.
+  searchParams: Promise<{ tab?: string; status?: string; bulkPublishStatus?: string; action?: string; queuedCount?: string; excludedCount?: string; ceiling?: string; submittedCount?: string; reasonMessage?: string; stepUpError?: string }>;
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access" | "sync" | "schedule" | "catalog-link";
@@ -753,7 +757,12 @@ export default async function ChannelConnectorDetailPage({
   const { authHeader, actorRole } = await getServerSession();
   const selectedTab = resolveTab(String(query.tab ?? ""));
   const detailReturnPath = buildDetailHref(installationId, selectedTab);
-  const statusMessage = connectorDetailStatusMessage(query.status, {
+  // PIM#596: every other action on this page (credentials, publication targets, delta sync,
+  // schedule, ...) still redirects through `status`; only bulk publish now uses its own
+  // `bulkPublishStatus` key (shared with the Products workbench — see actions.ts). Exactly one
+  // of the two is ever populated per redirect, so falling back is safe and keeps every other
+  // branch in connectorDetailStatusMessage below unchanged.
+  const statusMessage = connectorDetailStatusMessage(query.status ?? query.bulkPublishStatus, {
     queuedCount: query.queuedCount,
     excludedCount: query.excludedCount,
     ceiling: query.ceiling,

@@ -2540,7 +2540,11 @@ export async function triggerBulkPublishAction(formData: FormData) {
         const excludedCount = Array.isArray(payload.excluded) ? payload.excluded.length : 0;
         redirect(
           appendQueryParams(returnTo, {
-            status: "bulk-publish-none-eligible",
+            // PIM#596: dedicated query key so this outcome can never collide with a caller's
+            // own `status` param (e.g. the Products workbench's product-status facet filter —
+            // see catalog/products/page.tsx). appendQueryParams only ever sets the keys passed
+            // here, so every other existing query param on returnTo survives untouched.
+            bulkPublishStatus: "bulk-publish-none-eligible",
             excludedCount: String(excludedCount),
           }),
         );
@@ -2553,7 +2557,7 @@ export async function triggerBulkPublishAction(formData: FormData) {
         const submittedCount = typeof payload.submittedCount === "number" ? payload.submittedCount : 0;
         redirect(
           appendQueryParams(returnTo, {
-            status: "bulk-publish-too-large",
+            bulkPublishStatus: "bulk-publish-too-large",
             ceiling: String(ceiling),
             submittedCount: String(submittedCount),
           }),
@@ -2564,9 +2568,9 @@ export async function triggerBulkPublishAction(formData: FormData) {
     // (never wrapped into an ApiHttpError, since no HTTP response was ever received) — show
     // the operator "this timed out," not the same generic message as an unrelated failure.
     if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
-      redirect(appendQueryParams(returnTo, { status: "bulk-publish-timeout" }));
+      redirect(appendQueryParams(returnTo, { bulkPublishStatus: "bulk-publish-timeout" }));
     }
-    redirect(appendQueryParams(returnTo, { status: "bulk-publish-error" }));
+    redirect(appendQueryParams(returnTo, { bulkPublishStatus: "bulk-publish-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
   // Every excluded product failed approval status or destination readiness silently on the
@@ -2574,7 +2578,7 @@ export async function triggerBulkPublishAction(formData: FormData) {
   // followed by a flat success banner as "all 8 were queued" when most were dropped.
   redirect(
     appendQueryParams(returnTo, {
-      status: "bulk-publish-queued",
+      bulkPublishStatus: "bulk-publish-queued",
       queuedCount: String(result.submissionIds.length),
       excludedCount: String(result.excluded.length),
     }),

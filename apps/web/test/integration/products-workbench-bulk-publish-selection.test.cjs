@@ -38,6 +38,7 @@ const CONFIRM_FORM = path.join(
   "bulk-publish-confirm-form.tsx",
 );
 const BULK_PUBLISH_STATUS_LIB = path.join(REPO_ROOT, "apps", "web", "src", "lib", "bulk-publish-status.ts");
+const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -50,6 +51,7 @@ function run() {
   const pageSource = fs.readFileSync(PRODUCTS_PAGE, "utf8");
   const connectorDetailSource = fs.readFileSync(CONNECTOR_DETAIL_PAGE, "utf8");
   const confirmFormSource = fs.readFileSync(CONFIRM_FORM, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   // (a) Products workbench renders a real checkbox per row, gated by per-channel readiness —
   // not a fixed/auto-computed selection.
@@ -140,18 +142,12 @@ function run() {
 
   // Products route (server component) must supply the publish-capable connector list and
   // resolve the bulk-publish redirect outcome without colliding with the pre-existing
-  // product-status facet filter that already uses the same `status` query key.
+  // product-status facet filter — both now use structurally distinct query keys.
   assert(
     pageSource.includes("const publishConnectors = installedConnectors") &&
       pageSource.includes('item.status === "ACTIVE" && item.capabilities.includes("PUBLISH")') &&
       pageSource.includes("publishConnectors={publishConnectors}"),
     "Catalog products route must derive the publish-capable, active connector list from the already-fetched installed connectors and pass it into the workbench.",
-  );
-  assert(
-    pageSource.includes('rawStatusParam?.startsWith("bulk-publish-")') &&
-      pageSource.includes("const facetStatus = isBulkPublishOutcomeStatus ? undefined : rawStatusParam;") &&
-      pageSource.includes("bulkPublishStatusMessage={bulkPublishStatusMessage}"),
-    "Catalog products route must disambiguate the shared `status` query key between the product-status facet filter and a bulk-publish redirect outcome, and surface the resolved outcome banner into the workbench.",
   );
   assert(
     pageSource.includes('import { resolveBulkPublishStatusMessage } from "@/lib/bulk-publish-status";'),
@@ -170,6 +166,94 @@ function run() {
     "Shared bulk-publish status-message helper must cover every outcome triggerBulkPublishAction can redirect with.",
   );
 
+  // ─── PIM#596 regression: dedicated bulkPublishStatus key, not an overloaded `status` ───
+  //
+  // PIM#595 originally reused the Products page's `status` query key for the bulk-publish
+  // outcome, disambiguated by a "bulk-publish-" prefix check. That still let
+  // appendQueryParams(returnTo, { status: "bulk-publish-queued", ... }) *overwrite* whatever
+  // `status=<facet>` was already in returnTo's query string — so submitting bulk publish while
+  // a status facet filter was active silently cleared that filter after redirect. Fixed by
+  // giving the outcome its own query key so the two can never collide, structurally.
+
+  // appendQueryParams must only set the specific keys passed to it, never touch any other
+  // existing query param on returnTo (categoryId, brand, search, view, page, status, ...).
+  assert(
+    actionsSource.includes(
+      "function appendQueryParams(basePath: string, params: Record<string, string | undefined>): string {",
+    ) &&
+      actionsSource.includes("const [path, query = \"\"] = basePath.split(\"?\");") &&
+      actionsSource.includes("const search = new URLSearchParams(query);") &&
+      actionsSource.includes("for (const [key, value] of Object.entries(params)) {") &&
+      actionsSource.includes("search.set(key, value.trim());"),
+    "appendQueryParams must parse returnTo's existing query string and only .set() the specific keys passed to it — every other existing param (categoryId, brand, search, view, page, status, ...) must survive untouched. If this text drifts, re-verify the behavior by hand before changing the assertion.",
+  );
+
+  // All five triggerBulkPublishAction outcome branches must redirect under the dedicated
+  // bulkPublishStatus key — none may still use the shared `status` key.
+  const bulkPublishStatusKeyMatches = actionsSource.match(/bulkPublishStatus: "bulk-publish-[a-z-]+"/g) || [];
+  assert(
+    bulkPublishStatusKeyMatches.length === 5,
+    `triggerBulkPublishAction must redirect all five outcome branches (queued, none-eligible, too-large, timeout, error) under the dedicated bulkPublishStatus query key — found ${bulkPublishStatusKeyMatches.length}.`,
+  );
+  assert(
+    !/\bstatus:\s*"bulk-publish-/.test(actionsSource),
+    "triggerBulkPublishAction must no longer write any bulk-publish outcome under the shared `status` key — that's exactly what collided with the Products workbench's product-status facet filter.",
+  );
+
+  // Products route: no filter active → outcome still resolves cleanly, and — critically — the
+  // product-status facet filter is read as a plain value with no bulk-publish special-casing
+  // (the prefix-disambiguation hack from PIM#595 must be gone).
+  assert(
+    pageSource.includes("const facetStatus = query.status?.trim() || undefined;") &&
+      !pageSource.includes("isBulkPublishOutcomeStatus") &&
+      !pageSource.includes('startsWith("bulk-publish-")'),
+    "Catalog products route must read the product-status facet filter as a plain, untouched value — the prefix-disambiguation hack is no longer needed now that the outcome lives under its own key.",
+  );
+  assert(
+    pageSource.includes("resolveBulkPublishStatusMessage(query.bulkPublishStatus, {") &&
+      pageSource.includes("bulkPublishStatus?: string;"),
+    "Catalog products route must resolve the bulk-publish outcome from its own dedicated bulkPublishStatus query key, independent of the status facet filter.",
+  );
+
+  // Regression: status=approved (or any other facet, e.g. categoryId/brand) must survive a
+  // bulk-publish redirect unchanged, and the outcome banner must render as a separate concern.
+  // facetStatus feeds the product search query; bulkPublishStatusMessage feeds a separate
+  // banner prop — neither reads or derives from the other, so an active facet filter can never
+  // be clobbered by a bulk-publish redirect (and vice versa).
+  assert(
+    pageSource.includes("status: facetStatus, offset, limit") &&
+      pageSource.includes("bulkPublishStatusMessage={bulkPublishStatusMessage}") &&
+      !pageSource.includes("facetStatus ? undefined") &&
+      !pageSource.includes("bulkPublishStatusMessage ? resolveBulkPublishStatusMessage"),
+    "Product-status facet filter (facetStatus) and the bulk-publish outcome banner (bulkPublishStatusMessage) must be derived unconditionally and independently, so an active facet filter (status=approved, categoryId=..., brand=...) survives a bulk-publish redirect unchanged and the outcome still renders as its own banner.",
+  );
+
+  // Connector Sync tab caller: must keep working end-to-end with the renamed shared key. Every
+  // other action on that page (credentials, publication targets, delta sync, schedule, ...)
+  // keeps using `status` unchanged; only the bulk-publish branch now also checks
+  // bulkPublishStatus, since triggerBulkPublishAction is the same shared action used by the
+  // Products workbench.
+  assert(
+    connectorDetailSource.includes("connectorDetailStatusMessage(query.status ?? query.bulkPublishStatus, {") &&
+      connectorDetailSource.includes("bulkPublishStatus?: string;"),
+    "Connector Sync tab must read the shared bulk-publish outcome via the renamed bulkPublishStatus key (falling back from status), so its own bulk-publish banner keeps working unchanged after the shared action's key rename.",
+  );
+
+  // Sanity: a bulkPublishStatus value can never be misread as a product lifecycle `status`
+  // value anywhere — trivially true once the two are read from structurally distinct keys on
+  // both pages, asserted explicitly so a future refactor can't quietly re-merge them.
+  assert(
+    pageSource.includes("query.status") &&
+      pageSource.includes("query.bulkPublishStatus") &&
+      !pageSource.includes("resolveBulkPublishStatusMessage(query.status"),
+    "Bulk-publish outcome values (bulk-publish-queued/too-large/...) must never be read from the same query key the product-status facet filter reads from — the Products route must reference query.status and query.bulkPublishStatus as two independent fields.",
+  );
+  assert(
+    connectorDetailSource.includes("query.status ?? query.bulkPublishStatus") &&
+      !connectorDetailSource.includes("query.bulkPublishStatus ?? query.status"),
+    "Connector Sync tab must prefer its own action-outcome `status` values first and only fall back to bulkPublishStatus for the bulk-publish case, keeping every other status branch's precedence unchanged.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -184,8 +268,14 @@ function run() {
           "products_workbench_soft_ceiling_warning_documented_as_non_authoritative",
           "connector_sync_tab_auto_computed_bulk_publish_flow_unchanged",
           "bulk_publish_confirm_form_generalized_with_backward_compatible_defaults",
-          "catalog_products_route_supplies_publish_connectors_and_disambiguates_status_param",
+          "catalog_products_route_supplies_publish_connectors",
           "bulk_publish_status_helper_covers_all_redirect_outcomes",
+          "append_query_params_only_sets_passed_keys",
+          "trigger_bulk_publish_action_uses_dedicated_bulk_publish_status_key",
+          "catalog_products_route_facet_status_no_longer_special_cased",
+          "catalog_products_route_facet_and_outcome_derived_independently",
+          "connector_sync_tab_reads_renamed_bulk_publish_status_key",
+          "bulk_publish_status_never_misreadable_as_facet_status",
         ],
         checkedAt: new Date().toISOString(),
       },

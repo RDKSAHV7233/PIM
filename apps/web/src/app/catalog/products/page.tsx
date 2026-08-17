@@ -35,13 +35,11 @@ interface CatalogProductsPageProps {
     categoryId?: string;
     brand?: string;
     status?: string;
-    // PIM#595: bulk-publish redirect outcome. Reuses the same `status` query key as the
-    // product-status facet filter above (triggerBulkPublishAction in actions.ts hardcodes
-    // this key name for every caller, including the connector Sync tab, so it can't be
-    // renamed here without touching that shared action and its other caller). The two never
-    // collide in practice: facet status values are product statuses (draft/approved/...),
-    // while bulk-publish outcomes are always prefixed "bulk-publish-" — see the disambiguation
-    // below where facetStatus and bulkPublishStatusMessage are derived.
+    // PIM#596: bulk-publish redirect outcome. triggerBulkPublishAction (actions.ts) writes
+    // this under its own dedicated query key — not `status` — specifically so it can never
+    // collide with the product-status facet filter above. Both keys can be read as plain,
+    // independent values with no special-casing needed.
+    bulkPublishStatus?: string;
     queuedCount?: string;
     excludedCount?: string;
     ceiling?: string;
@@ -92,18 +90,16 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   // Sprint 1: faceted search
   const categoryId = query.categoryId?.trim() || undefined;
   const brand = query.brand?.trim() || undefined;
-  const rawStatusParam = query.status?.trim() || undefined;
-  // PIM#595: disambiguate the shared `status` query key — see the searchParams comment above.
-  const isBulkPublishOutcomeStatus = Boolean(rawStatusParam?.startsWith("bulk-publish-"));
-  const facetStatus = isBulkPublishOutcomeStatus ? undefined : rawStatusParam;
-  const bulkPublishStatusMessage = isBulkPublishOutcomeStatus
-    ? resolveBulkPublishStatusMessage(rawStatusParam, {
-        queuedCount: query.queuedCount,
-        excludedCount: query.excludedCount,
-        ceiling: query.ceiling,
-        submittedCount: query.submittedCount,
-      })
-    : null;
+  const facetStatus = query.status?.trim() || undefined;
+  // PIM#596: bulk-publish redirect outcome now lives under its own query key (see the
+  // searchParams comment above), so it's read independently of the facet filter above —
+  // no more prefix-matching special-case needed.
+  const bulkPublishStatusMessage = resolveBulkPublishStatusMessage(query.bulkPublishStatus, {
+    queuedCount: query.queuedCount,
+    excludedCount: query.excludedCount,
+    ceiling: query.ceiling,
+    submittedCount: query.submittedCount,
+  });
   const { authHeader, actorRole } = await getServerSession();
 
   try {
