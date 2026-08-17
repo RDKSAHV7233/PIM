@@ -7,12 +7,17 @@ import {
   getCategoryTree,
   getInstalledConnectors,
   getStats,
+  type MarketplaceChannel,
   type ProductListItem,
 } from "@/lib/api";
 import { getAdvancedSearchProducts } from "@/lib/api/catalog";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { resolveBulkPublishStatusMessage } from "@/lib/bulk-publish-status";
 import { loadSharedRead } from "@/lib/catalog-shared-read";
-import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
+import {
+  isChannelInDevelopment,
+  mapConnectorSlugToMarketplaceChannel,
+} from "@/lib/marketplace-channels";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
 
@@ -30,6 +35,17 @@ interface CatalogProductsPageProps {
     categoryId?: string;
     brand?: string;
     status?: string;
+    // PIM#595: bulk-publish redirect outcome. Reuses the same `status` query key as the
+    // product-status facet filter above (triggerBulkPublishAction in actions.ts hardcodes
+    // this key name for every caller, including the connector Sync tab, so it can't be
+    // renamed here without touching that shared action and its other caller). The two never
+    // collide in practice: facet status values are product statuses (draft/approved/...),
+    // while bulk-publish outcomes are always prefixed "bulk-publish-" — see the disambiguation
+    // below where facetStatus and bulkPublishStatusMessage are derived.
+    queuedCount?: string;
+    excludedCount?: string;
+    ceiling?: string;
+    submittedCount?: string;
   }>;
 }
 
@@ -76,7 +92,18 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   // Sprint 1: faceted search
   const categoryId = query.categoryId?.trim() || undefined;
   const brand = query.brand?.trim() || undefined;
-  const facetStatus = query.status?.trim() || undefined;
+  const rawStatusParam = query.status?.trim() || undefined;
+  // PIM#595: disambiguate the shared `status` query key — see the searchParams comment above.
+  const isBulkPublishOutcomeStatus = Boolean(rawStatusParam?.startsWith("bulk-publish-"));
+  const facetStatus = isBulkPublishOutcomeStatus ? undefined : rawStatusParam;
+  const bulkPublishStatusMessage = isBulkPublishOutcomeStatus
+    ? resolveBulkPublishStatusMessage(rawStatusParam, {
+        queuedCount: query.queuedCount,
+        excludedCount: query.excludedCount,
+        ceiling: query.ceiling,
+        submittedCount: query.submittedCount,
+      })
+    : null;
   const { authHeader, actorRole } = await getServerSession();
 
   try {
@@ -133,6 +160,33 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
       firstProduct && firstActiveChannel
         ? `/channels/mappings?channel=${encodeURIComponent(firstActiveChannel)}&categoryId=${encodeURIComponent(firstProduct.categoryId)}&productId=${encodeURIComponent(firstProduct.id)}`
         : null;
+    // PIM#595: connectors the Products workbench's manual bulk-publish selector can target —
+    // active installations with the PUBLISH capability, mapped to a supported marketplace
+    // channel, and not gated as still-in-development. Mirrors the eligibility a bulk-publish
+    // batch would need anyway; the backend independently re-validates every product regardless.
+    const publishConnectors = installedConnectors
+      .filter((item) => item.status === "ACTIVE" && item.capabilities.includes("PUBLISH"))
+      .map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        displayName: item.displayName,
+        channel: mapConnectorSlugToMarketplaceChannel(item.slug),
+        // Mirrors installation.capabilities.includes("BULK_PUBLISH") on the connector Sync tab —
+        // used client-side only to pick which soft-warning ceiling to show (see
+        // BULK_PUBLISH_SOFT_WARNING_CEILING in products-tab.tsx), never to gate submission.
+        hasNativeBulkPublish: item.capabilities.includes("BULK_PUBLISH"),
+      }))
+      .filter(
+        (
+          item,
+        ): item is {
+          id: string;
+          slug: string;
+          displayName: string;
+          channel: MarketplaceChannel;
+          hasNativeBulkPublish: boolean;
+        } => item.channel !== null && !isChannelInDevelopment(item.channel),
+      );
 
     return (
       <div className="space-y-5">
@@ -158,6 +212,8 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           installedConnectorCount={installedConnectorCount}
           mappingManagerHref={mappingManagerHref}
           connectorManagementHref="/channels/connectors"
+          publishConnectors={publishConnectors}
+          bulkPublishStatusMessage={bulkPublishStatusMessage}
           initialView={initialView}
           initialSearch={initialSearch}
           initialCreate={initialCreate}

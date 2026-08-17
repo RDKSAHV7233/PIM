@@ -10,6 +10,16 @@ interface BulkPublishConfirmFormProps {
   productIds: string[];
   returnTo: string;
   action: (formData: FormData) => void | Promise<void>;
+  /**
+   * Copy overrides (PIM#595). Defaults preserve the original connector Sync-tab wording,
+   * where `productIds` is an auto-computed "every approved product in this workspace" list.
+   * The Products workbench reuses this same form for an explicit operator-selected batch and
+   * passes its own copy so the count doesn't read as auto-derived when it wasn't.
+   */
+  idleLabelWhenEmpty?: string;
+  hintWhenEmpty?: string;
+  summaryLabel?: (count: number) => string;
+  confirmDescription?: (count: number) => string;
 }
 
 export function BulkPublishConfirmForm({
@@ -18,6 +28,12 @@ export function BulkPublishConfirmForm({
   productIds,
   returnTo,
   action,
+  idleLabelWhenEmpty = "No approved products",
+  hintWhenEmpty = "Approve at least one product before bulk publish.",
+  summaryLabel = (count) =>
+    `${count} approved product${count === 1 ? "" : "s"} selected from this connector workspace.`,
+  confirmDescription = (count) =>
+    `This will submit ${count} approved product${count === 1 ? "" : "s"} to the marketplace. Native feed connectors send one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.`,
 }: BulkPublishConfirmFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const confirmedRef = useRef(false);
@@ -57,20 +73,18 @@ export function BulkPublishConfirmForm({
         <input type="hidden" name="productIds" value={productIdsValue} />
         <input type="hidden" name="returnTo" value={returnTo} />
         <PendingSubmitButton
-          idleLabel={hasProducts ? "Submit bulk publish" : "No approved products"}
+          idleLabel={hasProducts ? "Submit bulk publish" : idleLabelWhenEmpty}
           className="bg-amber-600 hover:bg-amber-700 text-white"
           disabled={!hasProducts}
         />
         <span className="text-xs text-amber-800">
-          {hasProducts
-            ? `${productCount} approved product${productCount === 1 ? "" : "s"} selected from this connector workspace.`
-            : "Approve at least one product before bulk publish."}
+          {hasProducts ? summaryLabel(productCount) : hintWhenEmpty}
         </span>
       </form>
       <ConfirmDialog
         open={showConfirm}
         title="Submit bulk publish feed?"
-        description={`This will submit ${productCount} approved product${productCount === 1 ? "" : "s"} to the marketplace. Native feed connectors send one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.`}
+        description={confirmDescription(productCount)}
         confirmLabel="Submit publish"
         destructive={false}
         onConfirm={() => {
