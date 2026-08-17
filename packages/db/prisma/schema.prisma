@@ -880,12 +880,15 @@ model ConnectorSubmission {
   payloadSnapshotUrl String?   @map("payload_snapshot_url")
   channelErrors      Json?     @map("channel_errors")
   submittedAt        DateTime  @default(now()) @map("submitted_at")
-  resolvedAt         DateTime? @map("resolved_at")
+  resolvedAt           DateTime? @map("resolved_at")
+  connectorSlug        String?   @map("connector_slug")
+  connectorDisplayName String?   @map("connector_display_name")
 
   @@unique([tenantKey, installationId, idempotencyKey], map: "idx_connector_submissions_tenant_installation_idempotency")
   @@index([tenantKey, status, submittedAt(sort: Desc)], map: "idx_connector_submissions_tenant_status")
   @@index([tenantKey, installationId, status], map: "idx_connector_submissions_tenant_installation_status")
   @@index([tenantKey, installationId, productId], map: "idx_connector_submissions_tenant_installation_product")
+  @@index([tenantKey, connectorSlug, status], map: "idx_connector_submissions_tenant_connector_status")
   @@map("connector_submissions")
 }
 

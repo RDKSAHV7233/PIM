@@ -57,6 +57,17 @@ type CursorPayload = {
   id: string;
 };
 
+type ConnectorRemovalCleanupSummary = {
+  credentialsDeleted: number;
+  installationDeleted: number;
+};
+
+function readCount(rows: Array<Record<string, unknown>>): number {
+  const raw = rows[0]?.count ?? 0;
+  const value = typeof raw === "bigint" ? Number(raw) : Number(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
 function resolveStubConnectorSlugs(): string[] {
   return String(process.env.CONNECTOR_STUB_SLUGS ?? "")
     .split(",")
@@ -761,26 +772,15 @@ export class ConnectorInstallerService {
         accountAlias: installation.accountAlias,
       });
 
-      await this.auditService.record({
+      await this.deleteInstallationTransaction({
+        tenantKey,
+        installationId,
+        expectedSlug: installationSlug,
         actorId: actor.actorId,
         actorRole: actor.actorRole,
-        action: "CONNECTOR_DELETE_SUCCESS",
-        resource: "CONNECTOR_INSTALLATION",
-        resourceId: installationId,
-        metadata: {
-          connectorSlug: installation.slug,
-          accountAlias: installation.accountAlias,
-        },
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
       });
-
-      const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
-        DELETE FROM connector_installations
-        WHERE id = $1 AND tenant_key = $2
-        `,
-        [installationId, tenantKey]);
-      if (affected === 0) {
-        throw new NotFoundException("Connector installation not found.");
-      }
 
       await this.planUsageService.touchUsageForCurrentTenant();
       return { id: installationId, status: "DELETED" };
@@ -799,6 +799,135 @@ export class ConnectorInstallerService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Permanently deletes a connector installation inside a single DB transaction:
+   * blocks while active work exists, removes credentials, deletes the
+   * installation row, and audits the outcome — all atomically, so a failure at
+   * any step leaves the pre-call state untouched (no half-deleted installation).
+   *
+   * Historical connector_submissions / connector_webhook_events rows are
+   * deliberately NOT deleted here — see the 20260817000001 migration, which
+   * drops their ON DELETE CASCADE so resolved history survives installation
+   * deletion instead of disappearing with it.
+   */
+  private async deleteInstallationTransaction(input: {
+    tenantKey: string;
+    installationId: string;
+    expectedSlug: string;
+    actorId: string;
+    actorRole: string;
+    connectorSlug: string;
+    accountAlias: string;
+  }): Promise<ConnectorRemovalCleanupSummary> {
+    const tenantClient = this.prisma.tenant(input.tenantKey);
+    return tenantClient.$transaction(async (tx) => {
+      const lockedRows = await tenantRaw<Array<Record<string, unknown>>>(
+        tx,
+        `
+          SELECT ci.id, cd.slug
+          FROM connector_installations ci
+          JOIN connector_definitions cd ON cd.id = ci.connector_id
+          WHERE ci.tenant_key = $1 AND ci.id = $2
+          FOR UPDATE
+        `,
+        [input.tenantKey, input.installationId],
+      );
+      if (lockedRows.length === 0) {
+        throw new NotFoundException("Connector installation not found.");
+      }
+      const lockedSlug = String(lockedRows[0]?.slug ?? "").trim().toLowerCase();
+      if (lockedSlug !== input.expectedSlug) {
+        throw new BadRequestException({
+          error: "CONNECTOR_SLUG_MISMATCH",
+          expectedSlug: input.expectedSlug,
+          actualSlug: lockedSlug,
+        });
+      }
+
+      const activeExportRows = await tenantRaw<Array<Record<string, unknown>>>(
+        tx,
+        `
+          SELECT COUNT(*)::int AS count
+          FROM "MarketplaceExportJob"
+          WHERE "tenantKey" = $1 /* tenant_key: MarketplaceExportJob uses unmapped camelCase tenantKey */
+            AND installation_id = $2
+            AND status IN ('queued', 'processing', 'retrying')
+        `,
+        [input.tenantKey, input.installationId],
+      );
+      const activeExportJobs = readCount(activeExportRows);
+      if (activeExportJobs > 0) {
+        throw new ConflictException({
+          error: "CONNECTOR_DELETE_BLOCKED_ACTIVE_EXPORT_JOBS",
+          message: "Connector deletion is blocked while export jobs are queued, processing, or retrying.",
+          activeExportJobs,
+        });
+      }
+
+      // connector_submissions has no queued/processing/retrying status of its own —
+      // PENDING is the only non-terminal state a submission can be in (terminal:
+      // SUCCESS, REJECTED, SUPPRESSED, ERROR — see ConnectorFrameworkService).
+      const activeSubmissionRows = await tenantRaw<Array<Record<string, unknown>>>(
+        tx,
+        `
+          SELECT COUNT(*)::int AS count
+          FROM connector_submissions
+          WHERE tenant_key = $1
+            AND installation_id = $2
+            AND UPPER(status) = 'PENDING'
+        `,
+        [input.tenantKey, input.installationId],
+      );
+      const activeSubmissions = readCount(activeSubmissionRows);
+      if (activeSubmissions > 0) {
+        throw new ConflictException({
+          error: "CONNECTOR_DELETE_BLOCKED_ACTIVE_SUBMISSIONS",
+          message: "Connector deletion is blocked while connector submissions are still pending.",
+          activeSubmissions,
+        });
+      }
+
+      const credentialsDeleted = await tenantExecRaw(
+        tx,
+        `
+          DELETE FROM connector_credentials
+          WHERE tenant_key = $1 AND installation_id = $2
+        `,
+        [input.tenantKey, input.installationId],
+      );
+      const installationDeleted = await tenantExecRaw(
+        tx,
+        `
+          DELETE FROM connector_installations
+          WHERE tenant_key = $1 AND id = $2
+        `,
+        [input.tenantKey, input.installationId],
+      );
+      if (installationDeleted === 0) {
+        throw new NotFoundException("Connector installation not found.");
+      }
+
+      const cleanup: ConnectorRemovalCleanupSummary = { credentialsDeleted, installationDeleted };
+      await tx.auditLog.create({
+        data: {
+          id: randomUUID(),
+          actorId: input.actorId,
+          actorRole: input.actorRole,
+          action: "CONNECTOR_DELETE_SUCCESS",
+          resource: "CONNECTOR_INSTALLATION",
+          resourceId: input.installationId,
+          metadata: {
+            connectorSlug: input.connectorSlug,
+            accountAlias: input.accountAlias,
+            cleanup,
+          },
+        },
+      });
+
+      return cleanup;
+    });
   }
 
   async reconnect(installationId: string, actor: ConnectorActor) {

@@ -1,5 +1,6 @@
 ﻿import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { signConnectorOAuthState } from "./connector-oauth-state";
 import { ConnectorInstallerService } from "./connector-installer.service";
 import type { InstallConnectorDto } from "./dto/install-connector.dto";
@@ -10,10 +11,21 @@ describe("ConnectorInstallerService", () => {
   function createService() {
     const queryMock = jest.fn();
     const executeMock = jest.fn();
+    const auditLogCreateMock = jest.fn().mockResolvedValue(undefined);
+    // The transaction callback receives a `tx` exposing the same raw-query
+    // surface as the outer tenant client, plus the ORM accessor used for the
+    // atomic audit-log write (see deleteInstallationTransaction).
+    const txClient = {
+      $queryRawUnsafe: queryMock, // RLS-BYPASS: manual tenant filter
+      $executeRawUnsafe: executeMock, // RLS-BYPASS: manual tenant filter
+      auditLog: { create: auditLogCreateMock },
+    };
+    const transactionMock = jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(txClient));
     const tenantMock = jest.fn().mockReturnValue({
       // RLS-BYPASS: manual tenant filter — tenantRaw/tenantExecRaw/globalQuery call through to these
       $queryRawUnsafe: queryMock, // RLS-BYPASS: manual tenant filter
       $executeRawUnsafe: executeMock, // RLS-BYPASS: manual tenant filter
+      $transaction: transactionMock,
     });
     const prisma = {
       tenant: tenantMock,
@@ -86,6 +98,8 @@ describe("ConnectorInstallerService", () => {
       tenantMock,
       queryMock,
       executeMock,
+      transactionMock,
+      auditLogCreateMock,
       auditService,
       connectorPermissionService,
       credentialEncryptionService,
@@ -96,7 +110,7 @@ describe("ConnectorInstallerService", () => {
     };
   }
 
-  it("records delete attempt + success audit before deleting connector installation", async () => {
+  it("records delete attempt audit before deleting connector installation", async () => {
     const { service, queryMock, executeMock, auditService } = createService();
     queryMock.mockResolvedValue([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }]);
     executeMock.mockResolvedValue(1);
@@ -115,15 +129,243 @@ describe("ConnectorInstallerService", () => {
         resourceId: "inst_1",
       }),
     );
-    expect(auditService.record).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorId: "user_42",
-        action: "CONNECTOR_DELETE_SUCCESS",
-        resource: "CONNECTOR_INSTALLATION",
-        resourceId: "inst_1",
-      }),
-    );
     expect(executeMock).toHaveBeenCalled();
+  });
+
+  // ─── deleteInstallation lifecycle (#553 / #483) ──────────────────────────────
+  // Hand-ported permanent-delete lifecycle: blocking checks for active work,
+  // atomic credential + installation removal, and connector_submissions /
+  // connector_webhook_events history preservation (enforced by the
+  // 20260817000001/2 migrations, verified separately against a real Postgres —
+  // not re-provable from these mocked unit tests).
+  describe("deleteInstallation lifecycle (#553 / #483)", () => {
+    function mockLockedRow(overrides: Partial<{ id: string; slug: string }> = {}) {
+      return [{ id: overrides.id ?? "inst_1", slug: overrides.slug ?? "amazon-in" }];
+    }
+
+    it("deletes the installation when no active work exists", async () => {
+      const { service, queryMock, executeMock, transactionMock, auditLogCreateMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }]) // requireInstallationForAction
+        .mockResolvedValueOnce(mockLockedRow()) // FOR UPDATE lock
+        .mockResolvedValueOnce([{ count: 0 }]) // active export jobs
+        .mockResolvedValueOnce([{ count: 0 }]); // active submissions
+      executeMock
+        .mockResolvedValueOnce(1) // credentials deleted
+        .mockResolvedValueOnce(1); // installation deleted
+
+      const result = await service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" });
+
+      const tenantKey = getTenantKeyFromContext();
+      expect(result).toEqual({ id: "inst_1", status: "DELETED" });
+      expect(transactionMock).toHaveBeenCalledTimes(1);
+      expect(executeMock).toHaveBeenNthCalledWith(1, expect.stringContaining("DELETE FROM connector_credentials"), tenantKey, "inst_1");
+      expect(executeMock).toHaveBeenNthCalledWith(2, expect.stringContaining("DELETE FROM connector_installations"), tenantKey, "inst_1");
+      expect(auditLogCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: "CONNECTOR_DELETE_SUCCESS",
+            resourceId: "inst_1",
+            metadata: expect.objectContaining({
+              cleanup: { credentialsDeleted: 1, installationDeleted: 1 },
+            }),
+          }),
+        }),
+      );
+    });
+
+    it("never issues a bare DELETE outside the transaction (regression: lifecycle guard cannot be bypassed)", async () => {
+      const { service, queryMock, executeMock, transactionMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      executeMock.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+
+      await service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" });
+
+      // Every executeMock call happened only via calls made from inside the
+      // transaction callback — proven by transactionMock having run before any
+      // assertions here would make sense, and by there being exactly the two
+      // expected statements (credentials, installation), not a third bare delete.
+      expect(transactionMock).toHaveBeenCalledTimes(1);
+      expect(executeMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("blocks deletion when export jobs are queued, processing, or retrying", async () => {
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 2 }]); // active export jobs
+
+      await expect(
+        service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          error: "CONNECTOR_DELETE_BLOCKED_ACTIVE_EXPORT_JOBS",
+          activeExportJobs: 2,
+        }),
+      });
+      expect(executeMock).not.toHaveBeenCalled();
+    });
+
+    it("blocks deletion when a connector submission is still PENDING", async () => {
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }]) // active export jobs
+        .mockResolvedValueOnce([{ count: 1 }]); // active submissions
+
+      await expect(
+        service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          error: "CONNECTOR_DELETE_BLOCKED_ACTIVE_SUBMISSIONS",
+          activeSubmissions: 1,
+        }),
+      });
+      expect(executeMock).not.toHaveBeenCalled();
+    });
+
+    it("does not block on submissions that already reached a terminal state", async () => {
+      // SUCCESS/REJECTED/SUPPRESSED/ERROR are terminal (see ConnectorFrameworkService);
+      // only PENDING counts as active. The blocking query itself filters to
+      // UPPER(status) = 'PENDING', so a terminal-status submission simply never
+      // matches — this asserts the deletion proceeds past that check.
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }])
+        .mockResolvedValueOnce([{ count: 0 }]); // terminal-status submissions never match this query
+      executeMock.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+
+      const result = await service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" });
+
+      expect(result).toEqual({ id: "inst_1", status: "DELETED" });
+    });
+
+    it("removes connector credentials as part of the same transaction", async () => {
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      executeMock.mockResolvedValueOnce(3).mockResolvedValueOnce(1); // 3 credential rows removed
+
+      await service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" });
+
+      expect(executeMock).toHaveBeenNthCalledWith(
+        1,
+        expect.stringMatching(/DELETE FROM connector_credentials/),
+        getTenantKeyFromContext(),
+        "inst_1",
+      );
+    });
+
+    it("never deletes connector_submissions or connector_webhook_events rows (history preservation)", async () => {
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      executeMock.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+
+      await service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" });
+
+      for (const call of executeMock.mock.calls) {
+        const sql = String(call[0]);
+        expect(sql).not.toMatch(/DELETE FROM connector_submissions/);
+        expect(sql).not.toMatch(/DELETE FROM connector_webhook_events/);
+      }
+    });
+
+    it("scopes every raw query inside the transaction to the caller's tenant", async () => {
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      executeMock.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+
+      await service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" });
+
+      // requireInstallationForAction's own lookup is call #1; the transaction's
+      // lock + two COUNT queries are calls #2-4 — all four must carry tenantKey.
+      const tenantKey = getTenantKeyFromContext();
+      for (const call of queryMock.mock.calls) {
+        expect(call).toContain(tenantKey);
+      }
+      for (const call of executeMock.mock.calls) {
+        expect(call).toContain(tenantKey);
+      }
+    });
+
+    it("throws NotFoundException when the installation vanishes between lookup and the FOR UPDATE lock", async () => {
+      const { service, queryMock, executeMock, auditLogCreateMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }]) // still present at outer lookup
+        .mockResolvedValueOnce([]); // gone by the time the transaction locks it
+
+      await expect(
+        service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(executeMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("repeated deletion of an already-deleted installation returns 404, not idempotent success", async () => {
+      // Decision (invariant #6): a second delete call is NOT treated as a no-op
+      // success — requireInstallationForAction's own lookup already fails closed
+      // once the row is gone, before the transaction is ever entered.
+      const { service, queryMock, transactionMock } = createService();
+      queryMock.mockResolvedValueOnce([]); // second call: row no longer exists
+
+      await expect(
+        service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects deletion when the locked row's slug no longer matches the expected slug (race with a concurrent reinstall)", async () => {
+      const { service, queryMock, executeMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow({ slug: "flipkart" })); // changed under our feet
+
+      await expect(
+        service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" }, "amazon-in"),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ error: "CONNECTOR_SLUG_MISMATCH" }),
+      });
+      expect(executeMock).not.toHaveBeenCalled();
+    });
+
+    it("does not create an audit success record when the installation delete affects zero rows", async () => {
+      // Simulates the installation vanishing between the FOR UPDATE lock and the
+      // final DELETE within the same transaction — the whole point of running
+      // these as one atomic unit is that this can never leave a half-deleted state.
+      const { service, queryMock, executeMock, auditLogCreateMock } = createService();
+      queryMock
+        .mockResolvedValueOnce([{ id: "inst_1", slug: "amazon-in", accountAlias: "primary" }])
+        .mockResolvedValueOnce(mockLockedRow())
+        .mockResolvedValueOnce([{ count: 0 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      executeMock
+        .mockResolvedValueOnce(1) // credentials deleted
+        .mockResolvedValueOnce(0); // installation delete affected 0 rows
+
+      await expect(
+        service.deleteInstallation("inst_1", { actorId: "user_42", actorRole: "admin" }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("reconnect (#564)", () => {

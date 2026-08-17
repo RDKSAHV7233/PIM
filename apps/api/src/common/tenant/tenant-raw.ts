@@ -1,4 +1,6 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
+
+type TenantScopedClient = PrismaClient | Prisma.TransactionClient;
 
 /**
  * Executes a raw SQL SELECT that MUST include a manual `tenant_key` filter.
@@ -23,9 +25,13 @@ import type { PrismaClient } from "@prisma/client";
  *      WHERE tenant_key = $1 AND id = $2`,
  *     [tenantKey, submissionId],
  *   );
+ *
+ * `client` also accepts a `Prisma.TransactionClient` (the `tx` passed into a
+ * `$transaction(async (tx) => ...)` callback) so raw queries can participate
+ * in an atomic transaction alongside ORM calls.
  */
 export async function tenantRaw<T = unknown>(
-  client: PrismaClient,
+  client: TenantScopedClient,
   sql: string,
   params: unknown[] = [],
 ): Promise<T> {
@@ -39,7 +45,7 @@ export async function tenantRaw<T = unknown>(
  * Returns the number of affected rows.
  */
 export async function tenantExecRaw(
-  client: PrismaClient,
+  client: TenantScopedClient,
   sql: string,
   params: unknown[] = [],
 ): Promise<number> {
