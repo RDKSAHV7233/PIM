@@ -202,6 +202,15 @@ jobs:
         run: npm run test:e2e:smoke -- --project=chromium
         timeout-minutes: 12
 
+      - name: E2E - Products workbench bulk-publish returnTo regression (PIM#596 follow-up)
+        # Runtime regression for a React-reactivity bug that static apps/web/test/integration
+        # source-text assertions could not catch (and did not catch, twice): returnTo in
+        # products-tab.tsx used to read window.location.search during render instead of the
+        # reactive useSearchParams() value, permanently freezing on the pre-navigation URL after
+        # a facet-filter change. See the spec file for the full mechanism and live-repro evidence.
+        run: npx playwright test products-workbench-bulk-publish-return-to --project=chromium
+        timeout-minutes: 10
+
       - name: E2E - Full UX journey (import → catalog → quality → bulk edit → mapping)
         run: npx playwright test journey-bulk-import-to-mapping --project=chromium
         timeout-minutes: 12

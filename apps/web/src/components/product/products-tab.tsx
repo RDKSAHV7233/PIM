@@ -313,12 +313,20 @@ export function ProductsTab({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // PIM#596 follow-up: this used to branch on `typeof window` and read raw
+  // `window.location.search` on the client instead of `searchParams`. That's an "impure
+  // render" bug — after a router.push() that changes only the search params, Next.js updates
+  // its reactive `useSearchParams()` context (triggering this re-render) *before* it finishes
+  // mutating `window.location` to match. Reading `window.location.search` during render
+  // therefore captured a one-render-stale snapshot of the *previous* URL, and since nothing
+  // forces a second re-render afterward, that stale value stuck permanently — not just
+  // briefly racy. Confirmed by isolated reproduction against this app's real Next.js version
+  // (15.5.2): the window.location-based read never recovered even seconds after a settled
+  // navigation, while `searchParams.toString()` updated correctly and immediately. Using
+  // `searchParams` unconditionally (it's already correct during SSR too) removes the race
+  // entirely instead of papering over its timing.
   const returnTo = useMemo(() => {
-    const params =
-      typeof window === "undefined"
-        ? new URLSearchParams(searchParams.toString())
-        : new URLSearchParams(window.location.search);
-    const query = params.toString();
+    const query = searchParams.toString();
     return query ? `${pathname}?${query}` : pathname;
   }, [pathname, searchParams]);
 
