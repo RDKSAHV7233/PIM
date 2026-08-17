@@ -69,6 +69,22 @@ function isErrorAuthorityRuntimeProofPath(pathname: string): boolean {
   return pathname === ERROR_AUTHORITY_RUNTIME_PROOF_PATH || pathname.startsWith(`${ERROR_AUTHORITY_RUNTIME_PROOF_PATH}/`);
 }
 
+// PIM#601: Next.js marks a client-side Server Action invocation with a POST plus the
+// `next-action` header (see next/dist/client/components/app-router-headers.js's
+// ACTION_HEADER, matched against in next/dist/server/lib/server-action-request-meta.js's
+// isFetchAction check - method === "POST" && the header is present). When Next's own
+// action-handler wants to redirect such a request (e.g. a `redirect()` call inside a
+// Server Action's catch block), it does NOT send a plain 3xx with a `Location` header -
+// it sends a 303 with an `x-action-redirect` header and an RSC-shaped body, which is the
+// only response shape the client's fetch-based action runtime knows how to consume.
+// A raw `NextResponse.redirect()` from middleware is a valid response for a normal GET
+// page navigation, but is the wrong shape for a Server Action fetch call: the client
+// receives a followed-redirect 200 HTML page instead of an action-response, and throws
+// Next.js error E394 ("unexpected response was received from the server").
+function isServerActionFetchRequest(request: NextRequest): boolean {
+  return request.method === "POST" && request.headers.get("next-action") !== null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (
@@ -85,6 +101,16 @@ export async function middleware(request: NextRequest) {
 
   // Fail-fast auth gate: no tokens at all on a protected route → redirect to login
   if (!accessToken && !refreshToken && !isPublicPath(pathname)) {
+    // PIM#601: don't synthesize a raw redirect for a Server Action fetch call - that
+    // response shape crashes the client action runtime (E394). Let the request fall
+    // through to the action itself; it will call the API without credentials, get a 401,
+    // and apps/app/actions.ts's resolveSessionExpiredRedirect/handleSessionExpired
+    // (BUG-AUTH-STALE-SESSION-001) will call next/navigation's redirect() from inside the
+    // action, which Next's own action-handler translates into a proper action-response
+    // redirect (x-action-redirect header, no Location, RSC body) instead of a plain 3xx.
+    if (isServerActionFetchRequest(request)) {
+      return NextResponse.next();
+    }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
