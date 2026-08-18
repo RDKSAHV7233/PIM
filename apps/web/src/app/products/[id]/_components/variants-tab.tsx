@@ -16,8 +16,8 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "sku",
       header: "SKU",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
         return data.canWrite ? (
           <Input form={editFormId} name="skuCode" defaultValue={variant.skuCode} required />
         ) : (
@@ -28,8 +28,8 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "attributes",
       header: "Attributes",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
         const attributesDefault = JSON.stringify(variant.attributes ?? {}, null, 2);
         return data.canWrite ? (
           <Textarea form={editFormId} name="variantAttributes" rows={4} className="w-full min-w-0 text-xs" defaultValue={attributesDefault} />
@@ -41,8 +41,8 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "mrp",
       header: "MRP",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
         return data.canEditPricing ? (
           <Input form={editFormId} name="mrp" type="number" min={0} step="0.01" defaultValue={variant.mrp ?? ""} />
         ) : (
@@ -53,8 +53,8 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "sellingPrice",
       header: "Selling Price",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
         return data.canEditPricing ? (
           <Input form={editFormId} name="sellingPrice" type="number" min={0} step="0.01" defaultValue={variant.sellingPrice ?? ""} />
         ) : (
@@ -65,8 +65,8 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "inventory",
       header: "Inventory",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
         return data.canWrite ? (
           <Input form={editFormId} name="inventoryQty" type="number" min={0} defaultValue={variant.inventoryQty} required />
         ) : (
@@ -77,8 +77,8 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "status",
       header: "Status",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
         return data.canWrite ? (
           <Select form={editFormId} name="status" defaultValue={variant.status}>
             <option value="draft">draft</option>
@@ -93,9 +93,9 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
     {
       key: "actions",
       header: "Actions",
-      render: (variant) => {
-        const editFormId = `variant-edit-${variant.id}`;
-        const removeFormId = `variant-remove-${variant.id}`;
+      render: (variant, view) => {
+        const editFormId = `variant-edit-${variant.id}-${view}`;
+        const removeFormId = `variant-remove-${variant.id}-${view}`;
         return (
           <div className="px-0 py-0" data-variant-lifecycle-actions="true">
             {data.canWrite && !["approved", "active", "archived"].includes(data.product.status) ? (

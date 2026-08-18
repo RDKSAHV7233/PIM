@@ -1,10 +1,20 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
+export type DataGridView = "desktop" | "mobile";
+
 export interface Column<T> {
   key: string;
   header: string;
-  render?: (row: T) => ReactNode;
+  // DataGrid renders every row twice — once into the desktop <table>, once into
+  // the CSS-hidden-on-desktop mobile card list (see the two `rows.map` calls below).
+  // `view` lets a render() that builds a `form`/`id` attribute keep the desktop and
+  // mobile copies distinct. Two DOM elements sharing an id is invalid HTML, and when
+  // cells reference a form via the `form="..."` attribute (as the variants table
+  // does), a duplicate id makes the browser resolve every matching element to
+  // whichever form is first in tree order — silently dropping the mobile form's own
+  // fields from its submission (PIM#600).
+  render?: (row: T, view: DataGridView) => ReactNode;
   headerClassName?: string;
   cellClassName?: string;
   mobileHide?: boolean;
@@ -69,7 +79,7 @@ export function DataGrid<T extends object>({
               >
                 {columns.map((col) => (
                   <td key={col.key} className={cn("px-3 py-2.5", col.cellClassName)}>
-                    {col.render ? col.render(row) : getCellValue(row, col.key)}
+                    {col.render ? col.render(row, "desktop") : getCellValue(row, col.key)}
                   </td>
                 ))}
               </tr>
@@ -91,7 +101,7 @@ export function DataGrid<T extends object>({
                   <div key={col.key} className="flex justify-between gap-4 py-2 first:pt-0 last:pb-0">
                     <dt className="shrink-0 text-xs font-medium text-slate-500">{col.header}</dt>
                     <dd className={cn("min-w-0 break-words text-right text-sm text-slate-900", col.cellClassName)}>
-                      {col.render ? col.render(row) : getCellValue(row, col.key)}
+                      {col.render ? col.render(row, "mobile") : getCellValue(row, col.key)}
                     </dd>
                   </div>
                 ))}
@@ -129,7 +139,7 @@ export function DataCardList<T extends object>({
                 <div key={col.key} className="flex justify-between gap-4 py-2 first:pt-0 last:pb-0">
                   <dt className="shrink-0 text-xs font-medium text-slate-500">{col.header}</dt>
                   <dd className={cn("min-w-0 break-words text-right text-sm text-slate-900", col.cellClassName)}>
-                    {col.render ? col.render(row) : getCellValue(row, col.key)}
+                    {col.render ? col.render(row, "mobile") : getCellValue(row, col.key)}
                   </dd>
                 </div>
               ))}
