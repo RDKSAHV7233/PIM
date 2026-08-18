@@ -41,6 +41,7 @@ import {
   type ConnectorSyncSchedule,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { pickLatestSuccessfulSubmission, resolveAccountHealthSyncState } from "@/lib/connector-utils";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { canEditConnectorCredentials, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerCsrfToken } from "@/lib/server-auth";
@@ -869,6 +870,15 @@ export default async function ChannelConnectorDetailPage({
     const pendingSubmissions = submissions.filter(
       (item) => item.status === "PENDING" || item.status === "RETRYING",
     );
+    // installation.lastSyncAt (connector_installations.last_sync_at) is never written by any
+    // sync/publish code path today — see PIM#584. It only ever reflects a full account/catalog
+    // sync (e.g. the Shopify Store Configuration import), a concept distinct from individual
+    // product submissions, so it is legitimately null on accounts that have only ever published
+    // products one at a time. Derive the most recent successful submission as a fallback so the
+    // Account Health card never reads "no sync" when the account has clearly been publishing
+    // successfully.
+    const latestSuccessfulSubmission = pickLatestSuccessfulSubmission(submissions);
+    const accountHealthSyncState = resolveAccountHealthSyncState(installation.lastSyncAt, latestSuccessfulSubmission);
     const latestSubmissionByProductId = new Map<
       string,
       (typeof submissions)[number]
@@ -1279,7 +1289,13 @@ export default async function ChannelConnectorDetailPage({
           <KpiCard
             label="Account health"
             value={formatStatusSummary(installation.status)}
-            helper={installation.lastSyncAt ? `Last sync ${fmtDT(installation.lastSyncAt)}` : "No sync recorded yet"}
+            helper={
+              accountHealthSyncState.kind === "full_sync"
+                ? `Last full catalog sync ${fmtDT(accountHealthSyncState.lastSyncAt)}`
+                : accountHealthSyncState.kind === "submissions_only"
+                  ? `No full catalog sync yet · last successful submission ${fmtDT(accountHealthSyncState.latestSuccessfulSubmissionAt)}`
+                  : "No full catalog sync or submissions recorded yet"
+            }
             tone={
               installationStatusTone(installation.status) === "danger"
                 ? "danger"
@@ -1365,8 +1381,10 @@ export default async function ChannelConnectorDetailPage({
                   <dd>{installation.externalAccountRef || "-"}</dd>
                   <dt className="text-slate-500">Installed At</dt>
                   <dd>{fmtDT(installation.installedAt)}</dd>
-                  <dt className="text-slate-500">Last Sync</dt>
+                  <dt className="text-slate-500">Last Full Catalog Sync</dt>
                   <dd>{installation.lastSyncAt ? fmtDT(installation.lastSyncAt) : "-"}</dd>
+                  <dt className="text-slate-500">Last Successful Submission</dt>
+                  <dd>{latestSuccessfulSubmission ? fmtDT(latestSuccessfulSubmission.submittedAt) : "-"}</dd>
                 </dl>
               </Card>
 
@@ -1661,7 +1679,8 @@ export default async function ChannelConnectorDetailPage({
                   </p>
                   <ul className="list-disc space-y-1 pl-5 text-slate-600">
                     <li>Status: <span className="font-medium text-slate-800">{formatStatusSummary(installation.status)}</span></li>
-                    <li>Last sync: <span className="font-medium text-slate-800">{installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "Not recorded"}</span></li>
+                    <li>Last full catalog sync: <span className="font-medium text-slate-800">{installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "Not recorded"}</span></li>
+                    <li>Last successful submission: <span className="font-medium text-slate-800">{latestSuccessfulSubmission ? formatDateTime(latestSuccessfulSubmission.submittedAt) : "None recorded"}</span></li>
                     <li>Installed by: <span className="font-medium text-slate-800">{installation.installedBy}</span></li>
                   </ul>
                   <div className="flex flex-wrap gap-2 pt-1">

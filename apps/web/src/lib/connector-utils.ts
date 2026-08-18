@@ -45,3 +45,60 @@ export function resolveInstallationContextDetail(installation: ConnectorInstalla
     : `${installation.displayName} | status ${installation.status}`;
   return `${prefix}. Readiness and publish checks now follow the selected connector account in this workbench.`;
 }
+
+// ─── Account health sync signal (PIM#584) ──────────────────────────────────
+//
+// `installation.lastSyncAt` (the connector_installations.last_sync_at column) is never written
+// by any sync or publish code path in this codebase today. In practice it only ever reflects a
+// full account/catalog-level sync (e.g. the Shopify Store Configuration import's own
+// "Last imported" timestamp, stored separately in metadata), which is a distinct concept from
+// individual product submissions. That means it is legitimately null for accounts that have only
+// ever published products one at a time via submissions — even when those submissions are all
+// SUCCESS. Treating a null lastSyncAt as "no sync ever happened" is misleading for Support, so
+// callers should fall back to the most recent successful submission instead of showing a bare
+// "no sync" state.
+
+export interface SubmissionSyncSignal {
+  status: string;
+  submittedAt: string;
+}
+
+/**
+ * Returns the most recently submitted submission with status "SUCCESS" out of the given list,
+ * or null if none succeeded. Submission recency is compared by submittedAt, not array order, so
+ * callers do not need to pre-sort.
+ */
+export function pickLatestSuccessfulSubmission<T extends SubmissionSyncSignal>(
+  submissions: readonly T[],
+): T | null {
+  return submissions.reduce<T | null>((latest, item) => {
+    if (item.status !== "SUCCESS") return latest;
+    if (!latest || new Date(item.submittedAt).getTime() > new Date(latest.submittedAt).getTime()) {
+      return item;
+    }
+    return latest;
+  }, null);
+}
+
+export type AccountHealthSyncState =
+  | { kind: "full_sync"; lastSyncAt: string }
+  | { kind: "submissions_only"; latestSuccessfulSubmissionAt: string }
+  | { kind: "none" };
+
+/**
+ * Decides what sync evidence to show on the Account Health card: prefer a real full-catalog
+ * sync timestamp when one exists, otherwise fall back to the latest successful submission, and
+ * only report "none" when there is genuinely no evidence of either.
+ */
+export function resolveAccountHealthSyncState(
+  lastSyncAt: string | null | undefined,
+  latestSuccessfulSubmission: SubmissionSyncSignal | null,
+): AccountHealthSyncState {
+  if (lastSyncAt) {
+    return { kind: "full_sync", lastSyncAt };
+  }
+  if (latestSuccessfulSubmission) {
+    return { kind: "submissions_only", latestSuccessfulSubmissionAt: latestSuccessfulSubmission.submittedAt };
+  }
+  return { kind: "none" };
+}
