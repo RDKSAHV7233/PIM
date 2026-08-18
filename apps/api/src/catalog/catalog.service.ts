@@ -80,6 +80,12 @@ export class CatalogService {
     const [categories, products, variants, pendingApprovals] = await Promise.all([
       this.prisma.tenant().category.count(),
       this.prisma.tenant().product.count(),
+      // PIM#614: deliberately left as a raw, unfiltered variant-row count. This backs the
+      // Products workbench header's "Variants: N" stat — a catalog-operational figure
+      // ("how many variant rows exist"), not a commercial one. It has never been one of the
+      // three customer-facing "SKU" surfaces (Plan & Usage meter, Compare Plans, plan-limit
+      // modal — see plan-usage.service.ts's SELLABLE_VARIANT_WHERE), and its own label already
+      // says "Variants," not "SKUs," so there's no naming collision to resolve here.
       this.prisma.tenant().variant.count(),
       this.prisma.tenant().product.count({ where: { status: RecordStatus.in_review } }),
     ]);

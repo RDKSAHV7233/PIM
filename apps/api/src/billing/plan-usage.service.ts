@@ -1,5 +1,5 @@
 ﻿import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, RecordStatus } from "@prisma/client";
 import { CacheService } from "../common/cache/cache.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -10,6 +10,31 @@ import { PlanResource } from "./require-plan-limit.decorator";
 
 /** Plan profiles change only on admin billing operations — 5-minute TTL is safe. */
 const PLAN_PROFILE_CACHE_TTL_SECONDS = 300;
+
+/**
+ * PIM#614 — PO/CTO/Pricing commercial decision: a SKU is billable only when it is
+ * both a currently-usable Vexa catalog record AND its parent product is too. This is
+ * a Vexa catalog-lifecycle predicate, deliberately independent of any connector's
+ * publish/sync state (a failed Shopify sync must not change what a customer owes).
+ *
+ * Counts toward the "sellable SKU" entitlement iff ALL of:
+ *   - Variant.status is approved or active (not draft/in_review/rejected/archived)
+ *   - parent Product.status is approved or active (same reasoning — a variant can be
+ *     individually marked approved/active while its own parent product is still an
+ *     unpublished draft; nothing under an unpublished product is sellable yet)
+ *   - parent Product.deletedAt is null (a soft-deleted product has nothing left to sell)
+ *
+ * This only ever lowers a tenant's counted usage relative to the previous unconditional
+ * count — no tenant is billed more under this predicate, some are billed less (correctly).
+ */
+const SELLABLE_VARIANT_STATUSES: RecordStatus[] = [RecordStatus.approved, RecordStatus.active];
+const SELLABLE_VARIANT_WHERE = {
+  status: { in: SELLABLE_VARIANT_STATUSES },
+  product: {
+    deletedAt: null,
+    status: { in: SELLABLE_VARIANT_STATUSES },
+  },
+} satisfies Prisma.VariantWhereInput;
 
 const PLAN_TIERS = ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"] as const;
 const BILLING_STATUSES = ["trial", "active_paid", "past_due", "cancelled", "expired"] as const;
@@ -1391,7 +1416,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const month = options?.month ?? this.getMonthKey();
     const bounds = this.getMonthBounds(month);
     const [activeSkuCount, submissionCount, storageRows, connectorCountsRows, profile] = await Promise.all([
-      this.prisma.tenant(tenantKey).variant.count(),
+      this.prisma.tenant(tenantKey).variant.count({ where: SELLABLE_VARIANT_WHERE }),
       this.prisma.tenant(tenantKey).marketplaceExportJob.count({
         where: {
           createdAt: {
