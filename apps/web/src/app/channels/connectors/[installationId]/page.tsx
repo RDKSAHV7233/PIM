@@ -41,7 +41,7 @@ import {
   type ConnectorSyncSchedule,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { pickLatestSuccessfulSubmission, resolveAccountHealthSyncState } from "@/lib/connector-utils";
+import { dedupeSubmissionsByLatestPerProduct, pickLatestSuccessfulSubmission, resolveAccountHealthSyncState } from "@/lib/connector-utils";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { canEditConnectorCredentials, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerCsrfToken } from "@/lib/server-auth";
@@ -867,6 +867,12 @@ export default async function ChannelConnectorDetailPage({
     const failedSubmissions = submissions.filter(
       (item) => item.status === "ERROR" || item.status === "REJECTED" || item.status === "SUPPRESSED",
     );
+    // Issue Snapshot is a 5-slot at-a-glance list of *problem products*, not submission
+    // attempts — collapse repeat failed/rejected attempts against the same product down to
+    // the most recent one so a single problem product can't consume more than one slot
+    // (PIM#587). The Recovery tab's queue/count views intentionally keep using
+    // `failedSubmissions` as-is since those operate per submission attempt.
+    const issueSnapshotSubmissions = dedupeSubmissionsByLatestPerProduct(failedSubmissions);
     const pendingSubmissions = submissions.filter(
       (item) => item.status === "PENDING" || item.status === "RETRYING",
     );
@@ -1471,7 +1477,7 @@ export default async function ChannelConnectorDetailPage({
                   <p className="mt-2 text-sm text-slate-600">No failed or rejected submissions are open for this account right now.</p>
                 ) : (
                   <ul className="mt-2 space-y-2 text-sm">
-                    {failedSubmissions.slice(0, 5).map((submission) => {
+                    {issueSnapshotSubmissions.slice(0, 5).map((submission) => {
                       const product = productsById.get(submission.productId);
                       return (
                         <li key={submission.id} className="rounded-md border border-slate-200 px-3 py-2">

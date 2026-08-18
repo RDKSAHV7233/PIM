@@ -85,6 +85,42 @@ export type AccountHealthSyncState =
   | { kind: "submissions_only"; latestSuccessfulSubmissionAt: string }
   | { kind: "none" };
 
+// ─── Issue Snapshot dedupe (PIM#587) ────────────────────────────────────────
+//
+// The connector detail page's "Issue Snapshot" card shows up to 5 problem products at a
+// glance. It is built from the raw `submissions` list, which has one row per submission
+// *attempt* — not one row per product. When a product is submitted more than once (retry,
+// resubmit after a fix attempt, etc.) and more than one of those attempts is still in a
+// failed/rejected state, each attempt appears as its own row, so the same product can
+// occupy more than one of the card's 5 slots — reading as two distinct problem products
+// when there is really only one.
+
+export interface ProductScopedSubmission {
+  productId: string;
+  submittedAt: string;
+}
+
+/**
+ * Collapses a list of submissions down to at most one entry per productId, keeping only the
+ * most recently submitted attempt for each product (compared by submittedAt, not array
+ * order — callers do not need to pre-sort). Intended for "at a glance" surfaces like the
+ * Issue Snapshot card where each product should consume at most one slot.
+ */
+export function dedupeSubmissionsByLatestPerProduct<T extends ProductScopedSubmission>(
+  submissions: readonly T[],
+): T[] {
+  const latestByProductId = new Map<string, T>();
+  for (const submission of submissions) {
+    const current = latestByProductId.get(submission.productId);
+    if (!current || new Date(submission.submittedAt).getTime() > new Date(current.submittedAt).getTime()) {
+      latestByProductId.set(submission.productId, submission);
+    }
+  }
+  return Array.from(latestByProductId.values()).sort(
+    (left, right) => new Date(right.submittedAt).getTime() - new Date(left.submittedAt).getTime(),
+  );
+}
+
 /**
  * Decides what sync evidence to show on the Account Health card: prefer a real full-catalog
  * sync timestamp when one exists, otherwise fall back to the latest successful submission, and
