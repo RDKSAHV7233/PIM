@@ -216,6 +216,12 @@ jobs:
       - name: Prisma generate
         run: npm run prisma:generate
 
+      - name: Lint API
+        run: npm run lint --workspace @pim1/api
+
+      - name: Build API
+        run: npm run build --workspace @pim1/api
+
       - name: Prisma migrate deploy + RLS verification
         run: |
           npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
