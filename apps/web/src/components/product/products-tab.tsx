@@ -697,6 +697,14 @@ export function ProductsTab({
     !canEditWorkspace(role)
       ? "No products are available yet. Ask an editor or admin to import or create catalog data."
       : "Import your existing catalog from a CSV or JSON file, or create your first product manually.";
+  // PIM#613: `filteredProducts` is derived from the `products` prop, which the server already
+  // narrows to the current search term (getAdvancedSearchProducts({ q: initialSearch })) on a
+  // URL-driven load. So a zero-match search makes `filteredProducts` empty too, indistinguishable
+  // from a genuinely empty catalog. `stats.products` is a separate, always-unfiltered tenant-wide
+  // count (see apps/api/src/catalog/catalog.service.ts stats()) — it's the one signal here that
+  // isn't itself narrowed by the search, so it's what "does this tenant have any products at all"
+  // has to be judged against instead of the search-narrowed list.
+  const trulyEmptyCatalog = stats ? stats.products === 0 : filteredProducts.length === 0;
   const hasUnavailableSharedRead =
     productFeedState === "unavailable" ||
     categoryFeedState === "unavailable" ||
@@ -1163,7 +1171,7 @@ export function ProductsTab({
             action={{ label: "Retry later", href: "/catalog/products" }}
             secondaryAction={{ label: "Open imports", href: "/operations/imports" }}
           />
-        ) : filteredProducts.length === 0 ? (
+        ) : trulyEmptyCatalog ? (
           <EmptyState
             icon="BOX"
             title="Your catalog is empty"
