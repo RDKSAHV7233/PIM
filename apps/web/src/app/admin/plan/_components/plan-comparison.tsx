@@ -5,10 +5,15 @@ import { StatusChip } from "@/components/ui/status-chip";
 import type { PlanMetadata } from "@/lib/api";
 import { requestPlanUpgradeAction } from "../actions";
 
+// PIM#610: a customer-facing plan limit must equal the exact enforced entitlement.
+// Abbreviating to "K" is only lossless (and therefore only permitted) for exact
+// multiples of 1,000 — 2,500 rounded to "3K" overstated Starter's real, enforced
+// 2,500-SKU limit by 20%. Non-exact values fall back to their precise, comma-grouped
+// value instead of ever rounding (up or down) away from what enforcement actually uses.
 function formatLimit(value: number, unlimited = false): string {
   if (unlimited) return "Unlimited";
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
-  return String(value);
+  if (value >= 1000 && value % 1000 === 0) return `${value / 1000}K`;
+  return value.toLocaleString();
 }
 
 interface PlanComparisonProps {
