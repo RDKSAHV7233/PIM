@@ -61,6 +61,7 @@ export function PlanLimitModal({
   }
 
   const resourceLabel = normalizeResourceLabel(resource);
+  const isSkuLimit = resource.toLowerCase() === "skus";
 
   return (
     <AppDialog
@@ -70,6 +71,11 @@ export function PlanLimitModal({
       onClose={() => router.push(dismissHref)}
       size="md"
     >
+      {isSkuLimit ? (
+        <p className="mb-4 text-sm text-slate-500">
+          A SKU is one sellable product variant — parent product records aren't counted separately.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Link href={dismissHref} className={cn(buttonVariants({ variant: "secondary" }))}>
           Maybe later

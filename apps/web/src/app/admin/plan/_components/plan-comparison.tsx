@@ -36,6 +36,7 @@ export function PlanComparison({
         Choose the plan that fits your catalog size and team.
         {billingStatus === "trial" ? " Upgrade anytime during your trial." : ""}
       </p>
+      <p className="mt-1 text-xs text-slate-500">A SKU is a sellable product variant, not a product record.</p>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {plans.map((plan, index) => {

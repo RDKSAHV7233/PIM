@@ -106,7 +106,7 @@ export function UsageMeters({ usage }: UsageMetersProps) {
           label="SKUs"
           current={usage.skus.current}
           limit={usage.skus.limit}
-          description="Counts sellable variants, not product records — a product with no variants yet contributes 0."
+          description="A SKU is one sellable product variant — parent product records aren't counted separately."
         />
         <Meter label="Submissions" current={usage.submissions.current} limit={usage.submissions.limit} />
         <Meter
