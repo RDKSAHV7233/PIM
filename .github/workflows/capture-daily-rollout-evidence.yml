@@ -103,5 +103,5 @@ jobs:
 
       # Evidence is preserved via the artifact upload above.
       # Direct push to main is intentionally removed: branch protection requires
-      # "build-and-verify" to pass before any push, so the bot commit was always
+      # CI checks to pass before any push, so the bot commit was always
       # rejected with GH006. Artifacts in GitHub Actions are the canonical evidence store.
