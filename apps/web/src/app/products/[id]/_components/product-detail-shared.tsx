@@ -145,6 +145,27 @@ export function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Whether the Content tab's "Main Image URL" attribute is a value the export
+ * pipeline will actually use as the product's primary image. Mirrors
+ * resolveConnectorImageUrl's own bar (apps/api/src/marketplace/marketplace.service.ts)
+ * and the Shopify requirement that product images be served over a permanent HTTPS
+ * URL — anything else would silently fail export, so it must not read as "media
+ * satisfied" here either.
+ *
+ * mainImageUrl is the connector default field-mapping SOURCE for Shopify and
+ * WooCommerce's image field (connector-mapping.service.ts:
+ * "attributes.mainImageUrl" -> "images.0.src") — it's a real, functioning
+ * alternate media source, not a decorative or dead field. But it carries none of
+ * the Media Library's alt-text / per-channel-eligibility governance, so a product
+ * relying solely on it should read as "Warnings", never a silent full "Ready".
+ * See PIM#585.
+ */
+export function hasUsableMainImageUrl(productAttributes: Record<string, unknown>): boolean {
+  const value = String(productAttributes?.mainImageUrl ?? "").trim();
+  return value.startsWith("https://");
+}
+
 export function getAllowedValues(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((item) => String(item ?? "").trim()).filter((item) => item.length > 0);

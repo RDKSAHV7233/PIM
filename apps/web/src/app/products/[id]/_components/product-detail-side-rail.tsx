@@ -5,7 +5,13 @@ import type { ProductDetailPageData } from "./product-detail-types";
 
 export function ProductDetailSideRail({ data }: { data: ProductDetailPageData }) {
   const connectorBlocked = !data.mappingManagerInstallation || data.mappingManagerInstallation.status !== "ACTIVE";
-  const mediaBlocked = data.imageAssetCount === 0;
+  // A usable Main Image URL (Content tab) also counts here: it's the connector
+  // default field-mapping source for Shopify/WooCommerce's image field and the
+  // export pipeline really does use it (with priority over Media Library) — so a
+  // product with no Media Library assets but a valid mainImageUrl is not actually
+  // blocked on media. See PIM#585 — previously this ignored mainImageUrl entirely
+  // and showed "Blocked" even when the export would succeed.
+  const mediaBlocked = data.imageAssetCount === 0 && !data.hasMainImageUrl;
   // "Channel Readiness" must reflect the full export path, not just field-mapping
   // content: simulation.exportReady only checks channel/compliance validation, so
   // without connectorBlocked/mediaBlocked here this chip said "Ready" for products
@@ -41,7 +47,14 @@ export function ProductDetailSideRail({ data }: { data: ProductDetailPageData })
         <div className="space-y-2 text-sm text-slate-700">
           <p>Quality: {data.blockingIssueCount > 0 ? "blocked" : "clear"}</p>
           <p>Mapping: {data.readinessBlockers.length > 0 ? "blocked" : "clear"}</p>
-          <p>Media: {mediaBlocked ? "missing assets" : `${data.imageAssetCount} images linked`}</p>
+          <p>
+            Media:{" "}
+            {data.imageAssetCount > 0
+              ? `${data.imageAssetCount} images linked`
+              : data.hasMainImageUrl
+                ? "using Main Image URL override (no alt text/eligibility governance)"
+                : "missing assets"}
+          </p>
           <p>Connector: {connectorBlocked ? "needs attention" : "ready"}</p>
         </div>
       </SideRailCard>

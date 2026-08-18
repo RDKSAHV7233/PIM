@@ -121,6 +121,16 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
               defaultValue={String(data.productAttributes?.mainImageUrl ?? "")}
               placeholder="https://example.com/product-image.jpg"
             />
+            <p className="text-xs text-slate-500" data-hint="main-image-url-scope">
+              Used as a fallback image for Shopify/WooCommerce exports (must be a permanent https:// URL, or it's
+              ignored). It only clears the media blocker as a bare fallback — it has{" "}
+              <strong>no alt text and no per-channel eligibility</strong>. For full media governance, add images on
+              the{" "}
+              <a href={data.tabHref("media")} className="font-medium text-blue-700 hover:underline">
+                Media tab
+              </a>{" "}
+              instead.
+            </p>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="product-hsn-code">

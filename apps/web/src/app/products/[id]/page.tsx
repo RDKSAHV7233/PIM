@@ -29,6 +29,7 @@ import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigat
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
 import {
   DETAIL_TABS,
+  hasUsableMainImageUrl,
   isConnectorReadyToPublish,
   isMappingBlockerCode,
   isMappingWarningCode,
@@ -204,6 +205,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const warningIssueCount = product.validationIssues?.filter((issue) => issue.severity === "warning").length ?? 0;
   const imageAssets = mediaAssets.filter((asset) => asset.mimeType.startsWith("image/"));
   const imageAssetCount = imageAssets.length;
+  // The Content tab's Main Image URL field is the connector default field-mapping
+  // source for Shopify/WooCommerce's image field (connector-mapping.service.ts) and
+  // really is used by the export pipeline as a fallback image — with priority over
+  // Media Library assets — so it must count toward media readiness here too, even
+  // though it carries none of the Media Library's alt-text/eligibility governance.
+  // See PIM#585: previously "Media readiness" showed "Blocked" for products that
+  // had this field filled in, which is misleading since export would succeed.
+  const hasMainImageUrl = hasUsableMainImageUrl(
+    product.attributes && typeof product.attributes === "object"
+      ? (product.attributes as Record<string, unknown>)
+      : {},
+  );
   // Governance gaps the backend's own per-channel validateAsset() already treats as
   // real signals (missing alt text = warning; explicit channel exclusion = blocker) —
   // mirrored here so this summary card doesn't say "Ready" for images the media
@@ -313,7 +326,22 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       };
     }
     if (imageAssetCount === 0) {
-      return { label: "Blocked", tone: "danger" as const, detail: "No image assets are linked to this product." };
+      if (hasMainImageUrl) {
+        return {
+          label: "Warnings",
+          tone: "warning" as const,
+          detail:
+            "Using the Content tab's Main Image URL as a fallback image — it has no alt text or per-channel " +
+            "eligibility. Add it to the Media Library for full media governance.",
+        };
+      }
+      return {
+        label: "Blocked",
+        tone: "danger" as const,
+        detail:
+          "No image assets are linked to this product, and the Content tab's Main Image URL is empty (or not a " +
+          "permanent https:// URL, which Shopify/WooCommerce require).",
+      };
     }
     if (mediaIssueCount > 0) {
       return {
@@ -417,8 +445,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     ...((effectiveReadiness?.blockers ?? []).length > 0
       ? [{ label: `Clear ${(effectiveReadiness?.blockers ?? []).length} publish blocker${(effectiveReadiness?.blockers ?? []).length === 1 ? "" : "s"}`, href: tabHref("channels") }]
       : []),
-    ...(imageAssetCount === 0 || mediaIssueCount > 0
-      ? [{ label: imageAssetCount === 0 ? "Add product media" : "Review media issues", href: tabHref("media") }]
+    ...((imageAssetCount === 0 && !hasMainImageUrl) || mediaIssueCount > 0
+      ? [{
+          label: imageAssetCount === 0 && !hasMainImageUrl ? "Add product media" : "Review media issues",
+          href: tabHref("media"),
+        }]
       : []),
     ...(!selectedConnectorInstallation || selectedConnectorInstallation.status !== "ACTIVE"
       ? [{ label: "Fix connector account", href: "/channels/connectors" }]

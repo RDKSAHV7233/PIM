@@ -72,6 +72,14 @@ export function MediaTab({ data }: { data: ProductDetailPageData }) {
         </div>
       </div>
 
+      {imageAssets.length === 0 && data.hasMainImageUrl && (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          No images are linked in the Media Library, but this product has a Main Image URL set on the Content tab —
+          it's used as a fallback image for Shopify/WooCommerce exports. It has no alt text or per-channel
+          eligibility, so add a real image here for full media governance.
+        </p>
+      )}
+
       {imageAssets.length > 0 && (
         <div className="mt-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">Images</h3>

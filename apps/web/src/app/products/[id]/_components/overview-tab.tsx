@@ -13,7 +13,9 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
     return null;
   }
 
-  const mediaBlockerCount = data.imageAssetCount === 0 ? 1 : 0;
+  // A usable Content-tab Main Image URL also satisfies this — see PIM#585 and
+  // hasUsableMainImageUrl in product-detail-shared.tsx.
+  const mediaBlockerCount = data.imageAssetCount === 0 && !data.hasMainImageUrl ? 1 : 0;
   const connectorBlocked = !data.mappingManagerInstallation || data.mappingManagerInstallation.status !== "ACTIVE";
 
   return (

@@ -24,6 +24,7 @@ import { OverviewTab } from "./overview-tab";
 import { ProductDetailSideRail } from "./product-detail-side-rail";
 import {
   asRecord,
+  hasUsableMainImageUrl,
   isConnectorReadyToPublish,
   mapMarketplaceChannelToConnectorSlug,
 } from "./product-detail-shared";
@@ -181,6 +182,7 @@ export async function ProductDetailDeferredSection({
     mediaAssets,
     mediaAssetCount: mediaAssets.length,
     imageAssetCount: mediaAssets.filter((asset) => asset.mimeType.startsWith("image/")).length,
+    hasMainImageUrl: hasUsableMainImageUrl(asRecord(product.attributes)),
     actorRole,
     canWrite,
     canPublish,
