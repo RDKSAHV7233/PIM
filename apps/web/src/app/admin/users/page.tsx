@@ -47,7 +47,7 @@ function isAuthPolicyApiUnavailable(error: unknown): boolean {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
-  if (!isSystemAdminBoundary(adminBoundaryRoles)) {
+  if (!isSystemAdminBoundary(adminBoundaryRoles) && actorRole !== "admin") {
     return (
       <div className="space-y-5">
         <PageHeader
@@ -62,9 +62,6 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         <SystemAdminRequiredCard surfaceLabel="User management" />
       </div>
     );
-  }
-  if (actorRole !== "admin") {
-    redirect("/admin");
   }
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();

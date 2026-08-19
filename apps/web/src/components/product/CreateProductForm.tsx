@@ -167,6 +167,21 @@ export function CreateProductForm({ categories, actorRole, onCreated }: CreatePr
     startTransition(async () => {
       setSubmitError("");
       setPlanLimitUpgradeUrl("");
+
+      const missingRequired = definitions
+        .filter((d) => d.required)
+        .filter((d) => {
+          const val = attributeValues[d.key];
+          if (val === undefined || val === null || val === "") return true;
+          if (typeof val === "string" && !val.trim()) return true;
+          return false;
+        })
+        .map((d) => d.name);
+      if (missingRequired.length > 0) {
+        setSubmitError(`Required category attributes missing: ${missingRequired.join(", ")}`);
+        return;
+      }
+
       try {
         const result = await createProductAction(formData);
         if (result && "error" in result) {
