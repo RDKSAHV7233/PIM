@@ -67,6 +67,11 @@ jobs:
       QUEUE_BACKEND: memory
       QUEUE_WORKER_ENABLED: "true"
       PIM_AUTH_PASSWORD: vexa-pim-demo-password
+      # redis-memory-server (a root devDependency, only used by
+      # apps/api/test/integration/queue-durability.test.cjs, which this job never runs)
+      # otherwise tries to download/compile a Redis Stack binary during npm ci's
+      # postinstall. This is its own documented skip flag — no system redis-server needed.
+      REDISMS_DISABLE_POSTINSTALL: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -78,15 +83,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-
-      # redis-memory-server's postinstall runs during npm ci even in jobs that
-      # don't need Redis. Install a system redis-server so it doesn't try to
-      # download/compile Redis Stack from source.
-      - name: Install system redis-server (for npm ci postinstall)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
-          echo "REDISMS_SYSTEM_BINARY=$(command -v redis-server)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -166,6 +162,13 @@ jobs:
       QUEUE_BACKEND: memory
       QUEUE_WORKER_ENABLED: "true"
       PIM_AUTH_PASSWORD: vexa-pim-demo-password
+      # redis-memory-server (a root devDependency, only used by
+      # apps/api/test/integration/queue-durability.test.cjs, which isn't wired into
+      # any step below) otherwise tries to download/compile a Redis Stack binary
+      # during npm ci's postinstall. This is its own documented skip flag — no
+      # system redis-server needed. The live redis:7 service below is unrelated:
+      # it's the real Redis this job's tests connect to via REDIS_URL.
+      REDISMS_DISABLE_POSTINSTALL: "true"
     services:
       postgres:
         image: postgres:16
@@ -200,15 +203,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-
-      # redis-memory-server (used only by queue-durability.test.cjs) tries to
-      # download a Redis Stack binary and falls back to compiling from source.
-      # A system redis-server via apt skips that entirely.
-      - name: Install system redis-server (for redis-memory-server)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
-          echo "REDISMS_SYSTEM_BINARY=$(command -v redis-server)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
