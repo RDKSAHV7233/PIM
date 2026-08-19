@@ -457,7 +457,17 @@ export function VersionManagerCard({
           </p>
         </div>
       )}
-      <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 hidden sm:block">
+      {/*
+        PIM#622: this section used to be visible only above the 640px breakpoint, with a
+        separate hand-written fallback below it for narrower widths — but that fallback only
+        rendered read-only fields, omitting every action (Validate/Publish/Archive/Rollback)
+        from the "actions" column. Below 640px, customers had no way to validate or publish a
+        mapping draft at all. DataGrid already renders responsively on its own (a desktop
+        table down to 768px, its own mobile card list below that, actions column included in
+        both) — render it unconditionally and let that handle every viewport width instead of
+        duplicating (and under-implementing) a third layout here.
+      */}
+      <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
         <DataGrid
           className=""
           columns={columns}
@@ -467,44 +477,6 @@ export function VersionManagerCard({
           caption="Mapping version history"
           emptyState={<p className="rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">No mapping versions found for this connector/category scope.</p>}
         />
-      </div>
-
-      {/* Mobile stacked version list — shown below sm breakpoint */}
-      <div className="mt-3 flex flex-col space-y-3 sm:hidden">
-        {versions.length > 0 ? (
-          versions.map((version) => (
-            <div key={`mobile-${version.id}`} className="rounded-lg border border-slate-200 p-3 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-slate-900">{version.connectorDefinitionVersion}</span>
-                <StatusChip
-                  label={presentLifecycleState(version.lifecycleState)}
-                  tone={
-                    version.lifecycleState === "published"
-                      ? "success"
-                      : version.lifecycleState === "archived" || version.lifecycleState === "superseded"
-                        ? "neutral"
-                        : "info"
-                  }
-                />
-                <StatusChip
-                  label={presentCompatibilityState(version.compatibilityState)}
-                  tone={
-                    version.compatibilityState === "blocked"
-                      ? "danger"
-                      : version.compatibilityState === "deprecated" || version.compatibilityState === "remap_required"
-                        ? "warning"
-                        : "success"
-                  }
-                />
-              </div>
-              <p className="mt-1 text-xs text-slate-500">Scope: {version.categoryScope}</p>
-              <p className="text-xs text-slate-500">Updated: {formatDateTime(version.updatedAt)}</p>
-              <VersionHistoryMetadata version={version} />
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-slate-500">No mapping versions found for this connector/category scope.</p>
-        )}
       </div>
     </Card>
   );
