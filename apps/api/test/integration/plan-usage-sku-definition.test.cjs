@@ -9,9 +9,18 @@
 // display and the enforcement agree. The tenant simply has very few variants recorded
 // against a large product catalog, which is a data-quality fact, not a counting bug.
 //
+// PIM#614: the *unfiltered* `variant.count()` from #579 turned out to be too broad —
+// draft/in_review/rejected/archived variants, and variants of unpublished or
+// soft-deleted parent products, were all counted as "sellable" too. The PO/CTO/Pricing
+// decision narrowed the definition to variant.status IN (approved, active) AND parent
+// product.status IN (approved, active) AND parent product.deletedAt IS NULL — still a
+// variant-based count, never a product-based one, just no longer unconditional.
+//
 // This test pins that definition so a future change can't silently start counting
-// products instead of variants (or vice versa) without deliberately updating this file —
-// see the usage-meters.tsx test for the corresponding UI-clarity fix.
+// products instead of variants (or vice versa), or silently drop the #614 lifecycle
+// filter back to unconditional, without deliberately updating this file — see the
+// usage-meters.tsx test for the corresponding UI-clarity fix, and
+// plan-usage-sellable-sku-lifecycle.spec.ts for the full behavioral matrix.
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -32,8 +41,21 @@ function run() {
     source.indexOf("async recomputeUsage(") + 2000,
   );
   assert(
-    recomputeUsageBody.includes(".variant.count()") && !recomputeUsageBody.includes(".product.count()"),
-    "recomputeUsage() must derive skuCount from variant.count(), not product.count() — a SKU here means a sellable variant, not a catalog product record. If this is a deliberate redefinition, update this test and the 'SKUs' meter description in usage-meters.tsx together.",
+    /\.variant\.count\(/.test(recomputeUsageBody) && !recomputeUsageBody.includes(".product.count("),
+    "recomputeUsage() must derive skuCount from variant.count(...), not product.count(...) — a SKU here means a sellable variant, not a catalog product record. If this is a deliberate redefinition, update this test and the 'SKUs' meter description in usage-meters.tsx together.",
+  );
+  assert(
+    recomputeUsageBody.includes("SELLABLE_VARIANT_WHERE"),
+    "recomputeUsage()'s variant.count() must filter through the PIM#614 SELLABLE_VARIANT_WHERE predicate — an unconditional variant.count() (the pre-#614 shape) counts draft/archived variants and variants of unpublished or soft-deleted products as billable, which the PO/CTO/Pricing decision explicitly excluded.",
+  );
+
+  assert(
+    source.includes("const SELLABLE_VARIANT_STATUSES") && /approved.*active|active.*approved/s.test(source.slice(source.indexOf("SELLABLE_VARIANT_STATUSES"), source.indexOf("SELLABLE_VARIANT_STATUSES") + 200)),
+    "The sellable-variant predicate must be built from RecordStatus.approved and RecordStatus.active — see PIM#614's PO/CTO/Pricing decision.",
+  );
+  assert(
+    /product:\s*\{[^}]*deletedAt:\s*null/s.test(source),
+    "The sellable-variant predicate must exclude variants whose parent product is soft-deleted (product.deletedAt must be required null) — see PIM#614.",
   );
 
   const skuLimitCheckBody = source.slice(
@@ -49,7 +71,13 @@ function run() {
     JSON.stringify(
       {
         status: "ok",
-        validated: ["sku_usage_counts_variants_not_products", "sku_limit_enforcement_matches_displayed_usage"],
+        validated: [
+          "sku_usage_counts_variants_not_products",
+          "sku_usage_filters_through_sellable_variant_predicate",
+          "sellable_predicate_uses_approved_and_active_statuses",
+          "sellable_predicate_excludes_soft_deleted_parent_products",
+          "sku_limit_enforcement_matches_displayed_usage",
+        ],
         checkedAt: new Date().toISOString(),
       },
       null,

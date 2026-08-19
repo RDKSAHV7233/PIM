@@ -38,6 +38,7 @@ module.exports = {
     "**/billing/commercial-tenant-detail.spec.ts",
     "**/billing/plan-guard.guard.spec.ts",
     "**/billing/plan-usage-resource-limits.spec.ts",
+    "**/billing/plan-usage-sellable-sku-lifecycle.spec.ts",
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",
     "**/bulk-import/bulk-import-run-validate.service.spec.ts",
