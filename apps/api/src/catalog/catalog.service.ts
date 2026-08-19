@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity, TaxCodeKey, ValidationIssueStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
@@ -66,6 +66,8 @@ const COMPLETENESS_CACHE_TTL_SECONDS = 5 * 60;
 
 @Injectable()
 export class CatalogService {
+  private readonly logger = new Logger(CatalogService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
@@ -914,7 +916,7 @@ export class CatalogService {
       (nextCanonicalStatus === RecordStatus.approved || nextCanonicalStatus === RecordStatus.rejected) &&
       nextCanonicalStatus !== currentCanonicalStatus;
     if (isTerminalReviewTransition) {
-      const contentFieldsChanged = this.collectChangedProductFields(current, {
+      const reviewGuardChangedFields = this.collectChangedProductFields(current, {
         title: mergedTitle.trim(),
         description: mergedDescription.trim(),
         brand: mergedBrand.trim(),
@@ -924,8 +926,14 @@ export class CatalogService {
         gstRate: mergedGstRate,
         attributes: mergedAttributes,
         status: current.status,
-      }).some((field) => field.path !== "status");
+      });
+      const contentFieldsChanged = reviewGuardChangedFields.some((field) => field.path !== "status");
       if (contentFieldsChanged || dto.taxCodes !== undefined) {
+        this.logger.warn(
+          `APPROVAL_CONTENT_CHANGE_CONFLICT productId=${productId} ` +
+          `taxCodesPresent=${dto.taxCodes !== undefined} ` +
+          `changedFields=${JSON.stringify(reviewGuardChangedFields.filter((f) => f.path !== "status"))}`,
+        );
         throw new BadRequestException({
           code: "APPROVAL_CONTENT_CHANGE_CONFLICT",
           message: "Submit content changes separately from an approval or rejection decision.",
@@ -1962,6 +1970,19 @@ export class CatalogService {
     return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
 
+  private stableStringify(value: unknown): string {
+    return JSON.stringify(value, (_key, v) => {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const sorted: Record<string, unknown> = {};
+        for (const k of Object.keys(v).sort()) {
+          sorted[k] = v[k];
+        }
+        return sorted;
+      }
+      return v;
+    });
+  }
+
   private collectChangedProductFields(
     current: {
       title: string;
@@ -2016,7 +2037,7 @@ export class CatalogService {
     for (const key of attributeKeys) {
       const before = currentAttributes[key];
       const after = nextAttributes[key];
-      if (JSON.stringify(before) !== JSON.stringify(after)) {
+      if (this.stableStringify(before) !== this.stableStringify(after)) {
         changedFields.push({
           path: `attributes.${key}`,
           label: `Attribute: ${key}`,
