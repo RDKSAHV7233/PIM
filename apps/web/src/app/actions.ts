@@ -61,7 +61,16 @@ const INTL_TAX_CODE_ROWS = [
  * Build the `taxCodes` array for a product PATCH from FormData.
  * Combines the India flat-field entry (from hsnCode/gstRate inputs) with the
  * international market rows (taxCode_{MARKET}_{KEY}_value inputs).
- * Returns undefined when the form carries no tax data at all (preserves existing rows).
+ * Returns undefined when the form carries no *filled-in* tax data (preserves existing rows) —
+ * PIM#619: the Content tab always renders the international tax code table, so its inputs are
+ * always present in the FormData even when every value is blank. Gating on field presence
+ * (`formData.has(...)`) rather than on whether any value was actually filled in made this
+ * return `[]` (a defined-but-empty array) on every single Content-tab submission, which in
+ * turn made `apps/api/.../catalog.service.ts`'s approval-transition guard
+ * (`dto.taxCodes !== undefined`) fire unconditionally — blocking every approve/reject
+ * transition submitted through this form, even with zero actual changes. Gate on whether any
+ * entry was actually collected instead, so an untouched (or already-empty) tax section reads
+ * as "no signal" exactly as this function's contract always intended.
  */
 function parseTaxCodes(
   formData: FormData,
@@ -84,15 +93,10 @@ function parseTaxCodes(
     }
   }
 
-  // If the form doesn't include the international tax code inputs at all (e.g. the quality
-  // tab's submit-for-review form, or any other partial-update context that doesn't render
-  // the international tax section), return undefined so existing ProductTaxCode rows are
-  // preserved untouched. The India hsnCode entry is handled independently via the flat
-  // Product.hsnCode column — it does NOT govern whether a full-replace is triggered.
-  const hasIntlInputs = INTL_TAX_CODE_ROWS.some(
-    ({ market, key }) => formData.has(`taxCode_${market}_${key}_value`),
-  );
-  if (!hasIntlInputs) return undefined;
+  // No filled-in tax data anywhere (India or international) — preserve existing
+  // ProductTaxCode rows untouched, and critically, don't send a signal that looks like a
+  // content change to the approval-transition guard.
+  if (entries.length === 0) return undefined;
 
   return entries;
 }
