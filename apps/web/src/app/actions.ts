@@ -98,8 +98,6 @@ function parseTaxCodes(
   // content change to the approval-transition guard.
   if (entries.length === 0) return undefined;
 
-  if (entries.length === 0) return undefined;
-
   return entries;
 }
 
