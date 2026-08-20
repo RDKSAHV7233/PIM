@@ -17,6 +17,7 @@ import { translateExportStatus } from "@/lib/errors";
 import type { ConnectorPublishReadiness, ConnectorSubmission } from "@/lib/api";
 import {
   lifecycleStatusTone,
+  mapMarketplaceChannelToConnectorSlug,
   translateReadinessBlocker,
 } from "./product-detail-shared";
 import { formatDateTime } from "@/lib/format";
@@ -108,6 +109,18 @@ function submissionStatusTone(status: string): "neutral" | "success" | "warning"
   if (s === "REJECTED" || s === "ERROR" || s === "DEAD_LETTER") return "danger";
   return "neutral";
 }
+
+function findInstallationIdForChannel(data: ProductDetailPageData): string | null {
+  const slug = mapMarketplaceChannelToConnectorSlug(data.selectedChannel);
+  const match = data.installedConnectors.find((c) => c.slug === slug);
+  return match?.id ?? null;
+}
+
+function publicationTargetsCredentialsHref(installationId: string): string {
+  return `/channels/connectors/${encodeURIComponent(installationId)}?tab=credentials`;
+}
+
+const PUBLICATION_TARGETS_PATTERN = /publication targets/i;
 
 export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
   const latestExportJob = data.exportJobs[0] ?? null;
@@ -272,6 +285,14 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
               >
                 Review quality blockers
               </Link>
+              {findInstallationIdForChannel(data) ? (
+                <Link
+                  href={publicationTargetsCredentialsHref(findInstallationIdForChannel(data)!)}
+                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Configure publication targets
+                </Link>
+              ) : null}
             </div>
           </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -304,9 +325,26 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                     Retry position: {latestExportJob.retryCount}/{latestExportJob.maxRetries}
                   </p>
                   <p className="text-slate-600">
-                    {latestExportJob.failureReason
-                      ? `Latest failure: ${latestExportJob.failureReason}`
-                      : "No failure recorded on the latest queued export."}
+                    {latestExportJob.failureReason ? (
+                      <>
+                        Latest failure:{" "}
+                        {PUBLICATION_TARGETS_PATTERN.test(latestExportJob.failureReason) && findInstallationIdForChannel(data) ? (
+                          <>
+                            {latestExportJob.failureReason}{" "}
+                            <Link
+                              href={publicationTargetsCredentialsHref(findInstallationIdForChannel(data)!)}
+                              className="font-medium text-blue-700 hover:underline"
+                            >
+                              Configure publication targets
+                            </Link>
+                          </>
+                        ) : (
+                          latestExportJob.failureReason
+                        )}
+                      </>
+                    ) : (
+                      "No failure recorded on the latest queued export."
+                    )}
                   </p>
                   {hasInFlightExportJobs ? (
                     <p className="text-xs text-slate-500">
