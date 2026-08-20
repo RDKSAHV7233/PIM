@@ -81,7 +81,7 @@ export function resolveConnectorLaunchPolicy(
     return {
       launchStage: "code_complete",
       launchNote:
-        "WooCommerce connector is code-complete (W1–W10). QA validation and PO review pending before general availability. Contact your account manager for early access.",
+        "WooCommerce connector is code-complete (W1–W10) and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.",
       surfacedCapabilities: capabilities,
     };
   }

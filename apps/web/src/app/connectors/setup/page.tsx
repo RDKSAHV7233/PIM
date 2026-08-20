@@ -162,7 +162,7 @@ function connectorStatusNote(
     return "This connector has limited functionality. Check the channel guide for details.";
   }
   if (slug === "woocommerce") {
-    return "WooCommerce is code-complete and available for credential setup, but still blocked from publish while QA validation and PO review are pending.";
+    return "WooCommerce is code-complete and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.";
   }
   return null;
 }
