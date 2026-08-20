@@ -194,6 +194,25 @@ function run() {
     source.includes('redirect(buildLoginRedirect("/admin/users", error));'),
     "Admin users must redirect expired or forbidden sessions through the shared login helper.",
   );
+  // PIM#631: the role select for the actor's own row is disabled client-side, but a bypassed
+  // disabled control must still get a clear reason server-side instead of the generic
+  // "A valid role is required." message that fires when the disabled select's value is
+  // simply absent from the submitted FormData.
+  assert(
+    actionsSource.includes("getServerSessionClaims") &&
+      actionsSource.includes("claims?.sub?.trim().toLowerCase()") &&
+      actionsSource.includes("You cannot change your own role. Ask another admin to make this change.") &&
+      actionsSource.includes("CANNOT_CHANGE_OWN_ROLE"),
+    "Admin users must reject a self role-change with a specific message before falling through to the generic role-required error, mirroring the API's own CANNOT_CHANGE_OWN_ROLE guard.",
+  );
+  assert(
+    (() => {
+      const selfCheckIndex = actionsSource.indexOf("You cannot change your own role.");
+      const genericRoleErrorIndex = actionsSource.indexOf('throw new Error("A valid role is required.")', actionsSource.indexOf("updateWorkspaceUserRoleAction"));
+      return selfCheckIndex !== -1 && genericRoleErrorIndex !== -1 && selfCheckIndex < genericRoleErrorIndex;
+    })(),
+    "The self role-change check must run before the generic 'A valid role is required' check in updateWorkspaceUserRoleAction, so a bypassed disabled control surfaces the real reason.",
+  );
 
   // userSearchFilterSource kept for backwards-compat path — search/filter UI lives there
   void userSearchFilterSource;
@@ -216,6 +235,8 @@ function run() {
           "admin_users_route_enforces_self_protection_and_read_only_fallback",
           "admin_users_route_surfaces_role_matrix_and_connector_overrides",
           "admin_users_route_redirects_auth_failures",
+          "admin_users_route_explains_self_role_change_rejection_pim631",
+          "admin_users_route_checks_self_role_change_before_generic_role_error_pim631",
         ],
         checkedAt: new Date().toISOString(),
       },

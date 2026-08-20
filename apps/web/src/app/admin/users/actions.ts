@@ -13,7 +13,7 @@ import {
   updateWorkspaceUserRole,
   normalizeAppRole,
 } from "@/lib/api";
-import { getServerSession } from "@/lib/server-session";
+import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 
 async function requireAdminRequestOptions() {
   const { authHeader, actorRole } = await getServerSession();
@@ -91,6 +91,9 @@ function resolveUpdateRoleErrorMessage(error: unknown): string {
         const tierStr = typeof planTier === "string" ? planTier : "your current plan";
         return `Role "${roleStr}" is not available on the ${tierStr} plan. Upgrade to assign it.`;
       }
+      if (code === "CANNOT_CHANGE_OWN_ROLE") {
+        return "You cannot change your own role. Ask another admin to make this change.";
+      }
     }
   }
   return error instanceof Error ? error.message : "Unable to update workspace user.";
@@ -121,6 +124,15 @@ export async function updateWorkspaceUserRoleAction(formData: FormData) {
   try {
     if (!userId) {
       throw new Error("User ID is required.");
+    }
+    // The role select for the actor's own row is rendered disabled (PIM#631), so a normal
+    // submission never reaches here for a self-change. Checking explicitly means a bypassed
+    // disabled control still gets the real reason instead of a generic "role required" error —
+    // this mirrors the API's own CANNOT_CHANGE_OWN_ROLE guard in workspace-users.service.ts.
+    const claims = await getServerSessionClaims();
+    const actorUserId = claims?.sub?.trim().toLowerCase();
+    if (actorUserId && actorUserId === userId.toLowerCase()) {
+      throw new Error("You cannot change your own role. Ask another admin to make this change.");
     }
     if (role === null) {
       throw new Error("A valid role is required.");
