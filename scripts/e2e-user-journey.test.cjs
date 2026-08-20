@@ -73,6 +73,13 @@ try {
       script.includes('assert(product.status === "approved"'),
     "workflow approval smoke must tolerate only the already-approved post-condition after proving current product status",
   );
+  assert(
+    script.includes("function isAuthIpRateLimited(result)") &&
+      script.includes('String(result?.body?.error ?? "") === "IP_RATE_LIMITED"') &&
+      script.includes('return "rejected by IP rate limit before credential check";') &&
+      script.includes('assertStatus(result, 401, "POST /auth/login invalid password");'),
+    "invalid-password smoke must accept a staging IP-rate-limit rejection without weakening the normal 401 INVALID_CREDENTIALS proof",
+  );
 
   console.log(
     JSON.stringify(
@@ -90,6 +97,7 @@ try {
           "variant_cleanup_normalizes_parent_product",
           "category_cleanup_purges_journey_products",
           "workflow_approval_smoke_tolerates_already_approved_postcondition",
+          "invalid_password_smoke_tolerates_staging_ip_rate_limit",
         ],
       },
       null,

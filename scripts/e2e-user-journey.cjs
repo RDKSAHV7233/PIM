@@ -397,6 +397,10 @@ function assertStatus(result, allowedStatuses, messagePrefix) {
   );
 }
 
+function isAuthIpRateLimited(result) {
+  return result?.status === 429 && String(result?.body?.error ?? "") === "IP_RATE_LIMITED";
+}
+
 function normalizeItems(payload) {
   if (Array.isArray(payload)) {
     return payload;
@@ -807,6 +811,9 @@ function buildChecks() {
 
   add("auth", "invalid_password_rejected", async () => {
     const result = await login(CONFIG.smokeUser, "wrong-password", CONFIG.workspace);
+    if (isAuthIpRateLimited(result)) {
+      return "rejected by IP rate limit before credential check";
+    }
     assertStatus(result, 401, "POST /auth/login invalid password");
     assert(result.body?.error === "INVALID_CREDENTIALS", `unexpected error ${result.body?.error}`);
     return `attemptsRemaining=${result.body?.attemptsRemaining ?? "?"}`;
