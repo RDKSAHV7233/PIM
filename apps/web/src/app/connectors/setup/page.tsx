@@ -159,6 +159,9 @@ function connectorStatusNote(
     if (slug === "myntra") {
       return "Myntra API access is account-manager gated. Credentials (Merchant ID, Secret Key, Warehouse ID) are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff and Postman collection receipt.";
     }
+    if (slug === "woocommerce") {
+      return "WooCommerce is code-complete and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.";
+    }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
   if (slug === "woocommerce") {
