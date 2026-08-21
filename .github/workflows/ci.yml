@@ -245,6 +245,9 @@ jobs:
       - name: Outbound webhook integration test
         run: node apps/api/test/integration/outbound-webhooks.test.cjs
 
+      - name: WooCommerce credential verification endpoint test (PIM#582)
+        run: node apps/api/test/integration/woocommerce-credential-verification-endpoint.test.cjs
+
       - name: Catalog shared-read timeout classification — controlled reproduction (PIM#578)
         run: npm run test:integration:catalog-shared-read-timeout-classification
 

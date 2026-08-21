@@ -669,8 +669,14 @@ export class WooCommerceConnector implements ConnectorInterface {
   //
   // Two-step preflight:
   //   1. HTTPS enforcement — reject plaintext HTTP site URLs.
-  //   2. GET /wp-json/wc/v3 with Basic Auth — a 200 response confirms REST API
-  //      is reachable and the keys have at least read permission.
+  //   2. GET /wp-json/wc/v3/products?per_page=1 with Basic Auth — a 200 response
+  //      confirms REST API is reachable AND the keys have real read permission.
+  //      The bare /wp-json/wc/v3 root is WordPress's public route-discovery
+  //      endpoint — it returns 200 with no Authorization header at all, so it
+  //      can never distinguish valid credentials from wrong ones (live-verified
+  //      against a real store: garbage consumer_key/consumer_secret still got
+  //      200 from the bare root, but a correct 401 from /products). Hitting an
+  //      actual protected resource is required for this check to mean anything.
 
   async validateCredentials(ctx: ConnectorContext): Promise<boolean> {
     try {
@@ -683,7 +689,7 @@ export class WooCommerceConnector implements ConnectorInterface {
         return false;
       }
 
-      const res = await this.callApi('GET', '', siteUrl, consumerKey, consumerSecret);
+      const res = await this.callApi('GET', '/products?per_page=1', siteUrl, consumerKey, consumerSecret);
 
       if (res.status === 401 || res.status === 403) {
         this.logger.warn('WooCommerce credential validation failed: auth rejected', {
@@ -728,11 +734,15 @@ export class WooCommerceConnector implements ConnectorInterface {
   // ─── optional: verifyCandidateCredentials ───────────────────────────────────
   //
   // Pure — takes the candidate triplet directly (never reads stored credentials,
-  // never writes anything). Reuses the same GET /wp-json/wc/v3 shape as
-  // validateCredentials. Classification: 401/403 → invalid (positive evidence);
-  // malformed/non-HTTPS URL → invalid (the URL itself is operator input, so a
-  // deterministic rejection is fair); any network/timeout/DNS failure →
-  // unavailable (an unreachable endpoint isn't evidence the credentials are wrong).
+  // never writes anything). Reuses the same GET /wp-json/wc/v3/products?per_page=1
+  // shape as validateCredentials — NOT the bare /wp-json/wc/v3 root, which is a
+  // public route-discovery endpoint that returns 200 with no auth at all and so
+  // can never actually reject wrong credentials (live-verified: garbage
+  // consumer_key/consumer_secret against the bare root returned 200, "valid").
+  // Classification: 401/403 → invalid (positive evidence); malformed/non-HTTPS
+  // URL → invalid (the URL itself is operator input, so a deterministic
+  // rejection is fair); any network/timeout/DNS failure → unavailable (an
+  // unreachable endpoint isn't evidence the credentials are wrong).
 
   async verifyCandidateCredentials(
     candidate: Record<string, string>,
@@ -746,7 +756,7 @@ export class WooCommerceConnector implements ConnectorInterface {
     }
 
     try {
-      const res = await this.callApi('GET', '', siteUrl, consumerKey, consumerSecret);
+      const res = await this.callApi('GET', '/products?per_page=1', siteUrl, consumerKey, consumerSecret);
       if (res.status === 401 || res.status === 403) {
         return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_CREDENTIALS_REJECTED' };
       }

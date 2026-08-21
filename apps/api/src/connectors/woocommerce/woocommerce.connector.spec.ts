@@ -133,6 +133,20 @@ describe("WooCommerceConnector.validateCredentials (BUG-WOO-HEALTH-001 / #472)",
 
     await expect(connector.validateCredentials(ctx as any)).resolves.toBe(true);
   });
+
+  it("hits a real, auth-required resource — not the unauthenticated bare API root (PIM#582)", async () => {
+    // The bare /wp-json/wc/v3 root is WordPress's public route-discovery endpoint: it
+    // returns 200 with no Authorization header at all (live-verified against a real
+    // store), so calling it can never distinguish valid credentials from garbage ones.
+    // /products is a real protected resource that correctly 401s on wrong credentials.
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    const callApi = jest.spyOn(connector as any, "callApi").mockResolvedValue({ status: 200, ok: true } as Response);
+
+    await connector.validateCredentials(ctx as any);
+
+    expect(callApi).toHaveBeenCalledWith("GET", "/products?per_page=1", "https://example.com", "ck_test", "cs_test");
+  });
 });
 
 describe("WooCommerceConnector.verifyCandidateCredentials", () => {
@@ -149,7 +163,10 @@ describe("WooCommerceConnector.verifyCandidateCredentials", () => {
     await expect(connector.verifyCandidateCredentials!(candidate)).resolves.toEqual({ outcome: "valid" });
     // Candidate-purity: the connector's HTTP call is made with the candidate's own
     // values, not any stored value — asserted by checking callApi's actual arguments.
-    expect(callApi).toHaveBeenCalledWith("GET", "", candidate.site_url, candidate.consumer_key, candidate.consumer_secret);
+    // The path must be a real, auth-required resource (PIM#582) — the bare root is
+    // WordPress's public route-discovery endpoint and returns 200 with no auth at all,
+    // so it can never actually verify credentials.
+    expect(callApi).toHaveBeenCalledWith("GET", "/products?per_page=1", candidate.site_url, candidate.consumer_key, candidate.consumer_secret);
   });
 
   it("returns invalid on 401", async () => {
