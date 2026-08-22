@@ -1530,6 +1530,20 @@
         ]
       }
     },
+    "/api/v1/internal/ops/summary": {
+      "get": {
+        "operationId": "InternalOpsController_getSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "InternalOps"
+        ]
+      }
+    },
     "/api/v1/connector-webhooks/relay/{tenantKey}/installations/{installationId}": {
       "post": {
         "operationId": "ConnectorWebhookRelayController_relayWebhook",

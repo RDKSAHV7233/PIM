@@ -36,6 +36,12 @@ type ListErrorOccurrencesInput = {
   encodeCursor(payload: ErrorAuthorityCursor): string;
 };
 
+type CountOpenP0P1IssuesInput = {
+  dateFrom: Date;
+  dateTo: Date;
+  timeoutMs: number;
+};
+
 type ErrorIssueRow = {
   id: string;
   fingerprint: string;
@@ -93,6 +99,7 @@ type ObservabilityPrismaClient = {
     create(args: unknown): Promise<{ id: string }>;
   };
   errorIssue: {
+    count(args: unknown): Promise<number>;
     findMany(args: unknown): Promise<ErrorIssueRow[]>;
     upsert(args: unknown): Promise<{ id: string }>;
     update(args: unknown): Promise<unknown>;
@@ -281,6 +288,37 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
     }
   }
 
+  async countOpenP0P1Issues(input: CountOpenP0P1IssuesInput): Promise<{ count: number; storageAvailable: boolean }> {
+    if (!this.client) {
+      return { count: 0, storageAvailable: false };
+    }
+
+    try {
+      const count = await withTimeout(
+        this.client.$transaction(async (tx) =>
+          tx.errorIssue.count({
+            where: {
+              environment: String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development"),
+              state: "open",
+              severity: { in: ["p0", "p1"] },
+              lastSeenAt: {
+                gte: input.dateFrom,
+                lte: input.dateTo,
+              },
+            },
+          }),
+        ),
+        input.timeoutMs,
+      );
+      return { count: Number(count ?? 0), storageAvailable: true };
+    } catch (error: unknown) {
+      this.logger.warn("Error authority P0/P1 count unavailable.", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return { count: 0, storageAvailable: false };
+    }
+  }
+
   async listErrorIssues(input: ListErrorIssuesInput): Promise<ErrorAuthorityListResponse<ErrorAuthorityIssueListItem>> {
     if (!this.client) {
       return emptyResponse<ErrorAuthorityIssueListItem>(input);
@@ -459,6 +497,22 @@ function emptyResponse<T>(input: { limit: number; dateFrom: Date; dateTo: Date }
       dateTo: input.dateTo.toISOString(),
     },
   };
+}
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Observability query timed out after ${timeoutMs}ms.`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function mapIssueRow(row: ErrorIssueRow): ErrorAuthorityIssueListItem {

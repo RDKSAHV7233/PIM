@@ -9335,6 +9335,38 @@
       ]
     },
     {
+      "name": "InternalOps",
+      "description": "",
+      "item": [
+        {
+          "name": "InternalOpsController_getSummary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/internal/ops/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "summary"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "OutboundWebhooks",
       "description": "",
       "item": [

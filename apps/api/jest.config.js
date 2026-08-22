@@ -62,6 +62,7 @@ module.exports = {
     "**/error-authority/error-fingerprint.spec.ts",
     "**/error-authority/error-capture.service.spec.ts",
     "**/error-authority/worker-error-classifier.spec.ts",
+    "**/internal-ops/internal-ops-summary.service.spec.ts",
     "**/connector-framework/connector.registry.spec.ts",
     "**/connector-framework/parse-capabilities.spec.ts",
     "**/auth/email-template.spec.ts",

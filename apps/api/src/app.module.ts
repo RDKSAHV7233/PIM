@@ -25,6 +25,7 @@ import { TenantDirectoryModule } from "./common/tenant/tenant-directory.module";
 import { TenantContextMiddleware } from "./common/tenant/tenant-context.middleware";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { ErrorAuthorityModule } from "./error-authority/error-authority.module";
+import { InternalOpsModule } from "./internal-ops/internal-ops.module";
 import { ConnectorFrameworkModule } from "./connector-framework/connector-framework.module";
 import { ConnectorInstallerModule } from "./connector-installer/connector-installer.module";
 import { MarketplaceModule } from "./marketplace/marketplace.module";
@@ -65,6 +66,7 @@ const FEATURE_ONDC_ENABLED =
     ComplianceModule,
     DashboardModule,
     ErrorAuthorityModule,
+    InternalOpsModule,
     ConnectorFrameworkModule,
     ConnectorInstallerModule,
     BulkImportModule,
