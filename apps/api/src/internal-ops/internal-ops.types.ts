@@ -1,4 +1,6 @@
 export type InternalOpsCardAvailability = "available" | "unavailable";
+export type InternalOpsAggregateAvailability = InternalOpsCardAvailability | "partial";
+export type InternalOpsReadinessImpact = "BLOCKER" | "WARNING" | "STATUS";
 
 export type InternalOpsWindow = {
   dateFrom: string;
@@ -9,6 +11,18 @@ export type InternalOpsStatusCount = {
   status: string;
   count: number;
 };
+
+export type InternalOpsReadinessRuleFamilyCount = {
+  ruleFamily: string;
+  impact: Exclude<InternalOpsReadinessImpact, "STATUS">;
+  count: number;
+};
+
+export type InternalOpsReadinessStatusCount = InternalOpsStatusCount & {
+  impact: InternalOpsReadinessImpact;
+};
+
+export type InternalOpsReadinessMetric = number | null;
 
 export type InternalOpsSummaryResponse = {
   asOf: string;
@@ -58,6 +72,38 @@ export type InternalOpsSummaryResponse = {
     totalInstallations: number;
     byStatus: InternalOpsStatusCount[];
     errorMessage: string | null;
+  };
+  readiness: {
+    availability: InternalOpsAggregateAvailability;
+    asOf: string;
+    message: string | null;
+    productData: {
+      availability: InternalOpsCardAvailability;
+      blockedProducts: InternalOpsReadinessMetric;
+      blockingIssues: InternalOpsReadinessMetric;
+      warningIssues: InternalOpsReadinessMetric;
+      affectedTenants: InternalOpsReadinessMetric;
+      topRuleFamilies: InternalOpsReadinessRuleFamilyCount[] | null;
+    };
+    mapping: {
+      availability: InternalOpsCardAvailability;
+      blockingMappings: InternalOpsReadinessMetric;
+      warningMappings: InternalOpsReadinessMetric;
+      affectedTenants: InternalOpsReadinessMetric;
+      signals: {
+        compatibilityBlocked: InternalOpsReadinessMetric;
+        remapRequired: InternalOpsReadinessMetric;
+        fallbackAckRequired: InternalOpsReadinessMetric;
+        deprecated: InternalOpsReadinessMetric;
+      };
+    };
+    connector: {
+      availability: InternalOpsCardAvailability;
+      blockingInstallations: InternalOpsReadinessMetric;
+      warningInstallations: InternalOpsReadinessMetric;
+      affectedTenants: InternalOpsReadinessMetric;
+      byStatus: InternalOpsReadinessStatusCount[] | null;
+    };
   };
   errors: {
     availability: InternalOpsCardAvailability;

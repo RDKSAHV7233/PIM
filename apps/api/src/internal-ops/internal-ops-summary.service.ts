@@ -1,10 +1,20 @@
 import { Injectable } from "@nestjs/common";
-import { BulkImportJobStatus, BulkImportRunStatus, ExportJobStatus, type Prisma } from "@prisma/client";
+import {
+  BulkImportJobStatus,
+  BulkImportRunStatus,
+  ExportJobStatus,
+  Prisma,
+  RuleSeverity,
+  ValidationIssueStatus,
+} from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
 import { ObservabilityDbService } from "../error-authority/observability-db.service";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import type {
+  InternalOpsAggregateAvailability,
   InternalOpsCardAvailability,
+  InternalOpsReadinessImpact,
+  InternalOpsReadinessRuleFamilyCount,
   InternalOpsStatusCount,
   InternalOpsSummaryResponse,
 } from "./internal-ops.types";
@@ -30,6 +40,26 @@ const IMPORT_RUN_ACTIVE_STATUSES = [
 const EXPORT_FAILURE_STATUSES = [ExportJobStatus.failed, ExportJobStatus.dead_letter] as const;
 const SUBMISSION_FAILURE_STATUSES = ["ERROR", "REJECTED", "SUPPRESSED"] as const;
 const CONNECTOR_STATUSES = ["ACTIVE", "PAUSED", "CREDENTIAL_EXPIRED", "DISABLED"] as const;
+const MAPPING_BLOCKING_COMPATIBILITY_STATES = ["blocked", "remap_required"] as const;
+const MAPPING_WARNING_COMPATIBILITY_STATES = ["deprecated"] as const;
+const READINESS_TOP_RULE_FAMILY_LIMIT = 10;
+const READINESS_RULE_CODE_GROUP_LIMIT = 50;
+
+const SAFE_PLATFORM_RULE_CODES = new Set([
+  "GST_HSN_REQUIRED",
+  "GST_HSN_FORMAT",
+  "GST_RATE_REQUIRED",
+  "GST_RATE_UNCOMMON",
+  "PRICING_NO_DEFAULT_PRICES",
+  "PRICING_INCOMPLETE",
+]);
+
+const CONNECTOR_STATUS_IMPACT: Record<(typeof CONNECTOR_STATUSES)[number], InternalOpsReadinessImpact> = {
+  ACTIVE: "STATUS",
+  PAUSED: "WARNING",
+  CREDENTIAL_EXPIRED: "BLOCKER",
+  DISABLED: "STATUS",
+};
 
 type StatusGroupRow = {
   status: string;
@@ -43,6 +73,19 @@ type SumRows = {
     failedRows?: number | null;
     deadLetterRows?: number | null;
   };
+};
+
+type RuleFamilyGroupRow = {
+  ruleCode: string;
+  severity: string;
+  _count: {
+    ruleCode?: number | null;
+    _all?: number | null;
+  };
+};
+
+type CountDistinctRow = {
+  count: number | bigint | string | null;
 };
 
 @Injectable()
@@ -60,7 +103,7 @@ export class InternalOpsSummaryService {
     const stuckFrom = subtractDays(now, STUCK_LOOKBACK_DAYS);
     const stuckBefore = new Date(now.getTime() - STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
 
-    const [jobs, imports, publishing, connectors, errors, mediaIntegrity] = await Promise.all([
+    const [jobs, imports, publishing, connectors, readiness, errors, mediaIntegrity] = await Promise.all([
       this.resolveCard("jobs", () => this.getJobs(operationalFrom, stuckFrom, stuckBefore), {
         active: 0,
         stuck: 0,
@@ -86,6 +129,7 @@ export class InternalOpsSummaryService {
         totalInstallations: 0,
         byStatus: [],
       }),
+      this.getReadiness(now),
       this.resolveErrorsCard(operationalFrom, now),
       this.resolveCard("media_integrity", () => this.getMediaIntegrity(inventoryFrom), {
         totalAssets: 0,
@@ -111,6 +155,7 @@ export class InternalOpsSummaryService {
       imports,
       publishing,
       connectors,
+      readiness,
       errors,
       mediaIntegrity,
     };
@@ -271,6 +316,207 @@ export class InternalOpsSummaryService {
     });
   }
 
+  private async getReadiness(now: Date): Promise<InternalOpsSummaryResponse["readiness"]> {
+    const [productData, mapping, connector] = await Promise.all([
+      this.resolveReadinessSource("readiness_product_data", () => this.getReadinessProductData(), {
+        blockedProducts: null,
+        blockingIssues: null,
+        warningIssues: null,
+        affectedTenants: null,
+        topRuleFamilies: null,
+      }),
+      this.resolveReadinessSource("readiness_mapping", () => this.getReadinessMapping(), {
+        blockingMappings: null,
+        warningMappings: null,
+        affectedTenants: null,
+        signals: {
+          compatibilityBlocked: null,
+          remapRequired: null,
+          fallbackAckRequired: null,
+          deprecated: null,
+        },
+      }),
+      this.resolveReadinessSource("readiness_connector", () => this.getReadinessConnector(), {
+        blockingInstallations: null,
+        warningInstallations: null,
+        affectedTenants: null,
+        byStatus: null,
+      }),
+    ]);
+
+    const sourceAvailabilities = [productData.availability, mapping.availability, connector.availability];
+    const availability = resolveAggregateAvailability(sourceAvailabilities);
+    return {
+      availability,
+      asOf: now.toISOString(),
+      message: availability === "available" ? null : "One or more readiness sources are unavailable",
+      productData,
+      mapping,
+      connector,
+    };
+  }
+
+  private async getReadinessProductData(): Promise<Omit<InternalOpsSummaryResponse["readiness"]["productData"], "availability">> {
+    return this.withPrimaryDbTimeout(async (db) => {
+      const [blockedProducts, blockingIssues, warningIssues, affectedTenants, ruleRows] = await Promise.all([
+        this.countReadinessBlockedProducts(db),
+        db.validationIssue.count({
+          where: {
+            status: ValidationIssueStatus.open,
+            severity: RuleSeverity.error,
+          },
+        }),
+        db.validationIssue.count({
+          where: {
+            status: ValidationIssueStatus.open,
+            severity: RuleSeverity.warning,
+          },
+        }),
+        this.countReadinessProductDataTenants(db),
+        db.validationIssue.groupBy({
+          by: ["ruleCode", "severity"] as const,
+          where: { status: ValidationIssueStatus.open },
+          _count: { ruleCode: true },
+          orderBy: { _count: { ruleCode: "desc" } },
+          take: READINESS_RULE_CODE_GROUP_LIMIT,
+        }),
+      ]);
+
+      return {
+        blockedProducts: Number(blockedProducts ?? 0),
+        blockingIssues: Number(blockingIssues ?? 0),
+        warningIssues: Number(warningIssues ?? 0),
+        affectedTenants: Number(affectedTenants ?? 0),
+        topRuleFamilies: normalizeRuleFamilyCounts(ruleRows as RuleFamilyGroupRow[]),
+      };
+    });
+  }
+
+  private async getReadinessMapping(): Promise<Omit<InternalOpsSummaryResponse["readiness"]["mapping"], "availability">> {
+    return this.withPrimaryDbTimeout(async (db) => {
+      const publishedWhere = { lifecycleState: "published" } satisfies Prisma.ConnectorMappingVersionWhereInput;
+      const blockingWhere = {
+        ...publishedWhere,
+        OR: [
+          { compatibilityState: "blocked" },
+          { compatibilityState: "remap_required" },
+          { fallbackAckRequired: true },
+        ],
+      } satisfies Prisma.ConnectorMappingVersionWhereInput;
+      const warningWhere = {
+        ...publishedWhere,
+        compatibilityState: { in: [...MAPPING_WARNING_COMPATIBILITY_STATES] },
+      } satisfies Prisma.ConnectorMappingVersionWhereInput;
+      const affectedWhere = {
+        ...publishedWhere,
+        OR: [
+          { compatibilityState: { in: [...MAPPING_BLOCKING_COMPATIBILITY_STATES, ...MAPPING_WARNING_COMPATIBILITY_STATES] } },
+          { fallbackAckRequired: true },
+        ],
+      } satisfies Prisma.ConnectorMappingVersionWhereInput;
+
+      const [
+        blockingMappings,
+        warningMappings,
+        affectedTenants,
+        compatibilityBlocked,
+        remapRequired,
+        fallbackAckRequired,
+        deprecated,
+      ] = await Promise.all([
+        db.connectorMappingVersion.count({ where: blockingWhere }),
+        db.connectorMappingVersion.count({ where: warningWhere }),
+        this.countReadinessMappingTenants(db),
+        db.connectorMappingVersion.count({ where: { ...publishedWhere, compatibilityState: "blocked" } }),
+        db.connectorMappingVersion.count({ where: { ...publishedWhere, compatibilityState: "remap_required" } }),
+        db.connectorMappingVersion.count({ where: { ...publishedWhere, fallbackAckRequired: true } }),
+        db.connectorMappingVersion.count({ where: { ...publishedWhere, compatibilityState: "deprecated" } }),
+      ]);
+
+      return {
+        blockingMappings: Number(blockingMappings ?? 0),
+        warningMappings: Number(warningMappings ?? 0),
+        affectedTenants: Number(affectedTenants ?? 0),
+        signals: {
+          compatibilityBlocked: Number(compatibilityBlocked ?? 0),
+          remapRequired: Number(remapRequired ?? 0),
+          fallbackAckRequired: Number(fallbackAckRequired ?? 0),
+          deprecated: Number(deprecated ?? 0),
+        },
+      };
+    });
+  }
+
+  private async getReadinessConnector(): Promise<Omit<InternalOpsSummaryResponse["readiness"]["connector"], "availability">> {
+    return this.withPrimaryDbTimeout(async (db) => {
+      const [statusCountsResult, affectedTenants] = await Promise.all([
+        Promise.all(
+          CONNECTOR_STATUSES.map(async (status) => ({
+            status,
+            impact: CONNECTOR_STATUS_IMPACT[status],
+            count: await db.connectorInstallation.count({ where: { status } }),
+          })),
+        ),
+        this.countReadinessConnectorTenants(db),
+      ]);
+      const byStatus = statusCountsResult
+        .filter((row) => row.count > 0)
+        .map((row) => ({
+          status: row.status,
+          impact: row.impact,
+          count: Number(row.count ?? 0),
+        }));
+
+      return {
+        blockingInstallations: countFor(byStatus, "CREDENTIAL_EXPIRED"),
+        warningInstallations: countFor(byStatus, "PAUSED"),
+        affectedTenants: Number(affectedTenants ?? 0),
+        byStatus,
+      };
+    });
+  }
+
+  private async countReadinessBlockedProducts(db: Prisma.TransactionClient): Promise<number> {
+    const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT "productId")::bigint AS "count"
+      FROM "ValidationIssue"
+      WHERE "status" = ${ValidationIssueStatus.open}::"ValidationIssueStatus"
+        AND "severity" = ${RuleSeverity.error}::"RuleSeverity"
+    `);
+    return firstCount(rows);
+  }
+
+  private async countReadinessProductDataTenants(db: Prisma.TransactionClient): Promise<number> {
+    const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT "tenantKey")::bigint AS "count"
+      FROM "ValidationIssue"
+      WHERE "status" = ${ValidationIssueStatus.open}::"ValidationIssueStatus"
+    `);
+    return firstCount(rows);
+  }
+
+  private async countReadinessMappingTenants(db: Prisma.TransactionClient): Promise<number> {
+    const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT tenant_key)::bigint AS "count"
+      FROM connector_mapping_versions
+      WHERE lifecycle_state = 'published'
+        AND (
+          compatibility_state IN (${Prisma.join([...MAPPING_BLOCKING_COMPATIBILITY_STATES, ...MAPPING_WARNING_COMPATIBILITY_STATES])})
+          OR fallback_ack_required = true
+        )
+    `);
+    return firstCount(rows);
+  }
+
+  private async countReadinessConnectorTenants(db: Prisma.TransactionClient): Promise<number> {
+    const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT tenant_key)::bigint AS "count"
+      FROM connector_installations
+      WHERE status IN (${Prisma.join(["PAUSED", "CREDENTIAL_EXPIRED"])})
+    `);
+    return firstCount(rows);
+  }
+
   private async getMediaIntegrity(inventoryFrom: Date) {
     return this.withPrimaryDbTimeout(async (db) => ({
       totalAssets: await db.mediaAsset.count({
@@ -330,6 +576,26 @@ export class InternalOpsSummaryService {
     }
   }
 
+  private async resolveReadinessSource<T extends Record<string, unknown>>(
+    source: string,
+    producer: () => Promise<T>,
+    fallback: T,
+  ): Promise<T & { availability: InternalOpsCardAvailability }> {
+    try {
+      const value = await producer();
+      return {
+        ...value,
+        availability: "available",
+      };
+    } catch (error: unknown) {
+      this.logCardFailure(source, error);
+      return {
+        ...fallback,
+        availability: "unavailable",
+      };
+    }
+  }
+
   private async withPrimaryDbTimeout<T>(operation: (db: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     const db = this.prismaDirect.getClient();
     return db.$transaction(
@@ -360,6 +626,16 @@ function statusCounts(rows: StatusGroupRow[], mapStatus: (status: string) => str
     .sort((a, b) => a.status.localeCompare(b.status));
 }
 
+function resolveAggregateAvailability(
+  values: InternalOpsCardAvailability[],
+): InternalOpsAggregateAvailability {
+  const available = values.filter((value) => value === "available").length;
+  if (available === values.length) {
+    return "available";
+  }
+  return available === 0 ? "unavailable" : "partial";
+}
+
 function countFor(rows: InternalOpsStatusCount[], status: string): number {
   return rows.find((row) => row.status === status)?.count ?? 0;
 }
@@ -375,4 +651,40 @@ function successRate(success: number, failed: number): number {
 
 function safeSum(rows: SumRows, field: "failedRows" | "deadLetterRows"): number {
   return Number(rows._sum?.[field] ?? 0);
+}
+
+function firstCount(rows: CountDistinctRow[]): number {
+  return Number(rows[0]?.count ?? 0);
+}
+
+function normalizeRuleFamilyCounts(rows: RuleFamilyGroupRow[]): InternalOpsReadinessRuleFamilyCount[] {
+  const counts = new Map<string, { ruleFamily: string; impact: "BLOCKER" | "WARNING"; count: number }>();
+  for (const row of rows) {
+    const ruleFamily = normalizeRuleFamily(row.ruleCode);
+    const impact = row.severity === RuleSeverity.warning ? "WARNING" : "BLOCKER";
+    const key = `${impact}:${ruleFamily}`;
+    const current = counts.get(key) ?? { ruleFamily, impact, count: 0 };
+    current.count += Number(row._count?.ruleCode ?? row._count?._all ?? 0);
+    counts.set(key, current);
+  }
+  return Array.from(counts.values())
+    .sort((left, right) => right.count - left.count || left.impact.localeCompare(right.impact) || left.ruleFamily.localeCompare(right.ruleFamily))
+    .slice(0, READINESS_TOP_RULE_FAMILY_LIMIT);
+}
+
+function normalizeRuleFamily(ruleCode: string): string {
+  const normalized = String(ruleCode ?? "").trim().toUpperCase();
+  if (normalized.startsWith("ATTR_REQUIRED_")) {
+    return "ATTR_REQUIRED_*";
+  }
+  if (normalized.startsWith("ATTR_TYPE_")) {
+    return "ATTR_TYPE_*";
+  }
+  if (normalized.startsWith("ATTR_ALLOWED_")) {
+    return "ATTR_ALLOWED_*";
+  }
+  if (SAFE_PLATFORM_RULE_CODES.has(normalized)) {
+    return normalized;
+  }
+  return "CUSTOM_RULE";
 }

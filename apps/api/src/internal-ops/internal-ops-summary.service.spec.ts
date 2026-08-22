@@ -4,9 +4,43 @@ import { InternalOpsSummaryService } from "./internal-ops-summary.service";
 
 function makeDb(overrides?: {
   failMedia?: boolean;
+  failReadinessProductData?: boolean;
+  failReadinessMapping?: boolean;
+  failReadinessConnector?: boolean;
   empty?: boolean;
 }) {
+  const countDistinct = jest.fn((query: unknown) => {
+    const text = String(
+      (query as { sql?: string; text?: string; strings?: string[] })?.sql ??
+        (query as { text?: string })?.text ??
+        (query as { strings?: string[] })?.strings?.join(" ") ??
+        query,
+    );
+    if (text.includes('"ValidationIssue"')) {
+      if (overrides?.failReadinessProductData) {
+        return Promise.reject(new Error("validation issue distinct aggregate failed"));
+      }
+      if (overrides?.empty) {
+        return Promise.resolve([{ count: 0 }]);
+      }
+      return Promise.resolve([{ count: text.includes('"productId"') ? 1 : 2 }]);
+    }
+    if (text.includes("connector_mapping_versions")) {
+      if (overrides?.failReadinessMapping) {
+        return Promise.reject(new Error("mapping tenant aggregate failed"));
+      }
+      return Promise.resolve([{ count: overrides?.empty ? 0 : 1 }]);
+    }
+    if (text.includes("connector_installations")) {
+      if (overrides?.failReadinessConnector) {
+        return Promise.reject(new Error("connector readiness aggregate failed"));
+      }
+      return Promise.resolve([{ count: overrides?.empty ? 0 : 2 }]);
+    }
+    return Promise.resolve([{ count: 0 }]);
+  });
   const tx = {
+    $queryRaw: countDistinct,
     marketplaceExportJob: {
       groupBy: jest.fn((args: { where?: { status?: { in?: string[] } } }) => {
         const statuses = args.where?.status?.in ?? [];
@@ -51,8 +85,50 @@ function makeDb(overrides?: {
         { status: "REJECTED", _count: { _all: 2 } },
       ]),
     },
+    validationIssue: {
+      count: jest.fn((args: { where?: { severity?: string } }) => {
+        if (overrides?.failReadinessProductData) {
+          return Promise.reject(new Error("validation issue count failed"));
+        }
+        if (overrides?.empty) {
+          return Promise.resolve(0);
+        }
+        return Promise.resolve(args.where?.severity === "warning" ? 3 : 2);
+      }),
+      groupBy: jest.fn(() => {
+        if (overrides?.failReadinessProductData) {
+          return Promise.reject(new Error("validation issue rule aggregate failed"));
+        }
+        return Promise.resolve(overrides?.empty ? [] : [
+          { ruleCode: "GST_HSN_REQUIRED", severity: "error", _count: { ruleCode: 1 } },
+          { ruleCode: "ATTR_REQUIRED_SECRET_SIZE", severity: "error", _count: { ruleCode: 2 } },
+          { ruleCode: "CUSTOMER_SECRET_RULE_123", severity: "warning", _count: { ruleCode: 3 } },
+        ]);
+      }),
+    },
+    connectorMappingVersion: {
+      count: jest.fn((args: { where?: Record<string, unknown> }) => {
+        if (overrides?.failReadinessMapping) {
+          return Promise.reject(new Error("mapping aggregate failed"));
+        }
+        if (overrides?.empty) {
+          return Promise.resolve(0);
+        }
+        const where = args.where ?? {};
+        if (Array.isArray(where.OR)) {
+          return Promise.resolve(1);
+        }
+        const compatibilityState = where.compatibilityState;
+        if (compatibilityState === "blocked") return Promise.resolve(0);
+        if (compatibilityState === "remap_required") return Promise.resolve(1);
+        if (compatibilityState === "deprecated") return Promise.resolve(1);
+        if (typeof compatibilityState === "object") return Promise.resolve(1);
+        if (where.fallbackAckRequired === true) return Promise.resolve(1);
+        return Promise.resolve(0);
+      }),
+    },
     connectorInstallation: {
-      count: jest.fn((args: { where?: { status?: string } }) => {
+      count: jest.fn((args: { where?: { status?: string; updatedAt?: unknown } }) => {
         if (overrides?.empty) {
           return Promise.resolve(0);
         }
@@ -88,7 +164,14 @@ function makeDb(overrides?: {
   };
 }
 
-function makeService(overrides?: { failMedia?: boolean; empty?: boolean; errorStorage?: boolean }) {
+function makeService(overrides?: {
+  failMedia?: boolean;
+  failReadinessProductData?: boolean;
+  failReadinessMapping?: boolean;
+  failReadinessConnector?: boolean;
+  empty?: boolean;
+  errorStorage?: boolean;
+}) {
   const db = makeDb(overrides);
   const prismaDirect = { getClient: jest.fn().mockReturnValue(db.client) };
   const observabilityDb = {
@@ -136,6 +219,47 @@ describe("InternalOpsSummaryService", () => {
         { status: "disabled", count: 3 },
       ],
     }));
+    expect(summary.readiness).toEqual(expect.objectContaining({
+      availability: "available",
+      message: null,
+      productData: expect.objectContaining({
+        availability: "available",
+        blockedProducts: 1,
+        blockingIssues: 2,
+        warningIssues: 3,
+        affectedTenants: 2,
+        topRuleFamilies: [
+          { ruleFamily: "CUSTOM_RULE", impact: "WARNING", count: 3 },
+          { ruleFamily: "ATTR_REQUIRED_*", impact: "BLOCKER", count: 2 },
+          { ruleFamily: "GST_HSN_REQUIRED", impact: "BLOCKER", count: 1 },
+        ],
+      }),
+      mapping: expect.objectContaining({
+        availability: "available",
+        blockingMappings: 1,
+        warningMappings: 1,
+        affectedTenants: 1,
+        signals: {
+          compatibilityBlocked: 0,
+          remapRequired: 1,
+          fallbackAckRequired: 1,
+          deprecated: 1,
+        },
+      }),
+      connector: expect.objectContaining({
+        availability: "available",
+        blockingInstallations: 1,
+        warningInstallations: 2,
+        affectedTenants: 2,
+        byStatus: [
+          { status: "ACTIVE", impact: "STATUS", count: 10 },
+          { status: "PAUSED", impact: "WARNING", count: 2 },
+          { status: "CREDENTIAL_EXPIRED", impact: "BLOCKER", count: 1 },
+          { status: "DISABLED", impact: "STATUS", count: 3 },
+        ],
+      }),
+    }));
+    expect(JSON.stringify(summary.readiness)).not.toContain("CUSTOMER_SECRET_RULE_123");
     expect(summary.errors).toEqual(expect.objectContaining({
       availability: "available",
       p0p1OpenCount: 3,
@@ -161,6 +285,33 @@ describe("InternalOpsSummaryService", () => {
     expect(summary.imports.failedRows).toBe(0);
     expect(summary.publishing.exports.successRate).toBe(0);
     expect(summary.connectors.byStatus).toEqual([]);
+    expect(summary.readiness).toEqual(expect.objectContaining({
+      availability: "available",
+      productData: expect.objectContaining({
+        blockedProducts: 0,
+        blockingIssues: 0,
+        warningIssues: 0,
+        affectedTenants: 0,
+        topRuleFamilies: [],
+      }),
+      mapping: expect.objectContaining({
+        blockingMappings: 0,
+        warningMappings: 0,
+        affectedTenants: 0,
+        signals: {
+          compatibilityBlocked: 0,
+          remapRequired: 0,
+          fallbackAckRequired: 0,
+          deprecated: 0,
+        },
+      }),
+      connector: expect.objectContaining({
+        blockingInstallations: 0,
+        warningInstallations: 0,
+        affectedTenants: 0,
+        byStatus: [],
+      }),
+    }));
     expect(summary.errors.p0p1OpenCount).toBe(0);
     expect(summary.mediaIntegrity.totalAssets).toBe(0);
   });
@@ -180,6 +331,44 @@ describe("InternalOpsSummaryService", () => {
       "Internal ops summary card unavailable.",
       expect.objectContaining({ card: "media_integrity" }),
     );
+  });
+
+  it("returns partial readiness when one persisted readiness source is unavailable", async () => {
+    const { service, logger } = makeService({ failReadinessConnector: true });
+
+    const summary = await service.getSummary();
+
+    expect(summary.readiness.availability).toBe("partial");
+    expect(summary.readiness.message).toBe("One or more readiness sources are unavailable");
+    expect(summary.readiness.productData.availability).toBe("available");
+    expect(summary.readiness.mapping.availability).toBe("available");
+    expect(summary.readiness.connector).toEqual(expect.objectContaining({
+      availability: "unavailable",
+      blockingInstallations: null,
+      warningInstallations: null,
+      affectedTenants: null,
+      byStatus: null,
+    }));
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Internal ops summary card unavailable.",
+      expect.objectContaining({ card: "readiness_connector" }),
+    );
+  });
+
+  it("returns unavailable readiness when every persisted readiness source is unavailable", async () => {
+    const { service } = makeService({
+      failReadinessProductData: true,
+      failReadinessMapping: true,
+      failReadinessConnector: true,
+    });
+
+    const summary = await service.getSummary();
+
+    expect(summary.readiness.availability).toBe("unavailable");
+    expect(summary.readiness.message).toBe("One or more readiness sources are unavailable");
+    expect(summary.readiness.productData.availability).toBe("unavailable");
+    expect(summary.readiness.mapping.availability).toBe("unavailable");
+    expect(summary.readiness.connector.availability).toBe("unavailable");
   });
 });
 

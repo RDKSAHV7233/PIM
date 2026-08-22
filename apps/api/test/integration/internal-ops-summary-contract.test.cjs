@@ -54,9 +54,90 @@ async function main() {
     "Internal ops summary queries must be bounded by windows and transaction timeout.",
   );
 
-  for (const card of ["jobs", "imports", "publishing", "connectors", "errors", "mediaIntegrity"]) {
+  for (const card of ["jobs", "imports", "publishing", "connectors", "readiness", "errors", "mediaIntegrity"]) {
     assert(types.includes(`${card}: {`), `Internal ops summary response must include ${card} card.`);
   }
+
+  assert(
+    types.includes('InternalOpsAggregateAvailability = InternalOpsCardAvailability | "partial"') &&
+      types.includes("InternalOpsReadinessMetric = number | null") &&
+      types.includes('availability: InternalOpsAggregateAvailability') &&
+      types.includes('productData: {') &&
+      types.includes('mapping: {') &&
+      types.includes('connector: {'),
+    "Readiness health must expose top-level partial availability plus source-level availability.",
+  );
+
+  assert(
+    service.includes("getReadinessProductData") &&
+      service.includes("getReadinessMapping") &&
+      service.includes("getReadinessConnector") &&
+      service.includes("resolveReadinessSource") &&
+      service.includes("resolveAggregateAvailability"),
+    "Readiness health must isolate product-data, mapping, and connector persisted sources independently.",
+  );
+
+  assert(
+    service.includes("countReadinessBlockedProducts") &&
+      service.includes('COUNT(DISTINCT "productId")') &&
+      service.includes("blockingIssues: Number(blockingIssues") &&
+      service.includes("warningIssues: Number(warningIssues"),
+    "Product-data readiness aggregates must preserve DB distinct product count versus issue row counts.",
+  );
+
+  assert(
+    service.includes('COUNT(DISTINCT "tenantKey")') &&
+      service.includes("COUNT(DISTINCT tenant_key)") &&
+      !service.includes('distinct: ["tenantKey"]') &&
+      !service.includes("select: { tenantKey: true }"),
+    "Readiness affected-tenant metrics must use database distinct counts without returning tenant keys.",
+  );
+
+  assert(
+    service.includes("blockedProducts: null") &&
+      service.includes("blockingMappings: null") &&
+      service.includes("blockingInstallations: null") &&
+      service.includes("byStatus: null"),
+    "Unavailable readiness sources must return nullable metrics instead of zero/healthy fallbacks.",
+  );
+
+  assert(
+    service.includes("CUSTOM_RULE") &&
+      service.includes("ATTR_REQUIRED_*") &&
+      service.includes("ATTR_TYPE_*") &&
+      service.includes("ATTR_ALLOWED_*") &&
+      service.includes("SAFE_PLATFORM_RULE_CODES"),
+    "Readiness health must normalize custom and dynamic ValidationIssue rule codes before returning them.",
+  );
+
+  assert(
+    service.includes("CONNECTOR_STATUS_IMPACT") &&
+      service.includes('ACTIVE: "STATUS"') &&
+      service.includes('PAUSED: "WARNING"') &&
+      service.includes('CREDENTIAL_EXPIRED: "BLOCKER"') &&
+      service.includes('DISABLED: "STATUS"'),
+    "Connector readiness must classify every approved installation status explicitly.",
+  );
+
+  assert(
+    service.includes("compatibilityBlocked") &&
+      service.includes("remapRequired") &&
+      service.includes("fallbackAckRequired") &&
+      service.includes("deprecated") &&
+      service.includes("blockingMappings: Number(blockingMappings"),
+    "Mapping readiness must expose overlapping signal counts separately from distinct mapping totals.",
+  );
+
+  assert(
+    !types.includes("readyProducts") &&
+      !types.includes("globalBlockedProducts") &&
+      !service.includes("DashboardSnapshot") &&
+      !service.includes("dashboardSnapshot") &&
+      !service.includes("getBatchReadiness") &&
+      !service.includes("simulateProduct") &&
+      !service.includes("mappingRules: true"),
+    "Readiness health must not claim global current readiness or use disallowed proxy/evaluation sources.",
+  );
 
   for (const prohibited of [
     "payload: true",
@@ -89,7 +170,8 @@ async function main() {
       "api_authorization_admin_and_boundary",
       "api_read_only_summary_endpoint",
       "bounded_windows_and_timeout",
-      "six_required_cards",
+      "readiness_backend_contract",
+      "seven_required_cards",
       "safe_field_allowlist",
       "p0_p1_error_badge_source",
     ],
