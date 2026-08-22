@@ -252,6 +252,29 @@ function main() {
   );
   requireRunContains(postDeployStep, "node scripts/staging-postdeploy-check.cjs", "Post-deploy verification");
 
+  const opsSummaryAcceptanceStep = requireStep(steps, "Internal Ops Summary staging acceptance");
+  requireEnvVar(opsSummaryAcceptanceStep, "STAGING_BASE_URL", "Internal Ops Summary staging acceptance");
+  assert(
+    String(opsSummaryAcceptanceStep.env?.STAGING_BASE_URL ?? "").trim() === "${{ steps.resolve_staging_api_url.outputs.api_url }}",
+    "Internal Ops Summary staging acceptance must use the resolved staging API URL output.",
+  );
+  requireEnvVar(opsSummaryAcceptanceStep, "STAGING_WEB_URL", "Internal Ops Summary staging acceptance");
+  assert(
+    String(opsSummaryAcceptanceStep.env?.STAGING_WEB_URL ?? "").trim() === "${{ steps.resolve_staging_web_url.outputs.web_url }}",
+    "Internal Ops Summary staging acceptance must use the resolved staging Web URL output.",
+  );
+  requireEnvVar(opsSummaryAcceptanceStep, "STAGING_SMOKE_WORKSPACE", "Internal Ops Summary staging acceptance");
+  requireEnvVar(opsSummaryAcceptanceStep, "STAGING_SMOKE_USER", "Internal Ops Summary staging acceptance");
+  requireEnvVar(opsSummaryAcceptanceStep, "STAGING_SMOKE_PASSWORD", "Internal Ops Summary staging acceptance");
+  requireEnvVar(opsSummaryAcceptanceStep, "OPS_SUMMARY_ACCEPTANCE_OUTPUT", "Internal Ops Summary staging acceptance");
+  requireRunContains(
+    opsSummaryAcceptanceStep,
+    "node scripts/staging-internal-ops-summary-acceptance.cjs",
+    "Internal Ops Summary staging acceptance",
+  );
+  requireStepOrder(steps, "Staging post-deploy verification (auth + trust boundary)", "Internal Ops Summary staging acceptance");
+  requireStepOrder(steps, "Internal Ops Summary staging acceptance", "Internal Ops Errors staging acceptance");
+
   const opsErrorsAcceptanceStep = requireStep(steps, "Internal Ops Errors staging acceptance");
   requireEnvVar(opsErrorsAcceptanceStep, "STAGING_BASE_URL", "Internal Ops Errors staging acceptance");
   assert(
@@ -275,6 +298,7 @@ function main() {
     "Internal Ops Errors staging acceptance",
   );
   requireStepOrder(steps, "Staging post-deploy verification (auth + trust boundary)", "Internal Ops Errors staging acceptance");
+  requireStepOrder(steps, "Internal Ops Summary staging acceptance", "Internal Ops Errors staging acceptance");
   requireStepOrder(steps, "Internal Ops Errors staging acceptance", "Public signup smoke check");
 
   const publicSignupStep = requireStep(steps, "Public signup smoke check");
@@ -341,6 +365,7 @@ function main() {
   assert(uploadPath.includes("docs/execution/gates/*.json"), "Upload step missing gate artifact path");
   assert(uploadPath.includes("docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json"), "Upload step missing rollout snapshot path");
   assert(uploadPath.includes(".run-logs/queue-failure-diagnostics-*.json"), "Upload step missing queue failure diagnostics path");
+  assert(uploadPath.includes(".run-logs/internal-ops-summary-acceptance-*.json"), "Upload step missing Internal Ops Summary acceptance path");
   assert(uploadPath.includes(".run-logs/internal-ops-errors-acceptance-*.json"), "Upload step missing Internal Ops Errors acceptance path");
   assert(uploadPath.includes(".run-logs/e2e-smoke-*.log"), "Upload step missing E2E smoke log path");
   assert(uploadPath.includes(".run-logs/e2e-result-*.json"), "Upload step missing E2E smoke result path");
@@ -366,6 +391,7 @@ function main() {
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
           "postdeploy_verification_enables_non_admin_access_policy_smoke",
+          "internal_ops_summary_acceptance_runs_with_live_api_web_and_masked_smoke_auth",
           "internal_ops_errors_acceptance_runs_with_live_api_web_and_masked_ingest_secret",
           "public_signup_smoke_check_runs_after_postdeploy_verification",
           "postdeploy_e2e_smoke_runs_before_gate_recording",

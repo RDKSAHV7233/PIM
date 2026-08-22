@@ -123,6 +123,7 @@ jobs:
           node scripts/check-pr-scope.test.cjs
           node scripts/railway-deploy.test.cjs
           node scripts/resolve-observability-database-url.test.cjs
+          node scripts/staging-internal-ops-summary-acceptance.test.cjs
           node scripts/staging-error-authority-ops-errors-acceptance.test.cjs
           node scripts/validate-deploy-stage1-workflow.cjs
           node scripts/validate-deploy-staging-workflow.cjs
