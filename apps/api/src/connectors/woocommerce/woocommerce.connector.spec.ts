@@ -214,3 +214,129 @@ describe("WooCommerceConnector.verifyCandidateCredentials", () => {
     expect(dbSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("WooCommerceConnector.findExistingProductId", () => {
+  // Regression coverage: WooCommerce's /products collection endpoint does not
+  // implement the generic WordPress meta_key/meta_value filter — passing it is
+  // silently ignored and the endpoint falls back to its default listing. This
+  // was live-verified against a real store: the same product was returned for
+  // every distinct SKU queried, causing publishProduct to PUT-overwrite one
+  // existing product on every single publish instead of creating new ones.
+  // `sku` is the correct, natively-supported filter parameter.
+
+  it("queries the native sku parameter, not the unsupported meta_key/meta_value pair", async () => {
+    const connector = makeConnector();
+    const callApi = jest
+      .spyOn(connector as any, "callApi")
+      .mockResolvedValue({ ok: true, json: async () => [{ id: 42, sku: "WC-001" }] } as unknown as Response);
+
+    const id = await (connector as any).findExistingProductId(
+      "https://store.example.com",
+      "ck_test",
+      "cs_test",
+      "WC-001",
+    );
+
+    expect(id).toBe(42);
+    const [, path] = callApi.mock.calls[0];
+    expect(path).toContain("sku=WC-001");
+    expect(path).not.toContain("meta_key");
+    expect(path).not.toContain("meta_value");
+  });
+
+  it("returns null when the response's sku doesn't exactly match the query (defense in depth)", async () => {
+    // This is exactly the failure mode that was live-verified: an unfiltered
+    // (or mis-filtered) response returning an unrelated product must never be
+    // trusted as a match just because the request "succeeded".
+    const connector = makeConnector();
+    jest
+      .spyOn(connector as any, "callApi")
+      .mockResolvedValue({ ok: true, json: async () => [{ id: 138, sku: "some-other-product" }] } as unknown as Response);
+
+    const id = await (connector as any).findExistingProductId(
+      "https://store.example.com",
+      "ck_test",
+      "cs_test",
+      "WC-001",
+    );
+
+    expect(id).toBeNull();
+  });
+
+  it("returns null when the store has no matching product", async () => {
+    const connector = makeConnector();
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({ ok: true, json: async () => [] } as unknown as Response);
+
+    const id = await (connector as any).findExistingProductId(
+      "https://store.example.com",
+      "ck_test",
+      "cs_test",
+      "WC-999-NEW",
+    );
+
+    expect(id).toBeNull();
+  });
+});
+
+describe("WooCommerceConnector.publishProduct create-vs-update branching", () => {
+  const product: ProductPayload = {
+    sku: "WC-NEW-001",
+    title: "Brand New Product",
+    description: "A genuinely new product",
+    brand: "Vexa",
+    hsnCode: "6204",
+    gstRate: 12,
+    mrp: 999,
+    sellingPrice: 799,
+    mainImageUrl: "https://cdn.example.com/new.jpg",
+    attributes: {},
+    // Deliberately blank productType (no tags either) — keeps this test
+    // isolated to the create-vs-update branch, without also exercising
+    // resolveTermIds' separate category/tag POST calls.
+    productType: "",
+  };
+
+  function mockResolvedCredentials(connector: WooCommerceConnector) {
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: "https://store.example.com",
+      consumerKey: "ck_test",
+      consumerSecret: "cs_test",
+    });
+  }
+
+  it("POSTs to /products (creates) when no existing product matches the SKU", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    const callApi = jest.spyOn(connector as any, "callApi").mockImplementation(async (method: any, path: any) => {
+      if (method === "GET" && path.startsWith("/products?")) {
+        return { ok: true, json: async () => [] } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ id: 555 }) } as unknown as Response;
+    });
+
+    const result = await connector.publishProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product);
+
+    expect(result.externalRef).toBe("555");
+    const publishCall = callApi.mock.calls.find(([method]) => method === "POST");
+    expect(publishCall?.[0]).toBe("POST");
+    expect(publishCall?.[1]).toBe("/products");
+  });
+
+  it("PUTs to /products/{id} (updates) only when a real matching-SKU product was found", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    const callApi = jest.spyOn(connector as any, "callApi").mockImplementation(async (method: any, path: any) => {
+      if (method === "GET" && path.startsWith("/products?")) {
+        return { ok: true, json: async () => [{ id: 777, sku: product.sku }] } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ id: 777 }) } as unknown as Response;
+    });
+
+    const result = await connector.publishProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product);
+
+    expect(result.externalRef).toBe("777");
+    const publishCall = callApi.mock.calls.find(([method]) => method === "PUT");
+    expect(publishCall?.[0]).toBe("PUT");
+    expect(publishCall?.[1]).toBe("/products/777");
+  });
+});

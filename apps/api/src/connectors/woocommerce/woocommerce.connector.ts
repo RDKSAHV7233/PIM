@@ -301,9 +301,21 @@ export class WooCommerceConnector implements ConnectorInterface {
     return { regularPrice, salePrice };
   }
 
-  // ─── idempotency: find existing WC product by _vexa_pim_product_id ──────────
+  // ─── idempotency: find existing WC product by SKU ────────────────────────────
   //
-  // WooCommerce supports meta_key / meta_value filter on GET /products.
+  // `sku` is one of the natively-supported query parameters on GET /products
+  // (unlike the generic WordPress meta_key/meta_value filter, which WooCommerce's
+  // products collection endpoint does not implement — passing it is silently
+  // ignored and the endpoint falls back to its default, unfiltered listing).
+  // Live-verified against a real store: meta_key/meta_value returned the same
+  // single existing product for every distinct SKU queried, causing every
+  // publish to PUT-overwrite that one product instead of creating a new one.
+  // buildWcProductPayload already sets the native `sku` field on every create,
+  // so filtering by it here is the correct, supported match. The exact-match
+  // check on the returned item's own sku is defense in depth — `sku=` is an
+  // exact-match filter per WooCommerce's docs, but this repo just learned not
+  // to trust an unverified filter parameter without confirming the response.
+  //
   // Returns the numeric WC product ID if a matching product exists, or null.
 
   private async findExistingProductId(
@@ -312,11 +324,11 @@ export class WooCommerceConnector implements ConnectorInterface {
     consumerSecret: string,
     vexaSku: string,
   ): Promise<number | null> {
-    const query = `meta_key=_vexa_pim_product_id&meta_value=${encodeURIComponent(vexaSku)}&per_page=1&status=any`;
+    const query = `sku=${encodeURIComponent(vexaSku)}&per_page=1&status=any`;
     const res = await this.callApi('GET', `/products?${query}`, siteUrl, consumerKey, consumerSecret);
     if (!res.ok) return null;
     const data = await res.json() as WcProductListItem[];
-    if (Array.isArray(data) && data.length > 0 && data[0].id != null) {
+    if (Array.isArray(data) && data.length > 0 && data[0].id != null && data[0].sku === vexaSku) {
       return data[0].id;
     }
     return null;
