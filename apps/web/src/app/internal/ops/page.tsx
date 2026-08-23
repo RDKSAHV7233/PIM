@@ -6,7 +6,14 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 import { ApiHttpError } from "@/lib/api";
-import { getInternalOpsSummary, type InternalOpsStatusCount } from "@/lib/api/internal-ops";
+import {
+  getInternalOpsSummary,
+  type InternalOpsAggregateAvailability,
+  type InternalOpsCardAvailability,
+  type InternalOpsReadinessMetric,
+  type InternalOpsSummaryResponse,
+  type InternalOpsStatusCount,
+} from "@/lib/api/internal-ops";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { formatDateTime } from "@/lib/format";
 import { isSystemAdminBoundary } from "@/lib/role-capabilities";
@@ -50,9 +57,10 @@ export default async function InternalOpsPage() {
       summary.imports,
       summary.publishing,
       summary.connectors,
+      summary.readiness,
       summary.errors,
       summary.mediaIntegrity,
-    ].filter((card) => card.availability === "unavailable").length;
+    ].filter((card) => card.availability !== "available").length;
 
     return (
       <div className="space-y-5">
@@ -105,6 +113,12 @@ export default async function InternalOpsPage() {
             value={formatNumber(summary.connectors.totalInstallations)}
             helper={formatStatusSummary(summary.connectors.byStatus)}
             tone={summary.connectors.availability === "unavailable" ? "warning" : "default"}
+          />
+          <KpiCard
+            label="Readiness Health"
+            value={formatReadinessAvailability(summary.readiness.availability)}
+            helper="Persisted operational readiness signals"
+            tone={summary.readiness.availability === "unavailable" ? "warning" : summary.readiness.availability === "partial" ? "warning" : "default"}
           />
           <KpiCard
             label="Errors"
@@ -160,6 +174,7 @@ export default async function InternalOpsPage() {
                   { label: "Submission failed", value: summary.publishing.submissions.failed, tone: summary.publishing.submissions.failed > 0 ? "danger" : "success" },
                 ]}
               />
+              <ReadinessPanel readiness={summary.readiness} />
               <SignalPanel
                 title="Error Authority"
                 unavailable={summary.errors.availability === "unavailable"}
@@ -251,13 +266,108 @@ function SignalPanel({
   );
 }
 
-function AvailabilityChip({ availability }: { availability: "available" | "unavailable" }) {
+function ReadinessPanel({ readiness }: { readiness: InternalOpsSummaryResponse["readiness"] }) {
+  const isUnavailable = readiness.availability === "unavailable";
+
+  return (
+    <section className="rounded-md border border-slate-200 p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Readiness Health</h3>
+          <p className="text-xs text-slate-500">Persisted operational readiness signals.</p>
+        </div>
+        <AvailabilityChip availability={readiness.availability} />
+      </div>
+      {isUnavailable ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Readiness signals are temporarily unavailable.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <ReadinessSourceSection
+            title="Product data"
+            availability={readiness.productData.availability}
+            rows={[
+              { label: "Blocked products", value: readiness.productData.blockedProducts, tone: "danger" },
+              { label: "Blocking issues", value: readiness.productData.blockingIssues, tone: "danger" },
+              { label: "Warnings", value: readiness.productData.warningIssues, tone: "warning" },
+            ]}
+          />
+          <ReadinessSourceSection
+            title="Mappings"
+            availability={readiness.mapping.availability}
+            rows={[
+              { label: "Blocking mappings", value: readiness.mapping.blockingMappings, tone: "danger" },
+              { label: "Warnings", value: readiness.mapping.warningMappings, tone: "warning" },
+            ]}
+          />
+          <ReadinessSourceSection
+            title="Connectors"
+            availability={readiness.connector.availability}
+            rows={[
+              { label: "Blocking installations", value: readiness.connector.blockingInstallations, tone: "danger" },
+              { label: "Warnings", value: readiness.connector.warningInstallations, tone: "warning" },
+            ]}
+          />
+        </div>
+      )}
+      <p className="mt-3 text-xs text-slate-500">As of {formatDateTime(readiness.asOf)}</p>
+    </section>
+  );
+}
+
+function ReadinessSourceSection({
+  title,
+  availability,
+  rows,
+}: {
+  title: string;
+  availability: InternalOpsCardAvailability;
+  rows: Array<{ label: string; value: InternalOpsReadinessMetric; tone: SignalTone }>;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 px-3 py-2">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
+        <AvailabilityChip availability={availability} />
+      </div>
+      {availability === "unavailable" ? (
+        <p className="text-sm text-slate-500">Signals temporarily unavailable.</p>
+      ) : (
+        <dl className="space-y-2">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-center justify-between gap-3">
+              <dt className="text-sm text-slate-600">{row.label}</dt>
+              <dd className="flex items-center gap-2">
+                <span className="text-sm font-semibold tabular-nums text-slate-900">{formatMetric(row.value)}</span>
+                <StatusChip label={row.tone === "danger" ? "Blocker" : "Warning"} tone={row.tone} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function AvailabilityChip({ availability }: { availability: InternalOpsAggregateAvailability }) {
   return (
     <StatusChip
-      label={availability === "available" ? "Available" : "Unavailable"}
+      label={formatReadinessAvailability(availability)}
       tone={availability === "available" ? "success" : "warning"}
     />
   );
+}
+
+function formatMetric(value: InternalOpsReadinessMetric) {
+  return value === null ? "Unavailable" : formatNumber(value);
+}
+
+function formatReadinessAvailability(availability: InternalOpsAggregateAvailability) {
+  if (availability === "partial") {
+    return "Partial";
+  }
+  return availability === "available" ? "Available" : "Unavailable";
 }
 
 function formatNumber(value: number) {
