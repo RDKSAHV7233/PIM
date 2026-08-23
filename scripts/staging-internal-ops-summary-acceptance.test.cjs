@@ -70,6 +70,56 @@ function main() {
   assert(script.includes("unauthenticated_summary_api_denied"), "Acceptance script must record unauthenticated API denial.");
   assert(script.includes("findProhibitedKeys"), "Acceptance script must inspect summary payload for prohibited keys.");
   assert(script.includes("findProhibitedText"), "Acceptance script must inspect rendered page for prohibited text.");
+  assert(script.includes("assertReadinessShape"), "Acceptance script must explicitly validate readiness shape.");
+  assert(script.includes("READINESS_AVAILABILITY"), "Acceptance script must validate readiness aggregate availability.");
+  assert(script.includes("assertIsoDate(readiness.asOf"), "Acceptance script must validate readiness.asOf.");
+  assert(script.includes("readiness.productData"), "Acceptance script must validate readiness productData source.");
+  assert(script.includes("readiness.mapping"), "Acceptance script must validate readiness mapping source.");
+  assert(script.includes("readiness.connector"), "Acceptance script must validate readiness connector source.");
+  assert(script.includes("readiness_backend_contract_present"), "Acceptance script must record readiness runtime evidence.");
+  for (const metric of [
+    "blockedProducts",
+    "blockingIssues",
+    "warningIssues",
+    "affectedTenants",
+    "topRuleFamilies",
+    "blockingMappings",
+    "warningMappings",
+    "compatibilityBlocked",
+    "remapRequired",
+    "fallbackAckRequired",
+    "deprecated",
+    "blockingInstallations",
+    "warningInstallations",
+    "byStatus",
+  ]) {
+    assert(script.includes(metric), `Acceptance script must validate readiness metric ${metric}.`);
+  }
+  for (const ruleFamily of [
+    "GST_HSN_REQUIRED",
+    "GST_HSN_FORMAT",
+    "GST_RATE_REQUIRED",
+    "GST_RATE_UNCOMMON",
+    "PRICING_NO_DEFAULT_PRICES",
+    "PRICING_INCOMPLETE",
+    "ATTR_REQUIRED_*",
+    "ATTR_TYPE_*",
+    "ATTR_ALLOWED_*",
+    "CUSTOM_RULE",
+  ]) {
+    assert(script.includes(ruleFamily), `Acceptance script must allowlist readiness rule family ${ruleFamily}.`);
+  }
+  assert(script.includes("RULE_FAMILY_LIMIT = 10"), "Acceptance script must bound readiness top rule families.");
+  assert(script.includes("assertRuleFamilies"), "Acceptance script must validate rule-family safety.");
+  assert(script.includes("raw custom rule code"), "Acceptance script must reject raw custom rule-code leakage.");
+  for (const mapping of [
+    'ACTIVE: "STATUS"',
+    'PAUSED: "WARNING"',
+    'CREDENTIAL_EXPIRED: "BLOCKER"',
+    'DISABLED: "STATUS"',
+  ]) {
+    assert(script.includes(mapping), `Acceptance script must validate connector status impact mapping ${mapping}.`);
+  }
   for (const card of ["jobs", "imports", "publishing", "connectors", "errors", "mediaIntegrity"]) {
     assert(script.includes(`"${card}"`), `Acceptance script must validate ${card} card.`);
   }
@@ -79,6 +129,22 @@ function main() {
   assert(!script.includes("ERROR_AUTHORITY_INGEST_TOKEN"), "Summary acceptance must not require Error Authority ingest token.");
   assert(!script.includes("OBSERVABILITY_DATABASE_URL"), "Summary acceptance must not receive or print observability DB URL.");
   assert(!script.includes("DATABASE_URL"), "Summary acceptance must not receive or print database URLs.");
+  for (const prohibited of [
+    '"mappingRules"',
+    '"metadata"',
+    '"tenantKey"',
+    '"tenantName"',
+    '"customerName"',
+    '"requestBody"',
+    '"responseBody"',
+    '"payload"',
+    '"headers"',
+    '"cookies"',
+    '"token"',
+    '"credential"',
+  ]) {
+    assert(script.includes(prohibited), `Acceptance script prohibited-key inspection must include ${prohibited}.`);
+  }
 
   assert(
     ci.includes("node scripts/staging-internal-ops-summary-acceptance.test.cjs"),
@@ -97,6 +163,9 @@ function main() {
           "summary_acceptance_checks_admin_api_and_web",
           "summary_acceptance_checks_viewer_and_unauth_denial",
           "summary_acceptance_checks_six_cards",
+          "summary_acceptance_checks_readiness_backend_contract",
+          "summary_acceptance_checks_readiness_safe_rule_families",
+          "summary_acceptance_checks_readiness_connector_status_impacts",
           "summary_acceptance_checks_safe_fields",
           "summary_acceptance_artifact_uploaded",
           "summary_acceptance_does_not_use_db_or_ingest_secrets",

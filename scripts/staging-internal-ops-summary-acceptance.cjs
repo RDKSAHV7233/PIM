@@ -8,6 +8,27 @@ const { randomUUID } = require("node:crypto");
 const CARD_KEYS = ["jobs", "imports", "publishing", "connectors", "errors", "mediaIntegrity"];
 const CARD_LABELS = ["Jobs", "Imports", "Publishing", "Connectors", "Errors", "Media Integrity"];
 const AVAILABILITY = new Set(["available", "unavailable"]);
+const READINESS_AVAILABILITY = new Set(["available", "partial", "unavailable"]);
+const READINESS_IMPACT = new Set(["BLOCKER", "WARNING", "STATUS"]);
+const RULE_FAMILY_LIMIT = 10;
+const SAFE_RULE_FAMILIES = new Set([
+  "GST_HSN_REQUIRED",
+  "GST_HSN_FORMAT",
+  "GST_RATE_REQUIRED",
+  "GST_RATE_UNCOMMON",
+  "PRICING_NO_DEFAULT_PRICES",
+  "PRICING_INCOMPLETE",
+  "ATTR_REQUIRED_*",
+  "ATTR_TYPE_*",
+  "ATTR_ALLOWED_*",
+  "CUSTOM_RULE",
+]);
+const CONNECTOR_STATUS_IMPACT = {
+  ACTIVE: "STATUS",
+  PAUSED: "WARNING",
+  CREDENTIAL_EXPIRED: "BLOCKER",
+  DISABLED: "STATUS",
+};
 
 function requireEnv(name) {
   const value = String(process.env[name] ?? "").trim();
@@ -194,6 +215,8 @@ function findProhibitedKeys(value) {
     "credential",
     "credentials",
     "encryptedValue",
+    "mappingRules",
+    "metadata",
     "requestBody",
     "responseBody",
     "requestPayload",
@@ -213,6 +236,10 @@ function findProhibitedKeys(value) {
     "checksum",
     "title",
     "description",
+    "tenantKey",
+    "tenantName",
+    "workspaceName",
+    "customerName",
     "attributeValues",
     "normalizedFrames",
     "stack",
@@ -254,6 +281,10 @@ function findProhibitedText(text) {
     "product payload",
     "raw import",
     "raw validation",
+    "mappingrules",
+    "tenant name",
+    "customer name",
+    "tenantkey",
     "encryptedvalue",
     "sourcefilekey",
     "storagepath",
@@ -264,6 +295,16 @@ function findProhibitedText(text) {
 function assertNumber(value, label) {
   assert(Number.isFinite(value), `${label} must be a finite number`);
   assert(value >= 0, `${label} must be non-negative`);
+}
+
+function assertNullableMetric(value, label) {
+  assert(value === null, `${label} must be null when the readiness source is unavailable`);
+}
+
+function assertIsoDate(value, label) {
+  assert(typeof value === "string" && value.length > 0, `${label} must be present`);
+  const timestamp = Date.parse(value);
+  assert(Number.isFinite(timestamp), `${label} must be a valid date`);
 }
 
 function assertStatusCounts(value, label) {
@@ -278,6 +319,100 @@ function assertAvailability(card, label) {
   assert(AVAILABILITY.has(card?.availability), `${label}.availability must be available or unavailable`);
   if (card.availability === "unavailable") {
     assert(typeof card.errorMessage === "string" && card.errorMessage.length > 0, `${label} unavailable state must include errorMessage`);
+  }
+}
+
+function assertReadinessSourceAvailability(source, label) {
+  assert(AVAILABILITY.has(source?.availability), `${label}.availability must be available or unavailable`);
+}
+
+function assertRuleFamilies(value, label) {
+  assert(Array.isArray(value), `${label} must be an array when productData is available`);
+  assert(value.length <= RULE_FAMILY_LIMIT, `${label} must contain at most ${RULE_FAMILY_LIMIT} items`);
+  value.forEach((row, index) => {
+    const ruleFamily = String(row?.ruleFamily ?? "");
+    const impact = String(row?.impact ?? "");
+    assert(SAFE_RULE_FAMILIES.has(ruleFamily), `${label}[${index}].ruleFamily is not allowlisted: ${ruleFamily}`);
+    assert(impact === "BLOCKER" || impact === "WARNING", `${label}[${index}].impact must be BLOCKER or WARNING`);
+    assertNumber(row?.count, `${label}[${index}].count`);
+    assert(!/^ATTR_REQUIRED_[A-Z0-9]/.test(ruleFamily), `${label}[${index}] leaked a raw ATTR_REQUIRED rule code`);
+    assert(!/^ATTR_TYPE_[A-Z0-9]/.test(ruleFamily), `${label}[${index}] leaked a raw ATTR_TYPE rule code`);
+    assert(!/^ATTR_ALLOWED_[A-Z0-9]/.test(ruleFamily), `${label}[${index}] leaked a raw ATTR_ALLOWED rule code`);
+    assert(ruleFamily === "CUSTOM_RULE" || !/^CUSTOM(ER)?_[A-Z0-9_]+/.test(ruleFamily), `${label}[${index}] leaked a raw custom rule code`);
+  });
+}
+
+function assertMappingSignals(signals) {
+  assert(signals && typeof signals === "object" && !Array.isArray(signals), "readiness.mapping.signals must be an object");
+  assertNumber(signals.compatibilityBlocked, "readiness.mapping.signals.compatibilityBlocked");
+  assertNumber(signals.remapRequired, "readiness.mapping.signals.remapRequired");
+  assertNumber(signals.fallbackAckRequired, "readiness.mapping.signals.fallbackAckRequired");
+  assertNumber(signals.deprecated, "readiness.mapping.signals.deprecated");
+}
+
+function assertConnectorStatuses(value, label) {
+  assert(Array.isArray(value), `${label} must be an array when connector is available`);
+  value.forEach((row, index) => {
+    const status = String(row?.status ?? "");
+    const expectedImpact = CONNECTOR_STATUS_IMPACT[status];
+    assert(expectedImpact, `${label}[${index}].status is not allowlisted: ${status}`);
+    assert(row?.impact === expectedImpact, `${label}[${index}].impact expected ${expectedImpact}, got ${row?.impact}`);
+    assert(READINESS_IMPACT.has(row?.impact), `${label}[${index}].impact must be a known readiness impact`);
+    assertNumber(row?.count, `${label}[${index}].count`);
+  });
+}
+
+function assertReadinessShape(readiness) {
+  assert(readiness && typeof readiness === "object" && !Array.isArray(readiness), "Summary missing readiness card");
+  assert(READINESS_AVAILABILITY.has(readiness.availability), "readiness.availability must be available, partial, or unavailable");
+  assertIsoDate(readiness.asOf, "readiness.asOf");
+  assert(readiness.productData && typeof readiness.productData === "object", "readiness.productData must be present");
+  assert(readiness.mapping && typeof readiness.mapping === "object", "readiness.mapping must be present");
+  assert(readiness.connector && typeof readiness.connector === "object", "readiness.connector must be present");
+
+  assertReadinessSourceAvailability(readiness.productData, "readiness.productData");
+  if (readiness.productData.availability === "available") {
+    assertNumber(readiness.productData.blockedProducts, "readiness.productData.blockedProducts");
+    assertNumber(readiness.productData.blockingIssues, "readiness.productData.blockingIssues");
+    assertNumber(readiness.productData.warningIssues, "readiness.productData.warningIssues");
+    assertNumber(readiness.productData.affectedTenants, "readiness.productData.affectedTenants");
+    assertRuleFamilies(readiness.productData.topRuleFamilies, "readiness.productData.topRuleFamilies");
+  } else {
+    assertNullableMetric(readiness.productData.blockedProducts, "readiness.productData.blockedProducts");
+    assertNullableMetric(readiness.productData.blockingIssues, "readiness.productData.blockingIssues");
+    assertNullableMetric(readiness.productData.warningIssues, "readiness.productData.warningIssues");
+    assertNullableMetric(readiness.productData.affectedTenants, "readiness.productData.affectedTenants");
+    assert(readiness.productData.topRuleFamilies === null, "readiness.productData.topRuleFamilies must be null when unavailable");
+  }
+
+  assertReadinessSourceAvailability(readiness.mapping, "readiness.mapping");
+  if (readiness.mapping.availability === "available") {
+    assertNumber(readiness.mapping.blockingMappings, "readiness.mapping.blockingMappings");
+    assertNumber(readiness.mapping.warningMappings, "readiness.mapping.warningMappings");
+    assertNumber(readiness.mapping.affectedTenants, "readiness.mapping.affectedTenants");
+    assertMappingSignals(readiness.mapping.signals);
+  } else {
+    assertNullableMetric(readiness.mapping.blockingMappings, "readiness.mapping.blockingMappings");
+    assertNullableMetric(readiness.mapping.warningMappings, "readiness.mapping.warningMappings");
+    assertNullableMetric(readiness.mapping.affectedTenants, "readiness.mapping.affectedTenants");
+    assert(readiness.mapping.signals && typeof readiness.mapping.signals === "object", "readiness.mapping.signals must be present when unavailable");
+    assertNullableMetric(readiness.mapping.signals.compatibilityBlocked, "readiness.mapping.signals.compatibilityBlocked");
+    assertNullableMetric(readiness.mapping.signals.remapRequired, "readiness.mapping.signals.remapRequired");
+    assertNullableMetric(readiness.mapping.signals.fallbackAckRequired, "readiness.mapping.signals.fallbackAckRequired");
+    assertNullableMetric(readiness.mapping.signals.deprecated, "readiness.mapping.signals.deprecated");
+  }
+
+  assertReadinessSourceAvailability(readiness.connector, "readiness.connector");
+  if (readiness.connector.availability === "available") {
+    assertNumber(readiness.connector.blockingInstallations, "readiness.connector.blockingInstallations");
+    assertNumber(readiness.connector.warningInstallations, "readiness.connector.warningInstallations");
+    assertNumber(readiness.connector.affectedTenants, "readiness.connector.affectedTenants");
+    assertConnectorStatuses(readiness.connector.byStatus, "readiness.connector.byStatus");
+  } else {
+    assertNullableMetric(readiness.connector.blockingInstallations, "readiness.connector.blockingInstallations");
+    assertNullableMetric(readiness.connector.warningInstallations, "readiness.connector.warningInstallations");
+    assertNullableMetric(readiness.connector.affectedTenants, "readiness.connector.affectedTenants");
+    assert(readiness.connector.byStatus === null, "readiness.connector.byStatus must be null when unavailable");
   }
 }
 
@@ -296,6 +431,7 @@ function assertSummaryShape(summary) {
     assert(summary[key] && typeof summary[key] === "object", `Summary missing ${key} card`);
     assertAvailability(summary[key], key);
   }
+  assertReadinessShape(summary.readiness);
 
   assertNumber(summary.jobs.active, "jobs.active");
   assertNumber(summary.jobs.stuck, "jobs.stuck");
@@ -366,6 +502,34 @@ function summarizeCards(summary) {
       totalAssets: summary.mediaIntegrity.totalAssets,
       orphanDetectionIncluded: summary.mediaIntegrity.orphanDetectionIncluded,
     },
+    readiness: {
+      availability: summary.readiness.availability,
+      productData: {
+        availability: summary.readiness.productData.availability,
+        blockedProducts: summary.readiness.productData.blockedProducts,
+        blockingIssues: summary.readiness.productData.blockingIssues,
+        warningIssues: summary.readiness.productData.warningIssues,
+        affectedTenants: summary.readiness.productData.affectedTenants,
+        topRuleFamilyCount: Array.isArray(summary.readiness.productData.topRuleFamilies)
+          ? summary.readiness.productData.topRuleFamilies.length
+          : null,
+      },
+      mapping: {
+        availability: summary.readiness.mapping.availability,
+        blockingMappings: summary.readiness.mapping.blockingMappings,
+        warningMappings: summary.readiness.mapping.warningMappings,
+        affectedTenants: summary.readiness.mapping.affectedTenants,
+      },
+      connector: {
+        availability: summary.readiness.connector.availability,
+        blockingInstallations: summary.readiness.connector.blockingInstallations,
+        warningInstallations: summary.readiness.connector.warningInstallations,
+        affectedTenants: summary.readiness.connector.affectedTenants,
+        statusBuckets: Array.isArray(summary.readiness.connector.byStatus)
+          ? summary.readiness.connector.byStatus.length
+          : null,
+      },
+    },
   };
 }
 
@@ -409,6 +573,14 @@ async function main() {
       unavailableCards: CARD_KEYS.filter((key) => summary.payload[key].availability === "unavailable"),
     });
     pass("six_summary_cards_present", { cards: CARD_KEYS });
+    pass("readiness_backend_contract_present", {
+      availability: summary.payload.readiness.availability,
+      sourceAvailability: {
+        productData: summary.payload.readiness.productData.availability,
+        mapping: summary.payload.readiness.mapping.availability,
+        connector: summary.payload.readiness.connector.availability,
+      },
+    });
     pass("summary_safe_fields", { prohibitedKeys });
 
     const pageCookie = await loginWeb(webBase, workspaceSlug, userId, password, "admin web login");
