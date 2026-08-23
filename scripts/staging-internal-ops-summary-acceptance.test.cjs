@@ -123,7 +123,7 @@ function main() {
   for (const card of ["jobs", "imports", "publishing", "connectors", "errors", "mediaIntegrity"]) {
     assert(script.includes(`"${card}"`), `Acceptance script must validate ${card} card.`);
   }
-  for (const label of ["Jobs", "Imports", "Publishing", "Connectors", "Errors", "Media Integrity"]) {
+  for (const label of ["Jobs", "Imports", "Publishing", "Connectors", "Readiness Health", "Errors", "Media Integrity"]) {
     assert(script.includes(`"${label}"`), `Acceptance script must validate ${label} rendered card.`);
   }
   assert(!script.includes("ERROR_AUTHORITY_INGEST_TOKEN"), "Summary acceptance must not require Error Authority ingest token.");
@@ -162,7 +162,7 @@ function main() {
           "summary_acceptance_uses_existing_smoke_auth",
           "summary_acceptance_checks_admin_api_and_web",
           "summary_acceptance_checks_viewer_and_unauth_denial",
-          "summary_acceptance_checks_six_cards",
+          "summary_acceptance_checks_readiness_ui_card",
           "summary_acceptance_checks_readiness_backend_contract",
           "summary_acceptance_checks_readiness_safe_rule_families",
           "summary_acceptance_checks_readiness_connector_status_impacts",

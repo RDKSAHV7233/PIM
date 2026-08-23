@@ -6,7 +6,7 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
 const CARD_KEYS = ["jobs", "imports", "publishing", "connectors", "errors", "mediaIntegrity"];
-const CARD_LABELS = ["Jobs", "Imports", "Publishing", "Connectors", "Errors", "Media Integrity"];
+const CARD_LABELS = ["Jobs", "Imports", "Publishing", "Connectors", "Readiness Health", "Errors", "Media Integrity"];
 const AVAILABILITY = new Set(["available", "unavailable"]);
 const READINESS_AVAILABILITY = new Set(["available", "partial", "unavailable"]);
 const READINESS_IMPACT = new Set(["BLOCKER", "WARNING", "STATUS"]);
