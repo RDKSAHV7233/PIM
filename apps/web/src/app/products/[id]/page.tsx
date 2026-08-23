@@ -351,10 +351,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       };
     }
     if (channelIneligibleCount > 0) {
+      // PIM#644: this check is informational only (media.service.ts's validateAsset()
+      // records it but evaluatePublishReadiness()'s actual export-gating blockers array
+      // never includes it), so a "Blocked" label here is misleading — export succeeds
+      // regardless, live-verified twice against a real WooCommerce store. Same class of
+      // fix as #585 for the sibling main-image-URL branch above.
       return {
-        label: "Blocked",
-        tone: "danger" as const,
-        detail: `${channelIneligibleCount} image${channelIneligibleCount === 1 ? "" : "s"} not marked eligible for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
+        label: "Warnings",
+        tone: "warning" as const,
+        detail: `${channelIneligibleCount} image${channelIneligibleCount === 1 ? "" : "s"} not marked eligible for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel} — won't stop export, but won't be sent as the product image for this channel either.`,
       };
     }
     if (missingAltTextCount > 0 || channelUnconfirmedCount > 0) {
