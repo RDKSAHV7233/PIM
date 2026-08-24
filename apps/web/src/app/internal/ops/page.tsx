@@ -130,8 +130,8 @@ export default async function InternalOpsPage() {
           <KpiCard
             label="Media Integrity"
             value={formatNumber(summary.mediaIntegrity.totalAssets)}
-            helper="Asset count only"
-            tone={summary.mediaIntegrity.availability === "unavailable" ? "warning" : "default"}
+            helper={formatMediaIntegrityHelper(summary.mediaIntegrity)}
+            tone={mediaIntegrityTone(summary.mediaIntegrity)}
           />
         </div>
 
@@ -216,7 +216,34 @@ export default async function InternalOpsPage() {
                   <span className="text-sm font-medium text-slate-700">Media assets</span>
                   <span className="text-sm tabular-nums text-slate-900">{formatNumber(summary.mediaIntegrity.totalAssets)}</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Orphan detection deferred to Increment 4.</p>
+                {summary.mediaIntegrity.latestRun ? (
+                  <dl className="mt-2 grid gap-2 text-xs text-slate-600">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Latest scan</dt>
+                      <dd className="font-semibold capitalize text-slate-900">{summary.mediaIntegrity.latestRun.status}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Rows checked</dt>
+                      <dd className="font-semibold tabular-nums text-slate-900">
+                        {formatNumber(summary.mediaIntegrity.latestRun.rowsExamined)}
+                        {summary.mediaIntegrity.latestRun.rowsEligible !== null ? ` / ${formatNumber(summary.mediaIntegrity.latestRun.rowsEligible)}` : ""}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Defects</dt>
+                      <dd className="font-semibold tabular-nums text-slate-900">{formatNumber(mediaIntegrityDefectCount(summary.mediaIntegrity.latestRun))}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Completed</dt>
+                      <dd className="font-semibold text-slate-900">
+                        {summary.mediaIntegrity.latestRun.completedAt ? formatDateTime(summary.mediaIntegrity.latestRun.completedAt) : "Running"}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">No scan run recorded yet.</p>
+                )}
+                <p className="mt-2 text-xs text-slate-500">Object-to-DB orphan enumeration remains deferred.</p>
               </div>
               <p className="text-xs text-slate-500">
                 As of {formatDateTime(summary.asOf)}. Query timeout {summary.windows.queryTimeoutMs}ms.
@@ -381,4 +408,39 @@ function formatStatusSummary(rows: InternalOpsStatusCount[]) {
   return rows
     .map((row) => `${row.status.replace(/_/g, " ")} ${formatNumber(row.count)}`)
     .join(", ");
+}
+
+function formatMediaIntegrityHelper(mediaIntegrity: InternalOpsSummaryResponse["mediaIntegrity"]) {
+  if (mediaIntegrity.availability === "unavailable") {
+    return "Summary source unavailable";
+  }
+  if (!mediaIntegrity.latestRun) {
+    return "No scan run recorded";
+  }
+  const defects = mediaIntegrityDefectCount(mediaIntegrity.latestRun);
+  const coverage = mediaIntegrity.latestRun.coverageComplete ? "complete" : "partial";
+  return `${formatNumber(defects)} defect${defects === 1 ? "" : "s"}, ${coverage} coverage`;
+}
+
+function mediaIntegrityTone(mediaIntegrity: InternalOpsSummaryResponse["mediaIntegrity"]): "default" | "success" | "warning" | "danger" {
+  if (mediaIntegrity.availability === "unavailable") {
+    return "warning";
+  }
+  if (!mediaIntegrity.latestRun) {
+    return "default";
+  }
+  const defects = mediaIntegrityDefectCount(mediaIntegrity.latestRun);
+  if (defects > 0) {
+    return "danger";
+  }
+  return mediaIntegrity.latestRun.coverageComplete ? "success" : "warning";
+}
+
+function mediaIntegrityDefectCount(latestRun: NonNullable<InternalOpsSummaryResponse["mediaIntegrity"]["latestRun"]>) {
+  return (
+    latestRun.totals.missing +
+    latestRun.totals.invalidPath +
+    latestRun.totals.unverifiable +
+    latestRun.totals.storageErrors
+  );
 }

@@ -155,6 +155,30 @@ function makeDb(overrides?: {
         return Promise.resolve(overrides?.empty ? 0 : 42);
       }),
     },
+    mediaIntegrityScanRun: {
+      findFirst: jest.fn(() => Promise.resolve(overrides?.empty ? null : {
+        id: "scan-run-1",
+        status: "partial",
+        startedAt: new Date("2026-08-24T10:00:00.000Z"),
+        completedAt: new Date("2026-08-24T10:01:00.000Z"),
+        coverageComplete: false,
+        rowsExamined: 40,
+        rowsEligible: 42,
+        continuationPending: true,
+        totals: {
+          missing: 1,
+          invalidPath: 2,
+          unverifiable: 3,
+          storageErrors: 4,
+          storagePath: "/app/storage/media/customer/private-file.jpg",
+        },
+        impact: {
+          affectedTenantCount: 2,
+          activeProductImpactCount: 1,
+          tenantKey: "customer-private",
+        },
+      })),
+    },
   };
   return {
     tx,
@@ -267,8 +291,30 @@ describe("InternalOpsSummaryService", () => {
     }));
     expect(summary.mediaIntegrity).toEqual(expect.objectContaining({
       totalAssets: 42,
+      latestRun: {
+        runId: "scan-run-1",
+        status: "partial",
+        startedAt: "2026-08-24T10:00:00.000Z",
+        completedAt: "2026-08-24T10:01:00.000Z",
+        coverageComplete: false,
+        rowsExamined: 40,
+        rowsEligible: 42,
+        continuationPending: true,
+        totals: {
+          missing: 1,
+          invalidPath: 2,
+          unverifiable: 3,
+          storageErrors: 4,
+        },
+        impact: {
+          affectedTenantCount: 2,
+          activeProductImpactCount: 1,
+        },
+      },
       orphanDetectionIncluded: false,
     }));
+    expect(JSON.stringify(summary.mediaIntegrity)).not.toContain("/app/storage");
+    expect(JSON.stringify(summary.mediaIntegrity)).not.toContain("customer-private");
     expect(summary.windows.operational.dateFrom).toBeTruthy();
     expect(summary.windows.inventory.dateFrom).toBeTruthy();
     expect(summary.windows.queryTimeoutMs).toBe(2500);
@@ -314,6 +360,7 @@ describe("InternalOpsSummaryService", () => {
     }));
     expect(summary.errors.p0p1OpenCount).toBe(0);
     expect(summary.mediaIntegrity.totalAssets).toBe(0);
+    expect(summary.mediaIntegrity.latestRun).toBeNull();
   });
 
   it("isolates one unavailable dependency to its card", async () => {
@@ -325,6 +372,7 @@ describe("InternalOpsSummaryService", () => {
     expect(summary.mediaIntegrity).toEqual(expect.objectContaining({
       availability: "unavailable",
       totalAssets: 0,
+      latestRun: null,
       errorMessage: "Summary source unavailable",
     }));
     expect(logger.warn).toHaveBeenCalledWith(

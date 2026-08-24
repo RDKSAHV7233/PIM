@@ -71,6 +71,11 @@ function main() {
   assert(script.includes("findProhibitedKeys"), "Acceptance script must inspect summary payload for prohibited keys.");
   assert(script.includes("findProhibitedText"), "Acceptance script must inspect rendered page for prohibited text.");
   assert(script.includes("assertReadinessShape"), "Acceptance script must explicitly validate readiness shape.");
+  assert(script.includes("assertMediaIntegrityLatestRun"), "Acceptance script must validate latest media integrity scan shape.");
+  assert(script.includes("mediaIntegrity.latestRun"), "Acceptance script must require latest media integrity scan field.");
+  for (const metric of ["missing", "invalidPath", "unverifiable", "storageErrors", "affectedTenantCount", "activeProductImpactCount"]) {
+    assert(script.includes(metric), `Acceptance script must validate media integrity scan metric ${metric}.`);
+  }
   assert(script.includes("READINESS_AVAILABILITY"), "Acceptance script must validate readiness aggregate availability.");
   assert(script.includes("assertIsoDate(readiness.asOf"), "Acceptance script must validate readiness.asOf.");
   assert(script.includes("readiness.productData"), "Acceptance script must validate readiness productData source.");

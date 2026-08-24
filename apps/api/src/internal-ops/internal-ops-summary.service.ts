@@ -135,6 +135,7 @@ export class InternalOpsSummaryService {
       this.resolveErrorsCard(operationalFrom, now),
       this.resolveCard("media_integrity", () => this.getMediaIntegrity(inventoryFrom), {
         totalAssets: 0,
+        latestRun: null,
         orphanDetectionIncluded: false as const,
       }),
     ]);
@@ -520,14 +521,35 @@ export class InternalOpsSummaryService {
   }
 
   private async getMediaIntegrity(inventoryFrom: Date) {
-    return this.withPrimaryDbTimeout(async (db) => ({
-      totalAssets: await db.mediaAsset.count({
-        where: {
-          createdAt: { gte: inventoryFrom },
-        },
-      }),
-      orphanDetectionIncluded: false as const,
-    }));
+    return this.withPrimaryDbTimeout(async (db) => {
+      const [totalAssets, latestRun] = await Promise.all([
+        db.mediaAsset.count({
+          where: {
+            createdAt: { gte: inventoryFrom },
+          },
+        }),
+        db.mediaIntegrityScanRun.findFirst({
+          orderBy: { startedAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+            coverageComplete: true,
+            rowsExamined: true,
+            rowsEligible: true,
+            continuationPending: true,
+            totals: true,
+            impact: true,
+          },
+        }),
+      ]);
+      return {
+        totalAssets,
+        latestRun: latestRun ? normalizeMediaIntegrityRun(latestRun) : null,
+        orphanDetectionIncluded: false as const,
+      };
+    });
   }
 
   private async resolveErrorsCard(dateFrom: Date, dateTo: Date) {
@@ -657,6 +679,53 @@ function safeSum(rows: SumRows, field: "failedRows" | "deadLetterRows"): number 
 
 function firstCount(rows: CountDistinctRow[]): number {
   return Number(rows[0]?.count ?? 0);
+}
+
+type MediaIntegrityRunRow = {
+  id: string;
+  status: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  coverageComplete: boolean;
+  rowsExamined: number;
+  rowsEligible: number | null;
+  continuationPending: boolean;
+  totals: unknown;
+  impact: unknown;
+};
+
+function normalizeMediaIntegrityRun(row: MediaIntegrityRunRow): NonNullable<InternalOpsSummaryResponse["mediaIntegrity"]["latestRun"]> {
+  const totals = asRecord(row.totals);
+  const impact = asRecord(row.impact);
+  return {
+    runId: row.id,
+    status: String(row.status ?? "").trim() || "unknown",
+    startedAt: row.startedAt.toISOString(),
+    completedAt: row.completedAt ? row.completedAt.toISOString() : null,
+    coverageComplete: row.coverageComplete,
+    rowsExamined: Number(row.rowsExamined ?? 0),
+    rowsEligible: row.rowsEligible === null ? null : Number(row.rowsEligible ?? 0),
+    continuationPending: row.continuationPending,
+    totals: {
+      missing: safeNumber(totals.missing),
+      invalidPath: safeNumber(totals.invalidPath),
+      unverifiable: safeNumber(totals.unverifiable),
+      storageErrors: safeNumber(totals.storageErrors),
+    },
+    impact: {
+      affectedTenantCount: safeNumber(impact.affectedTenantCount),
+      activeProductImpactCount: safeNumber(impact.activeProductImpactCount),
+    },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function safeNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizeRuleFamilyCounts(rows: RuleFamilyGroupRow[]): InternalOpsReadinessRuleFamilyCount[] {

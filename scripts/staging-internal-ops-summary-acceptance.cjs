@@ -322,6 +322,31 @@ function assertAvailability(card, label) {
   }
 }
 
+function assertMediaIntegrityLatestRun(value) {
+  if (value === null) {
+    return;
+  }
+  assert(value && typeof value === "object" && !Array.isArray(value), "mediaIntegrity.latestRun must be null or an object");
+  assert(typeof value.runId === "string" && value.runId.length > 0, "mediaIntegrity.latestRun.runId must be present");
+  assert(typeof value.status === "string" && value.status.length > 0, "mediaIntegrity.latestRun.status must be present");
+  assertIsoDate(value.startedAt, "mediaIntegrity.latestRun.startedAt");
+  if (value.completedAt !== null) {
+    assertIsoDate(value.completedAt, "mediaIntegrity.latestRun.completedAt");
+  }
+  assert(typeof value.coverageComplete === "boolean", "mediaIntegrity.latestRun.coverageComplete must be boolean");
+  assertNumber(value.rowsExamined, "mediaIntegrity.latestRun.rowsExamined");
+  if (value.rowsEligible !== null) {
+    assertNumber(value.rowsEligible, "mediaIntegrity.latestRun.rowsEligible");
+  }
+  assert(typeof value.continuationPending === "boolean", "mediaIntegrity.latestRun.continuationPending must be boolean");
+  for (const key of ["missing", "invalidPath", "unverifiable", "storageErrors"]) {
+    assertNumber(value.totals?.[key], `mediaIntegrity.latestRun.totals.${key}`);
+  }
+  for (const key of ["affectedTenantCount", "activeProductImpactCount"]) {
+    assertNumber(value.impact?.[key], `mediaIntegrity.latestRun.impact.${key}`);
+  }
+}
+
 function assertReadinessSourceAvailability(source, label) {
   assert(AVAILABILITY.has(source?.availability), `${label}.availability must be available or unavailable`);
 }
@@ -463,6 +488,8 @@ function assertSummaryShape(summary) {
   assert(summary.errors.href === "/internal/ops/errors", "errors.href must link to /internal/ops/errors");
 
   assertNumber(summary.mediaIntegrity.totalAssets, "mediaIntegrity.totalAssets");
+  assert(Object.prototype.hasOwnProperty.call(summary.mediaIntegrity, "latestRun"), "mediaIntegrity.latestRun must be present");
+  assertMediaIntegrityLatestRun(summary.mediaIntegrity.latestRun);
   assert(summary.mediaIntegrity.orphanDetectionIncluded === false, "mediaIntegrity.orphanDetectionIncluded must remain false");
 }
 
@@ -500,6 +527,14 @@ function summarizeCards(summary) {
     mediaIntegrity: {
       availability: summary.mediaIntegrity.availability,
       totalAssets: summary.mediaIntegrity.totalAssets,
+      latestRunStatus: summary.mediaIntegrity.latestRun?.status ?? null,
+      latestRunRowsExamined: summary.mediaIntegrity.latestRun?.rowsExamined ?? null,
+      latestRunDefects: summary.mediaIntegrity.latestRun
+        ? summary.mediaIntegrity.latestRun.totals.missing +
+          summary.mediaIntegrity.latestRun.totals.invalidPath +
+          summary.mediaIntegrity.latestRun.totals.unverifiable +
+          summary.mediaIntegrity.latestRun.totals.storageErrors
+        : null,
       orphanDetectionIncluded: summary.mediaIntegrity.orphanDetectionIncluded,
     },
     readiness: {

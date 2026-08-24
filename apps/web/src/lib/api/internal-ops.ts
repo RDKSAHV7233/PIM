@@ -117,6 +117,26 @@ export interface InternalOpsSummaryResponse {
   mediaIntegrity: {
     availability: InternalOpsCardAvailability;
     totalAssets: number;
+    latestRun: {
+      runId: string;
+      status: string;
+      startedAt: string;
+      completedAt: string | null;
+      coverageComplete: boolean;
+      rowsExamined: number;
+      rowsEligible: number | null;
+      continuationPending: boolean;
+      totals: {
+        missing: number;
+        invalidPath: number;
+        unverifiable: number;
+        storageErrors: number;
+      };
+      impact: {
+        affectedTenantCount: number;
+        activeProductImpactCount: number;
+      };
+    } | null;
     orphanDetectionIncluded: false;
     errorMessage: string | null;
   };
