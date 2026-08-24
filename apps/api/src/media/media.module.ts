@@ -1,13 +1,14 @@
 import { Module } from "@nestjs/common";
 import { AccessPolicyModule } from "../common/access-policy/access-policy.module";
 import { MediaController } from "./media.controller";
+import { MediaIntegrityService } from "./media-integrity.service";
 import { MediaService } from "./media.service";
 import { MediaStorageService } from "./media-storage.service";
 
 @Module({
   imports: [AccessPolicyModule],
   controllers: [MediaController],
-  providers: [MediaService, MediaStorageService],
-  exports: [MediaService, MediaStorageService],
+  providers: [MediaService, MediaStorageService, MediaIntegrityService],
+  exports: [MediaService, MediaStorageService, MediaIntegrityService],
 })
 export class MediaModule {}

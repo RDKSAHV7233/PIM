@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import path from "node:path";
@@ -7,6 +7,12 @@ import { promises as fs } from "node:fs";
 
 const PRESIGNED_URL_EXPIRY_SECONDS = 60 * 60;
 const LOCAL_STORAGE_DIR_NAME = "storage/media";
+
+export type MediaStorageProbeResult =
+  | { status: "exists" }
+  | { status: "missing" }
+  | { status: "unverifiable"; reason: "object_storage_not_configured" | "local_filesystem_probe_disabled" }
+  | { status: "storage_error"; reason: string };
 
 @Injectable()
 export class MediaStorageService {
@@ -31,6 +37,19 @@ export class MediaStorageService {
 
   isLocalMode(): boolean {
     return this.useLocalFallback;
+  }
+
+  isObjectStorageConfigured(): boolean {
+    return !this.useLocalFallback && Boolean(this.s3Client) && Boolean(this.bucketName);
+  }
+
+  storageSnapshot() {
+    return {
+      mode: this.useLocalFallback ? "filesystem" : "object_storage",
+      backend: String(process.env.STORAGE_BACKEND ?? "").trim() || "unset",
+      objectStorageConfigured: this.isObjectStorageConfigured(),
+      publicUrlConfigured: Boolean(this.publicUrl),
+    };
   }
 
   async upload(input: {
@@ -95,6 +114,39 @@ export class MediaStorageService {
   /** Reads a local-filesystem-stored asset back into memory. Only meaningful when isLocalMode() is true. */
   async readLocalFile(storagePath: string): Promise<Buffer> {
     return fs.readFile(storagePath);
+  }
+
+  async probeObjectKey(storagePath: string): Promise<MediaStorageProbeResult> {
+    if (!this.isObjectStorageConfigured()) {
+      return { status: "unverifiable", reason: "object_storage_not_configured" };
+    }
+    try {
+      await this.s3Client!.send(new HeadObjectCommand({ Bucket: this.bucketName, Key: storagePath }));
+      return { status: "exists" };
+    } catch (error: unknown) {
+      const name = String((error as { name?: unknown })?.name ?? "");
+      const httpStatus = Number((error as { $metadata?: { httpStatusCode?: unknown } })?.$metadata?.httpStatusCode ?? 0);
+      if (name === "NotFound" || httpStatus === 404) {
+        return { status: "missing" };
+      }
+      return { status: "storage_error", reason: name || `http_${httpStatus || "unknown"}` };
+    }
+  }
+
+  async probeLocalPath(storagePath: string, enabled: boolean): Promise<MediaStorageProbeResult> {
+    if (!enabled) {
+      return { status: "unverifiable", reason: "local_filesystem_probe_disabled" };
+    }
+    try {
+      await fs.access(storagePath);
+      return { status: "exists" };
+    } catch (error: unknown) {
+      const code = String((error as { code?: unknown })?.code ?? "");
+      if (code === "ENOENT") {
+        return { status: "missing" };
+      }
+      return { status: "storage_error", reason: code || "local_probe_error" };
+    }
   }
 
   async delete(storagePath: string): Promise<void> {

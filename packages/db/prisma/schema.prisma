@@ -283,6 +283,47 @@ model MediaAsset {
   @@map("media_assets")
 }
 
+model MediaIntegrityScanRun {
+  id                  String    @id @default(cuid())
+  status              String
+  mode                String    @default("read_only")
+  startedAt           DateTime  @default(now()) @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  cursorCreatedAt     DateTime? @map("cursor_created_at")
+  cursorId            String?   @map("cursor_id")
+  rowsExamined        Int       @default(0) @map("rows_examined")
+  rowsEligible        Int?      @map("rows_eligible")
+  coverageComplete    Boolean   @default(false) @map("coverage_complete")
+  truncated           Boolean   @default(false)
+  continuationPending Boolean   @default(false) @map("continuation_pending")
+  limits              Json      @default("{}")
+  storage             Json      @default("{}")
+  totals              Json      @default("{}")
+  byStorageKind       Json      @default("{}") @map("by_storage_kind")
+  impact              Json      @default("{}")
+  safety              Json      @default("{}")
+  errorMessage        String?   @map("error_message")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([startedAt(sort: Desc)], map: "idx_media_integrity_runs_started")
+  @@index([status, startedAt(sort: Desc)], map: "idx_media_integrity_runs_status_started")
+  @@map("media_integrity_scan_runs")
+}
+
+model MediaIntegrityScanCheckpoint {
+  checkpointKey   String    @id @map("checkpoint_key")
+  cursorCreatedAt DateTime? @map("cursor_created_at")
+  cursorId        String?   @map("cursor_id")
+  lastRunId       String?   @map("last_run_id")
+  cycleStartedAt  DateTime  @default(now()) @map("cycle_started_at")
+  rowsEligible    Int?      @map("rows_eligible")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("media_integrity_scan_checkpoints")
+}
+
 model AttributeDefinition {
   id            String            @id @default(cuid())
   tenantKey     String            @default("default")
