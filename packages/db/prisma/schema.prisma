@@ -1064,6 +1064,21 @@ model UserNotification {
   @@map("user_notifications")
 }
 
+model OpsAlertState {
+  id              String    @id @default(cuid())
+  alertKey        String    @unique @map("alert_key")
+  alertType       String    @map("alert_type")
+  firstObservedAt DateTime  @map("first_observed_at")
+  lastObservedAt  DateTime  @map("last_observed_at")
+  lastSentAt      DateTime? @map("last_sent_at")
+  cooldownUntil   DateTime? @map("cooldown_until")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([alertType, updatedAt(sort: Desc)], map: "idx_ops_alert_states_type_updated")
+  @@map("ops_alert_states")
+}
+
 model OutboundWebhookEndpoint {
   id                      String    @id @default(cuid())
   tenantKey               String    @default("default") @map("tenant_key")

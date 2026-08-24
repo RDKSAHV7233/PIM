@@ -74,6 +74,7 @@ export interface ValidatedEnv {
   OBSERVABILITY_DATABASE_URL?: string;
   ERROR_AUTHORITY_REF_SECRET?: string;
   OBSERVABILITY_DB_POOL_APP_NAME?: string;
+  OPS_ALERT_WEBHOOK_URL?: string;
   SENTRY_DSN?: string;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
 }
@@ -184,6 +185,7 @@ const EnvSchema = z.object({
   OBSERVABILITY_DATABASE_URL: UrlSchema.optional(),
   ERROR_AUTHORITY_REF_SECRET: z.string().min(32).optional(),
   OBSERVABILITY_DB_POOL_APP_NAME: OptionalTrimmedText,
+  OPS_ALERT_WEBHOOK_URL: OptionalTrimmedText,
   SENTRY_DSN: z.string().url().optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
@@ -276,6 +278,17 @@ export function validateEnv(): ValidatedEnv {
       const releaseIssue = getErrorAuthorityReleaseValidationIssue(data.ERROR_AUTHORITY_RELEASE);
       if (releaseIssue) {
         issues.push(`ERROR_AUTHORITY_RELEASE: ${releaseIssue}`);
+      }
+    }
+    if (data.OPS_ALERT_WEBHOOK_URL) {
+      const parsedOpsAlertUrl = z.string().url().safeParse(data.OPS_ALERT_WEBHOOK_URL);
+      if (!parsedOpsAlertUrl.success) {
+        issues.push("OPS_ALERT_WEBHOOK_URL: expected a valid URL when configured");
+      } else if (
+        (data.APP_ENV === "staging" || data.APP_ENV === "production") &&
+        !String(data.OPS_ALERT_WEBHOOK_URL).startsWith("https://")
+      ) {
+        issues.push("OPS_ALERT_WEBHOOK_URL: must use HTTPS in staging/production when configured");
       }
     }
     const redisDisabledRaw = (key: string) =>

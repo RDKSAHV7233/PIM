@@ -18,11 +18,13 @@ import type {
   InternalOpsStatusCount,
   InternalOpsSummaryResponse,
 } from "./internal-ops.types";
+import {
+  INTERNAL_OPS_STUCK_LOOKBACK_DAYS,
+  INTERNAL_OPS_STUCK_THRESHOLD_HOURS,
+} from "./internal-ops.constants";
 
 const OPERATIONAL_WINDOW_DAYS = 7;
 const INVENTORY_WINDOW_DAYS = 90;
-const STUCK_LOOKBACK_DAYS = 30;
-const STUCK_THRESHOLD_HOURS = 6;
 const QUERY_TIMEOUT_MS = 2_500;
 
 const EXPORT_ACTIVE_STATUSES = [ExportJobStatus.queued, ExportJobStatus.processing, ExportJobStatus.retrying] as const;
@@ -100,8 +102,8 @@ export class InternalOpsSummaryService {
     const now = new Date();
     const operationalFrom = subtractDays(now, OPERATIONAL_WINDOW_DAYS);
     const inventoryFrom = subtractDays(now, INVENTORY_WINDOW_DAYS);
-    const stuckFrom = subtractDays(now, STUCK_LOOKBACK_DAYS);
-    const stuckBefore = new Date(now.getTime() - STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
+    const stuckFrom = subtractDays(now, INTERNAL_OPS_STUCK_LOOKBACK_DAYS);
+    const stuckBefore = new Date(now.getTime() - INTERNAL_OPS_STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
 
     const [jobs, imports, publishing, connectors, readiness, errors, mediaIntegrity] = await Promise.all([
       this.resolveCard("jobs", () => this.getJobs(operationalFrom, stuckFrom, stuckBefore), {
@@ -148,7 +150,7 @@ export class InternalOpsSummaryService {
           dateFrom: inventoryFrom.toISOString(),
           dateTo: now.toISOString(),
         },
-        stuckThresholdHours: STUCK_THRESHOLD_HOURS,
+        stuckThresholdHours: INTERNAL_OPS_STUCK_THRESHOLD_HOURS,
         queryTimeoutMs: QUERY_TIMEOUT_MS,
       },
       jobs,

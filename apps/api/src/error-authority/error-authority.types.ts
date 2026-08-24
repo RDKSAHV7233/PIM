@@ -79,6 +79,13 @@ export interface NormalizedErrorEvent {
   sourceEventId?: string;
 }
 
+export interface ErrorRecordResult {
+  stored: boolean;
+  issueId?: string;
+  created: boolean;
+  severity: ErrorSeverity;
+}
+
 export interface ErrorEventStore {
-  record(event: NormalizedErrorEvent): Promise<void>;
+  record(event: NormalizedErrorEvent): Promise<ErrorRecordResult | void>;
 }

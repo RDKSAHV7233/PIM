@@ -70,4 +70,69 @@ describe("ErrorCaptureService", () => {
       }),
     );
   });
+
+  it("fires a best-effort ops alert only for newly-created P0/P1 issues", async () => {
+    const store = {
+      record: jest.fn().mockResolvedValue({
+        stored: true,
+        issueId: "iss_1",
+        created: true,
+        severity: "p1",
+      }),
+    } satisfies ErrorEventStore;
+    const alerts = {
+      captureNewP0P1Issue: jest.fn().mockResolvedValue({ alerted: true, reason: "queued" }),
+    };
+    const service = new ErrorCaptureService(store as never, logger as never, alerts as never);
+
+    await service.captureUnexpected({
+      runtime: "api",
+      service: "vexa-pim-api",
+      error: new Error("Unexpected API failure"),
+      severity: "p1",
+    });
+    await Promise.resolve();
+
+    expect(alerts.captureNewP0P1Issue).toHaveBeenCalledWith(expect.objectContaining({
+      issueId: "iss_1",
+      severity: "p1",
+    }));
+  });
+
+  it("does not alert for existing or lower-severity Error Authority issues", async () => {
+    const store = {
+      record: jest.fn()
+        .mockResolvedValueOnce({
+          stored: true,
+          issueId: "iss_existing",
+          created: false,
+          severity: "p1",
+        })
+        .mockResolvedValueOnce({
+          stored: true,
+          issueId: "iss_p2",
+          created: true,
+          severity: "p2",
+        }),
+    } satisfies ErrorEventStore;
+    const alerts = {
+      captureNewP0P1Issue: jest.fn(),
+    };
+    const service = new ErrorCaptureService(store as never, logger as never, alerts as never);
+
+    await service.captureUnexpected({
+      runtime: "api",
+      service: "vexa-pim-api",
+      error: new Error("Existing P1"),
+      severity: "p1",
+    });
+    await service.captureUnexpected({
+      runtime: "api",
+      service: "vexa-pim-api",
+      error: new Error("New P2"),
+      severity: "p2",
+    });
+
+    expect(alerts.captureNewP0P1Issue).not.toHaveBeenCalled();
+  });
 });

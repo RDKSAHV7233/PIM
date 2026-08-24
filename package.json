@@ -50,6 +50,7 @@
     "test:integration:enterprise-search": "dotenv -o -e .env -- node apps/api/test/integration/enterprise-search.test.cjs",
     "test:integration:connector-access-entitlements": "dotenv -o -e .env -- node apps/api/test/integration/connector-access-entitlements.test.cjs",
     "test:integration:notifications-center": "dotenv -o -e .env -- node apps/api/test/integration/notifications-center.test.cjs",
+    "test:integration:internal-ops-alerting-contract": "node apps/api/test/integration/internal-ops-alerting-contract.test.cjs",
     "test:integration:quality-reviewer-role": "dotenv -o -e .env -- node apps/api/test/integration/quality-reviewer-role.test.cjs",
     "test:integration:workspace-user-crud": "dotenv -o -e .env -- node apps/api/test/integration/workspace-user-crud.test.cjs",
     "test:integration:web-auth-cookie-csrf": "dotenv -o -e .env -- node apps/web/test/integration/auth-cookie-csrf.test.cjs",

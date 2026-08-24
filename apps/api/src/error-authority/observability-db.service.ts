@@ -5,7 +5,7 @@ import type {
   ErrorAuthorityListResponse,
   ErrorAuthorityOccurrenceListItem,
 } from "./error-authority-ops.service";
-import type { ErrorEventStore, NormalizedErrorEvent } from "./error-authority.types";
+import type { ErrorEventStore, ErrorRecordResult, NormalizedErrorEvent } from "./error-authority.types";
 
 type ErrorAuthorityCursor = {
   at: string;
@@ -100,6 +100,7 @@ type ObservabilityPrismaClient = {
   };
   errorIssue: {
     count(args: unknown): Promise<number>;
+    findUnique(args: unknown): Promise<{ id: string; severity: string } | null>;
     findMany(args: unknown): Promise<ErrorIssueRow[]>;
     upsert(args: unknown): Promise<{ id: string }>;
     update(args: unknown): Promise<unknown>;
@@ -152,36 +153,44 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
     }
   }
 
-  async record(event: NormalizedErrorEvent): Promise<void> {
+  async record(event: NormalizedErrorEvent): Promise<ErrorRecordResult> {
     if (!this.client) {
       this.logger.warn("Error authority capture skipped because observability storage is unavailable.", {
         runtime: event.runtime,
         service: event.service,
         fingerprint: event.fingerprint,
       });
-      return;
+      return { stored: false, created: false, severity: event.severity };
     }
     try {
-      await this.client.$transaction(async (tx) => {
+      return await this.client.$transaction(async (tx) => {
         if (event.sourceEventId) {
           const existing = await tx.errorOccurrence.findUnique({
             where: { sourceEventId: event.sourceEventId },
             select: { id: true },
           });
           if (existing) {
-            return;
+            return { stored: false, created: false, severity: event.severity };
           }
         }
 
+        const issueKey = {
+          environment: event.environment,
+          runtime: event.runtime,
+          service: event.service,
+          fingerprintVersion: event.fingerprintVersion,
+          fingerprint: event.fingerprint,
+        };
+        const existingIssue = await tx.errorIssue.findUnique({
+          where: {
+            environment_runtime_service_fingerprintVersion_fingerprint: issueKey,
+          },
+          select: { id: true, severity: true },
+        });
+
         const issue = await tx.errorIssue.upsert({
           where: {
-            environment_runtime_service_fingerprintVersion_fingerprint: {
-              environment: event.environment,
-              runtime: event.runtime,
-              service: event.service,
-              fingerprintVersion: event.fingerprintVersion,
-              fingerprint: event.fingerprint,
-            },
+            environment_runtime_service_fingerprintVersion_fingerprint: issueKey,
           },
           create: {
             environment: event.environment,
@@ -277,6 +286,13 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
             ...(shouldIncrementTenantImpact ? { affectedTenantCount: { increment: 1 } } : {}),
           },
         });
+
+        return {
+          stored: true,
+          issueId: issue.id,
+          created: !existingIssue,
+          severity: (existingIssue?.severity ?? event.severity) as ErrorRecordResult["severity"],
+        };
       });
     } catch (error: unknown) {
       this.logger.error("Error authority capture failed open.", {
@@ -285,6 +301,7 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
         fingerprint: event.fingerprint,
         errorMessage: error instanceof Error ? error.message : String(error),
       });
+      return { stored: false, created: false, severity: event.severity };
     }
   }
 

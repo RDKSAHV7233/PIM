@@ -4,6 +4,7 @@ export const QUEUE_NAMES = {
   CONNECTOR_SUBMISSION: "connector-submission",
   CONNECTOR_WEBHOOK: "connector-webhook",
   WEBHOOK_EVENT: "webhook-event",
+  INTERNAL_OPS_ALERT: "internal-ops-alert",
   AUTH_EMAIL: "auth-email",
   ACCOUNT_EXPORT: "account-export",
   ACCOUNT_DELETION_EXECUTION: "account-deletion-execution",

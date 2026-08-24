@@ -13,6 +13,7 @@ function read(relativePath) {
 async function main() {
   const controller = read("apps/api/src/internal-ops/internal-ops.controller.ts");
   const service = read("apps/api/src/internal-ops/internal-ops-summary.service.ts");
+  const constants = read("apps/api/src/internal-ops/internal-ops.constants.ts");
   const moduleSource = read("apps/api/src/internal-ops/internal-ops.module.ts");
   const appModule = read("apps/api/src/app.module.ts");
   const types = read("apps/api/src/internal-ops/internal-ops.types.ts");
@@ -46,7 +47,7 @@ async function main() {
   assert(
     service.includes("OPERATIONAL_WINDOW_DAYS = 7") &&
       service.includes("INVENTORY_WINDOW_DAYS = 90") &&
-      service.includes("STUCK_THRESHOLD_HOURS = 6") &&
+      constants.includes("INTERNAL_OPS_STUCK_THRESHOLD_HOURS = 6") &&
       service.includes("QUERY_TIMEOUT_MS = 2_500") &&
       service.includes("{ timeout: QUERY_TIMEOUT_MS + 500 }") &&
       service.includes("updatedAt: { gte: operationalFrom") &&
