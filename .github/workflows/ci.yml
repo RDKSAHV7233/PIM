@@ -267,6 +267,9 @@ jobs:
       - name: Media readiness channel-ineligible label test (PIM#644)
         run: node apps/web/test/integration/product-media-readiness-channel-ineligible-label.test.cjs
 
+      - name: Error Authority mutation-path coverage matrix (PIM#651)
+        run: node apps/api/test/integration/error-authority-mutation-path-coverage.test.cjs
+
       - name: Seam tests (RBAC parity, plan-limit coverage, error contract)
         run: |
           if [ -d "apps/api/test/seam" ] && [ -n "$(ls apps/api/test/seam/*.cjs 2>/dev/null)" ]; then
