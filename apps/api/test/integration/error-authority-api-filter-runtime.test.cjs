@@ -1,20 +1,56 @@
-const { BadRequestException } = require("@nestjs/common");
-const { PrismaClient } = require("@pim1/observability-db/generated/client");
-require("ts-node").register({
-  transpileOnly: true,
-  compilerOptions: {
-    module: "CommonJS",
-    experimentalDecorators: true,
-    emitDecoratorMetadata: true,
-    types: ["node"],
-  },
-});
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
-const { ApiExceptionCaptureFilter } = require("../../src/error-authority/api-exception-capture.filter");
-const { ErrorCaptureService } = require("../../src/error-authority/error-capture.service");
-const { ObservabilityDbService } = require("../../src/error-authority/observability-db.service");
+function withSchema(databaseUrl, schema) {
+  try {
+    const parsed = new URL(databaseUrl);
+    parsed.searchParams.set("schema", schema);
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
 
-const databaseUrl = String(process.env.OBSERVABILITY_DATABASE_URL ?? "").trim();
+function resolveDatabaseUrl() {
+  const explicit = String(process.env.OBSERVABILITY_DATABASE_URL ?? "").trim();
+  if (explicit) {
+    return { url: explicit, provisionFromAppDatabase: false };
+  }
+  if (process.env.GITHUB_ACTIONS === "true") {
+    const appDatabaseUrl = String(process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL || "").trim();
+    const derived = withSchema(appDatabaseUrl, "observability");
+    if (derived) {
+      return { url: derived, provisionFromAppDatabase: true };
+    }
+  }
+  return { url: "", provisionFromAppDatabase: false };
+}
+
+function runCommand(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: path.resolve(__dirname, "../../../.."),
+    encoding: "utf8",
+    input: options.input,
+    env: options.env ?? process.env,
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed with ${result.status}: ${(result.stderr || result.stdout || "").slice(0, 1200)}`,
+    );
+  }
+}
+
+function provisionCiObservabilityDatabase(databaseUrl) {
+  runCommand("npx", ["prisma", "db", "execute", "--schema", "packages/db/prisma/schema.prisma", "--stdin"], {
+    input: "CREATE SCHEMA IF NOT EXISTS observability;",
+  });
+  runCommand("npx", ["prisma", "migrate", "deploy", "--schema", "packages/observability-db/prisma/schema.prisma"], {
+    env: { ...process.env, OBSERVABILITY_DATABASE_URL: databaseUrl },
+  });
+}
+
+const resolvedDatabase = resolveDatabaseUrl();
+const databaseUrl = resolvedDatabase.url;
 const refSecret = String(process.env.ERROR_AUTHORITY_REF_SECRET ?? "0123456789abcdef0123456789abcdef").trim();
 const serviceName = "vexa-pim-api";
 const routeTemplate = "/api/v1/runtime-filter/:id";
@@ -69,6 +105,24 @@ async function main() {
   if (!databaseUrl) {
     console.log("SKIP error authority API filter runtime contract: OBSERVABILITY_DATABASE_URL is not set.");
     return;
+  }
+  const { BadRequestException } = require("@nestjs/common");
+  const { PrismaClient } = require("@pim1/observability-db/generated/client");
+  require("ts-node").register({
+    transpileOnly: true,
+    compilerOptions: {
+      module: "CommonJS",
+      experimentalDecorators: true,
+      emitDecoratorMetadata: true,
+      types: ["node"],
+    },
+  });
+  const { ApiExceptionCaptureFilter } = require("../../src/error-authority/api-exception-capture.filter");
+  const { ErrorCaptureService } = require("../../src/error-authority/error-capture.service");
+  const { ObservabilityDbService } = require("../../src/error-authority/observability-db.service");
+
+  if (resolvedDatabase.provisionFromAppDatabase) {
+    provisionCiObservabilityDatabase(databaseUrl);
   }
   process.env.ERROR_AUTHORITY_ENABLED = "true";
   process.env.OBSERVABILITY_DATABASE_URL = databaseUrl;

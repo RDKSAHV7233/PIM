@@ -11,7 +11,7 @@
  * Usage:
  *   node scripts/run-integration-parallel.cjs [--timeout=120] test1.test.cjs test2.test.cjs ...
  *
- *   # or use the npm shorthand which runs the 5 CI gate tests in parallel:
+ *   # or use the npm shorthand which runs the CI gate tests in parallel:
  *   npm run test:integration:parallel
  */
 /* eslint-disable no-console */
@@ -60,6 +60,7 @@ const DEFAULT_TESTS = [
   "apps/api/test/integration/marketplace-worker-failure-visibility.test.cjs",
   "apps/api/test/integration/worker-backpressure.test.cjs",
   "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
+  "apps/api/test/integration/error-authority-api-filter-runtime.test.cjs",
 ];
 
 // ── Runner ────────────────────────────────────────────────────────────────────
