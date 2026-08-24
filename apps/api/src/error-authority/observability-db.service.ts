@@ -104,6 +104,7 @@ type ObservabilityPrismaClient = {
     findMany(args: unknown): Promise<ErrorIssueRow[]>;
     upsert(args: unknown): Promise<{ id: string }>;
     update(args: unknown): Promise<unknown>;
+    deleteMany(args: unknown): Promise<{ count: number }>;
   };
   errorIssueTenantImpact: {
     findUnique(args: unknown): Promise<unknown>;
@@ -490,6 +491,32 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
         dateTo: input.dateTo.toISOString(),
       },
     };
+  }
+
+  /**
+   * PIM#649: deletes ErrorIssue rows (and their ErrorOccurrence/
+   * ErrorIssueTenantImpact children, via schema onDelete: Cascade) whose
+   * lastSeenAt is older than retentionDays. Bounds indefinite growth of
+   * captured error data — nothing previously purged these rows at all.
+   */
+  async purgeExpiredIssues(retentionDays: number): Promise<{ deletedCount: number; storageAvailable: boolean }> {
+    if (!this.client) {
+      return { deletedCount: 0, storageAvailable: false };
+    }
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    try {
+      const result = await this.client.errorIssue.deleteMany({
+        where: {
+          lastSeenAt: { lt: cutoff },
+        },
+      });
+      return { deletedCount: result.count, storageAvailable: true };
+    } catch (error: unknown) {
+      this.logger.warn("Error authority retention purge failed.", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return { deletedCount: 0, storageAvailable: false };
+    }
   }
 
   private withApplicationName(databaseUrl: string): string {

@@ -74,6 +74,7 @@ export interface ValidatedEnv {
   OBSERVABILITY_DATABASE_URL?: string;
   ERROR_AUTHORITY_REF_SECRET?: string;
   OBSERVABILITY_DB_POOL_APP_NAME?: string;
+  ERROR_AUTHORITY_RETENTION_DAYS: number;
   OPS_ALERT_WEBHOOK_URL?: string;
   SENTRY_DSN?: string;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -185,6 +186,7 @@ const EnvSchema = z.object({
   OBSERVABILITY_DATABASE_URL: UrlSchema.optional(),
   ERROR_AUTHORITY_REF_SECRET: z.string().min(32).optional(),
   OBSERVABILITY_DB_POOL_APP_NAME: OptionalTrimmedText,
+  ERROR_AUTHORITY_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
   OPS_ALERT_WEBHOOK_URL: OptionalTrimmedText,
   SENTRY_DSN: z.string().url().optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),

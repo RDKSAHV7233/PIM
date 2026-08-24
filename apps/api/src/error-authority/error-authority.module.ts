@@ -4,6 +4,7 @@ import { ApiExceptionCaptureFilter } from "./api-exception-capture.filter";
 import { BrowserErrorIngestController } from "./browser-ingest.controller";
 import { ErrorAuthorityOpsController } from "./error-authority-ops.controller";
 import { ErrorAuthorityOpsService } from "./error-authority-ops.service";
+import { ErrorAuthorityRetentionService } from "./error-authority-retention.service";
 import { ErrorCaptureService } from "./error-capture.service";
 import { NextServerErrorIngestController } from "./next-server-ingest.controller";
 import { ObservabilityDbService } from "./observability-db.service";
@@ -15,6 +16,7 @@ import { ObservabilityDbService } from "./observability-db.service";
     ErrorAuthorityOpsService,
     ErrorCaptureService,
     ObservabilityDbService,
+    ErrorAuthorityRetentionService,
     {
       provide: APP_FILTER,
       useClass: ApiExceptionCaptureFilter,
