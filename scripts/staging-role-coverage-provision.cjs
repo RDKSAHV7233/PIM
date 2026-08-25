@@ -138,14 +138,13 @@ async function ensureRoleUser(baseUrl, adminToken, input) {
   });
   assertStatus(passwordSet, 200, `set ${input.role} user password`);
 
-  await login(baseUrl, input.workspaceSlug, input.userId, input.password, `${input.role} login after provisioning`);
   return {
     role: input.role,
     workspaceSlug: input.workspaceSlug,
     userId: input.userId,
     createdOrUpdated: true,
     passwordPrinted: false,
-    loginVerified: true,
+    loginVerification: "deferred_to_e2e",
   };
 }
 
