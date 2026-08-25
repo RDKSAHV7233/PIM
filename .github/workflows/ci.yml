@@ -126,6 +126,7 @@ jobs:
           node apps/api/test/integration/internal-ops-alerting-contract.test.cjs
           node scripts/staging-internal-ops-summary-acceptance.test.cjs
           node scripts/staging-error-authority-ops-errors-acceptance.test.cjs
+          node scripts/staging-connector-export-coverage.test.cjs
           node scripts/validate-deploy-stage1-workflow.cjs
           node scripts/validate-deploy-staging-workflow.cjs
           node scripts/validate-e2e-staging-workflow.cjs
