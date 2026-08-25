@@ -1,5 +1,6 @@
-import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
+import { Injectable, OnApplicationBootstrap, OnApplicationShutdown, Optional } from "@nestjs/common";
 import { LoggerService } from "../common/logging/logger.service";
+import { InternalOpsAlertsService } from "../internal-ops/internal-ops-alerts.service";
 import { MediaIntegrityService, MediaIntegrityScanResult } from "./media-integrity.service";
 
 const DEFAULT_INITIAL_DELAY_MS = 10 * 60 * 1000;
@@ -19,6 +20,7 @@ export class MediaIntegritySchedulerService implements OnApplicationBootstrap, O
   constructor(
     private readonly mediaIntegrity: MediaIntegrityService,
     private readonly logger: LoggerService,
+    @Optional() private readonly internalOpsAlertsService?: InternalOpsAlertsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -86,6 +88,7 @@ export class MediaIntegritySchedulerService implements OnApplicationBootstrap, O
         affectedTenantCount: result.impact.affectedTenantCount,
         activeProductImpactCount: result.impact.activeProductImpactCount,
       });
+      await this.captureMediaIntegrityAlert(result);
       return { ran: true, result };
     } catch (error: unknown) {
       this.logger.warn("Media integrity scheduled scan failed open.", {
@@ -100,6 +103,33 @@ export class MediaIntegritySchedulerService implements OnApplicationBootstrap, O
 
   private isScheduleEnabled(): boolean {
     return isTrue(process.env.MEDIA_INTEGRITY_SCHEDULE_ENABLED);
+  }
+
+  private async captureMediaIntegrityAlert(result: MediaIntegrityScanResult): Promise<void> {
+    if (!this.internalOpsAlertsService) {
+      return;
+    }
+    try {
+      const alertResult = await this.internalOpsAlertsService.captureMediaIntegrityDefects({
+        missingCount: result.totals.missing,
+        unverifiableCount: result.totals.unverifiable,
+        invalidPathCount: result.totals.invalidPath,
+        storageErrorCount: result.totals.storageErrors,
+        affectedTenantCount: result.impact.affectedTenantCount,
+      });
+      this.logger.info("Media integrity alert evaluation completed.", {
+        event: "MEDIA_INTEGRITY_ALERT_EVALUATED",
+        runId: result.runId,
+        alerted: alertResult.alerted,
+        reason: alertResult.reason,
+      });
+    } catch (error: unknown) {
+      this.logger.warn("Media integrity alert evaluation failed open.", {
+        event: "MEDIA_INTEGRITY_ALERT_FAILED_OPEN",
+        runId: result.runId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
 

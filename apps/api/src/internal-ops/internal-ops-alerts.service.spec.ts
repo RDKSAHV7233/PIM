@@ -229,6 +229,112 @@ describe("InternalOpsAlertsService", () => {
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);
   });
 
+  it("queues one safe media-integrity alert when defects are detected", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw.mockResolvedValueOnce([{ alert_key: "media_integrity:defects" }]);
+
+    await expect(
+      service.captureMediaIntegrityDefects({
+        missingCount: 2,
+        unverifiableCount: 3,
+        invalidPathCount: 4,
+        storageErrorCount: 5,
+        affectedTenantCount: 2,
+        observedAt: new Date("2026-08-25T10:00:00Z"),
+      }),
+    ).resolves.toEqual({
+      alerted: true,
+      reason: "queued",
+    });
+
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+    const payload = queueService.enqueue.mock.calls[0][1];
+    expect(alertKeys(payload)).toEqual([
+      "affectedTenantCount",
+      "alertType",
+      "environment",
+      "internalUrl",
+      "missingCount",
+      "observedAt",
+      "release",
+      "severity",
+      "unverifiableCount",
+      "version",
+    ]);
+    expect(payload.envelope).toMatchObject({
+      alertType: "media_integrity_defect_detected",
+      severity: "p1",
+      internalUrl: "https://ops.vexa.test/internal/ops",
+      missingCount: 2,
+      unverifiableCount: 3,
+      affectedTenantCount: 2,
+    });
+    expect(queueService.enqueue.mock.calls[0][2].jobId).toBe("ops-alert-media-integrity-2026-08-25T10_00_00_000Z");
+    expect(JSON.stringify(payload)).not.toMatch(/tenantKey|tenantName|asset|product|storagePath|objectKey|fileName|credential|headers|cookies|token|stack|payload/i);
+  });
+
+  it("does not alert for a clean media-integrity run and resets breach state", async () => {
+    const { service, db, queueService } = makeService();
+
+    await expect(
+      service.captureMediaIntegrityDefects({
+        missingCount: 0,
+        unverifiableCount: 0,
+        affectedTenantCount: 0,
+        observedAt: new Date("2026-08-25T10:00:00Z"),
+      }),
+    ).resolves.toEqual({
+      alerted: false,
+      reason: "not_breached",
+    });
+
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("suppresses repeated media-integrity alerts during cooldown", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      service.captureMediaIntegrityDefects({
+        missingCount: 1,
+        unverifiableCount: 0,
+        affectedTenantCount: 1,
+        observedAt: new Date("2026-08-25T11:00:00Z"),
+      }),
+    ).resolves.toEqual({
+      alerted: false,
+      reason: "cooldown_active",
+    });
+
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("re-alerts for media-integrity defects after cooldown expires", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ alert_key: "media_integrity:defects" }]);
+
+    await expect(
+      service.captureMediaIntegrityDefects({
+        missingCount: 0,
+        unverifiableCount: 1,
+        affectedTenantCount: 1,
+        observedAt: new Date("2026-08-25T17:00:00Z"),
+      }),
+    ).resolves.toEqual({
+      alerted: true,
+      reason: "queued",
+    });
+
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the same stuck-job query bounds as internal ops summary", async () => {
     const { service, db, tx } = makeService();
     tx.marketplaceExportJob.count.mockResolvedValue(2);
@@ -290,6 +396,50 @@ describe("InternalOpsAlertsService", () => {
     expect(JSON.stringify(body)).not.toContain("should-not-survive");
   });
 
+  it("delivers a safe media-integrity payload allowlist", async () => {
+    const { service, queueService } = makeService();
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+    } as Response);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await handler({
+      envelope: {
+        version: 1,
+        alertType: "media_integrity_defect_detected",
+        severity: "p1",
+        environment: "test",
+        release: "test-sha",
+        observedAt: "2026-08-25T10:00:00.000Z",
+        internalUrl: "/internal/ops",
+        missingCount: 2,
+        unverifiableCount: 3,
+        affectedTenantCount: 2,
+        tenantKey: "should-not-survive",
+        storagePath: "/app/storage/customer-private.jpg",
+        objectKey: "customer/private.jpg",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body ?? "{}"));
+    expect(Object.keys(body).sort()).toEqual([
+      "affectedTenantCount",
+      "alertType",
+      "environment",
+      "internalUrl",
+      "missingCount",
+      "observedAt",
+      "release",
+      "severity",
+      "unverifiableCount",
+      "version",
+    ]);
+    expect(JSON.stringify(body)).not.toMatch(/should-not-survive|storage|object|tenantKey|private/i);
+  });
+
   it("throws from the queue handler on destination failure so QueueService applies bounded retry", async () => {
     const { service, queueService } = makeService();
     jest.spyOn(global, "fetch").mockResolvedValue({
@@ -324,6 +474,21 @@ describe("InternalOpsAlertsService", () => {
     await Promise.all([
       service.captureNewP0P1Issue({ issueId: "iss_1", severity: "p1" }),
       service.captureNewP0P1Issue({ issueId: "iss_1", severity: "p1" }),
+    ]);
+
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("only one concurrent media-integrity reservation queues delivery", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw
+      .mockResolvedValueOnce([{ alert_key: "media_integrity:defects" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await Promise.all([
+      service.captureMediaIntegrityDefects({ missingCount: 1, unverifiableCount: 0, affectedTenantCount: 1 }),
+      service.captureMediaIntegrityDefects({ missingCount: 1, unverifiableCount: 0, affectedTenantCount: 1 }),
     ]);
 
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);

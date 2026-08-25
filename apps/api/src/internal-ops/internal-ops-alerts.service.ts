@@ -10,7 +10,10 @@ import {
   INTERNAL_OPS_STUCK_THRESHOLD_HOURS,
 } from "./internal-ops.constants";
 
-export type InternalOpsAlertType = "error_authority_new_p0p1_issue" | "stuck_jobs_threshold_exceeded";
+export type InternalOpsAlertType =
+  | "error_authority_new_p0p1_issue"
+  | "stuck_jobs_threshold_exceeded"
+  | "media_integrity_defect_detected";
 export type InternalOpsAlertSeverity = "p0" | "p1";
 
 export type InternalOpsAlertEnvelope = {
@@ -24,6 +27,9 @@ export type InternalOpsAlertEnvelope = {
   issueId?: string;
   stuckCount?: number;
   stuckAgeThresholdHours?: number;
+  missingCount?: number;
+  unverifiableCount?: number;
+  affectedTenantCount?: number;
 };
 
 type OpsAlertQueuePayload = {
@@ -49,6 +55,8 @@ const OPS_ALERT_INITIAL_DELAY_MS = 2 * 60 * 1000;
 const OPS_ALERT_STUCK_EVALUATION_INTERVAL_MS = 5 * 60 * 1000;
 const OPS_ALERT_STUCK_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const STUCK_ALERT_KEY = "stuck_jobs:global";
+const MEDIA_INTEGRITY_ALERT_KEY = "media_integrity:defects";
+const MEDIA_INTEGRITY_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 const EXPORT_ACTIVE_STATUSES = [ExportJobStatus.queued, ExportJobStatus.processing, ExportJobStatus.retrying] as const;
 const IMPORT_JOB_ACTIVE_STATUSES = [
@@ -208,6 +216,50 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     return { alerted: true, reason: "queued" };
   }
 
+  async captureMediaIntegrityDefects(input: {
+    missingCount: number;
+    unverifiableCount: number;
+    invalidPathCount?: number;
+    storageErrorCount?: number;
+    affectedTenantCount: number;
+    observedAt?: Date;
+  }): Promise<{ alerted: boolean; reason: string }> {
+    const observedAt = input.observedAt ?? new Date();
+    const missingCount = normalizeCount(input.missingCount);
+    const unverifiableCount = normalizeCount(input.unverifiableCount);
+    const invalidPathCount = normalizeCount(input.invalidPathCount);
+    const storageErrorCount = normalizeCount(input.storageErrorCount);
+    const affectedTenantCount = normalizeCount(input.affectedTenantCount);
+    const defectCount = missingCount + unverifiableCount + invalidPathCount + storageErrorCount;
+
+    if (defectCount <= 0) {
+      await this.resetMediaIntegrityBreach(observedAt);
+      return { alerted: false, reason: "not_breached" };
+    }
+
+    const cooldownUntil = new Date(observedAt.getTime() + MEDIA_INTEGRITY_ALERT_COOLDOWN_MS);
+    const reserved = await this.reserveMediaIntegrityAlert(observedAt, cooldownUntil);
+    if (!reserved) {
+      await this.touchAlertState(MEDIA_INTEGRITY_ALERT_KEY, observedAt);
+      return { alerted: false, reason: "cooldown_active" };
+    }
+
+    await this.enqueueAlert({
+      version: OPS_ALERT_VERSION,
+      alertType: "media_integrity_defect_detected",
+      severity: "p1",
+      environment: this.resolveEnvironment(),
+      release: this.resolveRelease(),
+      observedAt: observedAt.toISOString(),
+      internalUrl: this.buildInternalUrl("/internal/ops"),
+      missingCount,
+      unverifiableCount,
+      affectedTenantCount,
+    });
+
+    return { alerted: true, reason: "queued" };
+  }
+
   private async countStuckJobs(now: Date): Promise<number> {
     const stuckFrom = subtractDays(now, INTERNAL_OPS_STUCK_LOOKBACK_DAYS);
     const stuckBefore = new Date(now.getTime() - INTERNAL_OPS_STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
@@ -308,6 +360,51 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     return updated.length > 0;
   }
 
+  private async reserveMediaIntegrityAlert(observedAt: Date, cooldownUntil: Date): Promise<boolean> {
+    const inserted = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
+      INSERT INTO ops_alert_states (
+        id,
+        alert_key,
+        alert_type,
+        first_observed_at,
+        last_observed_at,
+        last_sent_at,
+        cooldown_until,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${MEDIA_INTEGRITY_ALERT_KEY},
+        ${"media_integrity_defect_detected"},
+        ${observedAt},
+        ${observedAt},
+        ${observedAt},
+        ${cooldownUntil},
+        ${observedAt},
+        ${observedAt}
+      )
+      ON CONFLICT (alert_key) DO NOTHING
+      RETURNING alert_key
+    `);
+    if (inserted.length > 0) {
+      return true;
+    }
+
+    const updated = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
+      UPDATE ops_alert_states
+      SET
+        last_observed_at = ${observedAt},
+        last_sent_at = ${observedAt},
+        cooldown_until = ${cooldownUntil},
+        updated_at = ${observedAt}
+      WHERE alert_key = ${MEDIA_INTEGRITY_ALERT_KEY}
+        AND (cooldown_until IS NULL OR cooldown_until <= ${observedAt})
+      RETURNING alert_key
+    `);
+    return updated.length > 0;
+  }
+
   private async touchAlertState(alertKey: string, observedAt: Date): Promise<void> {
     await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
       UPDATE ops_alert_states
@@ -326,6 +423,19 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         cooldown_until = NULL,
         updated_at = ${observedAt}
       WHERE alert_key = ${STUCK_ALERT_KEY}
+    `);
+  }
+
+  private async resetMediaIntegrityBreach(observedAt: Date): Promise<void> {
+    await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
+      UPDATE ops_alert_states
+      SET
+        first_observed_at = ${observedAt},
+        last_observed_at = ${observedAt},
+        last_sent_at = NULL,
+        cooldown_until = NULL,
+        updated_at = ${observedAt}
+      WHERE alert_key = ${MEDIA_INTEGRITY_ALERT_KEY}
     `);
   }
 
@@ -403,6 +513,14 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         stuckAgeThresholdHours: INTERNAL_OPS_STUCK_THRESHOLD_HOURS,
       };
     }
+    if (envelope.alertType === "media_integrity_defect_detected") {
+      return {
+        ...base,
+        missingCount: normalizeCount(envelope.missingCount),
+        unverifiableCount: normalizeCount(envelope.unverifiableCount),
+        affectedTenantCount: normalizeCount(envelope.affectedTenantCount),
+      };
+    }
     return base;
   }
 
@@ -446,6 +564,9 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     if (envelope.alertType === "error_authority_new_p0p1_issue") {
       return `ops-alert-error-p0p1-${this.sanitizeQueueJobId(envelope.issueId ?? "unknown")}`;
     }
+    if (envelope.alertType === "media_integrity_defect_detected") {
+      return `ops-alert-media-integrity-${this.sanitizeQueueJobId(envelope.observedAt)}`;
+    }
     return `ops-alert-stuck-jobs-${this.sanitizeQueueJobId(envelope.observedAt)}`;
   }
 
@@ -485,4 +606,9 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
 
 function subtractDays(value: Date, days: number): Date {
   return new Date(value.getTime() - days * 24 * 60 * 60 * 1000);
+}
+
+function normalizeCount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }

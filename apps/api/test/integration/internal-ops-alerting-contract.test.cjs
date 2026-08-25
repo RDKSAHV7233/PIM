@@ -33,6 +33,12 @@ function run() {
   assert(errorCapture.includes("captureNewP0P1Issue"), "Error Authority capture must enqueue the narrow ops alert follow-up.");
   assert(errorCapture.includes("!result?.stored || !result.created"), "Error Authority alerts must only fire for newly-created issues.");
   assert(observabilityDb.includes("created: !existingIssue"), "Error Authority record result must expose new issue creation.");
+  assert(service.includes("media_integrity_defect_detected"), "Media integrity alert type must be registered.");
+  assert(service.includes("MEDIA_INTEGRITY_ALERT_KEY"), "Media integrity alert must use persistent state.");
+  assert(service.includes("captureMediaIntegrityDefects"), "Media integrity alert trigger must be explicit.");
+  assert(service.includes("missingCount?: number"), "Media integrity alert payload may expose only aggregate missing count.");
+  assert(service.includes("unverifiableCount?: number"), "Media integrity alert payload may expose only aggregate unverifiable count.");
+  assert(service.includes("affectedTenantCount?: number"), "Media integrity alert payload may expose only aggregate affected tenant count.");
 
   const forbiddenPayloadFragments = [
     "tenantKey:",
@@ -61,6 +67,7 @@ function run() {
           "dedicated_internal_destination",
           "queue_retry_reuse",
           "new_p0p1_issue_trigger_only",
+          "media_integrity_defect_trigger",
           "safe_payload_allowlist",
         ],
         checkedAt: new Date().toISOString(),

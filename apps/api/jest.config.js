@@ -34,6 +34,7 @@ module.exports = {
     "**/connectors/flipkart/flipkart.connector.spec.ts",
     "**/connectors/meesho/meesho-category-templates.spec.ts",
     "**/media/media-integrity.service.spec.ts",
+    "**/media/media-integrity-scheduler.service.spec.ts",
     "**/media/media-storage.service.spec.ts",
     "**/billing/commercial-reminders.service.spec.ts",
     "**/billing/commercial-enriched-tenants.spec.ts",

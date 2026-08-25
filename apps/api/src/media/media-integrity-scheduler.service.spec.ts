@@ -29,8 +29,11 @@ function makeService() {
     info: jest.fn(),
     warn: jest.fn(),
   };
-  const service = new MediaIntegritySchedulerService(mediaIntegrity as never, logger as never);
-  return { service, mediaIntegrity, logger };
+  const alerts = {
+    captureMediaIntegrityDefects: jest.fn().mockResolvedValue({ alerted: true, reason: "queued" }),
+  };
+  const service = new MediaIntegritySchedulerService(mediaIntegrity as never, logger as never, alerts as never);
+  return { service, mediaIntegrity, logger, alerts };
 }
 
 describe("MediaIntegritySchedulerService", () => {
@@ -76,7 +79,7 @@ describe("MediaIntegritySchedulerService", () => {
   });
 
   it("runs a bounded scan with environment-controlled limits", async () => {
-    const { service, mediaIntegrity, logger } = makeService();
+    const { service, mediaIntegrity, logger, alerts } = makeService();
 
     await expect(service.runScheduledScan()).resolves.toEqual(expect.objectContaining({ ran: true }));
 
@@ -98,7 +101,39 @@ describe("MediaIntegritySchedulerService", () => {
         affectedTenantCount: 2,
       }),
     );
+    expect(alerts.captureMediaIntegrityDefects).toHaveBeenCalledWith({
+      missingCount: 1,
+      unverifiableCount: 3,
+      invalidPathCount: 2,
+      storageErrorCount: 4,
+      affectedTenantCount: 2,
+    });
+    expect(logger.info).toHaveBeenCalledWith(
+      "Media integrity alert evaluation completed.",
+      expect.objectContaining({
+        event: "MEDIA_INTEGRITY_ALERT_EVALUATED",
+        runId: "scan-1",
+        alerted: true,
+        reason: "queued",
+      }),
+    );
     expect(JSON.stringify(logger.info.mock.calls)).not.toMatch(/tenantKey|storagePath|fileName|secret|token/i);
+  });
+
+  it("keeps scheduled scan success fail-open when alert evaluation fails", async () => {
+    const { service, alerts, logger } = makeService();
+    alerts.captureMediaIntegrityDefects.mockRejectedValueOnce(new Error("alert service unavailable"));
+
+    await expect(service.runScheduledScan()).resolves.toEqual(expect.objectContaining({ ran: true }));
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Media integrity alert evaluation failed open.",
+      expect.objectContaining({
+        event: "MEDIA_INTEGRITY_ALERT_FAILED_OPEN",
+        runId: "scan-1",
+        errorMessage: "alert service unavailable",
+      }),
+    );
   });
 
   it("skips a tick while another scan is already running", async () => {
