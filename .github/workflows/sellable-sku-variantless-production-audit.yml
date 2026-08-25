@@ -6,7 +6,12 @@ on:
 jobs:
   sellable-sku-variantless-production-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # First run has no npm cache to restore (cache key is seeded from a
+    # successful job); a cold `npm ci` for this monorepo took >10m and was
+    # killed before ever reaching the actual query. 25m covers a cold
+    # install + prisma generate with headroom; warm-cache runs finish in
+    # well under a third of that.
+    timeout-minutes: 25
     environment: production
     concurrency:
       group: sellable-sku-variantless-production-audit
