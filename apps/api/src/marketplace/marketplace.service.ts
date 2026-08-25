@@ -1780,6 +1780,50 @@ export class MarketplaceService implements OnModuleInit {
           },
           include: { template: true },
         });
+        // PIM#661 — this item was already counted in the synchronous bulk-publish
+        // queuedCount response before this async worker ever ran. Without a
+        // submission record here, it silently vanishes from /channels/submissions
+        // with no PENDING, ERROR, or SUCCESS row at all — queuedCount then no
+        // longer equals the number of accounted-for outcomes. existing.installationId
+        // is known (this is the `else` branch: an installationId was resolved at
+        // job-creation time, it's just no longer usable now), so a real submission
+        // row can be attributed to it even though requireInstallation/capability
+        // just failed.
+        const idempotencyKey = this.connectorFramework.buildIdempotencyKey(jobId, "PUBLISH");
+        await this.prisma.tenant(tenantKey).connectorSubmission.upsert({
+          where: {
+            tenantKey_installationId_idempotencyKey: {
+              tenantKey,
+              installationId: existing.installationId!,
+              idempotencyKey,
+            },
+          },
+          create: {
+            id: randomUUID(),
+            installationId: existing.installationId!,
+            productId: existing.productId,
+            idempotencyKey,
+            submissionType: "PUBLISH",
+            source: "NOT_VALIDATED",
+            attemptNumber: 1,
+            status: "ERROR",
+            payloadSnapshot: {},
+            channelErrors: [{
+              code: "DESTINATION_UNAVAILABLE",
+              fieldPath: "",
+              severity: "error",
+              sellerMessage: "The connector installation for this product was unavailable or lost publish access before this job could run.",
+            }],
+            resolvedAt: new Date(),
+            connectorSlug,
+          },
+          update: {
+            attemptNumber: { increment: 1 },
+            status: "ERROR",
+            resolvedAt: new Date(),
+          },
+          select: { id: true },
+        });
         await this.notificationsService.emitPublishStatus(updated.id, "failed");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         return updated;

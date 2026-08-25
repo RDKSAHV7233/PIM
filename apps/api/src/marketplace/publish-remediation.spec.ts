@@ -46,6 +46,12 @@ function makePublishService(overrides?: {
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   };
 
+  const connectorSubmissionDb = {
+    findFirst: jest.fn().mockResolvedValue(null),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    upsert: jest.fn().mockResolvedValue({ id: "sub-1" }),
+  };
+
   const prisma = {
     tenant: jest.fn().mockReturnValue({
       product: { findUnique: jest.fn().mockResolvedValue(product), update: jest.fn().mockResolvedValue(product) },
@@ -60,10 +66,7 @@ function makePublishService(overrides?: {
         count: jest.fn().mockResolvedValue(opts.installationCount ?? 1),
         findMany: jest.fn().mockResolvedValue(opts.activeInstallations ?? [{ id: "inst-shopify-1", status: "ACTIVE", accountAlias: null }]),
       },
-      connectorSubmission: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      },
+      connectorSubmission: connectorSubmissionDb,
       mediaAsset: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -76,6 +79,7 @@ function makePublishService(overrides?: {
     requireInstallation: opts.requireInstallationError
       ? jest.fn().mockRejectedValue(opts.requireInstallationError)
       : jest.fn().mockResolvedValue(installation),
+    buildIdempotencyKey: jest.fn((jobId: string, operation = "PUBLISH") => `${jobId}:${operation}`),
   };
 
   const connectorMappingService = {
@@ -125,7 +129,7 @@ function makePublishService(overrides?: {
     validationSource: "local_rules",
   });
 
-  return { svc, prisma, connectorFramework, connectorMappingService, queueService, exportJobDb };
+  return { svc, prisma, connectorFramework, connectorMappingService, queueService, exportJobDb, connectorSubmissionDb };
 }
 
 // ===========================================================================
@@ -2075,6 +2079,86 @@ describe("Atomic persistence of historical auto-resolved destinations", () => {
       source.indexOf("async processExportJob") + 5000,
     );
     expect(processSection).not.toContain("installationId ?? undefined");
+  });
+});
+
+// ===========================================================================
+// PIM#661 — DESTINATION_UNAVAILABLE must not silently drop the item from the
+// submissions ledger. Before this fix, this branch updated the ExportJob to
+// `failed` and returned WITHOUT ever writing a ConnectorSubmission row — so an
+// item already counted in bulk-publish's synchronous queuedCount response
+// would vanish with no PENDING/ERROR/SUCCESS record anywhere, breaking the
+// "queuedCount = accounted-for count" guarantee bulk reconciliation depends on.
+// ===========================================================================
+
+describe("PIM#661 — DESTINATION_UNAVAILABLE writes an ERROR submission record", () => {
+  it("writes a ConnectorSubmission ERROR row when requireInstallation rejects for an already-known installationId", async () => {
+    const { svc, exportJobDb, connectorSubmissionDb } = makePublishService({
+      requireInstallationError: new InstallationNotFoundError("shopify"),
+    });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", status: "queued", installationId: "inst-shopify-1", channel: "shopify",
+      productId: "prod1", retryCount: 0, maxRetries: 3, tenantKey: "tenant1",
+      templateId: null,
+    });
+    exportJobDb.update.mockResolvedValue({
+      id: "job-1", status: "failed", failureReason: "DESTINATION_UNAVAILABLE", channel: "shopify", template: null,
+    });
+
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    expect(connectorSubmissionDb.upsert).toHaveBeenCalledTimes(1);
+    const args = connectorSubmissionDb.upsert.mock.calls[0][0] as {
+      create: { installationId: string; productId: string; status: string; resolvedAt: Date };
+      update: { status: string };
+    };
+    expect(args.create.installationId).toBe("inst-shopify-1");
+    expect(args.create.productId).toBe("prod1");
+    expect(args.create.status).toBe("ERROR");
+    expect(args.create.resolvedAt).toBeInstanceOf(Date);
+    expect(args.update.status).toBe("ERROR");
+  });
+
+  it("writes a ConnectorSubmission ERROR row when the installation lacks PUBLISH capability", async () => {
+    const { svc, exportJobDb, connectorSubmissionDb } = makePublishService({
+      installation: { id: "inst-shopify-1", slug: "shopify", capabilities: ["VALIDATE"] },
+    });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", status: "queued", installationId: "inst-shopify-1", channel: "shopify",
+      productId: "prod1", retryCount: 0, maxRetries: 3, tenantKey: "tenant1",
+      templateId: null,
+    });
+    exportJobDb.update.mockResolvedValue({
+      id: "job-1", status: "failed", failureReason: "DESTINATION_UNAVAILABLE", channel: "shopify", template: null,
+    });
+
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    expect(connectorSubmissionDb.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("never writes a submission row for DESTINATION_AMBIGUOUS (no installationId ever existed to attribute it to)", async () => {
+    const { svc, exportJobDb, connectorSubmissionDb } = makePublishService({
+      activeInstallations: [],
+    });
+    exportJobDb.findUnique.mockResolvedValue({
+      id: "job-1", status: "queued", installationId: null, channel: "shopify",
+      productId: "prod1", retryCount: 0, maxRetries: 3, tenantKey: "tenant1",
+      templateId: null,
+    });
+    exportJobDb.update.mockResolvedValue({
+      id: "job-1", status: "dead_letter", channel: "shopify", template: null,
+    });
+
+    jest.spyOn(svc as any, "emitExportThroughputMetric").mockResolvedValue(undefined);
+
+    await svc.processExportJob("job-1");
+
+    expect(connectorSubmissionDb.upsert).not.toHaveBeenCalled();
   });
 });
 
