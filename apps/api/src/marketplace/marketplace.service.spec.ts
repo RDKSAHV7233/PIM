@@ -1520,3 +1520,110 @@ describe("Producer tenant resolution cannot silently synthesize a default tenant
     );
   });
 });
+
+describe("MarketplaceService — primary-variant selection stability (#662)", () => {
+  // Two variants; "older" was created first and is the product's true canonical
+  // variant, but "newer" was *edited* most recently (so it has the later
+  // updatedAt). Under the old `orderBy: updatedAt desc` selector, editing
+  // *either* variant's unrelated field flips which one is picked as
+  // "primary" for connector SKU/price derivation — the bug behind #662.
+  const olderVariant = {
+    id: "var-older",
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    skuCode: "SKU-OLDER",
+    mrp: 100,
+    sellingPrice: 90,
+    attributes: {},
+    prices: [],
+    inventoryQty: 5,
+  };
+  const newerVariant = {
+    id: "var-newer",
+    createdAt: new Date("2026-02-01T00:00:00.000Z"),
+    // Edited after olderVariant, on a field unrelated to identity/price —
+    // this is what flips `updatedAt desc` ordering without any real intent
+    // to change which variant is "primary".
+    updatedAt: new Date("2026-06-01T00:00:00.000Z"),
+    skuCode: "SKU-NEWER",
+    mrp: 200,
+    sellingPrice: 180,
+    attributes: {},
+    prices: [],
+    inventoryQty: 3,
+  };
+
+  function makeServiceWithVariantOrdering() {
+    const findUnique = jest.fn().mockImplementation((args: { include: { variants: { orderBy: Array<Record<string, "asc" | "desc">> } } }) => {
+      const orderBy = args.include.variants.orderBy;
+      const sorted = [olderVariant, newerVariant].sort((a, b) => {
+        for (const clause of orderBy) {
+          const [field, direction] = Object.entries(clause)[0] as [string, "asc" | "desc"];
+          const av = (a as Record<string, unknown>)[field] as Date;
+          const bv = (b as Record<string, unknown>)[field] as Date;
+          if (av.getTime() !== bv.getTime()) {
+            return direction === "asc" ? av.getTime() - bv.getTime() : bv.getTime() - av.getTime();
+          }
+        }
+        return 0;
+      });
+      return Promise.resolve({
+        id: "prod1",
+        title: "Test Product",
+        description: "",
+        brand: "",
+        hsnCode: "",
+        gstRate: null,
+        attributes: {},
+        category: { id: "cat1", name: "Category", path: "cat" },
+        taxCodes: [],
+        variants: sorted,
+      });
+    });
+
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        product: { findUnique },
+        mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
+      }),
+    };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
+    );
+    return { svc, findUnique };
+  }
+
+  it("derives connector SKU/price from the first-created variant, not the most-recently-edited one", async () => {
+    const { svc } = makeServiceWithVariantOrdering();
+    const payload = await (
+      svc as unknown as { buildConnectorProductPayload: (id: string, opts?: unknown) => Promise<{ sku: string; mrp: number; sellingPrice: number }> }
+    ).buildConnectorProductPayload("prod1", {});
+
+    // olderVariant was created first — it must be treated as the canonical
+    // "primary" variant regardless of which variant was edited most recently.
+    expect(payload.sku).toBe("SKU-OLDER");
+    expect(payload.mrp).toBe(100);
+    expect(payload.sellingPrice).toBe(90);
+  });
+
+  it("resolveProductSku derives its lookup SKU from the same stable, first-created variant", async () => {
+    const { svc, findUnique } = makeServiceWithVariantOrdering();
+    const sku = await (svc as unknown as { resolveProductSku: (id: string) => Promise<string> }).resolveProductSku("prod1");
+
+    expect(sku).toBe("SKU-OLDER");
+    const orderBy = findUnique.mock.calls[0][0].include.variants.orderBy;
+    expect(orderBy[0]).toEqual({ createdAt: "asc" });
+  });
+});

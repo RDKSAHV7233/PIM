@@ -219,7 +219,7 @@ type ConnectorProductSource = Prisma.ProductGetPayload<{
       };
     };
     variants: {
-      orderBy: [{ updatedAt: "desc" }];
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }];
       take: 1;
     };
   };
@@ -3390,7 +3390,7 @@ export class MarketplaceService implements OnModuleInit {
           },
         },
         variants: {
-          orderBy: [{ updatedAt: "desc" }],
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           include: {
             prices: {
               where: { priceList: { status: "active" } },
@@ -3954,7 +3954,7 @@ export class MarketplaceService implements OnModuleInit {
       where: { id: productId },
       include: {
         variants: {
-          orderBy: [{ updatedAt: "desc" }],
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           take: 1,
         },
       },
