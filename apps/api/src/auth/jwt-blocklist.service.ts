@@ -1,5 +1,6 @@
-import { Injectable, Logger, OnModuleDestroy, UnauthorizedException } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, Optional, UnauthorizedException } from "@nestjs/common";
 import { createClient } from "redis";
+import { ErrorCaptureService } from "../error-authority/error-capture.service";
 
 const DEFAULT_REDIS_URL = "redis://localhost:6379";
 const DEFAULT_PREFIX = "jti:";
@@ -28,6 +29,8 @@ export class JwtBlocklistService implements OnModuleDestroy {
   private redisAvailable = false;
   private redisRetryAfterMs = 0;
   private lastRedisWarnAtMs = 0;
+
+  constructor(@Optional() private readonly errorCaptureService?: ErrorCaptureService) {}
 
   private get keyPrefix(): string {
     const value = String(process.env.JWT_BLOCKLIST_KEY_PREFIX ?? "").trim();
@@ -157,6 +160,21 @@ export class JwtBlocklistService implements OnModuleDestroy {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown error");
       this.markRedisUnavailable(`Failed writing JWT blocklist key for jti=${normalizedJti}: ${message}`);
+      // PIM#654 — a revoked token that fails to persist to Redis still validates as
+      // active on every OTHER API instance (this instance's in-memory blocklist above
+      // already covers itself). That's a security-relevant degraded state, not just an
+      // operational hiccup, so it must reach Error Authority rather than only a
+      // throttled logger.warn buried in application logs.
+      void this.errorCaptureService
+        ?.captureUnexpected({
+          runtime: "api",
+          service: "vexa-pim-api",
+          error,
+          category: "cache",
+          severity: "p1",
+          routeTemplate: "jwt-blocklist:revoke",
+        })
+        .catch(() => {});
     }
   }
 

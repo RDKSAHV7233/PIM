@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { UnrecoverableError } from "bullmq";
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from "@nestjs/common";
 import {
   ExportJobStatus,
   Prisma,
@@ -32,6 +32,7 @@ import {
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoggerService } from "../common/logging/logger.service";
+import { ErrorCaptureService } from "../error-authority/error-capture.service";
 import { MetricsService } from "../metrics/metrics.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { runWithTenantContext } from "../common/tenant/tenant-context";
@@ -396,6 +397,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly accessPolicy: AccessPolicyService,
     private readonly priceResolution: PriceResolutionService,
     private readonly mediaStorage: MediaStorageService,
+    @Optional() private readonly errorCaptureService?: ErrorCaptureService,
   ) {}
 
   onModuleInit() {
@@ -815,6 +817,23 @@ export class MarketplaceService implements OnModuleInit {
         connectorSlug,
         error: error instanceof Error ? error.message : String(error),
       });
+      // PIM#655 — the export job still gets created and real validation runs later in
+      // the async worker, so this isn't a silent total failure. But if the pre-flight
+      // check itself is broken (not the thing it's checking), that breakage was
+      // previously undiagnosable from Error Authority, only from log-diving. Captured
+      // as a non-blocking warning-level record so a systemic pre-flight bug becomes
+      // visible in aggregate without affecting this request.
+      void this.errorCaptureService
+        ?.captureUnexpected({
+          runtime: "api",
+          service: "vexa-pim-api",
+          error,
+          category: "internal",
+          severity: "p3",
+          routeTemplate: "marketplace:create-export-job:pre-flight-validation",
+          installationId: resolvedInstallationId,
+        })
+        .catch(() => {});
     }
 
     const requestIdentity = this.buildPublishRequestIdentity(

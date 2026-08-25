@@ -74,6 +74,8 @@ module.exports = {
     "**/auth/email-template.spec.ts",
     "**/auth/auth-policy.service.spec.ts",
     "**/auth/jwt.step-up-scope.spec.ts",
+    "**/auth/jwt-blocklist.service.spec.ts",
+    "**/auth/auth.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

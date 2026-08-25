@@ -19,7 +19,7 @@
  *   1  Product create                          — clean
  *   2  Product update                          — clean (audit-write-only swallow, scoped, non-mutation)
  *   3  Product approve/reject                  — clean (audit + webhook-enqueue swallow, scoped, non-mutation)
- *   4  Product publish/export job create        — SWALLOW  (marketplace.service.ts pre-flight block) — PIM#655
+ *   4  Product publish/export job create        — FIXED    (marketplace.service.ts pre-flight block now captures) — PIM#655
  *   5  Product archive                          — clean
  *   6  Product permanent delete                 — clean (audit-write-only swallow, scoped, non-mutation)
  *   7  Connector install                        — SWALLOW  (validateCredentials boolean catch-all)  — PIM#653
@@ -28,19 +28,19 @@
  *  10  Connector disable/uninstall               — clean
  *  11  Marketplace export job retry              — clean
  *  12  Billing webhook status change             — clean (explicit rethrow, reasoned about in code comment)
- *  13  Auth login (lastSignInAt update)           — SWALLOW-EQUIVALENT (unawaited, no .catch)          — PIM#656
+ *  13  Auth login (lastSignInAt update)           — FIXED    (now caught, logged, and captured)          — PIM#656
  *  14  Auth password reset                        — clean
- *  15  Auth logout / session revoke               — SWALLOW  (JWT blocklist Redis-write failure)       — PIM#654
+ *  15  Auth logout / session revoke               — FIXED    (JWT blocklist Redis-write failure now captured) — PIM#654
  *
  * This test does two things:
- *   1. Structurally re-verifies the clean paths' key safety properties still
- *      hold, so a future edit can't silently reintroduce a swallow without
- *      this test catching it.
- *   2. Confirms each currently-known swallow is still present AND has a
- *      tracking issue referenced nearby in source — if a swallow gets fixed,
- *      this test's assertion for it will fail, which is the correct signal
- *      to update this matrix (not a false alarm): update the corresponding
- *      section below when a PIM#653/654/655/656 fix lands.
+ *   1. Structurally re-verifies the clean/fixed paths' key safety properties
+ *      still hold, so a future edit can't silently reintroduce a swallow
+ *      without this test catching it.
+ *   2. Confirms each still-open swallow is still present AND has a tracking
+ *      issue referenced nearby in source — if a swallow gets fixed, this
+ *      test's assertion for it will fail, which is the correct signal to
+ *      update this matrix (not a false alarm): update the corresponding
+ *      section below when the PIM#653 fix lands.
  *
  * This is a static-source audit, not a live-triggered-failure proof (see the
  * issue's own text: a full live-fixture verification for all 15 paths was
@@ -176,40 +176,71 @@ function run() {
     validated.push("known_swallow_7_9_pim653_still_present_as_expected");
   }
 
-  // ── Known swallow #15: JWT blocklist Redis-write failure (PIM#654) ────────
+  // ── Fixed path #15: JWT blocklist Redis-write failure (PIM#654) ──────────
+  // revoke()'s Redis-write failure now routes through Error Authority (in
+  // addition to the pre-existing markRedisUnavailable() logger path) rather
+  // than only ever producing a log line for a security-relevant degraded
+  // state (a revoked token still validating as active on other instances).
   {
     const source = readSource("auth/jwt-blocklist.service.ts");
     const revokeBody = extractBlock(source, "async revoke(");
     assert(
       /catch \(error: unknown\) \{[\s\S]{0,200}?markRedisUnavailable/.test(revokeBody),
-      "PIM#654 not yet fixed: expected revoke()'s Redis write failure to still only call " +
-        "markRedisUnavailable() (a logger-only path) without rethrowing or routing through Error Authority. " +
-        "If this assertion fails, PIM#654 has likely been fixed — update the matrix.",
+      "revoke()'s Redis write failure must still call markRedisUnavailable() — the local in-memory " +
+        "fallback behavior must not regress even though the failure is now also captured.",
     );
-    validated.push("known_swallow_15_pim654_still_present_as_expected");
+    assert(
+      /errorCaptureService[\s\S]{0,100}?captureUnexpected/.test(revokeBody),
+      "PIM#654 regression: revoke()'s Redis write failure must route through errorCaptureService." +
+        "captureUnexpected(...) so it reaches Error Authority, not just a logger warning.",
+    );
+    validated.push("fixed_path_15_pim654_now_captured");
   }
 
-  // ── Known swallow #4: export-job pre-flight validation (PIM#655) ─────────
+  // ── Fixed path #4: export-job pre-flight validation (PIM#655) ────────────
+  // The pre-flight block's outer catch still only logs a warning (the job
+  // isn't blocked — real validation runs later in the async worker), but now
+  // additionally captures the exception so a systemic pre-flight bug becomes
+  // visible in aggregate rather than only discoverable via log-diving.
   {
     const source = readSource("marketplace/marketplace.service.ts");
     assert(
       source.includes("pre-flight connector validation skipped"),
-      "PIM#655 not yet fixed: expected the pre-flight validation block's outer catch to still only log " +
-        "\"pre-flight connector validation skipped\" without capturing the exception. If this assertion " +
-        "fails, PIM#655 has likely been fixed — update the matrix.",
+      "The pre-flight validation block's outer catch must still log \"pre-flight connector validation " +
+        "skipped\" — this behavior must not regress even though the failure is now also captured.",
     );
-    validated.push("known_swallow_4_pim655_still_present_as_expected");
+    assert(
+      /pre-flight connector validation skipped[\s\S]{0,700}?errorCaptureService[\s\S]{0,100}?captureUnexpected/.test(source),
+      "PIM#655 regression: the pre-flight validation catch block must route through errorCaptureService." +
+        "captureUnexpected(...) so a systemic pre-flight bug is visible in Error Authority, not just logs.",
+    );
+    validated.push("fixed_path_4_pim655_now_captured");
   }
 
-  // ── Known swallow-equivalent #13: unawaited lastSignInAt (PIM#656) ────────
+  // ── Fixed path #13: unawaited lastSignInAt (PIM#656) ─────────────────────
+  // The write is still intentionally fire-and-forget (lastSignInAt stays
+  // best-effort, non-blocking) but is no longer a bare `void promise` with no
+  // .catch() — it's now a genuine, handled rejection routed through a
+  // dedicated helper that logs and captures the failure.
   {
     const source = readSource("auth/auth.service.ts");
     assert(
-      /void this\.prisma\.tenant\([\s\S]{0,150}?lastSignInAt/.test(source),
-      "PIM#656 not yet fixed: expected the lastSignInAt update to still be fired with `void` and no " +
-        ".catch(). If this assertion fails, PIM#656 has likely been fixed — update the matrix.",
+      !/void this\.prisma\.tenant\([\s\S]{0,150}?lastSignInAt/.test(source),
+      "PIM#656 regression: the lastSignInAt update must not go back to a bare `void this.prisma...` call " +
+        "with no .catch() — that's an unhandled promise rejection, not an intentional fire-and-forget.",
     );
-    validated.push("known_swallow_equivalent_13_pim656_still_present_as_expected");
+    assert(
+      source.includes("recordLastSignInAt"),
+      "PIM#656 regression: expected a recordLastSignInAt() helper that catches, logs, and captures the " +
+        "lastSignInAt write's failure instead of leaving it unhandled.",
+    );
+    const helperBody = extractBlock(source, "private recordLastSignInAt(");
+    assert(
+      /\.catch\(/.test(helperBody) && /errorCaptureService[\s\S]{0,100}?captureUnexpected/.test(helperBody),
+      "PIM#656 regression: recordLastSignInAt() must catch the write failure and route it through " +
+        "errorCaptureService.captureUnexpected(...).",
+    );
+    validated.push("fixed_path_13_pim656_now_captured");
   }
 
   console.log(
@@ -219,12 +250,15 @@ function run() {
         matrixSummary: {
           totalPathsAudited: 15,
           confirmedClean: 11,
-          confirmedSwallow: 4,
+          confirmedFixed: 3,
+          confirmedSwallow: 1,
           trackingIssues: {
-            "PIM#653": "connector install/reconnect validateCredentials() boolean swallow",
-            "PIM#654": "JWT blocklist Redis-write failure on logout",
-            "PIM#655": "export-job pre-flight validation swallow",
-            "PIM#656": "unawaited lastSignInAt write on login/MFA",
+            "PIM#653": "connector install/reconnect validateCredentials() boolean swallow — still open",
+          },
+          fixedIssues: {
+            "PIM#654": "JWT blocklist Redis-write failure on logout — now captured (PR #671)",
+            "PIM#655": "export-job pre-flight validation swallow — now captured (PR #671)",
+            "PIM#656": "unawaited lastSignInAt write on login/MFA — now handled and captured (PR #671)",
           },
         },
         validated,

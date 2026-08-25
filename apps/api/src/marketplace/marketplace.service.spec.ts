@@ -429,6 +429,8 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       assertChannelAccess: jest.fn().mockResolvedValue(undefined),
     };
 
+    const errorCaptureService = { captureUnexpected: jest.fn().mockResolvedValue(undefined) };
+
     const svc = new MarketplaceService(
       prisma as never,
       connectorFramework as never,
@@ -442,6 +444,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       accessPolicy as never,
       { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
       { isLocalMode: jest.fn().mockReturnValue(false) } as never,
+      errorCaptureService as never,
     );
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "simulateProduct").mockResolvedValue({
       channel: connectorSlug,
@@ -455,7 +458,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
       .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
 
-    return { svc, tenantDb, connectorMappingService };
+    return { svc, tenantDb, connectorMappingService, errorCaptureService };
   }
 
   // #550: bulkPublishViaQueuedExportJobs called createExportJob(productId, dto, undefined)
@@ -499,6 +502,31 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
   // that wiring passes the right arguments: for an eligible product, product.findUnique and
   // evaluatePublishReadiness must each run exactly once per product across the whole bulk-publish
   // request, not twice.
+  // PIM#655 — createExportJob's pre-flight connector validation runs in a try/catch that
+  // only logged a warning on failure, with no path to Error Authority. This factory's
+  // connectorFramework double has no `validate` method at all, so the pre-flight block
+  // genuinely throws here (TypeError) exactly like a real broken pre-flight check would —
+  // proving the capture call fires on a real exception, not a synthetic one.
+  it("captures a pre-flight validation failure to Error Authority as a non-blocking warning (#655)", async () => {
+    const { svc, errorCaptureService } = makeRealExportPipelineService({
+      "a1": { status: "approved", categoryId: "cat1" },
+    });
+    const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
+
+    const job = await svc.createExportJob(
+      "a1",
+      { channel: "shopify", installationId: "inst_1", fallbackAcknowledged: false } as never,
+      actor,
+    );
+
+    expect(job).toBeDefined(); // the job still gets created — pre-flight failure must not block it
+    expect(errorCaptureService.captureUnexpected).toHaveBeenCalledTimes(1);
+    const captureArgs = errorCaptureService.captureUnexpected.mock.calls[0][0] as { severity: string; category: string; routeTemplate: string };
+    expect(captureArgs.severity).toBe("p3");
+    expect(captureArgs.category).toBe("internal");
+    expect(captureArgs.routeTemplate).toBe("marketplace:create-export-job:pre-flight-validation");
+  });
+
   it("evaluates readiness and fetches each product exactly once per product across the whole bulk-publish request (#554)", async () => {
     const { svc, tenantDb, connectorMappingService } = makeRealExportPipelineService({
       "a1": { status: "approved", categoryId: "cat1" },

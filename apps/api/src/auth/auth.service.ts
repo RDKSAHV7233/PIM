@@ -3,10 +3,12 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { ErrorCaptureService } from "../error-authority/error-capture.service";
 import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "redis";
@@ -389,6 +391,7 @@ export class AuthService implements OnModuleDestroy {
     private readonly planUsageService: PlanUsageService,
     private readonly authPolicyService: AuthPolicyService,
     private readonly mfaService: MfaService,
+    @Optional() private readonly errorCaptureService?: ErrorCaptureService,
   ) {
     this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
       await this.processAuthEmailJob(payload);
@@ -565,10 +568,7 @@ export class AuthService implements OnModuleDestroy {
     await this.clearUserFailures(userKey);
 
     if (this.isDbAuthMode()) {
-      void this.prisma.tenant(identity.tenantId).authIdentity.updateMany({
-        where: { tenantKey: identity.tenantId, userId: identity.userId },
-        data: { lastSignInAt: new Date() },
-      });
+      this.recordLastSignInAt(identity.tenantId, identity.userId);
     }
 
     await this.auditService.record({
@@ -729,10 +729,7 @@ export class AuthService implements OnModuleDestroy {
       minimumExpiresInSeconds: 60,
     });
     if (this.isDbAuthMode()) {
-      void this.prisma.tenant(claims.tenantId).authIdentity.updateMany({
-        where: { tenantKey: claims.tenantId, userId: claims.sub },
-        data: { lastSignInAt: new Date() },
-      });
+      this.recordLastSignInAt(claims.tenantId, claims.sub);
     }
 
     await this.auditService.record({
@@ -2266,6 +2263,39 @@ export class AuthService implements OnModuleDestroy {
 
   private isDbAuthMode(): boolean {
     return String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+  }
+
+  // PIM#656 — this write was previously fired with `void` and no .catch(), an
+  // unhandled promise rejection rather than a caught-and-hidden exception. lastSignInAt
+  // is a non-critical, best-effort field, so this stays fire-and-forget by design — but
+  // an unhandled rejection is a real Node.js risk beyond "this field doesn't update"
+  // (can produce unrelated warnings, or crash the process under stricter configs).
+  private recordLastSignInAt(tenantId: string, userId: string): void {
+    void this.prisma
+      .tenant(tenantId)
+      .authIdentity.updateMany({
+        where: { tenantKey: tenantId, userId },
+        data: { lastSignInAt: new Date() },
+      })
+      .catch((error: unknown) => {
+        this.logger.warn("Failed to record lastSignInAt", {
+          tenantId,
+          userId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        void this.errorCaptureService
+          ?.captureUnexpected({
+            runtime: "api",
+            service: "vexa-pim-api",
+            error,
+            category: "database",
+            severity: "p3",
+            routeTemplate: "auth:record-last-sign-in-at",
+            rawTenantKey: tenantId,
+            rawActorId: userId,
+          })
+          .catch(() => {});
+      });
   }
 
   private async recordFailedCredential(userKey: string, rawIdentity: string, now: number): Promise<UserLockState> {
