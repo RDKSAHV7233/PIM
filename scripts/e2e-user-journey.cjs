@@ -463,6 +463,14 @@ async function loginAsAdmin() {
   return result.body;
 }
 
+async function ensureAdminLogin() {
+  if (ctx.adminToken) {
+    return ctx.adminToken;
+  }
+  await loginAsAdmin();
+  return ctx.adminToken;
+}
+
 async function loginOptional(prefix) {
   const user = String(process.env[`STAGING_${prefix}_USER`] ?? "").trim();
   if (!user) {
@@ -893,6 +901,7 @@ function buildChecks() {
   });
 
   add("roles", "viewer_cannot_write_catalog", async () => {
+    await ensureAdminLogin();
     const payload = await loginOptional("VIEWER");
     ctx.viewerToken = String(payload.accessToken);
     const anyProduct = await getAnyProduct();
@@ -915,6 +924,7 @@ function buildChecks() {
   });
 
   add("roles", "editor_can_write_catalog", async () => {
+    await ensureAdminLogin();
     const payload = await loginOptional("EDITOR");
     ctx.editorToken = String(payload.accessToken);
     const product = await createDraftProduct("E2E Editor Role Product", {}, ctx.editorToken);
@@ -939,6 +949,7 @@ function buildChecks() {
   });
 
   add("roles", "reviewer_cannot_write_catalog", async () => {
+    await ensureAdminLogin();
     if (!ctx.reviewerToken) {
       const payload = await loginOptional("REVIEWER");
       ctx.reviewerToken = String(payload.accessToken);
