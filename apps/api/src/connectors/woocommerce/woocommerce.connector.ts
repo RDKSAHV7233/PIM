@@ -1166,7 +1166,7 @@ export class WooCommerceConnector implements ConnectorInterface {
 
     return {
       externalRef: String(parentId ?? ''),
-      status: 'PENDING',
+      status: this.mapWcProductStatus(data.status),
       isAsync: false,
     };
   }
@@ -1218,9 +1218,27 @@ export class WooCommerceConnector implements ConnectorInterface {
 
     return {
       externalRef: String(data.id ?? externalRef),
-      status: 'PENDING',
+      status: this.mapWcProductStatus(data.status),
       isAsync: false,
     };
+  }
+
+  // ─── PIM#660 ──────────────────────────────────────────────────────────────
+  //
+  // Shared status mapping between publishProduct/updateProduct (which already have
+  // the real WC product record in hand from their own REST response) and
+  // syncSubmissionStatus (which fetches it separately for polling). Kept as one
+  // function so the two paths can never drift into disagreeing about what a given
+  // WooCommerce product status means.
+  private mapWcProductStatus(wcStatusRaw: unknown): SubmissionRef['status'] {
+    const wcStatus = String(wcStatusRaw ?? '').toLowerCase();
+    return (
+      wcStatus === 'publish'  ? 'SUCCESS'  :
+      wcStatus === 'draft'    ? 'PENDING'  :
+      wcStatus === 'pending'  ? 'PENDING'  :
+      wcStatus === 'private'  ? 'SUPPRESSED' :
+      wcStatus === 'trash'    ? 'REJECTED' : 'PENDING'
+    );
   }
 
   // ─── optional: syncSubmissionStatus (W5+) ───────────────────────────────────
@@ -1247,13 +1265,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       return { externalRef, status: 'ERROR', channelErrors: [] };
     }
     const data = await res.json() as WcProductResponse;
-    const wcStatus = String(data.status ?? '').toLowerCase();
-    const status: SubmissionStatusUpdate['status'] =
-      wcStatus === 'publish'  ? 'SUCCESS'  :
-      wcStatus === 'draft'    ? 'PENDING'  :
-      wcStatus === 'pending'  ? 'PENDING'  :
-      wcStatus === 'private'  ? 'SUPPRESSED' :
-      wcStatus === 'trash'    ? 'REJECTED' : 'PENDING';
+    const status = this.mapWcProductStatus(data.status);
 
     // W5b: when WC says publish but no webhook confirmed it, check if webhooks are healthy.
     // Skipped for non-SUCCESS outcomes — those have their own error signals.

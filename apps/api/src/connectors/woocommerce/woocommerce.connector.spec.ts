@@ -340,3 +340,114 @@ describe("WooCommerceConnector.publishProduct create-vs-update branching", () =>
     expect(publishCall?.[1]).toBe("/products/777");
   });
 });
+
+// PIM#660 — publishProduct/updateProduct's REST call already confirms the real
+// WooCommerce product status (data.status) before returning, but the old code
+// discarded it and always hardcoded { status: 'PENDING', isAsync: false }. Since
+// isAsync is false, the only mechanism that could ever resolve that PENDING
+// (marketplace.service.ts's isAsync-gated status-sync poller) never runs, so
+// every WooCommerce submission was stuck at PENDING forever — 0 of 83 real
+// submissions ever reached a terminal status in production.
+describe("WooCommerceConnector.publishProduct/updateProduct — terminal status from the real WC response (#660)", () => {
+  const product: ProductPayload = {
+    sku: "WC-STATUS-001",
+    title: "Status Mapping Product",
+    description: "",
+    brand: "Vexa",
+    hsnCode: "6204",
+    gstRate: 12,
+    mrp: 999,
+    sellingPrice: 799,
+    mainImageUrl: "https://cdn.example.com/status.jpg",
+    attributes: {},
+    productType: "",
+  };
+
+  function mockResolvedCredentials(connector: WooCommerceConnector) {
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: "https://store.example.com",
+      consumerKey: "ck_test",
+      consumerSecret: "cs_test",
+    });
+  }
+
+  function mockCreateResponding(connector: WooCommerceConnector, wcStatus: string) {
+    return jest.spyOn(connector as any, "callApi").mockImplementation(async (method: any, path: any) => {
+      if (method === "GET" && path.startsWith("/products?")) {
+        return { ok: true, json: async () => [] } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ id: 555, status: wcStatus }) } as unknown as Response;
+    });
+  }
+
+  it("publishProduct resolves to SUCCESS (not PENDING) when WooCommerce's own response says status: 'publish'", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    mockCreateResponding(connector, "publish");
+
+    const result = await connector.publishProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product);
+
+    expect(result.status).toBe("SUCCESS");
+    expect(result.isAsync).toBe(false);
+  });
+
+  it("publishProduct resolves to PENDING when WooCommerce's own response says status: 'draft' (genuinely not live yet)", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    mockCreateResponding(connector, "draft");
+
+    const result = await connector.publishProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product);
+
+    expect(result.status).toBe("PENDING");
+  });
+
+  it("updateProduct resolves to SUCCESS when WooCommerce's own response says status: 'publish'", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 777, status: "publish" }),
+    } as unknown as Response);
+
+    const result = await connector.updateProduct(
+      { tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any,
+      product,
+      "777",
+    );
+
+    expect(result.status).toBe("SUCCESS");
+    expect(result.isAsync).toBe(false);
+  });
+
+  it("updateProduct resolves to SUPPRESSED when WooCommerce's own response says status: 'private'", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 777, status: "private" }),
+    } as unknown as Response);
+
+    const result = await connector.updateProduct(
+      { tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any,
+      product,
+      "777",
+    );
+
+    expect(result.status).toBe("SUPPRESSED");
+  });
+
+  it("publishProduct and syncSubmissionStatus agree on the terminal status for the same WC status string (no drift between the two mappings)", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    mockCreateResponding(connector, "publish");
+    const publishResult = await connector.publishProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product);
+
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 555, status: "publish" }),
+    } as unknown as Response);
+    const syncResult = await connector.syncSubmissionStatus({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, "555");
+
+    expect(publishResult.status).toBe(syncResult.status);
+  });
+});
