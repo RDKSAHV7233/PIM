@@ -23,6 +23,7 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
     product: {
       findUnique: jest.fn().mockResolvedValue(product),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn().mockResolvedValue({ ...product, category: {}, variants: [] }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ ...product, category: {}, variants: [] }),
     },
     category: {
@@ -37,6 +38,10 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
     productTaxCode: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    variant: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: "var-new" }),
     },
   };
   tenantClient.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(tenantClient));
@@ -239,5 +244,133 @@ describe("CatalogService.updateProduct — archive/restore transitions (BUG-ARCH
 
     expect(result).toBeDefined();
     expect(tenantClient.product.updateMany).toHaveBeenCalled();
+  });
+});
+
+// PIM#663 — #593 ratified "SKU = sellable variant, never product" as the commercial
+// definition. createProduct never creates a Variant, so a product could reach
+// approved/active with zero variants — invisible to SKU billing and connector publish
+// despite being sellable. Fix: the moment a product first enters the approved/active
+// canonical bucket, auto-create exactly one canonical variant if none exists yet.
+describe("CatalogService — canonical variant auto-creation on first approval (#663)", () => {
+  it("updateProduct: in_review -> approved with zero existing variants creates one canonical variant", async () => {
+    const { service, tenantClient } = makeService({ status: "in_review", version: 1, attributes: {} });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.create).toHaveBeenCalledTimes(1);
+    const createArgs = tenantClient.variant.create.mock.calls[0][0] as { data: { productId: string; skuCode: string; status: string } };
+    expect(createArgs.data.productId).toBe("prod1");
+    expect(createArgs.data.skuCode).toBe("prod1"); // falls back to product id — no attributes.sku present
+    expect(createArgs.data.status).toBe("approved");
+  });
+
+  it("updateProduct: in_review -> approved when a variant already exists does NOT create a second one", async () => {
+    const { service, tenantClient } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue({ id: "existing-variant" });
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.create).not.toHaveBeenCalled();
+  });
+
+  it("updateProduct: in_review -> active (direct, bypassing approved) also creates a canonical variant, with matching status", async () => {
+    const { service, tenantClient } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "active" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.create).toHaveBeenCalledTimes(1);
+    const createArgs = tenantClient.variant.create.mock.calls[0][0] as { data: { status: string } };
+    expect(createArgs.data.status).toBe("active");
+  });
+
+  it("updateProduct: approved -> active (same canonical bucket) does not re-check or re-create a variant", async () => {
+    const { service, tenantClient } = makeService({ status: "approved", version: 1 });
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "active" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.findFirst).not.toHaveBeenCalled();
+    expect(tenantClient.variant.create).not.toHaveBeenCalled();
+  });
+
+  it("updateProduct: reuses a real product-level SKU/price from attributes instead of fabricating one", async () => {
+    const { service, tenantClient } = makeService({
+      status: "in_review",
+      version: 1,
+      attributes: { sku: "REAL-SKU-001", mrp: 999, sellingPrice: 799 },
+    });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    const createArgs = tenantClient.variant.create.mock.calls[0][0] as { data: { skuCode: string; mrp: number; sellingPrice: number } };
+    expect(createArgs.data.skuCode).toBe("REAL-SKU-001");
+    expect(createArgs.data.mrp).toBe(999);
+    expect(createArgs.data.sellingPrice).toBe(799);
+  });
+
+  it("decideProductReview: approving with zero existing variants creates one canonical variant", async () => {
+    const { service, tenantClient } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+
+    await service.decideProductReview(
+      "prod1",
+      { status: "approved" },
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.create).toHaveBeenCalledTimes(1);
+    const createArgs = tenantClient.variant.create.mock.calls[0][0] as { data: { productId: string; status: string } };
+    expect(createArgs.data.productId).toBe("prod1");
+    expect(createArgs.data.status).toBe("approved");
+  });
+
+  it("decideProductReview: approving a product that already has a variant does not create a second one", async () => {
+    const { service, tenantClient } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue({ id: "existing-variant" });
+
+    await service.decideProductReview(
+      "prod1",
+      { status: "approved" },
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.create).not.toHaveBeenCalled();
+  });
+
+  it("decideProductReview: rejecting never creates a variant (only approval reaches the sellable bucket)", async () => {
+    const { service, tenantClient } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+
+    await service.decideProductReview(
+      "prod1",
+      { status: "rejected" },
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.findFirst).not.toHaveBeenCalled();
+    expect(tenantClient.variant.create).not.toHaveBeenCalled();
   });
 });

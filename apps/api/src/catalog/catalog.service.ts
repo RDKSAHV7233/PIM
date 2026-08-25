@@ -999,6 +999,10 @@ export class CatalogService {
         await this.insertTaxCodes(tx, productId, tenantKeyForUpdate, taxCodes, regimeMap);
       }
 
+      if (result.count > 0 && isTerminalReviewTransition && nextCanonicalStatus === RecordStatus.approved) {
+        await this.ensureCanonicalVariant(tx, productId, nextStatus);
+      }
+
       return result;
     });
 
@@ -1090,6 +1094,12 @@ export class CatalogService {
           blockingIssues,
         });
       }
+    }
+
+    if (nextStatus === RecordStatus.approved) {
+      await this.prisma.tenant().$transaction(async (tx) => {
+        await this.ensureCanonicalVariant(tx, productId, nextStatus);
+      });
     }
 
     const product = await this.prisma.tenant().product.update({
@@ -1841,6 +1851,57 @@ export class CatalogService {
       return value as Record<string, unknown>;
     }
     return {};
+  }
+
+  // PIM#663 — #593 ratified "SKU = sellable variant, never product record" as the
+  // commercial definition (SELLABLE_VARIANT_WHERE in plan-usage.service.ts counts
+  // Variant rows only, by design — that must not change). The gap this closes is a
+  // different one: createProduct never creates a Variant, so a product that reaches
+  // approved/active with zero variants is invisible to both SKU billing and connector
+  // publish (buildConnectorProductPayload derives sku/mrp/sellingPrice from the
+  // "primary" variant) despite being, from the customer's point of view, one sellable
+  // thing. Auto-creating exactly one canonical variant the moment a product first
+  // becomes sellable keeps #593's definition intact while making it actually apply.
+  //
+  // Reuses the same product-attribute fallback chain buildConnectorProductPayload
+  // already relies on for this exact product shape, so a product that already carries
+  // flat sku/mrp/price at the product level gets a variant reflecting real data, not a
+  // fabricated placeholder — only a product with no usable data anywhere falls back to
+  // its own id as the SKU, matching that same existing connector-payload behavior.
+  private async ensureCanonicalVariant(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    variantStatus: RecordStatus,
+  ): Promise<void> {
+    const existingVariant = await tx.variant.findFirst({
+      where: { productId },
+      select: { id: true },
+    });
+    if (existingVariant) {
+      return;
+    }
+    const productRow = await tx.product.findUnique({
+      where: { id: productId },
+      select: { attributes: true },
+    });
+    const attributes = this.asRecord(productRow?.attributes);
+    const attrSku = typeof attributes.sku === "string" ? attributes.sku.trim() : "";
+    const skuCode = attrSku || productId;
+    const attrMrp =
+      typeof attributes.mrp === "number" ? attributes.mrp :
+      typeof attributes.price === "number" ? attributes.price : null;
+    const attrSellingPrice =
+      typeof attributes.sellingPrice === "number" ? attributes.sellingPrice :
+      typeof attributes.selling_price === "number" ? attributes.selling_price : attrMrp;
+    await tx.variant.create({
+      data: {
+        productId,
+        skuCode,
+        mrp: attrMrp,
+        sellingPrice: attrSellingPrice,
+        status: variantStatus,
+      },
+    });
   }
 
   private toPolicyActor(actor?: ActorContext) {
