@@ -1,0 +1,53 @@
+name: Sellable SKU Variant-less Production Audit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sellable-sku-variantless-production-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: sellable-sku-variantless-production-audit
+      cancel-in-progress: false
+    env:
+      APP_ENV: production
+      SELLABLE_SKU_AUDIT_TARGET_ENV: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run read-only sellable-SKU variant-less audit report
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "Missing STAGE3_DATABASE_URL secret for production sellable-SKU audit."
+            exit 1
+          fi
+          node scripts/sellable-sku-variantless-audit-report.cjs \
+            --target-environment production \
+            --output .run-logs/sellable-sku-variantless-production-audit.json
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: sellable-sku-variantless-production-audit-${{ github.run_id }}
+          path: .run-logs/sellable-sku-variantless-production-audit.json
+          if-no-files-found: error
