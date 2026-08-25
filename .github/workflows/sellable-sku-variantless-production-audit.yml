@@ -19,6 +19,13 @@ jobs:
     env:
       APP_ENV: production
       SELLABLE_SKU_AUDIT_TARGET_ENV: production
+      # redis-memory-server (a root devDependency, unused by this workflow)
+      # otherwise tries to download/compile a Redis Stack binary during npm
+      # ci's postinstall, which failed with a native build error on this
+      # workflow's first cold run. This is its own documented skip flag,
+      # already used the same way by every ci.yml job that doesn't need a
+      # real Redis — no system redis-server needed.
+      REDISMS_DISABLE_POSTINSTALL: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
