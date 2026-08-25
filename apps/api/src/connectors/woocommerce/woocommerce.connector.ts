@@ -743,6 +743,71 @@ export class WooCommerceConnector implements ConnectorInterface {
     }
   }
 
+  // ─── PIM#653 ──────────────────────────────────────────────────────────────
+  //
+  // validateCredentials() above is DELIBERATELY left untouched — #472/BUG-WOO-HEALTH-001
+  // decided that for the periodic heartbeat, a transient network blip should return
+  // `true` (assume still valid), because downgrading a healthy installation on a
+  // one-off blip that the next heartbeat cycle will likely clear is worse than a brief
+  // delay in catching a real problem. That reasoning is specific to a repeating
+  // background check — it does NOT hold for install/reconnect, a one-shot,
+  // user-initiated action where "we couldn't actually check" reported as success is
+  // actively misleading, not a helpful default.
+  //
+  // This method exists ONLY for install/reconnect: same request, same stored
+  // credentials, but honest about "couldn't verify right now" (unavailable, → 503,
+  // captured by Error Authority, "try again") instead of quietly claiming success.
+  // Classification mirrors verifyCandidateCredentials' own reasoning exactly — 401/403
+  // and a non-HTTPS URL are positive evidence of invalid; any network/timeout/DNS
+  // failure is unavailable.
+  async validateStoredCredentialsDetailed(
+    ctx: ConnectorContext,
+  ): Promise<import('../../connector-framework/connector.interface').CredentialVerificationResult> {
+    try {
+      const { siteUrl, consumerKey, consumerSecret } = await this.resolveCredentials(ctx);
+
+      if (!siteUrl.startsWith('https://')) {
+        this.logger.warn('WooCommerce preflight failed: site URL must use HTTPS', {
+          installationId: ctx.installationId,
+        });
+        return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' };
+      }
+
+      const res = await this.callApi('GET', '/products?per_page=1', siteUrl, consumerKey, consumerSecret);
+
+      if (res.status === 401 || res.status === 403) {
+        this.logger.warn('WooCommerce credential validation failed: auth rejected', {
+          installationId: ctx.installationId,
+          status: res.status,
+        });
+        return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_CREDENTIALS_REJECTED' };
+      }
+      if (!res.ok) {
+        this.logger.warn('WooCommerce credential validation failed: unexpected status', {
+          installationId: ctx.installationId,
+          status: res.status,
+        });
+        return { outcome: 'unavailable', reasonCode: `HTTP_${res.status}` };
+      }
+      this.logger.info('WooCommerce credentials validated', { installationId: ctx.installationId });
+      return { outcome: 'valid' };
+    } catch (err) {
+      if (err instanceof ConnectorNetworkError) {
+        this.logger.warn('WooCommerce credential validation inconclusive: transient network failure', {
+          installationId: ctx.installationId,
+          category: err.category,
+          detail: err.detail,
+        });
+        return { outcome: 'unavailable', reasonCode: err.category };
+      }
+      this.logger.warn('WooCommerce credential validation error', {
+        installationId: ctx.installationId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return { outcome: 'unavailable', reasonCode: 'UNKNOWN_ERROR' };
+    }
+  }
+
   // ─── optional: verifyCandidateCredentials ───────────────────────────────────
   //
   // Pure — takes the candidate triplet directly (never reads stored credentials,

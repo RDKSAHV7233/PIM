@@ -424,6 +424,27 @@ export interface ConnectorInterface {
    * (Shopify) where this feature isn't offered.
    */
   verifyCandidateCredentials?(candidate: Record<string, string>): Promise<CredentialVerificationResult>;
+
+  /**
+   * PIM#653 — richer sibling of validateCredentials() for the install/reconnect call
+   * sites specifically. validateCredentials()'s "return false on any failure" contract
+   * collapses "the stored credentials are genuinely wrong" and "couldn't check right
+   * now" (network bug, a DB failure in noteCredentialHealth, a real code bug) into the
+   * same boolean, and install/reconnect converts a `false` into a plain 400
+   * (Error-Authority-exempt) — a genuine outage during validation becomes
+   * indistinguishable from "user typed the wrong secret" and never reaches error
+   * tracking.
+   *
+   * Optional and additive: a connector that doesn't implement this keeps behaving
+   * exactly as before (install/reconnect fall back to validateCredentials()'s boolean).
+   * Only implement this where the connector's own error handling can reliably tell
+   * "positive evidence of rejection" (401/403, a provider error body naming
+   * invalid_client/invalid_grant) apart from "no evidence either way" (timeout, network
+   * failure, an opaque 5xx) — see verifyCandidateCredentials' classification comments
+   * on connectors that implement both; the two should classify the same underlying
+   * provider responses the same way.
+   */
+  validateStoredCredentialsDetailed?(ctx: ConnectorContext): Promise<CredentialVerificationResult>;
 }
 
 // ─────────────────────────────────────────────

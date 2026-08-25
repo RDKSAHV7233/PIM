@@ -4,7 +4,7 @@
 
 import { createHmac } from "node:crypto";
 import { ShopifyConnector } from "./shopify.connector";
-import { ShopifyApiClient } from "./shopify-api-client.service";
+import { ShopifyApiClient, ShopifyApiHttpError } from "./shopify-api-client.service";
 import { ConnectorContext, ProductPayload } from "../../connector-framework/connector.interface";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -532,5 +532,86 @@ describe("ShopifyConnector.previewChanges", () => {
     expect(descriptionChange).toBeDefined();
     expect(descriptionChange?.changeType).toBe("add");
     expect(descriptionChange?.newValue).toBe("Original description");
+  });
+});
+
+// PIM#653 — the OLD validateCredentials() never made a live API call for a direct
+// admin-API-token install (this pilot's actual deployment mode): resolveAccessToken()
+// -> ctx.getAccessToken() returns a cached token from the DB whenever its stored
+// expiresAt is null, without ever touching Shopify's API. validateStoredCredentialsDetailed()
+// fixes this with an actual live { shop { id } } query — these tests exercise that
+// real live-check path, not just the pass-through wiring.
+describe("ShopifyConnector.validateCredentials / validateStoredCredentialsDetailed (PIM#653)", () => {
+  async function buildEncryptedRow(value: string) {
+    const { encryptCredentialValue, loadCredentialEncryptionKeys, resolveCurrentCredentialKeyVersion } =
+      await import("../../connector-installer/credential-encryption.util");
+    const keys = loadCredentialEncryptionKeys(process.env);
+    const ver = resolveCurrentCredentialKeyVersion(process.env);
+    const cipher = encryptCredentialValue(value, keys.get(ver)!, ver);
+    return { encryptedValue: cipher, keyVersion: "v1", status: "ACTIVE", expiresAt: null, failureReason: null };
+  }
+
+  function setUpConnectorWithShopDomain() {
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter — test mock, no real DB access
+    db.$queryRawUnsafe.mockImplementation(async (sql: string, ...params: string[]) => {
+      if (sql.includes("connector_credentials")) {
+        const credentialType = params[2];
+        if (credentialType === "shop_domain") return [await buildEncryptedRow("test-store.myshopify.com")];
+        return [];
+      }
+      return [];
+    });
+    const apiClient = (connector as any).apiClient as ShopifyApiClient;
+    return { connector, apiClient };
+  }
+
+  it("makes a real live GraphQL call and resolves valid/true on a healthy shop response — proves this is no longer a DB-only check", async () => {
+    const { connector, apiClient } = setUpConnectorWithShopDomain();
+    const graphqlRequest = jest.fn().mockResolvedValue({ shop: { id: "gid://shopify/Shop/1" } });
+    (apiClient as any).graphqlRequest = graphqlRequest;
+
+    const ctx = makeCtx();
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({ outcome: "valid" });
+    expect(graphqlRequest).toHaveBeenCalledTimes(1);
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(true);
+  });
+
+  it("resolves invalid/false on a 401 (revoked/uninstalled app) — the exact case the old check could never detect", async () => {
+    const { connector, apiClient } = setUpConnectorWithShopDomain();
+    (apiClient as any).graphqlRequest = jest.fn().mockRejectedValue(
+      new ShopifyApiHttpError(401, "test-store.myshopify.com", "Shopify GraphQL request failed with status 401."),
+    );
+
+    const ctx = makeCtx();
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({
+      outcome: "invalid",
+      reasonCode: "HTTP_401",
+    });
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(false);
+  });
+
+  it("resolves unavailable/false (not invalid) on a network/timeout failure", async () => {
+    const { connector, apiClient } = setUpConnectorWithShopDomain();
+    (apiClient as any).graphqlRequest = jest.fn().mockRejectedValue(new Error("fetch failed"));
+
+    const ctx = makeCtx();
+    const result = await connector.validateStoredCredentialsDetailed(ctx);
+    expect(result.outcome).toBe("unavailable");
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(false);
+  });
+
+  it("resolves unavailable on a 5xx Shopify-side outage, distinct from 401/403 invalid", async () => {
+    const { connector, apiClient } = setUpConnectorWithShopDomain();
+    (apiClient as any).graphqlRequest = jest.fn().mockRejectedValue(
+      new ShopifyApiHttpError(503, "test-store.myshopify.com", "Shopify GraphQL request failed with status 503."),
+    );
+
+    const ctx = makeCtx();
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({
+      outcome: "unavailable",
+      reasonCode: "HTTP_503",
+    });
   });
 });

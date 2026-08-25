@@ -25,6 +25,7 @@ import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { tenantRaw, tenantExecRaw } from "../../common/tenant/tenant-raw";
 import {
   ShopifyApiClient,
+  ShopifyApiHttpError,
   ShopifyTokenResponse,
   SHOPIFY_DEFAULT_ADMIN_API_VERSION,
   SHOPIFY_ADMIN_API_VERSION_DEPRECATE_AFTER,
@@ -318,13 +319,66 @@ export class ShopifyConnector implements ConnectorInterface {
   }
 
   async validateCredentials(ctx: ConnectorContext): Promise<boolean> {
+    const result = await this.validateStoredCredentialsDetailed(ctx);
+    return result.outcome === "valid";
+  }
+
+  // ─── PIM#653 ──────────────────────────────────────────────────────────────
+  //
+  // Investigation found the OLD validateCredentials() above never made a live API
+  // call at all for a direct admin-API-token install (this pilot's actual deployment
+  // mode — no refresh_token, so the stored access_token's expiresAt is null).
+  // resolveAccessToken() -> ctx.getAccessToken() -> getOrRefreshAccessToken() treats a
+  // null expiry as "permanently valid" and returns the cached token string straight
+  // from the DB, without ever calling refreshAccessToken() or touching Shopify's API.
+  // So the old check only ever proved "a token string exists in our own database" —
+  // it could never detect a merchant revoking the app, deleting it, or the token
+  // otherwise breaking on Shopify's side. Reconnect's own comment (#564, in
+  // connector-installer.service.ts) says the whole point of calling this is "so
+  // Reconnect actually proves the account works" — for the direct-token path, it
+  // never did.
+  //
+  // Fix: make an actual, minimal live Admin GraphQL call ({ shop { id } }, the same
+  // query already proven safe at install time by fetchShopIdentity()) against the
+  // STORED credentials, so a revoked/broken connection is now genuinely detectable —
+  // by reconnect AND by the heartbeat, both of which call validateCredentials().
+  //
+  // No #472-style "assume valid on network failure" carve-out here (unlike
+  // WooCommerce) — Shopify has no prior established behavior for this ambiguity to
+  // preserve, so this follows Flipkart/Amazon's existing precedent instead: an
+  // inconclusive check resolves to unavailable, which validateCredentials() above
+  // coerces to false, consistent with how this connector's boolean contract has
+  // always behaved for every other kind of failure.
+  async validateStoredCredentialsDetailed(
+    ctx: ConnectorContext,
+  ): Promise<import("../../connector-framework/connector.interface").CredentialVerificationResult> {
     try {
-      await this.resolveAccessToken(ctx);
+      const shopDomain = await this.requireCredential(ctx, "shop_domain");
+      const accessToken = await this.resolveAccessToken(ctx);
+      const response = await this.apiClient.graphqlRequest<{ shop?: { id?: string } | null }>(ctx, {
+        shopDomain,
+        accessToken,
+        query: `
+          query ValidateShopifyCredentials {
+            shop {
+              id
+            }
+          }
+        `,
+      });
+      if (!response.shop?.id) {
+        const reason = "Shopify shop query did not return a shop id.";
+        await this.noteCredentialHealth(ctx, reason);
+        this.logger.warn("Shopify credential validation inconclusive: empty shop response", {
+          installationId: ctx.installationId,
+        });
+        return { outcome: "unavailable", reasonCode: "SHOPIFY_SHOP_QUERY_EMPTY" };
+      }
       await this.noteCredentialHealth(ctx, null);
-      this.logger.info("Shopify credentials validated", {
+      this.logger.info("Shopify credentials validated (live check)", {
         installationId: ctx.installationId,
       });
-      return true;
+      return { outcome: "valid" };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await this.noteCredentialHealth(ctx, reason);
@@ -332,7 +386,13 @@ export class ShopifyConnector implements ConnectorInterface {
         installationId: ctx.installationId,
         reason,
       });
-      return false;
+      if (error instanceof ShopifyApiHttpError) {
+        if (error.status === 401 || error.status === 403) {
+          return { outcome: "invalid", reasonCode: `HTTP_${error.status}` };
+        }
+        return { outcome: "unavailable", reasonCode: `HTTP_${error.status}` };
+      }
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_ERROR" };
     }
   }
 

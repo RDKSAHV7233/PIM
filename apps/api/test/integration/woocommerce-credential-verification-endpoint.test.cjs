@@ -13,8 +13,10 @@
 //
 // So the credential check could never actually detect wrong credentials — any
 // consumer_key/consumer_secret combination, including empty strings, would classify as
-// "valid" as long as the site itself was reachable. This test asserts both call sites hit
-// a real, auth-required resource (a WooCommerce REST API root call alone is never enough),
+// "valid" as long as the site itself was reachable. This test asserts every credential-
+// verification call site hits a real, auth-required resource (a WooCommerce REST API root
+// call alone is never enough) — originally 2 (validateCredentials, verifyCandidateCredentials),
+// now 3 with PIM#653's validateStoredCredentialsDetailed(),
 // and that no call site regresses back to the unauthenticated bare root.
 //
 // This is a source-level check, not a live-network test — this repo doesn't run live
@@ -43,19 +45,26 @@ function run() {
       "at all, so it can never distinguish valid credentials from wrong ones.",
   );
 
+  // PIM#653 added a third credential-verification path, validateStoredCredentialsDetailed()
+  // (used by reconnect, honest about network failures unlike validateCredentials()'s own
+  // #472 behavior) — it deliberately reuses this exact same protected-resource call, so the
+  // expected count grew from 2 to 3. If this count changes again, confirm every new/removed
+  // call site still hits the real protected resource before updating the number.
   const protectedEndpointCallCount = (source.match(/callApi\('GET', '\/products\?per_page=1'/g) ?? []).length;
   assert(
-    protectedEndpointCallCount === 2,
-    `PIM#582: expected exactly 2 call sites hitting the real, auth-required /products?per_page=1 ` +
-      `resource (validateCredentials and verifyCandidateCredentials) — found ${protectedEndpointCallCount}. ` +
-      "Both credential-verification paths must hit a real protected resource, not just confirm the " +
-      "site is reachable.",
+    protectedEndpointCallCount === 3,
+    `PIM#582: expected exactly 3 call sites hitting the real, auth-required /products?per_page=1 ` +
+      `resource (validateCredentials, verifyCandidateCredentials, validateStoredCredentialsDetailed) — ` +
+      `found ${protectedEndpointCallCount}. Every credential-verification path must hit a real protected ` +
+      "resource, not just confirm the site is reachable.",
   );
 
   assert(
-    source.includes("async validateCredentials(") && source.includes("async verifyCandidateCredentials("),
-    "PIM#582: expected both validateCredentials and verifyCandidateCredentials to still be defined — " +
-      "this test's line-count assertions assume exactly these two call sites exist.",
+    source.includes("async validateCredentials(") &&
+      source.includes("async verifyCandidateCredentials(") &&
+      source.includes("async validateStoredCredentialsDetailed("),
+    "PIM#582: expected validateCredentials, verifyCandidateCredentials, and validateStoredCredentialsDetailed " +
+      "to all still be defined — this test's line-count assertions assume exactly these three call sites exist.",
   );
 
   console.log(
@@ -64,7 +73,7 @@ function run() {
         status: "ok",
         validated: [
           "no_call_site_uses_unauthenticated_bare_root",
-          "both_verification_paths_hit_real_protected_resource",
+          "all_verification_paths_hit_real_protected_resource",
         ],
         checkedAt: new Date().toISOString(),
       },

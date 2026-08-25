@@ -149,6 +149,72 @@ describe("WooCommerceConnector.validateCredentials (BUG-WOO-HEALTH-001 / #472)",
   });
 });
 
+// PIM#653 — validateStoredCredentialsDetailed() is a SEPARATE method from
+// validateCredentials() above, used only by reconnect (not the heartbeat, and not
+// install — WooCommerce's install path defers all live checking to the heartbeat).
+// It must be honest about a network failure ("unavailable", not "assume valid") —
+// the opposite of validateCredentials()'s own #472 behavior for the SAME input,
+// because a one-shot user-initiated reconnect claiming success without having
+// actually checked is misleading in a way a background heartbeat's one-cycle delay
+// is not. Both tests below reuse the exact same mocked failures the #472 tests
+// above use, to prove validateCredentials() itself is completely unaffected.
+describe("WooCommerceConnector.validateStoredCredentialsDetailed (PIM#653 — reconnect only, not heartbeat)", () => {
+  const ctx = { tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" };
+
+  function mockResolvedCredentials(connector: WooCommerceConnector) {
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: "https://example.com",
+      consumerKey: "ck_test",
+      consumerSecret: "cs_test",
+    });
+  }
+
+  it("returns unavailable (NOT valid/true) on the exact same retryable network failure validateCredentials() treats as true — the whole point of this method", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockRejectedValue(
+      new ConnectorNetworkError("woocommerce", "NETWORK", true, "connection failed (ECONNRESET)"),
+    );
+
+    await expect(connector.validateStoredCredentialsDetailed(ctx as any)).resolves.toEqual({
+      outcome: "unavailable",
+      reasonCode: "NETWORK",
+    });
+    // validateCredentials() itself must be completely unaffected by this method existing.
+    await expect(connector.validateCredentials(ctx as any)).resolves.toBe(true);
+  });
+
+  it("returns invalid on a 401/403 auth rejection", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({ status: 401, ok: false } as Response);
+
+    await expect(connector.validateStoredCredentialsDetailed(ctx as any)).resolves.toEqual({
+      outcome: "invalid",
+      reasonCode: "WOOCOMMERCE_CREDENTIALS_REJECTED",
+    });
+  });
+
+  it("returns valid on a healthy response", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({ status: 200, ok: true } as Response);
+
+    await expect(connector.validateStoredCredentialsDetailed(ctx as any)).resolves.toEqual({ outcome: "valid" });
+  });
+
+  it("returns unavailable for a non-retryable network failure too (DNS/TLS) — unlike validateCredentials(), which returns false for this case, not true", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockRejectedValue(
+      new ConnectorNetworkError("woocommerce", "DNS", false, "DNS resolution failed (ENOTFOUND)"),
+    );
+
+    const result = await connector.validateStoredCredentialsDetailed(ctx as any);
+    expect(result.outcome).toBe("unavailable");
+  });
+});
+
 describe("WooCommerceConnector.verifyCandidateCredentials", () => {
   const candidate = {
     site_url: "https://candidate-store.example.com",

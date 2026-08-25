@@ -22,9 +22,9 @@
  *   4  Product publish/export job create        — FIXED    (marketplace.service.ts pre-flight block now captures) — PIM#655
  *   5  Product archive                          — clean
  *   6  Product permanent delete                 — clean (audit-write-only swallow, scoped, non-mutation)
- *   7  Connector install                        — SWALLOW  (validateCredentials boolean catch-all)  — PIM#653
+ *   7  Connector install                        — FIXED (Flipkart/Amazon; WooCommerce/Shopify install never called this) — PIM#653
  *   8  Connector credential replace              — clean (masked but re-thrown as non-exempt 503)
- *   9  Connector reconnect                       — SWALLOW  (same validateCredentials bug as #7)     — PIM#653
+ *   9  Connector reconnect                       — FIXED (Flipkart/Amazon/WooCommerce/Shopify)                            — PIM#653
  *  10  Connector disable/uninstall               — clean
  *  11  Marketplace export job retry              — clean
  *  12  Billing webhook status change             — clean (explicit rethrow, reasoned about in code comment)
@@ -150,30 +150,113 @@ function run() {
     validated.push("clean_path_8_credential_replace_discriminated_result_present");
   }
 
-  // ── Known swallow #7/#9: connector install + reconnect (PIM#653) ─────────
-  // Confirm the swallow-to-boolean pattern is still present in at least one
-  // connector, and that a caller converts a false result into an EXEMPT
-  // status (400) rather than the non-exempt status used by #8's fixed path.
-  // If PIM#653 lands, this assertion should start failing — update this
-  // matrix at that point rather than treating it as a regression.
+  // ── Fixed #7/#9: connector install + reconnect (PIM#653) ─────────────────
+  // Flipkart, Amazon, WooCommerce, and Shopify now all implement
+  // validateStoredCredentialsDetailed(), mirroring the discriminated
+  // valid/invalid/unavailable pattern clean-path-#8 already uses, and the
+  // reconnect call site routes through it via validateStoredCredentialsOrThrow()
+  // — a genuine outage during validation now surfaces as a non-exempt 503
+  // (captured), not a plain 400, for every connector this repo has a live-checkable
+  // credential for.
+  //
+  // WooCommerce's own validateCredentials() (the heartbeat path) is DELIBERATELY left
+  // completely untouched: #472/BUG-WOO-HEALTH-001 decided a transient network blip
+  // there should return true (assume still valid), reasoning specific to a repeating
+  // background check. validateStoredCredentialsDetailed() is a separate, ADDITIVE
+  // method used only by reconnect (a one-shot, user-initiated action, where "we
+  // couldn't check" reported as success is misleading, not helpful) — it correctly
+  // reports that same network failure as "unavailable," not "valid." WooCommerce's
+  // install path is unaffected either way — it defers all live checking to the
+  // heartbeat, never calls either method synchronously at install time.
+  //
+  // Shopify's fix goes further than the others: investigation found its OLD
+  // validateCredentials() never made a live API call at all for a direct
+  // admin-API-token install (this pilot's actual deployment mode — no refresh_token,
+  // so the stored token's expiresAt is null and getOrRefreshAccessToken() treats that
+  // as permanently valid without ever touching Shopify's API). validateCredentials()
+  // now delegates to validateStoredCredentialsDetailed(), which makes a real, minimal
+  // live Admin GraphQL call ({ shop { id } }) — so a revoked/uninstalled app is now
+  // genuinely detectable by BOTH reconnect and the heartbeat, unlike WooCommerce/
+  // Flipkart/Amazon where only reconnect (or install+reconnect) changed behavior.
   {
-    const source = readSource("connectors/flipkart/flipkart.connector.ts");
-    const body = extractBlock(source, "async validateCredentials(");
+    const flipkartSource = readSource("connectors/flipkart/flipkart.connector.ts");
     assert(
-      /catch \(error\) \{[\s\S]{0,300}?return false;/.test(body),
-      "PIM#653 not yet fixed: expected validateCredentials() to still swallow all internal exceptions into " +
-        "a boolean false (this is the known bug). If this assertion fails, PIM#653 has likely been fixed — " +
-        "update this test's matrix comment and this assertion accordingly rather than treating it as broken.",
+      flipkartSource.includes("validateStoredCredentialsDetailed"),
+      "PIM#653 regression: FlipkartConnector must implement validateStoredCredentialsDetailed() so " +
+        "install/reconnect can distinguish invalid from unavailable.",
     );
+    const validateCredentialsBody = extractBlock(flipkartSource, "async validateCredentials(");
+    assert(
+      /validateStoredCredentialsDetailed/.test(validateCredentialsBody),
+      "PIM#653 regression: FlipkartConnector.validateCredentials() must delegate to " +
+        "validateStoredCredentialsDetailed() and coerce its outcome to a boolean, so the two can never drift.",
+    );
+
+    const amazonSource = readSource("connectors/amazon/amazon.connector.ts");
+    assert(
+      amazonSource.includes("validateStoredCredentialsDetailed"),
+      "PIM#653 regression: AmazonConnector must implement validateStoredCredentialsDetailed() so " +
+        "install/reconnect can distinguish invalid from unavailable.",
+    );
+
     const installerSource = readSource("connector-installer/connector-installer.service.ts");
     assert(
-      /if \(!validated\) \{?\s*throw new BadRequestException/.test(installerSource) ||
-        /if \(!validated\)\s*\n?\s*throw new BadRequestException/.test(installerSource),
-      "Expected the install/reconnect call sites to still convert a failed validateCredentials() into a " +
-        "plain BadRequestException (400, exempt from Error Authority capture) — this is the second half of " +
-        "PIM#653's bug. If this has changed, update the matrix.",
+      installerSource.includes("validateStoredCredentialsOrThrow"),
+      "PIM#653 regression: expected a validateStoredCredentialsOrThrow() helper used by the install/" +
+        "reconnect call sites, converting an 'unavailable' outcome into a non-exempt 503 instead of the " +
+        "plain 400 both flows used unconditionally before this fix.",
     );
-    validated.push("known_swallow_7_9_pim653_still_present_as_expected");
+    const throwHelperBody = extractBlock(installerSource, "private async validateStoredCredentialsOrThrow(");
+    assert(
+      /ServiceUnavailableException/.test(throwHelperBody) && /outcome === "unavailable"/.test(throwHelperBody),
+      "PIM#653 regression: validateStoredCredentialsOrThrow() must throw ServiceUnavailableException (503) " +
+        "specifically for the 'unavailable' outcome, distinct from BadRequestException (400) for 'invalid'.",
+    );
+
+    const wooSource = readSource("connectors/woocommerce/woocommerce.connector.ts");
+    assert(
+      wooSource.includes("validateStoredCredentialsDetailed"),
+      "PIM#653 regression: WooCommerceConnector must implement validateStoredCredentialsDetailed() so " +
+        "reconnect can distinguish invalid from unavailable, independent of validateCredentials()'s own #472 behavior.",
+    );
+    const wooDetailedBody = extractBlock(wooSource, "async validateStoredCredentialsDetailed(");
+    assert(
+      /instanceof ConnectorNetworkError\)\s*\{[\s\S]{0,300}?outcome: 'unavailable'/.test(wooDetailedBody),
+      "PIM#653/#472 regression: validateStoredCredentialsDetailed() must report a network failure as " +
+        "'unavailable', NOT silently mirror validateCredentials()'s own 'assume valid, return true' behavior " +
+        "— the two methods exist specifically because reconnect and the heartbeat need different answers to " +
+        "the same ambiguous network failure.",
+    );
+    const wooValidateCredentialsBody = extractBlock(wooSource, "async validateCredentials(");
+    assert(
+      /this\.logger\.warn\('WooCommerce credential validation inconclusive: transient network failure, not marking expired'/.test(wooValidateCredentialsBody) &&
+        /return true;/.test(wooValidateCredentialsBody),
+      "PIM#472 regression: validateCredentials() (the heartbeat path) must still return true on a retryable " +
+        "network failure — validateStoredCredentialsDetailed() must never have replaced or altered this method's " +
+        "own behavior.",
+    );
+
+    const shopifySource = readSource("connectors/shopify/shopify.connector.ts");
+    assert(
+      shopifySource.includes("validateStoredCredentialsDetailed"),
+      "PIM#653 regression: ShopifyConnector must implement validateStoredCredentialsDetailed() with a " +
+        "real live API call — the direct-token deployment mode makes cached-token resolution alone " +
+        "insufficient to prove the connection still works.",
+    );
+    const shopifyDetailedBody = extractBlock(shopifySource, "async validateStoredCredentialsDetailed(");
+    assert(
+      /graphqlRequest/.test(shopifyDetailedBody),
+      "PIM#653 regression: ShopifyConnector.validateStoredCredentialsDetailed() must make a real live " +
+        "GraphQL call (not just resolve a cached access token) — otherwise a revoked/uninstalled app is " +
+        "undetectable for direct-token installs, the exact gap this fix closes.",
+    );
+    const shopifyValidateCredentialsBody = extractBlock(shopifySource, "async validateCredentials(");
+    assert(
+      /validateStoredCredentialsDetailed/.test(shopifyValidateCredentialsBody),
+      "PIM#653 regression: ShopifyConnector.validateCredentials() must delegate to " +
+        "validateStoredCredentialsDetailed() so the heartbeat also gets the real live check, not just reconnect.",
+    );
+    validated.push("fixed_7_9_pim653_all_four_connectors_done");
   }
 
   // ── Fixed path #15: JWT blocklist Redis-write failure (PIM#654) ──────────
@@ -250,12 +333,11 @@ function run() {
         matrixSummary: {
           totalPathsAudited: 15,
           confirmedClean: 11,
-          confirmedFixed: 3,
-          confirmedSwallow: 1,
-          trackingIssues: {
-            "PIM#653": "connector install/reconnect validateCredentials() boolean swallow — still open",
-          },
+          confirmedFixed: 4,
+          confirmedSwallow: 0,
+          trackingIssues: {},
           fixedIssues: {
+            "PIM#653": "connector install/reconnect validateCredentials() boolean swallow — Flipkart+Amazon+WooCommerce+Shopify all fixed (this PR)",
             "PIM#654": "JWT blocklist Redis-write failure on logout — now captured (PR #671)",
             "PIM#655": "export-job pre-flight validation swallow — now captured (PR #671)",
             "PIM#656": "unawaited lastSignInAt write on login/MFA — now handled and captured (PR #671)",

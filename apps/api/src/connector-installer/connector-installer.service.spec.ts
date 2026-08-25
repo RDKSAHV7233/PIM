@@ -1255,4 +1255,62 @@ describe("ConnectorInstallerService", () => {
       expect(logger.error).not.toHaveBeenCalledWith("connector_credentials_rotation_commit_failed", expect.anything());
     });
   });
+
+  // PIM#653 — install/reconnect need the same invalid/unavailable distinction
+  // already proven for credential-replace (throwOnUnverified). A connector without
+  // validateStoredCredentialsDetailed() must behave EXACTLY as before (plain 400 on
+  // a false boolean) — zero behavior change for every connector except the ones that
+  // opt in.
+  describe("validateStoredCredentialsOrThrow (private helper backing install/reconnect)", () => {
+    const CTX = { tenantId: "t1", installationId: "inst_1", connectorId: "conn_1" } as never;
+
+    function callHelper(service: ConnectorInstallerService, connector: unknown) {
+      return (service as unknown as { validateStoredCredentialsOrThrow: (...args: unknown[]) => Promise<void> })
+        .validateStoredCredentialsOrThrow(connector, CTX, "SOME_CONNECTOR_INVALID", "Some connector credentials could not be validated.");
+    }
+
+    it("resolves without throwing when a connector without validateStoredCredentialsDetailed returns true (unchanged fallback behavior)", async () => {
+      const { service } = createService();
+      const connector = { validateCredentials: jest.fn().mockResolvedValue(true) };
+
+      await expect(callHelper(service, connector)).resolves.toBeUndefined();
+    });
+
+    it("throws a plain BadRequestException (400) when a connector without validateStoredCredentialsDetailed returns false (unchanged fallback behavior)", async () => {
+      const { service } = createService();
+      const connector = { validateCredentials: jest.fn().mockResolvedValue(false) };
+
+      await expect(callHelper(service, connector)).rejects.toMatchObject({
+        status: 400,
+        response: expect.objectContaining({ error: "SOME_CONNECTOR_INVALID" }),
+      });
+    });
+
+    it("resolves without throwing when validateStoredCredentialsDetailed returns valid", async () => {
+      const { service } = createService();
+      const connector = { validateStoredCredentialsDetailed: jest.fn().mockResolvedValue({ outcome: "valid" }) };
+
+      await expect(callHelper(service, connector)).resolves.toBeUndefined();
+    });
+
+    it("throws a plain BadRequestException (400, Error-Authority-exempt) when validateStoredCredentialsDetailed returns invalid", async () => {
+      const { service } = createService();
+      const connector = { validateStoredCredentialsDetailed: jest.fn().mockResolvedValue({ outcome: "invalid", reasonCode: "HTTP_401" }) };
+
+      await expect(callHelper(service, connector)).rejects.toMatchObject({
+        status: 400,
+        response: expect.objectContaining({ error: "SOME_CONNECTOR_INVALID" }),
+      });
+    });
+
+    it("throws a ServiceUnavailableException (503, non-exempt — captured by Error Authority) when validateStoredCredentialsDetailed returns unavailable — the actual PIM#653 fix", async () => {
+      const { service } = createService();
+      const connector = { validateStoredCredentialsDetailed: jest.fn().mockResolvedValue({ outcome: "unavailable", reasonCode: "HTTP_500" }) };
+
+      await expect(callHelper(service, connector)).rejects.toMatchObject({
+        status: 503,
+        response: expect.objectContaining({ error: "SOME_CONNECTOR_INVALID_UNAVAILABLE" }),
+      });
+    });
+  });
 });

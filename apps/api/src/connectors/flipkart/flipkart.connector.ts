@@ -148,6 +148,28 @@ export class FlipkartConnector implements ConnectorInterface {
   }
 
   async validateCredentials(ctx: ConnectorContext): Promise<boolean> {
+    const result = await this.validateStoredCredentialsDetailed(ctx);
+    return result.outcome === "valid";
+  }
+
+  // ─── PIM#653 ──────────────────────────────────────────────────────────────
+  //
+  // Richer sibling of validateCredentials() for install/reconnect, which need to
+  // distinguish "genuinely invalid" from "couldn't check right now" so a real outage
+  // during validation doesn't get reported as a plain 400 (Error-Authority-exempt,
+  // indistinguishable from a wrong password). validateCredentials() above now just
+  // calls this and coerces to a boolean, so the two can never drift apart.
+  //
+  // Same side effects as before (noteCredentialHealth, refresh-token-expiry check) —
+  // this isn't the side-effect-free verifyCandidateCredentials(); it still reads and
+  // health-checks the STORED credentials. Classification mirrors
+  // verifyCandidateCredentials' own reasoning: refreshAccessToken() propagates the
+  // original FlipkartTokenExchangeError unchanged unless the stored refresh token's
+  // own expiry has already passed (in which case it throws a plain
+  // Error("REFRESH_TOKEN_EXPIRED") instead) — both cases are handled below.
+  async validateStoredCredentialsDetailed(
+    ctx: ConnectorContext,
+  ): Promise<import("../../connector-framework/connector.interface").CredentialVerificationResult> {
     try {
       await this.resolveAccessToken(ctx);
       await this.noteCredentialHealth(ctx, null);
@@ -158,7 +180,7 @@ export class FlipkartConnector implements ConnectorInterface {
         this.logger.error("Flipkart refresh token expired", {
           installationId: ctx.installationId,
         });
-        return false;
+        return { outcome: "invalid", reasonCode: "REFRESH_TOKEN_EXPIRED" };
       }
       if (refreshStatus === "expiring_soon") {
         const refreshRow = await this.getCredentialRow(ctx, "refresh_token");
@@ -175,7 +197,7 @@ export class FlipkartConnector implements ConnectorInterface {
       this.logger.info("Flipkart credentials validated", {
         installationId: ctx.installationId,
       });
-      return true;
+      return { outcome: "valid" };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await this.noteCredentialHealth(ctx, reason);
@@ -183,7 +205,17 @@ export class FlipkartConnector implements ConnectorInterface {
         installationId: ctx.installationId,
         reason,
       });
-      return false;
+      if (reason === "REFRESH_TOKEN_EXPIRED") {
+        return { outcome: "invalid", reasonCode: "REFRESH_TOKEN_EXPIRED" };
+      }
+      if (error instanceof FlipkartTokenExchangeError) {
+        const bodyError = String((error.body as Record<string, unknown>)?.error ?? "").trim().toLowerCase();
+        if (error.status === 401 || bodyError === "invalid_client" || bodyError === "invalid_grant") {
+          return { outcome: "invalid", reasonCode: bodyError || `HTTP_${error.status}` };
+        }
+        return { outcome: "unavailable", reasonCode: `HTTP_${error.status}` };
+      }
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_ERROR" };
     }
   }
 

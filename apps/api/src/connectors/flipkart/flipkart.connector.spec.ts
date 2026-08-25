@@ -436,3 +436,54 @@ describe("FlipkartConnector metadata", () => {
     expect(makeConnector().capabilities).not.toContain("WEBHOOK_RECEIVE");
   });
 });
+
+// ─── validateCredentials / validateStoredCredentialsDetailed (PIM#653) ─────────
+//
+// validateCredentials() now just delegates to validateStoredCredentialsDetailed()
+// and coerces its outcome to a boolean, so the two can never drift. These tests
+// prove that wiring — the underlying invalid/unavailable classification itself
+// (FlipkartTokenExchangeError → 401/invalid_grant = invalid, else = unavailable) is
+// already proven correct by the verifyCandidateCredentials tests above, which share
+// the exact same classification code.
+describe("FlipkartConnector.validateCredentials / validateStoredCredentialsDetailed", () => {
+  function makeCtx(getAccessToken: jest.Mock): ConnectorContext {
+    return {
+      tenantId: "tenant1",
+      installationId: "inst-1",
+      connectorId: "conn-1",
+      getAccessToken,
+      fetch: jest.fn(),
+    } as unknown as ConnectorContext;
+  }
+
+  it("resolves valid/true when the access token resolves successfully", async () => {
+    const connector = makeConnector();
+    const ctx = makeCtx(jest.fn().mockResolvedValue("token-123"));
+
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({ outcome: "valid" });
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(true);
+  });
+
+  it("resolves invalid/false when the refresh token is expired", async () => {
+    const connector = makeConnector();
+    const ctx = makeCtx(jest.fn().mockRejectedValue(new Error("REFRESH_TOKEN_EXPIRED")));
+
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({
+      outcome: "invalid",
+      reasonCode: "REFRESH_TOKEN_EXPIRED",
+    });
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(false);
+  });
+
+  it("resolves unavailable/false (not invalid/false) on an unclassified failure — the exact distinction PIM#653 needs", async () => {
+    const connector = makeConnector();
+    const ctx = makeCtx(jest.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND")));
+
+    const result = await connector.validateStoredCredentialsDetailed(ctx);
+    expect(result.outcome).toBe("unavailable");
+    // validateCredentials()'s boolean contract can't distinguish invalid from
+    // unavailable — both resolve false. That collapse is exactly what
+    // validateStoredCredentialsDetailed exists to undo for its callers.
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(false);
+  });
+});

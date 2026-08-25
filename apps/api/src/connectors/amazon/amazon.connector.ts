@@ -221,13 +221,26 @@ export class AmazonConnector implements ConnectorInterface {
   }
 
   async validateCredentials(ctx: ConnectorContext): Promise<boolean> {
+    const result = await this.validateStoredCredentialsDetailed(ctx);
+    return result.outcome === "valid";
+  }
+
+  // ─── PIM#653 ──────────────────────────────────────────────────────────────
+  //
+  // Richer sibling of validateCredentials() for install/reconnect — see the identical
+  // reasoning on FlipkartConnector.validateStoredCredentialsDetailed(). Amazon's
+  // refreshAccessToken() (unlike Flipkart's) has no special-cased rewrap, so the
+  // AmazonTokenExchangeError instance from exchangeToken() always propagates unchanged.
+  async validateStoredCredentialsDetailed(
+    ctx: ConnectorContext,
+  ): Promise<import("../../connector-framework/connector.interface").CredentialVerificationResult> {
     try {
       await this.resolveAccessToken(ctx);
       await this.noteCredentialHealth(ctx, null);
       this.logger.info("Amazon credentials validated", {
         installationId: ctx.installationId,
       });
-      return true;
+      return { outcome: "valid" };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await this.noteCredentialHealth(ctx, reason);
@@ -235,7 +248,14 @@ export class AmazonConnector implements ConnectorInterface {
         installationId: ctx.installationId,
         reason,
       });
-      return false;
+      if (error instanceof AmazonTokenExchangeError) {
+        const bodyError = String((error.body as Record<string, unknown>)?.error ?? "").trim().toLowerCase();
+        if (error.status === 401 || bodyError === "invalid_client" || bodyError === "invalid_grant") {
+          return { outcome: "invalid", reasonCode: bodyError || `HTTP_${error.status}` };
+        }
+        return { outcome: "unavailable", reasonCode: `HTTP_${error.status}` };
+      }
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_ERROR" };
     }
   }
 

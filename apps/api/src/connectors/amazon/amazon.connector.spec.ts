@@ -424,3 +424,33 @@ describe("AmazonConnector.verifyCandidateCredentials", () => {
     expect(db.connectorCredential.upsert).not.toHaveBeenCalled();
   });
 });
+
+// ─── validateCredentials / validateStoredCredentialsDetailed (PIM#653) ─────────
+//
+// validateCredentials() now just delegates to validateStoredCredentialsDetailed()
+// and coerces its outcome to a boolean, so the two can never drift. The underlying
+// invalid/unavailable classification (AmazonTokenExchangeError → 401/invalid_grant =
+// invalid, else = unavailable) is already proven correct by the
+// verifyCandidateCredentials tests above, which share the exact same classification
+// code — these tests prove the wiring, not re-prove the classification.
+describe("AmazonConnector.validateCredentials / validateStoredCredentialsDetailed", () => {
+  it("resolves valid/true when the access token resolves successfully", async () => {
+    const connector = makeConnector();
+    const ctx = makeCtx({ getAccessToken: jest.fn().mockResolvedValue("token-123") });
+
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({ outcome: "valid" });
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(true);
+  });
+
+  it("resolves unavailable/false (not invalid/false) on an unclassified failure — the exact distinction PIM#653 needs", async () => {
+    const connector = makeConnector();
+    const ctx = makeCtx({ getAccessToken: jest.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND")) });
+
+    const result = await connector.validateStoredCredentialsDetailed(ctx);
+    expect(result.outcome).toBe("unavailable");
+    // validateCredentials()'s boolean contract can't distinguish invalid from
+    // unavailable — both resolve false. That collapse is exactly what
+    // validateStoredCredentialsDetailed exists to undo for its callers.
+    await expect(connector.validateCredentials(ctx)).resolves.toBe(false);
+  });
+});

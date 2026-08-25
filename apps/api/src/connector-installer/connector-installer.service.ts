@@ -21,6 +21,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { tenantRaw, tenantExecRaw, globalQuery } from "../common/tenant/tenant-raw";
 import {
   ConnectorCap,
+  ConnectorContext,
+  ConnectorInterface,
   ConnectorPublicationTarget,
   ConnectorImplementationStatus,
   CredentialVerificationResult,
@@ -958,13 +960,12 @@ export class ConnectorInstallerService {
       // checked. Reuse the same validateCredentials() call the heartbeat already
       // makes for every installation, so Reconnect actually proves the account works.
       const connector = this.connectorRegistry.getConnector(installation.slug);
-      const validated = await connector.validateCredentials(this.buildConnectorContext(installation));
-      if (!validated) {
-        throw new BadRequestException({
-          error: "CONNECTOR_CREDENTIALS_STILL_INVALID",
-          message: `${installation.slug} credentials could not be validated. Update the stored credentials via setup, then try reconnecting again.`,
-        });
-      }
+      await this.validateStoredCredentialsOrThrow(
+        connector,
+        this.buildConnectorContext(installation),
+        "CONNECTOR_CREDENTIALS_STILL_INVALID",
+        `${installation.slug} credentials could not be validated. Update the stored credentials via setup, then try reconnecting again.`,
+      );
 
       const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         UPDATE connector_installations
@@ -1417,6 +1418,43 @@ export class ConnectorInstallerService {
         message: `${prefix} couldn't be reached to verify these credentials right now. Existing credentials were not changed — try again shortly.`,
         verification,
       });
+    }
+  }
+
+  // PIM#653 — install/reconnect need the same invalid-vs-unavailable distinction
+  // throwOnUnverified() already applies to the credential-replace path, so a genuine
+  // outage during validation surfaces as a non-exempt 503 (captured by Error Authority)
+  // rather than the plain 400 both flows used unconditionally before this fix.
+  //
+  // Only Flipkart and Amazon implement validateStoredCredentialsDetailed() so far —
+  // every other connector falls back to the original validateCredentials() boolean
+  // and the original plain-400-on-false behavior, completely unchanged. WooCommerce and
+  // Shopify are deliberately NOT included yet: WooCommerce's validateCredentials() has
+  // its own prior, deliberate design (#472/BUG-WOO-HEALTH-001) around what a network
+  // failure should mean that needs its own explicit review before being folded into
+  // this pattern, not a blind uniform retrofit.
+  private async validateStoredCredentialsOrThrow(
+    connector: ConnectorInterface,
+    ctx: ConnectorContext,
+    errorCode: string,
+    invalidMessage: string,
+  ): Promise<void> {
+    if (connector.validateStoredCredentialsDetailed) {
+      const result = await connector.validateStoredCredentialsDetailed(ctx);
+      if (result.outcome === "valid") {
+        return;
+      }
+      if (result.outcome === "unavailable") {
+        throw new ServiceUnavailableException({
+          error: `${errorCode}_UNAVAILABLE`,
+          message: `${invalidMessage} Couldn't be reached to verify right now — try again shortly.`,
+        });
+      }
+      throw new BadRequestException({ error: errorCode, message: invalidMessage });
+    }
+    const validated = await connector.validateCredentials(ctx);
+    if (!validated) {
+      throw new BadRequestException({ error: errorCode, message: invalidMessage });
     }
   }
 
@@ -1995,7 +2033,8 @@ export class ConnectorInstallerService {
     });
 
     const connector = this.connectorRegistry.getConnector("flipkart");
-    const validated = await connector.validateCredentials(
+    await this.validateStoredCredentialsOrThrow(
+      connector,
       this.buildConnectorContext({
         id: input.installationId,
         tenantKey: input.tenantKey,
@@ -2004,14 +2043,9 @@ export class ConnectorInstallerService {
         externalAccountRef: input.externalAccountRef ?? null,
         metadata: {},
       }),
+      "FLIPKART_CREDENTIALS_INVALID",
+      "Flipkart credentials could not be validated. Check the client ID, client secret, and refresh token.",
     );
-
-    if (!validated) {
-      throw new BadRequestException({
-        error: "FLIPKART_CREDENTIALS_INVALID",
-        message: "Flipkart credentials could not be validated. Check the client ID, client secret, and refresh token.",
-      });
-    }
   }
 
   private async captureAndValidateAmazonCredentials(input: {
@@ -2063,7 +2097,8 @@ export class ConnectorInstallerService {
     const defaultProductType = String(input.dto.defaultProductType ?? "").trim().toUpperCase() || null;
 
     const connector = this.connectorRegistry.getConnector("amazon-in");
-    const validated = await connector.validateCredentials(
+    await this.validateStoredCredentialsOrThrow(
+      connector,
       this.buildConnectorContext({
         id: input.installationId,
         tenantKey: input.tenantKey,
@@ -2072,14 +2107,9 @@ export class ConnectorInstallerService {
         externalAccountRef: input.externalAccountRef ?? null,
         metadata: { sellerId: input.externalAccountRef, marketplaceId },
       }),
+      "AMAZON_CREDENTIALS_INVALID",
+      "Amazon credentials could not be validated. Check the client ID, client secret, and refresh token.",
     );
-
-    if (!validated) {
-      throw new BadRequestException({
-        error: "AMAZON_CREDENTIALS_INVALID",
-        message: "Amazon credentials could not be validated. Check the client ID, client secret, and refresh token.",
-      });
-    }
 
     // Persist marketplace config into installation metadata so it is available
     // at runtime without needing a separate lookup.
