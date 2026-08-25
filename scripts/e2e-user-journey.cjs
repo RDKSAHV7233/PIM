@@ -310,6 +310,21 @@ function getErrorMessageFromBody(body) {
   return "";
 }
 
+function retryDelayMs(response, attempt) {
+  const retryAfter = Number(response?.headers?.get?.("retry-after") ?? "");
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1_000, 30_000);
+  }
+  return Math.min(1_000 * (attempt + 1), 30_000);
+}
+
+function isRetryableResponse(status, body) {
+  if ([502, 503, 504].includes(status)) {
+    return true;
+  }
+  return status === 429 && String(body?.error ?? "") === "IP_RATE_LIMITED";
+}
+
 async function request(baseUrl, method, routeOrUrl, options = {}) {
   let url = routeOrUrl;
   if (!routeOrUrl.startsWith("http")) {
@@ -337,18 +352,31 @@ async function request(baseUrl, method, routeOrUrl, options = {}) {
   }
 
   const retries = Number(options.retries ?? 0);
-  let response;
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      response = await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers,
         body,
         redirect: "manual",
       });
       lastError = null;
-      break;
+      const text = await response.text();
+      const contentType = response.headers?.get?.("content-type") ?? "";
+      const parsedBody = response.status === 204 ? null : parseBody(text, contentType);
+      if (isRetryableResponse(response.status, parsedBody) && attempt < retries) {
+        await wait(retryDelayMs(response, attempt));
+        continue;
+      }
+      return {
+        ok: response.ok,
+        status: response.status,
+        headers: response.headers,
+        text,
+        body: parsedBody,
+        url,
+      };
     } catch (error) {
       lastError = error;
       if (attempt >= retries) {
@@ -357,21 +385,7 @@ async function request(baseUrl, method, routeOrUrl, options = {}) {
       await wait(300 * (attempt + 1));
     }
   }
-  if (!response) {
-    throw lastError ?? new Error("request failed");
-  }
-
-  const text = await response.text();
-  const contentType = response.headers?.get?.("content-type") ?? "";
-  const parsedBody = response.status === 204 ? null : parseBody(text, contentType);
-  return {
-    ok: response.ok,
-    status: response.status,
-    headers: response.headers,
-    text,
-    body: parsedBody,
-    url,
-  };
+  throw lastError ?? new Error("request failed");
 }
 
 async function api(method, route, options = {}) {
@@ -452,6 +466,7 @@ async function login(userId, password, workspaceSlug) {
       userId,
       password,
     },
+    retries: 4,
   });
 }
 

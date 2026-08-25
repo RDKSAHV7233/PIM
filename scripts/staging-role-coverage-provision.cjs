@@ -39,6 +39,21 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function retryDelayMs(response, attempt) {
+  const retryAfter = Number(response?.headers?.get?.("retry-after") ?? "");
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1_000, 30_000);
+  }
+  return Math.min(1_000 * (attempt + 1), 30_000);
+}
+
+function isRetryableResponse(status, payload) {
+  if ([502, 503, 504].includes(status)) {
+    return true;
+  }
+  return status === 429 && String(payload?.error ?? "") === "IP_RATE_LIMITED";
+}
+
 async function requestJson(baseUrl, path, options = {}) {
   const retries = Number(options.retries ?? 0);
   let lastError = null;
@@ -56,6 +71,10 @@ async function requestJson(baseUrl, path, options = {}) {
         payload = text ? JSON.parse(text) : null;
       } catch {
         payload = { raw: text.slice(0, 500) };
+      }
+      if (isRetryableResponse(response.status, payload) && attempt < retries) {
+        await wait(retryDelayMs(response, attempt));
+        continue;
       }
       return { status: response.status, payload };
     } catch (error) {
@@ -81,7 +100,7 @@ async function login(baseUrl, workspaceSlug, userId, password, context) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: { workspaceSlug, userId, password },
-    retries: 2,
+    retries: 4,
   });
   assertStatus(result, [200, 201], context);
   assert(result.payload?.accessToken, `${context} response missing access token`);
