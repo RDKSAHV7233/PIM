@@ -104,16 +104,34 @@ function main() {
   requireEnvVar(signupStep, "STAGING_EXPECTED_ENV", "Public signup smoke check");
   requireRunContains(signupStep, "node scripts/staging-public-signup-check.cjs", "Public signup smoke check");
 
+  const roleProvisionStep = requireStep(steps, "Provision role coverage identities");
+  requireEnvVar(roleProvisionStep, "STAGING_BASE_URL", "Provision role coverage identities");
+  requireEnvVar(roleProvisionStep, "STAGING_SMOKE_WORKSPACE", "Provision role coverage identities");
+  requireEnvVar(roleProvisionStep, "STAGING_SMOKE_USER", "Provision role coverage identities");
+  requireEnvVar(roleProvisionStep, "STAGING_SMOKE_PASSWORD", "Provision role coverage identities");
+  for (const role of ["VIEWER", "EDITOR", "REVIEWER"]) {
+    requireEnvVar(roleProvisionStep, `STAGING_${role}_WORKSPACE`, "Provision role coverage identities");
+    requireEnvVar(roleProvisionStep, `STAGING_${role}_USER`, "Provision role coverage identities");
+    requireEnvVar(roleProvisionStep, `STAGING_${role}_PASSWORD`, "Provision role coverage identities");
+  }
+  requireRunContains(roleProvisionStep, "node scripts/staging-role-coverage-provision.cjs", "Provision role coverage identities");
+
   const e2eStep = requireStep(steps, "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_BASE_URL", "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_WEB_URL", "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_SMOKE_WORKSPACE", "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_SMOKE_USER", "Run E2E suite");
   requireEnvVar(e2eStep, "STAGING_SMOKE_PASSWORD", "Run E2E suite");
+  for (const role of ["VIEWER", "EDITOR", "REVIEWER"]) {
+    requireEnvVar(e2eStep, `STAGING_${role}_WORKSPACE`, "Run E2E suite");
+    requireEnvVar(e2eStep, `STAGING_${role}_USER`, "Run E2E suite");
+    requireEnvVar(e2eStep, `STAGING_${role}_PASSWORD`, "Run E2E suite");
+  }
   requireRunContains(e2eStep, "node scripts/e2e-user-journey.cjs", "Run E2E suite");
   requireRunContains(e2eStep, "set -o pipefail", "Run E2E suite");
 
-  requireStepOrder(steps, "Resolve staging web URL", "Run E2E suite");
+  requireStepOrder(steps, "Resolve staging web URL", "Provision role coverage identities");
+  requireStepOrder(steps, "Provision role coverage identities", "Run E2E suite");
 
   requireStep(steps, "Upload E2E artifacts");
 

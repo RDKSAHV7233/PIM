@@ -324,6 +324,11 @@ function main() {
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_USER", "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_PASSWORD", "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_TENANT_ID", "E2E smoke - post-deploy verification");
+  for (const role of ["VIEWER", "EDITOR", "REVIEWER"]) {
+    requireEnvVar(e2eSmokeStep, `STAGING_${role}_WORKSPACE`, "E2E smoke - post-deploy verification");
+    requireEnvVar(e2eSmokeStep, `STAGING_${role}_USER`, "E2E smoke - post-deploy verification");
+    requireEnvVar(e2eSmokeStep, `STAGING_${role}_PASSWORD`, "E2E smoke - post-deploy verification");
+  }
   requireRunContains(
     e2eSmokeStep,
     "node scripts/e2e-user-journey.cjs --smoke",

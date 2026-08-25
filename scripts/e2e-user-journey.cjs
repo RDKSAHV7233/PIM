@@ -468,8 +468,8 @@ async function loginOptional(prefix) {
   if (!user) {
     skip(`${prefix.toLowerCase()} credentials not provided`);
   }
-  const password = String(process.env[`STAGING_${prefix}_PASSWORD`] ?? CONFIG.smokePassword).trim();
-  const workspace = String(process.env[`STAGING_${prefix}_WORKSPACE`] ?? CONFIG.workspace).trim();
+  const password = String(process.env[`STAGING_${prefix}_PASSWORD`] || CONFIG.smokePassword).trim();
+  const workspace = String(process.env[`STAGING_${prefix}_WORKSPACE`] || CONFIG.workspace).trim();
   const result = await login(user, password, workspace);
   assertStatus(result, [200, 201], `POST /auth/login (${prefix.toLowerCase()})`);
   assert(result.body?.accessToken, `${prefix.toLowerCase()} accessToken missing`);
@@ -917,9 +917,14 @@ function buildChecks() {
   add("roles", "editor_can_write_catalog", async () => {
     const payload = await loginOptional("EDITOR");
     ctx.editorToken = String(payload.accessToken);
-    const result = await api("GET", "/catalog/products?limit=5", { token: ctx.editorToken });
-    assertStatus(result, 200, "GET /catalog/products with editor");
-    return "editor read access ok";
+    const product = await createDraftProduct("E2E Editor Role Product", {}, ctx.editorToken);
+    const result = await patchProduct(
+      product.id,
+      { description: "E2E editor role update through staging role coverage." },
+      ctx.editorToken,
+    );
+    assertStatus(result, 200, "PATCH /catalog/products/:id with editor");
+    return `editor updated product=${product.id}`;
   });
 
   add("roles", "reviewer_can_approve", async () => {
@@ -931,6 +936,21 @@ function buildChecks() {
     assertStatus(result, 200, "GET web /quality/approvals");
     assert(String(result.text).includes("Approval Queue"), "approval queue page did not render");
     return "approval page rendered";
+  });
+
+  add("roles", "reviewer_cannot_write_catalog", async () => {
+    if (!ctx.reviewerToken) {
+      const payload = await loginOptional("REVIEWER");
+      ctx.reviewerToken = String(payload.accessToken);
+    }
+    const anyProduct = await getAnyProduct();
+    const result = await patchProduct(
+      anyProduct.id,
+      { description: anyProduct.description || "Reviewer write denial probe" },
+      ctx.reviewerToken,
+    );
+    assertStatus(result, 403, "PATCH /catalog/products/:id with reviewer");
+    return "reviewer write denied";
   });
 
   add("roles", "viewer_cannot_access_admin_users", async () => {
@@ -951,6 +971,35 @@ function buildChecks() {
     const result = await api("GET", "/admin/workspace/users", { token: ctx.editorToken });
     assertStatus(result, 403, "GET /admin/workspace/users with editor");
     return "editor denied";
+  });
+
+  add("roles", "reviewer_cannot_access_admin_users", async () => {
+    if (!ctx.reviewerToken) {
+      const payload = await loginOptional("REVIEWER");
+      ctx.reviewerToken = String(payload.accessToken);
+    }
+    const result = await api("GET", "/admin/workspace/users", { token: ctx.reviewerToken });
+    assertStatus(result, 403, "GET /admin/workspace/users with reviewer");
+    return "reviewer denied";
+  });
+
+  add("roles", "viewer_editor_reviewer_cannot_access_internal_ops", async () => {
+    const roles = [
+      ["viewer", "VIEWER", "viewerToken"],
+      ["editor", "EDITOR", "editorToken"],
+      ["reviewer", "REVIEWER", "reviewerToken"],
+    ];
+    for (const [label, prefix, tokenKey] of roles) {
+      if (!ctx[tokenKey]) {
+        const payload = await loginOptional(prefix);
+        ctx[tokenKey] = String(payload.accessToken);
+      }
+      const summary = await api("GET", "/internal/ops/summary", { token: ctx[tokenKey] });
+      assertStatus(summary, 403, `GET /internal/ops/summary with ${label}`);
+      const errors = await api("GET", "/error-authority/ops/issues?limit=1", { token: ctx[tokenKey] });
+      assertStatus(errors, 403, `GET /error-authority/ops/issues with ${label}`);
+    }
+    return "internal ops denied for viewer/editor/reviewer";
   });
 
   add("taxonomy", "list_categories", async () => {
