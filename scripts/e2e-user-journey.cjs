@@ -197,19 +197,6 @@ function sectionMatches(section) {
 
 async function check(section, name, fn) {
   if (SECTION_FILTER && !sectionMatches(section)) {
-    if (DRY_RUN) {
-      return;
-    }
-    reportState.total += 1;
-    reportState.skip += 1;
-    checkResults.push({
-      section,
-      name,
-      result: "skip",
-      ms: 0,
-      note: "section filtered",
-    });
-    report(SKIP, section, name, 0, "section filtered");
     return;
   }
   reportState.total += 1;
