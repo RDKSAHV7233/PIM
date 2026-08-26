@@ -486,6 +486,14 @@ async function loginOptional(prefix) {
   return result.body;
 }
 
+// Registration-time (not run-time) presence check. Used to decide whether a
+// role's checks get added to the suite at all, as opposed to loginOptional's
+// skip() which would still count against --fail-on-skip. A role without
+// staging secrets provisioned yet should be invisible to the run, not a skip.
+function hasStagingIdentity(prefix) {
+  return Boolean(String(process.env[`STAGING_${prefix}_USER`] ?? "").trim());
+}
+
 async function ensureAnyCategoryId() {
   if (ctx.categoryId) {
     return ctx.categoryId;
@@ -1014,6 +1022,71 @@ function buildChecks() {
     }
     return "internal ops denied for viewer/editor/reviewer";
   });
+
+  // Extended role coverage — publisher, approver, channel_manager, connector_admin.
+  // Each role's checks are only registered when its staging identity secret exists,
+  // so rolling these out one role at a time never trips --fail-on-skip for roles
+  // that haven't been provisioned yet: an unregistered check isn't a skipped one.
+  const EXTENDED_ROLE_CHECKS = [
+    { label: "publisher", prefix: "PUBLISHER" },
+    { label: "approver", prefix: "APPROVER" },
+    { label: "channel_manager", prefix: "CHANNEL_MANAGER" },
+    { label: "connector_admin", prefix: "CONNECTOR_ADMIN" },
+  ];
+
+  for (const { label, prefix } of EXTENDED_ROLE_CHECKS) {
+    if (!hasStagingIdentity(prefix)) {
+      continue;
+    }
+    const tokenKey = `${label.replace(/_([a-z])/g, (_, c) => c.toUpperCase())}Token`;
+
+    add("roles", `${label}_cannot_write_catalog`, async () => {
+      if (!ctx[tokenKey]) {
+        const payload = await loginOptional(prefix);
+        ctx[tokenKey] = String(payload.accessToken);
+      }
+      const categoryId = ctx.categoryId ?? (await ensureAnyCategoryId());
+      const result = await api("POST", "/catalog/products", {
+        token: ctx[tokenKey],
+        json: {
+          title: `E2E ${label} role-denial probe ${runTag}`,
+          brand: "E2EBrand",
+          description: "E2E automated role-denial probe for staging validation.",
+          categoryId,
+          hsnCode: "6205",
+          gstRate: 18,
+          attributes: {},
+          status: "draft",
+        },
+      });
+      assertStatus(result, 403, `POST /catalog/products with ${label}`);
+      return `${label} write denied`;
+    });
+
+    add("roles", `${label}_cannot_access_internal_ops`, async () => {
+      if (!ctx[tokenKey]) {
+        const payload = await loginOptional(prefix);
+        ctx[tokenKey] = String(payload.accessToken);
+      }
+      const summary = await api("GET", "/internal/ops/summary", { token: ctx[tokenKey] });
+      assertStatus(summary, 403, `GET /internal/ops/summary with ${label}`);
+      return `${label} denied internal ops`;
+    });
+  }
+
+  if (hasStagingIdentity("CONNECTOR_ADMIN")) {
+    add("roles", "connector_admin_can_open_connectors_governance", async () => {
+      if (!ctx.connectorAdminToken) {
+        const payload = await loginOptional("CONNECTOR_ADMIN");
+        ctx.connectorAdminToken = String(payload.accessToken);
+      }
+      const result = await web("GET", "/admin/connectors", {
+        cookie: toCookie(ctx.connectorAdminToken),
+      });
+      assertStatus(result, 200, "GET web /admin/connectors with connector_admin");
+      return "connector admin governance page rendered";
+    });
+  }
 
   add("taxonomy", "list_categories", async () => {
     const result = await api("GET", "/taxonomy/categories", { token: ctx.adminToken });

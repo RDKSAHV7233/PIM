@@ -95,6 +95,15 @@ function roleConfig(role, defaultWorkspace) {
   };
 }
 
+// Extended roles are provisioned opportunistically: a role without a
+// STAGING_<ROLE>_USER secret yet simply isn't provisioned this run, rather
+// than failing the whole job. e2e-user-journey.cjs mirrors this — a role's
+// checks only register once its identity secret exists — so rolling these
+// out one role at a time never breaks the roles already in place.
+function hasRoleSecret(role) {
+  return Boolean(optionalEnv(`STAGING_${role.toUpperCase()}_USER`));
+}
+
 async function login(baseUrl, workspaceSlug, userId, password, context) {
   const result = await requestJson(baseUrl, "/auth/login", {
     method: "POST",
@@ -164,12 +173,22 @@ async function main() {
     results.push(await ensureRoleUser(baseUrl, adminToken, roleConfig(role, workspaceSlug)));
   }
 
+  const skipped = [];
+  for (const role of ["publisher", "approver", "channel_manager", "connector_admin"]) {
+    if (hasRoleSecret(role)) {
+      results.push(await ensureRoleUser(baseUrl, adminToken, roleConfig(role, workspaceSlug)));
+    } else {
+      skipped.push(role);
+    }
+  }
+
   console.log(
     JSON.stringify(
       {
         status: "ok",
         suite: "STAGING_ROLE_COVERAGE_PROVISION",
         roles: results,
+        notYetProvisioned: skipped,
         checkedAt: new Date().toISOString(),
       },
       null,
