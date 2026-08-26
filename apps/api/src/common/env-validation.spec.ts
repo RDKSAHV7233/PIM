@@ -79,4 +79,17 @@ describe("validateEnv - credential encryption key versioning", () => {
     expect(() => validateEnv()).toThrow("PROCESS_EXIT");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it("fails staging boot when shared password fallback is still configured", () => {
+    process.env.APP_ENV = "staging";
+    process.env.AUTH_MODE = "db";
+    process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = "a".repeat(32);
+    process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+    process.env.PIM_COMMERCIAL_OPS_TOKEN = "commercial-token-minimum-length";
+    process.env.PIM_AUTH_PASSWORD = "shared-password-must-not-remain";
+
+    expect(() => validateEnv()).toThrow("PROCESS_EXIT");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain("PIM_AUTH_PASSWORD");
+  });
 });

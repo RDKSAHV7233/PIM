@@ -73,6 +73,12 @@ function resolveCreateUserErrorMessage(error: unknown): string {
       if (code === "USER_ID_REQUIRED") {
         return "An email address is required to invite a user.";
       }
+      if (code === "PASSWORD_REQUIRED") {
+        return "Set an initial password with at least 8 characters.";
+      }
+      if (code === "PASSWORD_TOO_SHORT") {
+        return "Password must be at least 8 characters.";
+      }
       if (code === "ACCESS_POLICY_DENIED") {
         return "You do not have permission to perform this action.";
       }
@@ -102,6 +108,7 @@ function resolveUpdateRoleErrorMessage(error: unknown): string {
 export async function createWorkspaceUserAction(formData: FormData) {
   const userId = String(formData.get("userId") ?? "").trim();
   const role = normalizeAppRole(formData.get("role"));
+  const password = String(formData.get("password") ?? "");
   const errorRedirectTo = resolveRedirectTarget(formData, "errorRedirectTo", "/admin/users?showInvite=true");
   try {
     if (!userId) {
@@ -110,7 +117,10 @@ export async function createWorkspaceUserAction(formData: FormData) {
     if (role === null) {
       throw new Error("A valid role is required.");
     }
-    await createWorkspaceUser({ userId, role }, await requireAdminRequestOptions());
+    if (password.trim().length < 8) {
+      throw new Error("Set an initial password with at least 8 characters.");
+    }
+    await createWorkspaceUser({ userId, role, password }, await requireAdminRequestOptions());
     revalidatePath("/admin/users");
   } catch (error) {
     redirectWithError(resolveCreateUserErrorMessage(error), errorRedirectTo);

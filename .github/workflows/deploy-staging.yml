@@ -101,28 +101,6 @@ jobs:
         run: |
           node scripts/seed-tax-regimes.cjs
 
-      - name: Backfill legacy auth hashes
-        shell: bash
-        env:
-          DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
-          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-          PIM_AUTH_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
-          STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
-        run: |
-          if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
-            echo "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth hash backfill."
-            exit 1
-          fi
-          if [ -z "${PIM_AUTH_PASSWORD}" ]; then
-            echo "Missing STAGING_SMOKE_PASSWORD secret for auth hash backfill."
-            exit 1
-          fi
-          if [ -z "${STAGING_SMOKE_TENANT_ID}" ]; then
-            echo "Missing STAGING_SMOKE_TENANT_ID secret — cannot scope auth hash backfill to staging tenant."
-            exit 1
-          fi
-          node scripts/migrate-legacy-auth-password-hashes.cjs --tenant "${STAGING_SMOKE_TENANT_ID}"
-
       - name: Sync smoke-test identity password
         shell: bash
         env:
@@ -132,16 +110,30 @@ jobs:
           STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
           STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
         run: |
-          # migrate-legacy-auth-password-hashes.cjs above only fills identities with
-          # passwordHash: null — it never re-syncs an already-provisioned identity's
-          # hash when STAGING_SMOKE_PASSWORD is rotated. Without this step, rotating
-          # that secret silently breaks every login-dependent check below without
-          # ever touching the actual credential the smoke test submits.
+          # Keep the dedicated staging smoke identity's stored password hash in
+          # sync with STAGING_SMOKE_PASSWORD. This is targeted to one named user;
+          # the legacy shared-password backfill is intentionally not used.
           if [ -z "${STAGING_SMOKE_USER}" ]; then
             echo "Missing STAGING_SMOKE_USER secret — cannot target smoke identity password sync."
             exit 1
           fi
+          if [ -z "${STAGING_SMOKE_TENANT_ID}" ]; then
+            echo "Missing STAGING_SMOKE_TENANT_ID secret — cannot target smoke identity password sync."
+            exit 1
+          fi
           node scripts/reset-smoke-identity-password.cjs --tenant "${STAGING_SMOKE_TENANT_ID}" --user "${STAGING_SMOKE_USER}"
+
+      - name: Verify auth password hash coverage
+        shell: bash
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
+            echo "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth password hash coverage."
+            exit 1
+          fi
+          node scripts/verify-auth-password-hash-coverage.cjs
 
       - name: Build API
         run: npm run build --workspace @pim1/api

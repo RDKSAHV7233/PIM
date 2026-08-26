@@ -6,6 +6,7 @@
 // resilient to unrelated Prisma schema churn.
 
 import { BadRequestException } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
 import { WorkspaceUsersService } from "./workspace-users.service";
 import type { PrismaService } from "../prisma/prisma.service";
 import type { AuditService } from "../audit/audit.service";
@@ -59,15 +60,29 @@ async function expectRoleRejected(promise: Promise<unknown>, expectedRole: strin
   await expect(promise).rejects.toBeInstanceOf(BadRequestException);
 }
 
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
 describe("WorkspaceUsersService — plan-tier role gating", () => {
   const ORIGINAL_AUTH_MODE = process.env.AUTH_MODE;
+  const ORIGINAL_APP_ENV = process.env.APP_ENV;
+  const ORIGINAL_PIM_AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD;
 
   beforeEach(() => {
     process.env.AUTH_MODE = "memory";
+    delete process.env.APP_ENV;
+    delete process.env.PIM_AUTH_PASSWORD;
   });
 
   afterEach(() => {
-    process.env.AUTH_MODE = ORIGINAL_AUTH_MODE;
+    restoreEnv("AUTH_MODE", ORIGINAL_AUTH_MODE);
+    restoreEnv("APP_ENV", ORIGINAL_APP_ENV);
+    restoreEnv("PIM_AUTH_PASSWORD", ORIGINAL_PIM_AUTH_PASSWORD);
   });
 
   it("STARTER + createUser(role=approver) → throws ROLE_NOT_AVAILABLE_IN_PLAN", async () => {
@@ -123,5 +138,50 @@ describe("WorkspaceUsersService — plan-tier role gating", () => {
       "STARTER",
     );
     expect(authIdentity.create).not.toHaveBeenCalled();
+  });
+
+  it("staging DB mode + createUser without password → rejects shared-password fallback", async () => {
+    process.env.AUTH_MODE = "db";
+    process.env.APP_ENV = "staging";
+    process.env.PIM_AUTH_PASSWORD = "staging-shared-password-must-not-be-used";
+
+    const { prisma, audit, planUsage, authIdentity } = makeStubs("ENTERPRISE");
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.createUser("tenant-a", "actor@tenant", "admin", {
+        userId: "new@tenant",
+        role: "viewer",
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        error: "PASSWORD_REQUIRED",
+        minLength: 8,
+      },
+    });
+    expect(authIdentity.create).not.toHaveBeenCalled();
+  });
+
+  it("staging DB mode + createUser with password → stores per-user hash", async () => {
+    process.env.AUTH_MODE = "db";
+    process.env.APP_ENV = "staging";
+    process.env.PIM_AUTH_PASSWORD = "staging-shared-password-must-not-be-used";
+
+    const { prisma, audit, planUsage, authIdentity } = makeStubs("ENTERPRISE");
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.createUser("tenant-a", "actor@tenant", "admin", {
+        userId: "new@tenant",
+        role: "viewer",
+        password: "Explicit#Password2026",
+      }),
+    ).resolves.toBeDefined();
+
+    const createPayload = authIdentity.create.mock.calls[0]?.[0]?.data;
+    expect(createPayload.passwordHash).toEqual(expect.any(String));
+    expect(createPayload.passwordHash).not.toBe("Explicit#Password2026");
+    await expect(bcrypt.compare("Explicit#Password2026", createPayload.passwordHash)).resolves.toBe(true);
+    await expect(bcrypt.compare("staging-shared-password-must-not-be-used", createPayload.passwordHash)).resolves.toBe(false);
   });
 });

@@ -1,22 +1,14 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 // Resets ONE specific, explicitly-identified AuthIdentity's password hash to a
-// given plaintext password. Unlike migrate-legacy-auth-password-hashes.cjs
-// (which only ever touches identities with passwordHash: null), this performs
-// an unconditional reset — used after rotating a shared credential to bring a
-// named maintenance/smoke-test identity's actual stored credential back in
-// sync. Requires explicit --tenant and --user; refuses to run without both,
-// so it can never accidentally match more than one identity.
+// given plaintext password. This performs an unconditional reset for one named
+// maintenance/smoke-test identity's actual stored credential. Requires explicit
+// --tenant and --user; refuses to run without both, so it can never accidentally
+// match more than one identity.
 //
 // STAGING_SMOKE_PASSWORD is the authoritative credential for the dedicated
-// staging smoke identity. PIM_AUTH_PASSWORD is NOT a synchronization
-// mechanism for existing DB-backed identities — once an AuthIdentity has a
-// passwordHash, verifyPasswordForIdentity() in auth.service.ts never
-// consults the shared-password fallback again, so changing PIM_AUTH_PASSWORD
-// alone does nothing to that identity's actual login credential. This script
-// is the thing that keeps them in sync. Do not remove the "Sync smoke-test
-// identity password" workflow step as "redundant" with the legacy backfill
-// step above it — they serve different, non-overlapping purposes.
+// staging smoke identity. PIM_AUTH_PASSWORD is not a synchronization mechanism
+// for DB-backed identities and is intentionally not used here.
 const path = require("node:path");
 const bcrypt = require("bcryptjs");
 const { PrismaClient } = require("@prisma/client");

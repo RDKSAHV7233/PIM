@@ -179,7 +179,7 @@ async function createTemporaryViewer(apiBase, adminToken, workspaceSlug) {
   const created = await request(`${apiBase}/api/v1/admin/workspace/users`, {
     method: "POST",
     headers,
-    body: { userId, role: "viewer" },
+    body: { userId, role: "viewer", password },
     retries: 2,
   });
   assertStatus(created, 201, "create temporary viewer");

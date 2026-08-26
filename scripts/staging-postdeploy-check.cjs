@@ -177,6 +177,7 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
           body: {
             userId: user.userId,
             role: user.role,
+            password: tempPassword,
           },
           retries: 2,
         });

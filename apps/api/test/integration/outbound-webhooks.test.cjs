@@ -509,12 +509,14 @@ async function run() {
     const createViewer = await apiRequest(baseUrl, "POST", "/admin/workspace/users", adminToken, {
       userId: viewerUserId,
       role: "viewer",
+      password: process.env.PIM_AUTH_PASSWORD,
     });
     assertStatus(createViewer, 201, "create viewer for access gating");
 
     const createEditor = await apiRequest(baseUrl, "POST", "/admin/workspace/users", adminToken, {
       userId: editorUserId,
       role: "editor",
+      password: process.env.PIM_AUTH_PASSWORD,
     });
     assertStatus(createEditor, 201, "create editor for notification coverage");
 

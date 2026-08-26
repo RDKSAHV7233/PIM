@@ -103,6 +103,7 @@ function resolveInviteFieldErrors(message: string) {
   return {
     userId: normalized.includes("user id"),
     role: normalized.includes("role"),
+    password: normalized.includes("password"),
   };
 }
 
@@ -299,7 +300,7 @@ export function AdminUsersPageContent({
           <p className="mt-2 text-sm text-slate-600">
             Add a workspace user with editor or viewer access. Admin promotion stays explicit after the user exists.
           </p>
-          <form action={createWorkspaceUserAction} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px_auto] md:items-end">
+          <form action={createWorkspaceUserAction} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_180px_220px_auto] md:items-end">
             <input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />
             <label className="grid gap-1 text-sm">
               <span className="font-medium text-slate-700">User ID</span>
@@ -335,6 +336,25 @@ export function AdminUsersPageContent({
               </select>
               {status === "user-error" && inviteFieldErrors.role ? (
                 <p id="workspace-user-role-error" className="text-xs text-red-700">{errorMessage}</p>
+              ) : null}
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-slate-700">Initial Password</span>
+              <input
+                type="password"
+                name="password"
+                id="admin-user-password"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={72}
+                className="rounded-md border border-slate-300 px-3 py-2"
+                required
+                aria-required="true"
+                aria-invalid={status === "user-error" && inviteFieldErrors.password ? "true" : undefined}
+                aria-describedby={status === "user-error" && inviteFieldErrors.password ? "workspace-user-password-error" : undefined}
+              />
+              {status === "user-error" && inviteFieldErrors.password ? (
+                <p id="workspace-user-password-error" className="text-xs text-red-700">{errorMessage}</p>
               ) : null}
             </label>
             <button

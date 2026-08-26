@@ -158,13 +158,18 @@ export class WorkspaceUsersService {
     }
 
     try {
+      const passwordHash = await this.resolveInitialPasswordHash(dto.password);
+      if (this.isStrictRuntime() && !passwordHash) {
+        throw new BadRequestException({ error: "PASSWORD_REQUIRED", minLength: 8 });
+      }
+
       const created = await this.prisma.tenant(normalizedTenantId).authIdentity.create({
         data: {
           tenantKey: normalizedTenantId,
           userId,
           role,
           assignedRoles,
-          passwordHash: await this.resolveInitialPasswordHash(),
+          passwordHash,
           createdBy: normalizedActorId,
         },
         select: {
@@ -602,7 +607,25 @@ export class WorkspaceUsersService {
     return Math.min(10_080, Math.max(1, Math.floor(Number(value))));
   }
 
-  private async resolveInitialPasswordHash(): Promise<string | null> {
+  private isDbMode(): boolean {
+    return String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+  }
+
+  private isStrictRuntime(): boolean {
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
+    return appEnv === "staging" || appEnv === "production";
+  }
+
+  private async resolveInitialPasswordHash(initialPassword?: string): Promise<string | null> {
+    const explicitPassword = typeof initialPassword === "string" ? initialPassword : "";
+    if (explicitPassword.trim().length > 0) {
+      return bcrypt.hash(explicitPassword, 12);
+    }
+
+    if (this.isDbMode()) {
+      return null;
+    }
+
     const configuredPassword = String(process.env.PIM_AUTH_PASSWORD ?? "").trim();
     const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
     const allowLocalDefault = appEnv === "development" || appEnv === "local" || appEnv === "test";

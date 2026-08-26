@@ -411,8 +411,8 @@ export function validateEnv(): ValidatedEnv {
       sharedPassword &&
       sharedPassword.toLowerCase() !== "disabled"
     ) {
-      warnings.push(
-        "PIM_AUTH_PASSWORD: shared-password fallback should be disabled in staging/production once DB credential migration is complete",
+      issues.push(
+        "PIM_AUTH_PASSWORD: shared-password fallback must be disabled in staging/production after DB credential migration",
       );
     }
 

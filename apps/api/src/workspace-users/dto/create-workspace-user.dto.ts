@@ -24,4 +24,10 @@ export class CreateWorkspaceUserDto {
   @ArrayUnique()
   @IsIn(FOUNDATION_ROLES, { each: true })
   assignedRoles?: FoundationRole[];
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  password?: string;
 }

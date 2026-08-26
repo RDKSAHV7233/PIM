@@ -136,27 +136,39 @@ function main() {
   requireStepOrder(steps, "Install Railway CLI", "Resolve observability database URL");
   requireStepOrder(steps, "Resolve observability database URL", "Apply observability migrations");
   requireStepOrder(steps, "Apply observability migrations", "Build API");
-  const authHashBackfillStep = requireStep(steps, "Backfill legacy auth hashes");
-  requireEnvVar(authHashBackfillStep, "DATABASE_URL_DIRECT", "Backfill legacy auth hashes");
-  requireEnvVar(authHashBackfillStep, "DATABASE_URL", "Backfill legacy auth hashes");
-  requireEnvVar(authHashBackfillStep, "PIM_AUTH_PASSWORD", "Backfill legacy auth hashes");
+  assert(
+    !steps.some((step) => String(step?.name ?? "").trim() === "Backfill legacy auth hashes"),
+    "deploy-staging must not run the legacy shared-password auth hash backfill",
+  );
+  assert(
+    !text.includes("PIM_AUTH_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}"),
+    "deploy-staging must not map STAGING_SMOKE_PASSWORD into PIM_AUTH_PASSWORD",
+  );
+  const authHashCoverageStep = requireStep(steps, "Verify auth password hash coverage");
+  requireEnvVar(authHashCoverageStep, "DATABASE_URL_DIRECT", "Verify auth password hash coverage");
+  requireEnvVar(authHashCoverageStep, "DATABASE_URL", "Verify auth password hash coverage");
   requireRunContains(
-    authHashBackfillStep,
-    "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth hash backfill.",
-    "Backfill legacy auth hashes",
+    authHashCoverageStep,
+    "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth password hash coverage.",
+    "Verify auth password hash coverage",
   );
   requireRunContains(
-    authHashBackfillStep,
-    "Missing STAGING_SMOKE_PASSWORD secret for auth hash backfill.",
-    "Backfill legacy auth hashes",
+    authHashCoverageStep,
+    "node scripts/verify-auth-password-hash-coverage.cjs",
+    "Verify auth password hash coverage",
   );
+  requireStepOrder(steps, "Apply migrations", "Sync smoke-test identity password");
+  requireStepOrder(steps, "Sync smoke-test identity password", "Verify auth password hash coverage");
+  requireStepOrder(steps, "Verify auth password hash coverage", "Build API");
+  const smokePasswordSyncStep = requireStep(steps, "Sync smoke-test identity password");
+  requireEnvVar(smokePasswordSyncStep, "STAGING_SMOKE_TENANT_ID", "Sync smoke-test identity password");
+  requireEnvVar(smokePasswordSyncStep, "STAGING_SMOKE_USER", "Sync smoke-test identity password");
+  requireEnvVar(smokePasswordSyncStep, "RESET_IDENTITY_PASSWORD", "Sync smoke-test identity password");
   requireRunContains(
-    authHashBackfillStep,
-    "node scripts/migrate-legacy-auth-password-hashes.cjs",
-    "Backfill legacy auth hashes",
+    smokePasswordSyncStep,
+    "Missing STAGING_SMOKE_TENANT_ID secret — cannot target smoke identity password sync.",
+    "Sync smoke-test identity password",
   );
-  requireStepOrder(steps, "Apply migrations", "Backfill legacy auth hashes");
-  requireStepOrder(steps, "Backfill legacy auth hashes", "Build API");
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
   requireStepOrder(steps, "Install Railway CLI", "Resolve staging API URL");

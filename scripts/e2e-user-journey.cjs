@@ -2008,6 +2008,7 @@ function buildChecks() {
       json: {
         userId: ctx.workspaceUserId,
         role: "editor",
+        password: CONFIG.smokePassword,
       },
     });
     assertStatus(result, 201, "POST /admin/workspace/users");

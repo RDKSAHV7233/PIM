@@ -115,7 +115,7 @@ async function ensureRoleUser(baseUrl, adminToken, input) {
   const created = await requestJson(baseUrl, "/admin/workspace/users", {
     method: "POST",
     headers,
-    body: { userId: input.userId, role: input.role },
+    body: { userId: input.userId, role: input.role, password: input.password },
     retries: 2,
   });
   if (created.status === 409 && String(created.payload?.error ?? "") === "USER_ALREADY_EXISTS") {

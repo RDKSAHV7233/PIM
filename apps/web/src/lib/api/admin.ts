@@ -88,7 +88,7 @@ export async function getWorkspaceUsers(options?: ApiRequestOptions) {
 }
 
 export async function createWorkspaceUser(
-  dto: { userId: string; role: AppRole },
+  dto: { userId: string; role: AppRole; password?: string },
   options?: ApiRequestOptions,
 ) {
   return postJson<WorkspaceUser>("/admin/workspace/users", dto, options);
