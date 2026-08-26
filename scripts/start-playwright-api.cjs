@@ -984,6 +984,14 @@ const env = {
   JWT_BLOCKLIST_REDIS_DISABLED: "true",
   DASHBOARD_CACHE_REDIS_DISABLED: "true",
   JWT_SECRET: process.env.JWT_SECRET || fileEnv.JWT_SECRET || "vexa-pim-local-dev-jwt-secret-minimum-length-32",
+  // Fixed test-only value so specs can flip plan tier via POST /billing/internal/plan-tier
+  // (see helpers/vexa-pim.cjs: setTenantPlanTier) without extra environment coordination.
+  // This script only ever launches the local/E2E API — never staging or production.
+  PIM_COMMERCIAL_OPS_TOKEN:
+    process.env.PLAYWRIGHT_COMMERCIAL_OPS_TOKEN ||
+    process.env.PIM_COMMERCIAL_OPS_TOKEN ||
+    fileEnv.PIM_COMMERCIAL_OPS_TOKEN ||
+    "vexa-pim-playwright-commercial-ops-token",
   CREDENTIAL_ENCRYPTION_KEY_V1:
     process.env.CREDENTIAL_ENCRYPTION_KEY_V1 ||
     fileEnv.CREDENTIAL_ENCRYPTION_KEY_V1 ||

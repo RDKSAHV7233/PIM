@@ -6,6 +6,11 @@ const DEFAULT_WORKSPACE = process.env.PLAYWRIGHT_WORKSPACE || "default";
 const DEFAULT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const DEFAULT_API_URL = process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1";
 const DEFAULT_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
+// Must match the value scripts/start-playwright-api.cjs sets on the API process.
+const DEFAULT_COMMERCIAL_OPS_TOKEN =
+  process.env.PLAYWRIGHT_COMMERCIAL_OPS_TOKEN ||
+  process.env.PIM_COMMERCIAL_OPS_TOKEN ||
+  "vexa-pim-playwright-commercial-ops-token";
 
 const USERS = {
   admin:           { userId: process.env.PLAYWRIGHT_ADMIN_USER           || "admin@vexa-pim.local",           roleBadge: "Role: Admin" },
@@ -103,6 +108,42 @@ async function apiLoginPayload(role, apiUrl = DEFAULT_API_URL, workspaceSlug = D
 async function apiLogin(role, apiUrl = DEFAULT_API_URL, workspaceSlug = DEFAULT_WORKSPACE) {
   const payload = await apiLoginPayload(role, apiUrl, workspaceSlug);
   return payload.accessToken;
+}
+
+/**
+ * Sets the tenant's billing plan tier via the token-gated internal endpoint
+ * (POST /billing/internal/plan-tier). Used by specs that need to exercise
+ * feature-gated pages (e.g. bulk-edit) above the STARTER tier, where a
+ * plan-tier gate would otherwise mask any role-gate bug underneath it.
+ *
+ * Requires the API process to have the same PIM_COMMERCIAL_OPS_TOKEN as this
+ * helper (scripts/start-playwright-api.cjs sets a fixed local/E2E-only
+ * default) — fails loudly rather than silently no-op'ing so a missing token
+ * never reads as "plan tier changed" when it didn't.
+ */
+async function setTenantPlanTier(
+  planTier,
+  { apiUrl = DEFAULT_API_URL, tenantKey = DEFAULT_WORKSPACE, commercialOpsToken = DEFAULT_COMMERCIAL_OPS_TOKEN } = {},
+) {
+  const response = await fetch(`${apiUrl}/billing/internal/plan-tier`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-pim-commercial-ops-token": commercialOpsToken,
+      "x-pim-operator-id": "playwright-e2e",
+      "x-pim-operator-role": "admin",
+    },
+    body: JSON.stringify({ tenantKey, planTier }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `setTenantPlanTier(${planTier}) failed: ${response.status}; body=${body}. ` +
+        "PIM_COMMERCIAL_OPS_TOKEN must match between the API process and the test runner.",
+    );
+  }
+  return response.json();
 }
 
 function clearLoginCache() {
@@ -223,6 +264,7 @@ module.exports = {
   loginViaUi,
   purgeProduct,
   reviewProduct,
+  setTenantPlanTier,
   uniqueName,
   updateProduct,
   verifyWebhookSignature,

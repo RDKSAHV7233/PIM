@@ -238,8 +238,12 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
         </div>
       );
     }
+    // Bulk edit history (GET /bulk-edit/operations) is admin/editor only on the
+    // backend. Read-only roles still need this page to render — with the
+    // read-only message below — so skip the call for them instead of letting
+    // its 403 fall into the catch below and bounce the user to /dashboard.
     const [operations, categories, products] = await Promise.all([
-      getBulkEditOperations(100, { role: actorRole, authHeader }),
+      canWrite ? getBulkEditOperations(100, { role: actorRole, authHeader }) : Promise.resolve([]),
       getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       getProducts({ role: actorRole, authHeader }),
     ]);
@@ -507,7 +511,9 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
 
         <Card>
           <CardTitle>Bulk Edit History</CardTitle>
-          {operations.length === 0 ? (
+          {!canWrite ? (
+            <p className="mt-3 text-sm text-slate-600">Bulk edit history is limited to editor and admin roles.</p>
+          ) : operations.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No bulk edit operations found yet.</p>
           ) : (
             <DataGrid
