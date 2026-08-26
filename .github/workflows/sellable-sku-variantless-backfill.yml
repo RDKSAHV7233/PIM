@@ -1,0 +1,78 @@
+name: Sellable SKU Variant-less Historical Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type exactly "true" to perform real writes (creates one canonical
+          Variant per already-sellable, variant-less product). Any other value
+          — including leaving this blank — runs in dry-run mode: no row is
+          created, only reported as "would_create".
+        required: true
+        default: "false"
+        type: string
+
+jobs:
+  sellable-sku-variantless-backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    concurrency:
+      group: sellable-sku-variantless-backfill
+      cancel-in-progress: false
+    env:
+      APP_ENV: production
+      SELLABLE_SKU_BACKFILL_TARGET_ENV: production
+      CONFIRM_SELLABLE_SKU_BACKFILL: ${{ github.event.inputs.confirm }}
+      # See sellable-sku-variantless-production-audit.yml for why this is
+      # needed — redis-memory-server is a root devDependency unused by this
+      # workflow, and its postinstall can fail compiling a Redis Stack binary
+      # from source on a cold npm cache.
+      REDISMS_DISABLE_POSTINSTALL: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run sellable-SKU variant-less backfill
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "Missing STAGE3_DATABASE_URL secret for production sellable-SKU backfill."
+            exit 1
+          fi
+          if [ "${CONFIRM_SELLABLE_SKU_BACKFILL}" = "true" ]; then
+            echo "::warning::CONFIRM_SELLABLE_SKU_BACKFILL=true — this run WILL create Variant rows in production."
+            node scripts/sellable-sku-variantless-backfill.cjs \
+              --target-environment production \
+              --confirm \
+              --output .run-logs/sellable-sku-variantless-backfill-report.json
+          else
+            echo "Dry run (confirm input was not exactly \"true\") — no rows will be created."
+            node scripts/sellable-sku-variantless-backfill.cjs \
+              --target-environment production \
+              --output .run-logs/sellable-sku-variantless-backfill-report.json
+          fi
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: sellable-sku-variantless-backfill-${{ github.run_id }}
+          path: .run-logs/sellable-sku-variantless-backfill-report.json
+          if-no-files-found: error
