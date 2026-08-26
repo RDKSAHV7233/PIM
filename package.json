@@ -184,6 +184,8 @@
     "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",
     "test:staging:public-signup-check": "node scripts/staging-public-signup-check.test.cjs",
     "test:staging:live-evidence": "node scripts/validate-live-staging-evidence.test.cjs",
+    "test:res-05b:k6-contract": "node scripts/res-05b-k6-load-proof.test.cjs",
+    "load:res-05b:k6": "k6 run scripts/res-05b-k6-load-proof.js",
     "qa:pim-product:inputs": "node scripts/pim-product-qa-input-gate.cjs",
     "qa:data:generate": "node scripts/generate-realistic-qa-pack.cjs",
     "qa:data:seed": "dotenv -o -e .env -- node scripts/seed-realistic-qa-pack.cjs",
