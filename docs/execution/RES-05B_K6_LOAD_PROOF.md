@@ -26,7 +26,7 @@ This increment adds the repeatable k6 harness for RES-05B capacity evidence. It 
 The initial harness samples:
 
 - `/health`
-- `/catalog/products?limit=20`
+- `/catalog/products?slim=true&limit=20`
 - `/taxonomy/categories?limit=20`
 - `/dashboard/health`
 - `/connectors/installed?limit=10`
@@ -195,3 +195,34 @@ failed thresholds:       health p95, catalog products p95
 ```
 
 The corrected smoke profile proves the authenticated read-only harness is functionally valid against staging. RES-05B still remains NOT ACCEPTED because health and catalog latency exceeded the approved gates.
+
+Follow-up route-realism correction:
+
+```text
+/catalog/products?limit=20           -> previous heavy preview/sample path
+/catalog/products?slim=true&limit=20 -> normal product-list read path used by existing E2E/web traffic
+```
+
+Both routes were verified through real temporary staging admin login. The slim route is materially faster and better matches normal UX read traffic, but it still requires a fresh smoke run before any RES-05B gate decision changes.
+
+Slim-route smoke rerun:
+
+```text
+profile:                 smoke
+mutation mode:           read_only
+temporary identity:      created and deactivated
+checks:                  102/102 passed
+HTTP 5xx rate:           0
+HTTP 429 rate:           0
+request failure rate:    0
+iterations:              50
+health p95 observed:     390.13339499999995 ms
+catalog p95 observed:    2622.347579 ms
+dashboard p95 observed:  1285.5988439999996 ms
+connectors p95 observed: 794.9999114999999 ms
+audit p95 observed:      761.243904 ms
+result:                  FAIL
+failed thresholds:       health p95, catalog products p95
+```
+
+The slim route reduces product-list latency compared with the earlier heavy list path, but it does not close RES-05B. Health p95 and catalog p95 still exceed the approved gates from the current WSL runner.

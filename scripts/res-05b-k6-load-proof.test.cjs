@@ -44,6 +44,8 @@ assert(
 );
 assert(k6Script.includes("isSuccessfulResponse(health)"), "k6 setup must not rely on Node-style response.ok");
 assert(k6Script.includes("isSuccessfulResponse(login)"), "k6 login setup must not rely on Node-style response.ok");
+assert(k6Script.includes("/catalog/products?slim=true&limit=20"), "k6 script must sample the normal slim product-list route");
+assert(!k6Script.includes("/catalog/products?limit=20"), "k6 script must not sample the heavier preview product-list route");
 assert(k6Script.includes("/dashboard/health"), "k6 script must sample the current dashboard health API route");
 assert(k6Script.includes("/audit/logs?limit=10"), "k6 script must sample the current audit logs API route");
 assert(!k6Script.includes("/dashboard/snapshot"), "k6 script must not sample the removed dashboard snapshot route");

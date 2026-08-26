@@ -116,7 +116,7 @@ function sampleHealth() {
 
 function sampleReadPath(token) {
   const routes = [
-    ["GET", "/catalog/products?limit=20", "catalog_products", catalogDuration],
+    ["GET", "/catalog/products?slim=true&limit=20", "catalog_products", catalogDuration],
     ["GET", "/taxonomy/categories?limit=20", "taxonomy_categories", null],
     ["GET", "/dashboard/health", "dashboard", dashboardDuration],
     ["GET", "/connectors/installed?limit=10", "connectors", connectorsDuration],
