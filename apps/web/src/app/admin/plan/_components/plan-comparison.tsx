@@ -41,7 +41,10 @@ export function PlanComparison({
         Choose the plan that fits your catalog size and team.
         {billingStatus === "trial" ? " Upgrade anytime during your trial." : ""}
       </p>
-      <p className="mt-1 text-xs text-slate-500">A SKU is a sellable product variant, not a product record.</p>
+      <p className="mt-1 text-xs text-slate-500">
+        A simple product counts as 1 SKU. A product with multiple variants counts once per sellable variant. Draft,
+        archived, deleted, and parent-only product records don't count.
+      </p>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {plans.map((plan, index) => {

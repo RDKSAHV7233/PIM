@@ -73,7 +73,7 @@ export function PlanLimitModal({
     >
       {isSkuLimit ? (
         <p className="mb-4 text-sm text-slate-500">
-          A SKU is one sellable product variant — parent product records aren't counted separately.
+          A simple product counts as 1 SKU. A product with multiple variants counts once per sellable variant. Draft, archived, deleted, and parent-only product records don't count.
         </p>
       ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">

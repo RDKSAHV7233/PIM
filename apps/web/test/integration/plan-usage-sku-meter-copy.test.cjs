@@ -11,6 +11,12 @@
 // all: the plan-limit-reached modal (the actual blocking moment for a user) and the plan
 // comparison/upgrade card. Pins the same canonical sentence across all three so no surface
 // drifts into using "product", "SKU", and "variant" interchangeably.
+//
+// PIM#593 refinement (2026-08-26): the original wording ("A SKU is one sellable
+// product variant — parent product records aren't counted separately") answered
+// what a variant IS but not the question customers actually ask first: "what
+// happens to a normal product that doesn't have variants?" Refined to state the
+// simple-product case explicitly rather than leaving it implicit.
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -25,29 +31,55 @@ function assert(condition, message) {
   }
 }
 
+// Collapses runs of whitespace (including newlines from JSX line-wrapping) to
+// single spaces before matching — a content check must not be brittle to how
+// a long sentence happens to wrap across source lines.
+function normalizeWhitespace(text) {
+  return text.replace(/\s+/g, " ");
+}
+
 function run() {
-  const usageMetersSource = fs.readFileSync(USAGE_METERS, "utf8");
-  const planLimitModalSource = fs.readFileSync(PLAN_LIMIT_MODAL, "utf8");
-  const planComparisonSource = fs.readFileSync(PLAN_COMPARISON, "utf8");
+  const usageMetersSource = normalizeWhitespace(fs.readFileSync(USAGE_METERS, "utf8"));
+  const planLimitModalSource = normalizeWhitespace(fs.readFileSync(PLAN_LIMIT_MODAL, "utf8"));
+  const planComparisonSource = normalizeWhitespace(fs.readFileSync(PLAN_COMPARISON, "utf8"));
 
   assert(
     usageMetersSource.includes("description?: string") && usageMetersSource.includes("{description ? <p"),
     "Meter component must support an optional description line for clarifying what a count actually measures.",
   );
   assert(
-    /label="SKUs"[\s\S]{0,200}description="[^"]*sellable product variant/i.test(usageMetersSource),
-    "The SKUs Meter must carry the canonical PIM#593 description (\"A SKU is one sellable product variant...\") — otherwise a low SKU count next to a large product catalog reads as a billing bug.",
+    /label="SKUs"[\s\S]{0,300}description="[^"]*simple product counts as 1 SKU/i.test(usageMetersSource),
+    "The SKUs Meter must carry the canonical PIM#593 description, explicitly stating the simple-product case " +
+      "(\"A simple product counts as 1 SKU...\") — otherwise a low SKU count next to a large product catalog reads as a billing bug.",
   );
 
   assert(
-    /isSkuLimit[\s\S]{0,400}sellable product variant/i.test(planLimitModalSource),
+    /isSkuLimit[\s\S]{0,500}simple product counts as 1 SKU/i.test(planLimitModalSource),
     "The plan-limit-reached modal must clarify what a SKU is specifically when the blocked resource is SKUs — this is the actual moment a user hits the limit and needs the clarification most.",
   );
 
   assert(
-    /sellable product variant/i.test(planComparisonSource),
+    /simple product counts as 1 SKU/i.test(planComparisonSource),
     "The plan comparison/upgrade card must clarify what a SKU is — this is the surface a prospect reads before ever seeing their own usage numbers.",
   );
+
+  // The refined wording must explicitly answer the simple-product case in all
+  // three surfaces, not just restate the variant-counting rule — this is
+  // exactly the gap the 2026-08-26 refinement exists to close.
+  for (const [name, source] of [
+    ["usage-meters.tsx", usageMetersSource],
+    ["plan-limit-modal.tsx", planLimitModalSource],
+    ["plan-comparison.tsx", planComparisonSource],
+  ]) {
+    assert(
+      /multiple variants counts once per sellable variant/i.test(source),
+      `${name} must also state the variant-counting rule alongside the simple-product case, not just the simple-product case alone.`,
+    );
+    assert(
+      /draft, archived, deleted, and parent-only product records don.t count/i.test(source),
+      `${name} must explicitly exclude draft/archived/deleted/parent-only records, not leave that implicit.`,
+    );
+  }
 
   console.log(
     JSON.stringify(

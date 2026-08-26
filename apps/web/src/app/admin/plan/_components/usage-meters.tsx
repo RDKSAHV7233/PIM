@@ -106,7 +106,7 @@ export function UsageMeters({ usage }: UsageMetersProps) {
           label="SKUs"
           current={usage.skus.current}
           limit={usage.skus.limit}
-          description="A SKU is one sellable product variant — parent product records aren't counted separately."
+          description="A simple product counts as 1 SKU. A product with multiple variants counts once per sellable variant. Draft, archived, deleted, and parent-only product records don't count."
         />
         <Meter label="Submissions" current={usage.submissions.current} limit={usage.submissions.limit} />
         <Meter
