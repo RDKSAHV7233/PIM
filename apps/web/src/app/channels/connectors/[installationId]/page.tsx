@@ -509,9 +509,14 @@ function connectorDetailStatusMessage(
     };
   }
   if (normalized === "bulk-publish-timeout") {
+    // PIM#693: kept in sync with resolveBulkPublishStatusMessage's identical branch
+    // (apps/web/src/lib/bulk-publish-status.ts) — see that file's comment for why this can
+    // never assert "nothing was queued". This copy exists separately per this file's own
+    // header comment (channel-connector-detail-route-contract.test.cjs asserts on this
+    // function's literal source text).
     return {
-      tone: "danger",
-      message: "Bulk publish timed out before completing. Nothing was queued — split into a smaller batch and retry, or try again in a moment.",
+      tone: "warning",
+      message: "The request timed out before Vexa could confirm the final result. Some products may already have been queued. Check the Jobs workspace before retrying.",
     };
   }
   if (normalized === "bulk-publish-error") {

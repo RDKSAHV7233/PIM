@@ -270,6 +270,9 @@ jobs:
       - name: Products workbench bulk-publish manual selection test (PIM#595)
         run: node apps/web/test/integration/products-workbench-bulk-publish-selection.test.cjs
 
+      - name: Bulk-publish timeout ambiguous-outcome test (PIM#693)
+        run: node apps/web/test/integration/bulk-publish-timeout-ambiguous-outcome.test.cjs
+
       - name: Media readiness channel-ineligible label test (PIM#644)
         run: node apps/web/test/integration/product-media-readiness-channel-ineligible-label.test.cjs
 

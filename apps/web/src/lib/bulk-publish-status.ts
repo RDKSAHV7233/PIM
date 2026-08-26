@@ -69,9 +69,17 @@ export function resolveBulkPublishStatusMessage(
     };
   }
   if (normalized === "bulk-publish-timeout") {
+    // PIM#693: the web tier's own fetch to the API can time out while the API keeps
+    // processing this batch to completion in the background — Node.js does not cancel
+    // in-flight server-side work just because the client stopped waiting. Never assert
+    // "nothing was queued" here: that claim is only true for the pre-admission rejections
+    // above (batch_too_large, no_eligible_products), which fail before any per-product work
+    // starts. This is a genuinely ambiguous outcome — some or all of the batch may have
+    // already been queued and even completed — so point the operator at the one place that
+    // reflects real server state instead of asserting an outcome the client cannot know.
     return {
-      tone: "danger",
-      message: "Bulk publish timed out before completing. Nothing was queued — split into a smaller batch and retry, or try again in a moment.",
+      tone: "warning",
+      message: "The request timed out before Vexa could confirm the final result. Some products may already have been queued. Check the Jobs workspace before retrying.",
     };
   }
   if (normalized === "bulk-publish-error") {
