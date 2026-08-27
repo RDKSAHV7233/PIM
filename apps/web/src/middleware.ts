@@ -6,6 +6,43 @@ const CSRF_COOKIE = "pim_csrf_token";
 const REFRESH_THRESHOLD_SECONDS = 90;
 const ERROR_AUTHORITY_RUNTIME_PROOF_PATH = "/internal/error-authority/runtime-proof";
 
+// PIM security sweep (deferred item): nonce-based Content-Security-Policy.
+// script-src is nonce + strict-dynamic — only Next's own framework scripts (tagged
+// with this request's nonce) and anything they load run; no inline/injected script
+// executes without it. style-src keeps 'unsafe-inline' because the app renders a
+// handful of dynamic `style={{...}}` attributes (progress bars, etc.) that CSP has
+// no nonce mechanism for on style *attributes* (only <style> elements) — this is the
+// standard pragmatic tradeoff (style injection is far lower severity than script
+// injection). img-src allows data: for the MFA TOTP QR code, rendered inline as a
+// data URL with no network round-trip.
+function buildCsp(nonce: string): string {
+  // Next's dev-mode HMR/refresh runtime evaluates code via eval(), which a strict
+  // script-src blocks outright — this never ships (next build doesn't use eval), so
+  // the relaxation is dev-only and has no bearing on staging/production posture.
+  const isDev = String(process.env.NODE_ENV ?? "").trim().toLowerCase() === "development";
+  const scriptSrc = isDev
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
+  return [
+    `default-src 'self'`,
+    scriptSrc,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+    `font-src 'self' https://fonts.gstatic.com`,
+    `img-src 'self' data: blob:`,
+    `connect-src 'self'`,
+    `frame-ancestors 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+    `object-src 'none'`,
+    `upgrade-insecure-requests`,
+  ].join("; ");
+}
+
+function applySecurityHeaders(response: NextResponse, nonce: string): NextResponse {
+  response.headers.set("Content-Security-Policy", buildCsp(nonce));
+  return response;
+}
+
 function useSecureCookies(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
   return appEnv === "production" || appEnv === "staging";
@@ -96,6 +133,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Nonce is per-request: forwarded to the RSC render via a request header (so the
+  // root layout can read it through next/headers) and echoed on the CSP response
+  // header so the browser only executes scripts Next tagged with this exact value.
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  const nextWithHeaders = () => NextResponse.next({ request: { headers: requestHeaders } });
+
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
 
@@ -109,18 +154,18 @@ export async function middleware(request: NextRequest) {
     // action, which Next's own action-handler translates into a proper action-response
     // redirect (x-action-redirect header, no Location, RSC body) instead of a plain 3xx.
     if (isServerActionFetchRequest(request)) {
-      return NextResponse.next();
+      return applySecurityHeaders(nextWithHeaders(), nonce);
     }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return applySecurityHeaders(NextResponse.redirect(loginUrl), nonce);
   }
 
   // Skip refresh if: no refresh token available (can't recover), OR access token is valid and not expiring
   if (!refreshToken || (accessToken && !shouldRefresh(accessToken))) {
-    return NextResponse.next();
+    return applySecurityHeaders(nextWithHeaders(), nonce);
   }
   // Fall through: refresh token present AND (access token missing OR close to expiry)
 
@@ -134,7 +179,7 @@ export async function middleware(request: NextRequest) {
       signal: AbortSignal.timeout(5_000),
     });
     if (!refreshResponse.ok) {
-      return NextResponse.next();
+      return applySecurityHeaders(nextWithHeaders(), nonce);
     }
 
     const payload = (await refreshResponse.json()) as {
@@ -142,10 +187,10 @@ export async function middleware(request: NextRequest) {
       expiresInSeconds?: number;
     };
     if (!payload.accessToken) {
-      return NextResponse.next();
+      return applySecurityHeaders(nextWithHeaders(), nonce);
     }
 
-    const response = NextResponse.next();
+    const response = nextWithHeaders();
     const secureCookies = useSecureCookies();
     const maxAge = Number.isFinite(payload.expiresInSeconds) ? Number(payload.expiresInSeconds) : 4 * 60 * 60;
     response.cookies.set(ACCESS_COOKIE, payload.accessToken, {
@@ -174,9 +219,9 @@ export async function middleware(request: NextRequest) {
         maxAge: 7 * 24 * 60 * 60,
       });
     }
-    return response;
+    return applySecurityHeaders(response, nonce);
   } catch {
-    return NextResponse.next();
+    return applySecurityHeaders(nextWithHeaders(), nonce);
   }
 }
 
