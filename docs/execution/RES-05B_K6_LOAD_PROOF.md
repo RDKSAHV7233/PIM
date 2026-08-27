@@ -68,6 +68,8 @@ The acceptance profiles `expected`, `burst`, and `sustained` must model the appr
 
 Distributed profiles set k6 `setupTimeout` to 20 minutes so the paced login setup can complete. Non-distributed profiles keep a 1-minute setup timeout.
 
+`RES05B_SESSION_THINK_TIME_MIN_SECONDS` and `RES05B_SESSION_THINK_TIME_MAX_SECONDS` control per-VU think time after each read-only iteration. Distributed profiles default to 10-14 seconds so 25 active sessions remain under the current 300 requests/minute source-IP throttle when each iteration performs health plus one sampled read request. Lower values are rate-limit/stress experiments unless PO/CTO/SRE explicitly approve them for acceptance.
+
 `RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS=true` is reserved for explicitly approved rate-limit experiments. It is not valid RES-05B acceptance evidence for the approved distributed workload.
 
 ## Thresholds

@@ -13,6 +13,11 @@ const LOGIN_STAGGER_SECONDS = normalizeNonNegativeNumber(
   __ENV.RES05B_LOGIN_STAGGER_SECONDS,
   defaultLoginStaggerSeconds(PROFILE, CREDENTIALS.length),
 );
+const SESSION_THINK_TIME = normalizeThinkTime(
+  __ENV.RES05B_SESSION_THINK_TIME_MIN_SECONDS,
+  __ENV.RES05B_SESSION_THINK_TIME_MAX_SECONDS,
+  defaultSessionThinkTime(PROFILE),
+);
 const ENABLE_MUTATIONS = isTrue(__ENV.RES05B_ENABLE_MUTATIONS);
 const ALLOW_DOCUMENTED_429 = isTrue(__ENV.RES05B_ALLOW_DOCUMENTED_429);
 const ALLOW_SINGLE_CREDENTIAL_STRESS = isTrue(__ENV.RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS);
@@ -113,7 +118,7 @@ export default function (data) {
     fail("RES-05B mutation workload is intentionally not implemented in this read-only harness.");
   }
 
-  sleep(randomBetween(0.5, 2));
+  sleep(randomBetween(SESSION_THINK_TIME.min, SESSION_THINK_TIME.max));
 }
 
 export function handleSummary(data) {
@@ -130,6 +135,7 @@ export function handleSummary(data) {
         distributedCredentialMinimum: MIN_DISTRIBUTED_CREDENTIALS,
         distributionMode: distributionMode(),
         loginStaggerSeconds: LOGIN_STAGGER_SECONDS,
+        sessionThinkTimeSeconds: SESSION_THINK_TIME,
         documented429Allowed: ALLOW_DOCUMENTED_429,
         metrics: data.metrics,
         rootGroup: data.root_group,
@@ -375,6 +381,15 @@ function normalizeNonNegativeNumber(value, fallback) {
   return parsed;
 }
 
+function normalizeThinkTime(minValue, maxValue, fallback) {
+  const min = normalizeNonNegativeNumber(minValue, fallback.min);
+  const max = normalizeNonNegativeNumber(maxValue, fallback.max);
+  if (max < min) {
+    throw new Error("RES05B_SESSION_THINK_TIME_MAX_SECONDS must be greater than or equal to min seconds.");
+  }
+  return { min, max };
+}
+
 function isDistributedLoadProfile(profile) {
   return profile === "expected" || profile === "burst" || profile === "sustained";
 }
@@ -388,6 +403,13 @@ function defaultLoginStaggerSeconds(profile, credentialCount) {
 
 function setupTimeoutForProfile(profile) {
   return isDistributedLoadProfile(profile) ? "20m" : "1m";
+}
+
+function defaultSessionThinkTime(profile) {
+  if (isDistributedLoadProfile(profile)) {
+    return { min: 10, max: 14 };
+  }
+  return { min: 0.5, max: 2 };
 }
 
 function pickToken(tokens) {
@@ -445,6 +467,7 @@ function textSummary(data) {
     `credentialCount=${CREDENTIALS.length}`,
     `distributionMode=${distributionMode()}`,
     `loginStaggerSeconds=${LOGIN_STAGGER_SECONDS}`,
+    `sessionThinkTimeSeconds=${SESSION_THINK_TIME.min}-${SESSION_THINK_TIME.max}`,
     `documented429Allowed=${ALLOW_DOCUMENTED_429}`,
     metricLine(metrics, "http_req_duration"),
     metricLine(metrics, "res05b_health_duration_ms"),

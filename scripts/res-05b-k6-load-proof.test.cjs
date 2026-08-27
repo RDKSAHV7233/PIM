@@ -41,6 +41,8 @@ assert(k6Script.includes("queueFailureIncrease"), "k6 script must record queue f
 assert(k6Script.includes("RES05B_CREDENTIALS_JSON"), "k6 script must support distributed credential input");
 assert(k6Script.includes("RES05B_MIN_DISTRIBUTED_CREDENTIALS"), "k6 script must define the distributed credential minimum");
 assert(k6Script.includes("RES05B_LOGIN_STAGGER_SECONDS"), "k6 script must support login pacing for distributed setup");
+assert(k6Script.includes("RES05B_SESSION_THINK_TIME_MIN_SECONDS"), "k6 script must support explicit minimum session think time");
+assert(k6Script.includes("RES05B_SESSION_THINK_TIME_MAX_SECONDS"), "k6 script must support explicit maximum session think time");
 assert(k6Script.includes("RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS"), "k6 script must gate single-credential stress experiments explicitly");
 assert(k6Script.includes("RES05B_ALLOW_DOCUMENTED_429"), "k6 script must require an explicit opt-in before accepting 429 responses");
 assert(k6Script.includes("isDistributedLoadProfile(PROFILE)"), "k6 script must detect distributed acceptance profiles");
@@ -48,6 +50,8 @@ assert(k6Script.includes("defaultLoginStaggerSeconds(PROFILE, CREDENTIALS.length
 assert(k6Script.includes("sleep(LOGIN_STAGGER_SECONDS)"), "distributed credential login must be paced");
 assert(k6Script.includes("setupTimeoutForProfile(profile)"), "k6 options must extend setup timeout for paced distributed login");
 assert(k6Script.includes('return isDistributedLoadProfile(profile) ? "20m" : "1m"'), "distributed setup timeout must allow paced logins");
+assert(k6Script.includes("defaultSessionThinkTime(PROFILE)"), "distributed profiles must use rate-aware default think time");
+assert(k6Script.includes("return { min: 10, max: 14 }"), "distributed default think time must stay below source-IP throttle");
 assert(
   k6Script.includes("requires at least ${MIN_DISTRIBUTED_CREDENTIALS} credentials"),
   "expected/burst/sustained profiles must fail closed without distributed credentials",
@@ -56,6 +60,7 @@ assert(k6Script.includes('"res05b_http_429_rate": ["rate==0"]'), "429 responses 
 assert(k6Script.includes("credentialCount"), "k6 summary must include credential count without exposing identities");
 assert(k6Script.includes("distributionMode"), "k6 summary must include distribution mode");
 assert(k6Script.includes("loginStaggerSeconds"), "k6 summary must include login pacing metadata");
+assert(k6Script.includes("sessionThinkTimeSeconds"), "k6 summary must include session pacing metadata");
 assert(
   k6Script.includes('RES05B_SUMMARY_PATH || "res-05b-k6-summary.json"'),
   "default k6 summary path must not require a pre-created directory",
@@ -90,6 +95,8 @@ assert(doc.includes("RES05B_CREDENTIALS_JSON"), "doc must describe distributed c
 assert(doc.includes("10 credentials"), "doc must record the approved distributed workload minimum");
 assert(doc.includes("RES05B_LOGIN_STAGGER_SECONDS"), "doc must document login pacing");
 assert(doc.includes("setupTimeout"), "doc must document distributed setup timeout behavior");
+assert(doc.includes("RES05B_SESSION_THINK_TIME_MIN_SECONDS"), "doc must document session think-time pacing");
+assert(doc.includes("10-14 seconds"), "doc must record the distributed profile default think-time range");
 assert(doc.includes("429 responses fail by default"), "doc must document default 429 failure behavior");
 assert(doc.includes("RES05B_ALLOW_DOCUMENTED_429"), "doc must document explicit rate-limit experiment opt-in");
 
