@@ -483,6 +483,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "Vexa-PIM-InternalOpsAlert/1.0",
+        "X-Alert-Contact": String(process.env.PIM_EMAIL_TEAM_EMAIL ?? "team@vexapim.com").trim(),
       },
       body: JSON.stringify(this.filterEnvelope(envelope)),
       signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),

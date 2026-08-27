@@ -12,6 +12,7 @@ export interface AuthEmailMessage {
   subject: string;
   text: string;
   html: string;
+  from?: string;
   category:
     | "password_reset"
     | "account_unlock"
@@ -53,7 +54,7 @@ export class AuthEmailService {
 
   private async sendViaResend(message: AuthEmailMessage): Promise<void> {
     const apiKey = String(process.env.AUTH_EMAIL_RESEND_API_KEY ?? "").trim();
-    const from = String(process.env.AUTH_EMAIL_FROM ?? "").trim();
+    const from = (message.from || String(process.env.AUTH_EMAIL_FROM ?? "")).trim();
     if (!apiKey || !from) {
       this.logger.error(
         "AUTH_EMAIL_PROVIDER=resend but AUTH_EMAIL_RESEND_API_KEY or AUTH_EMAIL_FROM is missing. Email delivery is misconfigured.",

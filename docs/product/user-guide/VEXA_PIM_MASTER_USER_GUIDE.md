@@ -1459,7 +1459,7 @@ For each action:
 - Before channel push
 
 ### C. Page layout / screen structure
-- KPI row: Total SKUs, Complete SKUs, Incomplete SKUs, Completeness %
+- KPI row: Total Products, Complete Products, Incomplete Products, Completeness %
 - `Quality Signals` card
 - `Next Actions` card
 

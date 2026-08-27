@@ -2036,7 +2036,13 @@ function buildChecks() {
     assertStatus(result, 200, "GET /billing/usage");
     assert(typeof result.body?.users?.current === "number", "users.current is not a number");
     assert(typeof result.body?.users?.limit === "number", "users.limit is not a number");
-    return `users=${result.body.users.current}/${result.body.users.limit}`;
+    assert(typeof result.body?.skus?.current === "number", "skus.current is not a number");
+    assert(typeof result.body?.skus?.limit === "number", "skus.limit is not a number");
+    assert(result.body.skus.limit > 0, "skus.limit must be positive (plan has SKU entitlement)");
+    assert(result.body.skus.current >= 0, "skus.current must be non-negative");
+    ctx.billingSkusCurrent = result.body.skus.current;
+    ctx.billingSkusLimit = result.body.skus.limit;
+    return `users=${result.body.users.current}/${result.body.users.limit} skus=${result.body.skus.current}/${result.body.skus.limit}`;
   });
 
   add("dashboard", "billing_plan_profile", async () => {
@@ -2380,6 +2386,64 @@ function buildChecks() {
     assertStatus(result, 200, "GET /rejection-intelligence/products/:id/score");
     assert(result.body && typeof result.body === "object", "rejection intelligence response missing");
     return "rejection intelligence returned";
+  });
+
+  // ── Commercial readiness: #614 billable SKU filter, #662 primary variant stability ──
+
+  add("commercial_readiness", "sku_billing_resource_shape", async () => {
+    const result = await api("GET", "/billing/usage", { token: ctx.adminToken });
+    assertStatus(result, 200, "GET /billing/usage");
+    const requiredBuckets = ["skus", "submissions", "storageGb", "users", "connectorsInstallations", "connectorAccounts", "apiKeys", "outboundWebhooks"];
+    for (const bucket of requiredBuckets) {
+      assert(result.body?.[bucket] && typeof result.body[bucket] === "object", `billing usage missing bucket: ${bucket}`);
+      assert(typeof result.body[bucket].current === "number", `${bucket}.current is not a number`);
+      assert(typeof result.body[bucket].limit === "number", `${bucket}.limit is not a number`);
+    }
+    return `buckets=${requiredBuckets.length}`;
+  });
+
+  add("commercial_readiness", "sku_limit_matches_plan_tier", async () => {
+    const profileResult = await api("GET", "/billing/plan-profile", { token: ctx.adminToken });
+    assertStatus(profileResult, 200, "GET /billing/plan-profile");
+    const tier = String(profileResult.body?.planTier ?? "").toUpperCase();
+    const tierLimits = { TRIAL: 500, STARTER: 2500, GROWTH: 10000, BUSINESS: 50000, ENTERPRISE: 100000 };
+    const expectedLimit = tierLimits[tier];
+    if (!expectedLimit) {
+      skip(`unknown plan tier ${tier}`);
+    }
+    const usageResult = await api("GET", "/billing/usage", { token: ctx.adminToken });
+    assertStatus(usageResult, 200, "GET /billing/usage");
+    assert(
+      usageResult.body?.skus?.limit === expectedLimit,
+      `skus.limit=${usageResult.body?.skus?.limit} does not match ${tier} seed value=${expectedLimit}`,
+    );
+    return `tier=${tier} skus.limit=${usageResult.body.skus.limit}`;
+  });
+
+  add("commercial_readiness", "draft_variant_not_billable", async () => {
+    if (!ctx.variantId || !ctx.productId) {
+      skip("variant or product not created");
+    }
+    const variantResult = await api("GET", `/catalog/products/${encodeURIComponent(ctx.productId)}/variants`, {
+      token: ctx.adminToken,
+    });
+    assertStatus(variantResult, 200, "GET /catalog/products/:id/variants");
+    const variants = normalizeItems(variantResult.body);
+    const ourVariant = variants.find((v) => String(v.id) === String(ctx.variantId));
+    assert(ourVariant, "e2e variant not found");
+    assert(
+      ourVariant.status === "draft",
+      `e2e variant should still be draft but is ${ourVariant.status}`,
+    );
+    const productResult = await api("GET", `/catalog/products/${encodeURIComponent(ctx.productId)}`, {
+      token: ctx.adminToken,
+    });
+    assertStatus(productResult, 200, "GET /catalog/products/:id");
+    assert(
+      productResult.body?.status === "approved",
+      `product should be approved but is ${productResult.body?.status}`,
+    );
+    return `variant.status=${ourVariant.status} product.status=${productResult.body.status} (draft variant excluded from billing per #614)`;
   });
 
   addCleanup("delete_variant", async () => {

@@ -48,9 +48,9 @@ function run() {
     "Completeness page must distinguish restricted, unavailable, and not-configured states across catalog and pricing reads.",
   );
   assert(
-    source.includes('label="Total SKUs"') &&
-      source.includes('label="Complete SKUs"') &&
-      source.includes('label="Incomplete SKUs"') &&
+    source.includes('label="Total Products"') &&
+      source.includes('label="Complete Products"') &&
+      source.includes('label="Incomplete Products"') &&
       source.includes('label="Completeness %"') &&
       source.includes('href="/quality/issues"') &&
       source.includes('href="/quality/validation"') &&

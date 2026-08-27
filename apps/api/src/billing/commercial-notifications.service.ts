@@ -80,6 +80,7 @@ export class CommercialNotificationsService {
         this.authEmailService.send({
           to: recipient,
           subject,
+          from: brand.notificationsFrom || undefined,
           text: renderEmailText(templateInput),
           html: renderEmailHtml(templateInput),
           category: "commercial_status_notice",
@@ -146,6 +147,7 @@ export class CommercialNotificationsService {
           subject,
           text: renderEmailText(templateInput),
           html: renderEmailHtml(templateInput),
+          from: brand.notificationsFrom || undefined,
           category: "commercial_status_notice",
           metadata: { event: "payment_failed", tenantKey: input.tenantKey, workspaceSlug },
         }),
@@ -200,6 +202,7 @@ export class CommercialNotificationsService {
           subject,
           text: renderEmailText(templateInput),
           html: renderEmailHtml(templateInput),
+          from: brand.notificationsFrom || undefined,
           category: "commercial_status_notice",
           metadata: { event: `trial_ending_${input.daysRemaining}d`, tenantKey: input.tenantKey, workspaceSlug, daysRemaining: String(input.daysRemaining) },
         }),

@@ -24,7 +24,7 @@ If you discover a security vulnerability in Vexa PIM, please report it to us. We
 
 ## How to Report
 
-Send your report to: **[Engineering/Legal: set — e.g., security@vexapim.com]**
+Send your report to: **admin@vexapim.com**
 
 Include in your report:
 - A description of the vulnerability

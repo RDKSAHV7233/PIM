@@ -563,6 +563,7 @@ export class SignupService implements OnModuleDestroy {
     await this.authEmailService.send({
       to: input.adminEmail,
       subject: title,
+      from: brand.onboardingFrom || undefined,
       text: renderEmailText({
         ...brand,
         title,

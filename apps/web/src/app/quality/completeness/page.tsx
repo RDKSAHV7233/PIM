@@ -168,7 +168,7 @@ export default async function QualityCompletenessPage() {
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            label="Total SKUs"
+            label="Total Products"
             value={metricValue(statsResult.state, completenessData?.products ?? 0)}
             helper={
               statsResult.state === "available"
@@ -180,14 +180,14 @@ export default async function QualityCompletenessPage() {
             tone={statsResult.state === "unavailable" ? "warning" : "default"}
           />
           <KpiCard
-            label="Complete SKUs"
+            label="Complete Products"
             value={metricValue(completenessState, completenessData?.completeSkus ?? 0)}
             helper={
               completenessState === "available"
                 ? "Products meeting current completeness thresholds"
                 : completenessState === "restricted"
-                  ? "Complete SKU totals are limited for your role."
-                  : "Complete SKU totals are temporarily unavailable."
+                  ? "Complete product totals are limited for your role."
+                  : "Complete product totals are temporarily unavailable."
             }
             tone={
               completenessState === "available"
@@ -198,14 +198,14 @@ export default async function QualityCompletenessPage() {
             }
           />
           <KpiCard
-            label="Incomplete SKUs"
+            label="Incomplete Products"
             value={metricValue(completenessState, completenessData?.incompleteSkus ?? 0)}
             helper={
               completenessState === "available"
                 ? "Prioritize these products for enrichment"
                 : completenessState === "restricted"
-                  ? "Incomplete SKU totals are limited for your role."
-                  : "Incomplete SKU totals are temporarily unavailable."
+                  ? "Incomplete product totals are limited for your role."
+                  : "Incomplete product totals are temporarily unavailable."
             }
             tone={
               completenessState === "available"

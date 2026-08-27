@@ -178,6 +178,10 @@ export function resolveEmailBrandConfig(): {
   supportEmail: string;
   commercialContactUrl: string;
   commercialContactEmail: string;
+  onboardingFrom: string;
+  notificationsFrom: string;
+  adminEmail: string;
+  teamEmail: string;
 } {
   return {
     logoUrl: String(process.env.PIM_EMAIL_LOGO_URL ?? "").trim(),
@@ -186,6 +190,10 @@ export function resolveEmailBrandConfig(): {
     supportEmail: String(process.env.PIM_EMAIL_SUPPORT_EMAIL ?? "").trim(),
     commercialContactUrl: String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim(),
     commercialContactEmail: String(process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim(),
+    onboardingFrom: String(process.env.PIM_EMAIL_ONBOARDING_FROM ?? "").trim(),
+    notificationsFrom: String(process.env.PIM_EMAIL_NOTIFICATIONS_FROM ?? "").trim(),
+    adminEmail: String(process.env.PIM_EMAIL_ADMIN_EMAIL ?? "").trim(),
+    teamEmail: String(process.env.PIM_EMAIL_TEAM_EMAIL ?? "").trim(),
   };
 }
 

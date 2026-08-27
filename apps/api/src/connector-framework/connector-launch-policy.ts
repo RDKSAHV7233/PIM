@@ -72,7 +72,7 @@ export function resolveConnectorLaunchPolicy(
     return {
       launchStage: "live",
       launchNote:
-        "Shopify supports managed install, expiring offline token exchange, publication target selection, publish, status sync, and webhook relay handling.",
+        "Shopify direct-token (custom app) connector: publish, edit/republish (single-variant verified), publication target selection, status sync (polling), reconnect with live credential validation, jobs visibility, manual bulk publish (≤50). Managed OAuth, webhook subscriptions, and multi-image sync are NOT verified for production use.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -137,7 +137,7 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   const s = String(slug ?? "").trim().toLowerCase();
 
   if (s === CONNECTOR_SLUGS.SHOPIFY) {
-    return { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — full lifecycle support." };
+    return { owner: "Platform", milestone: null, blockers: ["managed OAuth live verification", "webhook subscription creation"], internalNotes: "GA for direct-token publishing. #662 multi-variant metafield drift RESOLVED (PR #665 merged). Managed OAuth and webhook subscriptions are code-complete but NOT live-verified." };
   }
   if (s === CONNECTOR_SLUGS.MYNTRA) {
     return { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — Listing Management API." };

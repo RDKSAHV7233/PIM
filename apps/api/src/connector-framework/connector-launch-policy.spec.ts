@@ -208,7 +208,9 @@ describe("resolveConnectorPipelineMetadata", () => {
   it("returns metadata for known connectors", () => {
     const shopify = resolveConnectorPipelineMetadata("shopify");
     expect(shopify.owner).toBe("Platform");
-    expect(shopify.blockers).toEqual([]);
+    expect(shopify.blockers).toContain("managed OAuth live verification");
+    expect(shopify.blockers).toContain("webhook subscription creation");
+    expect(shopify.blockers).not.toContain("#662 multi-variant metafield drift");
   });
 
   it("returns blockers for under-development connectors", () => {

@@ -73,6 +73,10 @@ Use this document when setting up a new environment, debugging a misconfigured s
 | `PIM_EMAIL_BANNER_URL` | No | — | HTTPS URL to optional banner image for signup/commercial emails. Must be HTTPS in staging/production |
 | `PIM_EMAIL_SUPPORT_URL` | No | — | Support page URL shown in email footer/signature |
 | `PIM_EMAIL_SUPPORT_EMAIL` | No | — | Support email shown in email footer/signature when support URL is not set |
+| `PIM_EMAIL_ONBOARDING_FROM` | No | — | Sender address for signup/onboarding emails (falls back to `AUTH_EMAIL_FROM`) |
+| `PIM_EMAIL_NOTIFICATIONS_FROM` | No | — | Sender address for commercial/billing notification emails (falls back to `AUTH_EMAIL_FROM`) |
+| `PIM_EMAIL_ADMIN_EMAIL` | No | — | Admin/security contact email (used in security disclosure, reply-to) |
+| `PIM_EMAIL_TEAM_EMAIL` | No | — | Internal ops team contact (included in alert webhook headers) |
 
 **Production requirement:** At least one commercial contact path (`PIM_COMMERCIAL_CONTACT_URL` or `PIM_COMMERCIAL_CONTACT_EMAIL`) must be configured. Commercial emails will not send without a valid contact path.
 

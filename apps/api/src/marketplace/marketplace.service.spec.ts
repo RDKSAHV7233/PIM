@@ -1654,4 +1654,115 @@ describe("MarketplaceService — primary-variant selection stability (#662)", ()
     const orderBy = findUnique.mock.calls[0][0].include.variants.orderBy;
     expect(orderBy[0]).toEqual({ createdAt: "asc" });
   });
+
+  it("editing a non-primary variant does not change canonical identity or price fields (two-phase #662 regression)", async () => {
+    const variantA = {
+      id: "var-a",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      skuCode: "SKU-A",
+      mrp: 100,
+      sellingPrice: 90,
+      attributes: { color: "red" },
+      prices: [],
+      inventoryQty: 5,
+    };
+    const variantB = {
+      id: "var-b",
+      createdAt: new Date("2026-02-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+      skuCode: "SKU-B",
+      mrp: 200,
+      sellingPrice: 180,
+      attributes: { color: "blue" },
+      prices: [],
+      inventoryQty: 3,
+    };
+
+    const findUnique = jest.fn().mockImplementation((args: { include: { variants: { orderBy: Array<Record<string, "asc" | "desc">> } } }) => {
+      const orderBy = args.include.variants.orderBy;
+      const sorted = [variantA, variantB].sort((a, b) => {
+        for (const clause of orderBy) {
+          const [field, direction] = Object.entries(clause)[0] as [string, "asc" | "desc"];
+          const av = (a as Record<string, unknown>)[field] as Date;
+          const bv = (b as Record<string, unknown>)[field] as Date;
+          if (av.getTime() !== bv.getTime()) {
+            return direction === "asc" ? av.getTime() - bv.getTime() : bv.getTime() - av.getTime();
+          }
+        }
+        return 0;
+      });
+      return Promise.resolve({
+        id: "prod-mv",
+        title: "Multi-Variant Widget",
+        description: "",
+        brand: "",
+        hsnCode: "",
+        gstRate: null,
+        attributes: {},
+        category: { id: "cat1", name: "Widgets", path: "widgets" },
+        taxCodes: [],
+        variants: sorted.map((v) => ({ ...v })),
+      });
+    });
+
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        product: { findUnique },
+        mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
+      }),
+    };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      {} as never, {} as never, {} as never, {} as never, {} as never,
+      {} as never, {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
+    );
+
+    type Payload = { sku: string; mrp: number; sellingPrice: number; variants: Array<{ sku: string; sellingPrice: number; mrp: number }> };
+    const build = () =>
+      (svc as unknown as { buildConnectorProductPayload: (id: string, opts?: unknown) => Promise<Payload> })
+        .buildConnectorProductPayload("prod-mv", {});
+
+    // ── Phase 1: both variants in original state ──
+    const snap1 = await build();
+
+    // ── Phase 2: simulate editing variant B ──
+    // Only B's updatedAt and price change; A is untouched.
+    variantB.updatedAt = new Date("2026-08-01T00:00:00.000Z");
+    variantB.mrp = 250;
+    variantB.sellingPrice = 230;
+
+    const snap2 = await build();
+
+    // Canonical top-level identity/price fields MUST NOT change.
+    // These are the fields that become Shopify metafield pim_connector.sku
+    // and pim_connector.source_sku, and the default variant price.
+    expect(snap2.sku).toBe(snap1.sku);
+    expect(snap2.mrp).toBe(snap1.mrp);
+    expect(snap2.sellingPrice).toBe(snap1.sellingPrice);
+
+    // They must come from variant A (first-created).
+    expect(snap1.sku).toBe("SKU-A");
+    expect(snap1.mrp).toBe(100);
+    expect(snap1.sellingPrice).toBe(90);
+
+    // Per-variant payload: variant A (index 0) is unchanged across phases.
+    expect(snap2.variants[0].sku).toBe("SKU-A");
+    expect(snap2.variants[0].mrp).toBe(100);
+    expect(snap2.variants[0].sellingPrice).toBe(90);
+
+    // Per-variant payload: variant B's edit IS reflected in its own slot.
+    expect(snap2.variants[1].sku).toBe("SKU-B");
+    expect(snap2.variants[1].mrp).toBe(250);
+    expect(snap2.variants[1].sellingPrice).toBe(230);
+
+    // Sibling (A) was NOT mutated by B's edit.
+    expect(snap2.variants[0].mrp).toBe(snap1.variants[0].mrp);
+    expect(snap2.variants[0].sellingPrice).toBe(snap1.variants[0].sellingPrice);
+  });
 });

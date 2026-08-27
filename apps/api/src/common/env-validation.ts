@@ -43,6 +43,10 @@ export interface ValidatedEnv {
   PIM_EMAIL_BANNER_URL?: string;
   PIM_EMAIL_SUPPORT_URL?: string;
   PIM_EMAIL_SUPPORT_EMAIL?: string;
+  PIM_EMAIL_ONBOARDING_FROM?: string;
+  PIM_EMAIL_NOTIFICATIONS_FROM?: string;
+  PIM_EMAIL_ADMIN_EMAIL?: string;
+  PIM_EMAIL_TEAM_EMAIL?: string;
   CORS_ORIGINS: string[];
   PORT: number;
   PIM_WEB_BASE_URL?: string;
@@ -147,6 +151,10 @@ const EnvSchema = z.object({
   PIM_EMAIL_BANNER_URL: z.string().url().optional(),
   PIM_EMAIL_SUPPORT_URL: z.string().url().optional(),
   PIM_EMAIL_SUPPORT_EMAIL: z.string().email().optional(),
+  PIM_EMAIL_ONBOARDING_FROM: z.string().email().optional(),
+  PIM_EMAIL_NOTIFICATIONS_FROM: z.string().email().optional(),
+  PIM_EMAIL_ADMIN_EMAIL: z.string().email().optional(),
+  PIM_EMAIL_TEAM_EMAIL: z.string().email().optional(),
   PIM_COMMERCIAL_OPS_TOKEN: z.string().optional(),
   PIM_COMMERCIAL_TRIAL_DAYS: z.coerce.number().int().min(1).default(90),
   CORS_ORIGIN: z.string().optional(),
