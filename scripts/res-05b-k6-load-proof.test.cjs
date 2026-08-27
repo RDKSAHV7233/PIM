@@ -33,10 +33,27 @@ assert(k6Script.includes("expected"), "k6 script must include expected profile")
 assert(k6Script.includes("burst"), "k6 script must include burst profile");
 assert(k6Script.includes("sustained"), "k6 script must include sustained profile");
 assert(k6Script.includes("res05b_http_5xx_rate"), "k6 script must track 5xx rate");
+assert(k6Script.includes("res05b_http_429_rate"), "k6 script must track 429 rate separately");
 assert(k6Script.includes("res05b_request_failure_rate"), "k6 script must track request failure rate");
 assert(k6Script.includes("queueWaitingObserved"), "k6 script must record queue waiting observations from health payload");
 assert(k6Script.includes("queueActiveObserved"), "k6 script must record queue active observations from health payload");
 assert(k6Script.includes("queueFailureIncrease"), "k6 script must record queue failed observations from health payload");
+assert(k6Script.includes("RES05B_CREDENTIALS_JSON"), "k6 script must support distributed credential input");
+assert(k6Script.includes("RES05B_MIN_DISTRIBUTED_CREDENTIALS"), "k6 script must define the distributed credential minimum");
+assert(k6Script.includes("RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS"), "k6 script must gate single-credential stress experiments explicitly");
+assert(k6Script.includes("RES05B_ALLOW_DOCUMENTED_429"), "k6 script must require an explicit opt-in before accepting 429 responses");
+assert(k6Script.includes("isDistributedLoadProfile(PROFILE)"), "k6 script must detect distributed acceptance profiles");
+assert(
+  k6Script.includes("requires at least ${MIN_DISTRIBUTED_CREDENTIALS} credentials"),
+  "expected/burst/sustained profiles must fail closed without distributed credentials",
+);
+assert(k6Script.includes('"res05b_http_429_rate": ["rate==0"]'), "429 responses must fail thresholds by default");
+assert(k6Script.includes("credentialCount"), "k6 summary must include credential count without exposing identities");
+assert(k6Script.includes("distributionMode"), "k6 summary must include distribution mode");
+assert(
+  k6Script.includes('RES05B_SUMMARY_PATH || "res-05b-k6-summary.json"'),
+  "default k6 summary path must not require a pre-created directory",
+);
 assert(k6Script.includes("RES05B_ENABLE_MUTATIONS"), "k6 script must explicitly gate mutation workload");
 assert(
   k6Script.includes("mutation workload is intentionally not implemented in this read-only harness"),
@@ -52,6 +69,8 @@ assert(!k6Script.includes("/dashboard/snapshot"), "k6 script must not sample the
 assert(!k6Script.includes('"/audit?limit=10"'), "k6 script must not sample the removed bare audit route");
 assert(!k6Script.includes("console.log(ADMIN_PASSWORD"), "k6 script must not print passwords");
 assert(!k6Script.includes("Authorization}`"), "k6 script must not interpolate authorization headers into logs");
+assert(!k6Script.includes("console.log(credential"), "k6 script must not print credentials");
+assert(!k6Script.includes("JSON.stringify(CREDENTIALS"), "k6 script must not serialize credentials into summaries or logs");
 
 assert(doc.includes("RES-05B"), "doc must describe RES-05B");
 assert(doc.includes("read-only"), "doc must state read-only default");
@@ -61,6 +80,10 @@ assert(doc.includes("Job execution latency"), "doc must separate job execution l
 assert(doc.includes("No production settings"), "doc must prohibit production setting changes");
 assert(doc.includes("NOT ACCEPTED"), "doc must avoid accepting RES-05B without runtime proof");
 assert(doc.includes("workflow-scope credential"), "doc must record the current workflow-scope blocker");
+assert(doc.includes("RES05B_CREDENTIALS_JSON"), "doc must describe distributed credential input");
+assert(doc.includes("10 credentials"), "doc must record the approved distributed workload minimum");
+assert(doc.includes("429 responses fail by default"), "doc must document default 429 failure behavior");
+assert(doc.includes("RES05B_ALLOW_DOCUMENTED_429"), "doc must document explicit rate-limit experiment opt-in");
 
 assert(
   pkg.scripts["test:res-05b:k6-contract"] === "node scripts/res-05b-k6-load-proof.test.cjs",

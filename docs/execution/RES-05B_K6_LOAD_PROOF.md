@@ -35,6 +35,37 @@ The initial harness samples:
 
 Mutation mode is intentionally fail-closed. Bulk import, bulk edit, media upload, and publish/export load must be added only after explicit fixture approval.
 
+## Credential Distribution
+
+Authenticated profiles can still use the legacy single-credential variables for smoke and baseline checks:
+
+```bash
+RES05B_WORKSPACE=<staging workspace>
+RES05B_ADMIN_USER=<staging admin user>
+RES05B_ADMIN_PASSWORD=<staging admin password>
+```
+
+The acceptance profiles `expected`, `burst`, and `sustained` must model the approved 10 active tenants / 25 active sessions workload. They therefore fail closed unless the run supplies at least 10 credentials through `RES05B_CREDENTIALS_JSON`:
+
+```json
+[
+  {
+    "workspace": "<workspace-a>",
+    "user": "<user-a>",
+    "password": "<password-a>"
+  },
+  {
+    "workspace": "<workspace-b>",
+    "user": "<user-b>",
+    "password": "<password-b>"
+  }
+]
+```
+
+`RES05B_MIN_DISTRIBUTED_CREDENTIALS` defaults to `10`. Do not lower it for acceptance without explicit PO/CTO/SRE approval.
+
+`RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS=true` is reserved for explicitly approved rate-limit experiments. It is not valid RES-05B acceptance evidence for the approved distributed workload.
+
 ## Thresholds
 
 Initial thresholds mirror RES-05A:
@@ -48,6 +79,8 @@ Initial thresholds mirror RES-05A:
 - request failure rate <= 0.5 percent
 
 HTTP 429 is tracked separately because it can be expected only when documented limits are intentionally exceeded.
+
+429 responses fail by default through the `res05b_http_429_rate` threshold. A run may set `RES05B_ALLOW_DOCUMENTED_429=true` only when PO/CTO/SRE have explicitly classified that execution as a documented rate-limit experiment, not as Scale/SLA acceptance proof.
 
 ## Queue / Async Evidence
 
@@ -114,6 +147,10 @@ k6 run scripts/res-05b-k6-load-proof.js
 ```
 
 Do not print the password, token, or any derived authorization header.
+
+For `expected`, `burst`, and `sustained`, use a secret-injected `RES05B_CREDENTIALS_JSON` value. The summary records only credential count and distribution mode; it must not expose usernames, passwords, bearer tokens, or authorization headers.
+
+By default the k6 JSON summary is written to `res-05b-k6-summary.json` in the current working directory. If `RES05B_SUMMARY_PATH` points into a directory, create that directory before starting k6 because k6 does not create parent directories for summary outputs.
 
 ## Local Health-Profile Evidence
 

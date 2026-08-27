@@ -7,7 +7,11 @@ const API_BASE_URL = normalizeBaseUrl(__ENV.RES05B_API_BASE_URL || "https://vexa
 const WORKSPACE = String(__ENV.RES05B_WORKSPACE || "").trim();
 const ADMIN_USER = String(__ENV.RES05B_ADMIN_USER || "").trim();
 const ADMIN_PASSWORD = String(__ENV.RES05B_ADMIN_PASSWORD || "").trim();
+const CREDENTIALS = normalizeCredentials(__ENV.RES05B_CREDENTIALS_JSON, WORKSPACE, ADMIN_USER, ADMIN_PASSWORD);
+const MIN_DISTRIBUTED_CREDENTIALS = normalizePositiveInteger(__ENV.RES05B_MIN_DISTRIBUTED_CREDENTIALS, 10);
 const ENABLE_MUTATIONS = isTrue(__ENV.RES05B_ENABLE_MUTATIONS);
+const ALLOW_DOCUMENTED_429 = isTrue(__ENV.RES05B_ALLOW_DOCUMENTED_429);
+const ALLOW_SINGLE_CREDENTIAL_STRESS = isTrue(__ENV.RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS);
 
 export const options = buildOptions(PROFILE);
 
@@ -41,38 +45,54 @@ export function setup() {
 
   const credentialsRequired = PROFILE !== "health";
   if (!credentialsRequired) {
-    return { token: null };
+    return { tokens: [] };
   }
-  if (!WORKSPACE || !ADMIN_USER || !ADMIN_PASSWORD) {
-    fail("RES-05B setup failed: workspace, admin user, and password are required for authenticated profiles");
+  if (CREDENTIALS.length === 0) {
+    fail(
+      "RES-05B setup failed: authenticated profiles require either RES05B_CREDENTIALS_JSON or legacy workspace/user/password env vars",
+    );
   }
-
-  const login = request(
-    "POST",
-    "/auth/login",
-    null,
-    "login",
-    JSON.stringify({
-      workspaceSlug: WORKSPACE,
-      userId: ADMIN_USER,
-      password: ADMIN_PASSWORD,
-      expiresInMinutes: 90,
-    }),
-  );
-  if (!isSuccessfulResponse(login)) {
-    fail(`RES-05B setup failed: login returned ${login.status}`);
-  }
-  const payload = parseJson(login);
-  const token = payload?.accessToken;
-  if (!token) {
-    fail("RES-05B setup failed: login response did not contain accessToken");
+  if (
+    isDistributedLoadProfile(PROFILE) &&
+    CREDENTIALS.length < MIN_DISTRIBUTED_CREDENTIALS &&
+    !ALLOW_SINGLE_CREDENTIAL_STRESS
+  ) {
+    fail(
+      `RES-05B setup failed: ${PROFILE} requires at least ${MIN_DISTRIBUTED_CREDENTIALS} credentials to model the approved distributed workload`,
+    );
   }
 
-  return { token };
+  const tokens = [];
+  for (let index = 0; index < CREDENTIALS.length; index += 1) {
+    const credential = CREDENTIALS[index];
+    const login = request(
+      "POST",
+      "/auth/login",
+      null,
+      "login",
+      JSON.stringify({
+        workspaceSlug: credential.workspace,
+        userId: credential.user,
+        password: credential.password,
+        expiresInMinutes: 90,
+      }),
+    );
+    if (!isSuccessfulResponse(login)) {
+      fail(`RES-05B setup failed: credential ${index + 1} login returned ${login.status}`);
+    }
+    const payload = parseJson(login);
+    const token = payload?.accessToken;
+    if (!token) {
+      fail(`RES-05B setup failed: credential ${index + 1} login response did not contain accessToken`);
+    }
+    tokens.push(token);
+  }
+
+  return { tokens };
 }
 
 export default function (data) {
-  const token = data?.token || null;
+  const token = pickToken(data?.tokens || []);
 
   sampleHealth();
   if (PROFILE === "health") {
@@ -90,7 +110,7 @@ export default function (data) {
 }
 
 export function handleSummary(data) {
-  const summaryPath = __ENV.RES05B_SUMMARY_PATH || "artifacts/res-05b/k6-summary.json";
+  const summaryPath = __ENV.RES05B_SUMMARY_PATH || "res-05b-k6-summary.json";
   return {
     stdout: textSummary(data),
     [summaryPath]: JSON.stringify(
@@ -99,6 +119,10 @@ export function handleSummary(data) {
         profile: PROFILE,
         apiBaseUrl: redactUrl(API_BASE_URL),
         mutationMode: ENABLE_MUTATIONS ? "blocked" : "read_only",
+        credentialCount: CREDENTIALS.length,
+        distributedCredentialMinimum: MIN_DISTRIBUTED_CREDENTIALS,
+        distributionMode: distributionMode(),
+        documented429Allowed: ALLOW_DOCUMENTED_429,
         metrics: data.metrics,
         rootGroup: data.root_group,
       },
@@ -155,13 +179,14 @@ function request(method, route, token, label, body) {
   const is5xx = response.status >= 500 && response.status <= 599;
   const is429 = response.status === 429;
   const ok = response.status >= 200 && response.status <= 399;
+  const allowed429 = is429 && ALLOW_DOCUMENTED_429;
   http5xxRate.add(is5xx);
   http429Rate.add(is429);
-  requestFailureRate.add(!ok && !is429);
+  requestFailureRate.add(!ok && !allowed429);
 
   check(response, {
-    [`${label} returned 2xx/3xx or documented 429`]: (res) =>
-      (res.status >= 200 && res.status <= 399) || res.status === 429,
+    [`${label} returned 2xx/3xx${ALLOW_DOCUMENTED_429 ? " or documented 429" : ""}`]: (res) =>
+      (res.status >= 200 && res.status <= 399) || (ALLOW_DOCUMENTED_429 && res.status === 429),
   });
 
   return response;
@@ -186,6 +211,7 @@ function buildOptions(profile) {
     "res05b_connectors_duration_ms": ["p(95)<=1000"],
     "res05b_audit_duration_ms": ["p(95)<=2000"],
     "res05b_http_5xx_rate": ["rate<=0.005"],
+    ...(ALLOW_DOCUMENTED_429 ? {} : { "res05b_http_429_rate": ["rate==0"] }),
     "res05b_request_failure_rate": ["rate<=0.005"],
   };
 
@@ -201,6 +227,7 @@ function buildOptions(profile) {
       thresholds: {
         "res05b_health_duration_ms": ["p(95)<=200"],
         "res05b_http_5xx_rate": ["rate==0"],
+        ...(ALLOW_DOCUMENTED_429 ? {} : { "res05b_http_429_rate": ["rate==0"] }),
       },
     },
     smoke: {
@@ -285,6 +312,74 @@ function isTrue(value) {
   return String(value || "").trim().toLowerCase() === "true";
 }
 
+function normalizeCredentials(credentialsJson, fallbackWorkspace, fallbackUser, fallbackPassword) {
+  const rawJson = String(credentialsJson || "").trim();
+  if (!rawJson) {
+    if (!fallbackWorkspace || !fallbackUser || !fallbackPassword) {
+      return [];
+    }
+    return [
+      {
+        workspace: fallbackWorkspace,
+        user: fallbackUser,
+        password: fallbackPassword,
+      },
+    ];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    throw new Error("RES05B_CREDENTIALS_JSON must be a JSON array.");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("RES05B_CREDENTIALS_JSON must be a JSON array.");
+  }
+
+  return parsed.map((entry, index) => {
+    const workspace = String(entry?.workspace || entry?.workspaceSlug || "").trim();
+    const user = String(entry?.user || entry?.userId || entry?.email || "").trim();
+    const password = String(entry?.password || "").trim();
+    if (!workspace || !user || !password) {
+      throw new Error(`RES05B_CREDENTIALS_JSON entry ${index + 1} must include workspace, user, and password.`);
+    }
+    return { workspace, user, password };
+  });
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function isDistributedLoadProfile(profile) {
+  return profile === "expected" || profile === "burst" || profile === "sustained";
+}
+
+function pickToken(tokens) {
+  if (!tokens || tokens.length === 0) {
+    return null;
+  }
+  return tokens[Math.max(0, __VU - 1) % tokens.length];
+}
+
+function distributionMode() {
+  if (PROFILE === "health") {
+    return "unauthenticated";
+  }
+  if (isDistributedLoadProfile(PROFILE) && CREDENTIALS.length >= MIN_DISTRIBUTED_CREDENTIALS) {
+    return "distributed_credentials";
+  }
+  if (isDistributedLoadProfile(PROFILE) && ALLOW_SINGLE_CREDENTIAL_STRESS) {
+    return "single_credential_rate_limit_experiment";
+  }
+  return CREDENTIALS.length > 1 ? "multi_credentials" : "single_credential";
+}
+
 function parseJson(response) {
   try {
     return response.json();
@@ -317,11 +412,15 @@ function textSummary(data) {
     `profile=${PROFILE}`,
     `apiBaseUrl=${redactUrl(API_BASE_URL)}`,
     `mutationMode=${ENABLE_MUTATIONS ? "blocked" : "read_only"}`,
+    `credentialCount=${CREDENTIALS.length}`,
+    `distributionMode=${distributionMode()}`,
+    `documented429Allowed=${ALLOW_DOCUMENTED_429}`,
     metricLine(metrics, "http_req_duration"),
     metricLine(metrics, "res05b_health_duration_ms"),
     metricLine(metrics, "res05b_catalog_products_duration_ms"),
     metricLine(metrics, "res05b_dashboard_duration_ms"),
     metricLine(metrics, "res05b_http_5xx_rate"),
+    metricLine(metrics, "res05b_http_429_rate"),
     "",
   ];
   return `${lines.filter(Boolean).join("\n")}\n`;
