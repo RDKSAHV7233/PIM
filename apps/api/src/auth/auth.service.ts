@@ -1752,6 +1752,7 @@ export class AuthService implements OnModuleDestroy {
       await this.authEmailService.send({
         to: userId,
         subject: "Your Vexa PIM account export is ready",
+        from: brand.notificationsFrom || undefined,
         text: renderEmailText(templateInput),
         html: renderEmailHtml(templateInput),
         category: "account_export_ready",

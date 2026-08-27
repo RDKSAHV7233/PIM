@@ -77,7 +77,10 @@ function mailApi(method, path, body) {
 function verifySignature(payload, signature) {
   if (!WEBHOOK_SECRET) return true;
   const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(signature || ''), Buffer.from(expected));
+  const sigBuf = Buffer.from(signature || '');
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
 }
 
 function extractRecipients(headers) {

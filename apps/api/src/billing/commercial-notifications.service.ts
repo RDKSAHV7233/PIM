@@ -244,6 +244,7 @@ export class CommercialNotificationsService {
 
     await this.authEmailService.send({
       to: contactEmail, subject,
+      from: brand.notificationsFrom || undefined,
       text: renderEmailText(templateInput), html: renderEmailHtml(templateInput),
       category: "commercial_upgrade_request",
       metadata: { event: "commercial_upgrade_request_created", tenantKey: input.tenantKey, requestId: input.request.id, workspaceSlug, requestedBy: input.request.requestedBy, currentPlanTier: input.request.currentPlanTier, currentBillingStatus: input.request.currentBillingStatus, currentAccessStatus: input.request.currentAccessStatus },
@@ -292,6 +293,7 @@ export class CommercialNotificationsService {
       recipients.map((recipient) =>
         this.authEmailService.send({
           to: recipient, subject,
+          from: brand.notificationsFrom || undefined,
           text: renderEmailText(templateInput), html: renderEmailHtml(templateInput),
           category: "commercial_status_notice",
           metadata: { event: "commercial_upgrade_request_status_updated", tenantKey: input.tenantKey, requestId: input.request.id, requestStatus: input.request.status, workspaceSlug },
