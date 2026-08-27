@@ -9,6 +9,10 @@ const ADMIN_USER = String(__ENV.RES05B_ADMIN_USER || "").trim();
 const ADMIN_PASSWORD = String(__ENV.RES05B_ADMIN_PASSWORD || "").trim();
 const CREDENTIALS = normalizeCredentials(__ENV.RES05B_CREDENTIALS_JSON, WORKSPACE, ADMIN_USER, ADMIN_PASSWORD);
 const MIN_DISTRIBUTED_CREDENTIALS = normalizePositiveInteger(__ENV.RES05B_MIN_DISTRIBUTED_CREDENTIALS, 10);
+const LOGIN_STAGGER_SECONDS = normalizeNonNegativeNumber(
+  __ENV.RES05B_LOGIN_STAGGER_SECONDS,
+  defaultLoginStaggerSeconds(PROFILE, CREDENTIALS.length),
+);
 const ENABLE_MUTATIONS = isTrue(__ENV.RES05B_ENABLE_MUTATIONS);
 const ALLOW_DOCUMENTED_429 = isTrue(__ENV.RES05B_ALLOW_DOCUMENTED_429);
 const ALLOW_SINGLE_CREDENTIAL_STRESS = isTrue(__ENV.RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS);
@@ -86,6 +90,9 @@ export function setup() {
       fail(`RES-05B setup failed: credential ${index + 1} login response did not contain accessToken`);
     }
     tokens.push(token);
+    if (index < CREDENTIALS.length - 1 && LOGIN_STAGGER_SECONDS > 0) {
+      sleep(LOGIN_STAGGER_SECONDS);
+    }
   }
 
   return { tokens };
@@ -122,6 +129,7 @@ export function handleSummary(data) {
         credentialCount: CREDENTIALS.length,
         distributedCredentialMinimum: MIN_DISTRIBUTED_CREDENTIALS,
         distributionMode: distributionMode(),
+        loginStaggerSeconds: LOGIN_STAGGER_SECONDS,
         documented429Allowed: ALLOW_DOCUMENTED_429,
         metrics: data.metrics,
         rootGroup: data.root_group,
@@ -356,8 +364,23 @@ function normalizePositiveInteger(value, fallback) {
   return parsed;
 }
 
+function normalizeNonNegativeNumber(value, fallback) {
+  const parsed = Number.parseFloat(String(value || "").trim());
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
 function isDistributedLoadProfile(profile) {
   return profile === "expected" || profile === "burst" || profile === "sustained";
+}
+
+function defaultLoginStaggerSeconds(profile, credentialCount) {
+  if (!isDistributedLoadProfile(profile) || credentialCount <= 1) {
+    return 0;
+  }
+  return Math.ceil(900 / Math.max(1, credentialCount - 1));
 }
 
 function pickToken(tokens) {
@@ -414,6 +437,7 @@ function textSummary(data) {
     `mutationMode=${ENABLE_MUTATIONS ? "blocked" : "read_only"}`,
     `credentialCount=${CREDENTIALS.length}`,
     `distributionMode=${distributionMode()}`,
+    `loginStaggerSeconds=${LOGIN_STAGGER_SECONDS}`,
     `documented429Allowed=${ALLOW_DOCUMENTED_429}`,
     metricLine(metrics, "http_req_duration"),
     metricLine(metrics, "res05b_health_duration_ms"),

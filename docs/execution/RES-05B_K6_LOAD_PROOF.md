@@ -64,6 +64,8 @@ The acceptance profiles `expected`, `burst`, and `sustained` must model the appr
 
 `RES05B_MIN_DISTRIBUTED_CREDENTIALS` defaults to `10`. Do not lower it for acceptance without explicit PO/CTO/SRE approval.
 
+`RES05B_LOGIN_STAGGER_SECONDS` controls setup-time pacing between credential logins. For distributed acceptance profiles, the default spreads credentials across the 15-minute auth IP rate-limit window. With 10 credentials, this defaults to 100 seconds between setup logins. Do not reduce it for acceptance unless SRE has verified the runner IP is outside the current login-rate window.
+
 `RES05B_ALLOW_SINGLE_CREDENTIAL_STRESS=true` is reserved for explicitly approved rate-limit experiments. It is not valid RES-05B acceptance evidence for the approved distributed workload.
 
 ## Thresholds
