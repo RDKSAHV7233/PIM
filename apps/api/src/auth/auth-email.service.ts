@@ -13,6 +13,7 @@ export interface AuthEmailMessage {
   text: string;
   html: string;
   from?: string;
+  replyTo?: string;
   category:
     | "password_reset"
     | "account_unlock"
@@ -54,7 +55,8 @@ export class AuthEmailService {
 
   private async sendViaResend(message: AuthEmailMessage): Promise<void> {
     const apiKey = String(process.env.AUTH_EMAIL_RESEND_API_KEY ?? "").trim();
-    const from = (message.from || String(process.env.AUTH_EMAIL_FROM ?? "")).trim();
+    const defaultFrom = String(process.env.AUTH_EMAIL_FROM ?? "").trim();
+    const from = (message.from || defaultFrom).trim();
     if (!apiKey || !from) {
       this.logger.error(
         "AUTH_EMAIL_PROVIDER=resend but AUTH_EMAIL_RESEND_API_KEY or AUTH_EMAIL_FROM is missing. Email delivery is misconfigured.",
@@ -62,25 +64,45 @@ export class AuthEmailService {
       throw new Error("EMAIL_PROVIDER_MISCONFIGURED");
     }
 
+    const replyTo = (message.replyTo || message.from || String(process.env.AUTH_EMAIL_REPLY_TO ?? "")).trim();
+
+    const response = await this.callResendApi(apiKey, from, replyTo, message);
+    if (response.ok) return;
+
+    const body = await response.text().catch(() => "");
+
+    if (response.status === 403 && message.from && defaultFrom && message.from !== defaultFrom) {
+      this.logger.warn(
+        `Resend rejected from="${message.from}" (403). Retrying with default "${defaultFrom}". Verify domain in Resend dashboard.`,
+      );
+      const fallbackReply = (message.replyTo || String(process.env.AUTH_EMAIL_REPLY_TO ?? "")).trim();
+      const retry = await this.callResendApi(apiKey, defaultFrom, fallbackReply, message);
+      if (retry.ok) return;
+      const retryBody = await retry.text().catch(() => "");
+      throw new Error(`Resend email delivery failed on fallback: ${retry.status} ${retryBody}`.trim());
+    }
+
+    throw new Error(`Resend email delivery failed: ${response.status} ${body}`.trim());
+  }
+
+  private async callResendApi(
+    apiKey: string,
+    from: string,
+    replyTo: string,
+    message: AuthEmailMessage,
+  ): Promise<Response> {
     const payload: Record<string, unknown> = {
       from,
       to: [message.to],
       subject: message.subject,
       text: message.text,
       html: message.html,
-      tags: [
-        {
-          name: "category",
-          value: message.category,
-        },
-      ],
+      tags: [{ name: "category", value: message.category }],
     };
-    const replyTo = String(process.env.AUTH_EMAIL_REPLY_TO ?? "").trim();
     if (replyTo) {
       payload.reply_to = replyTo;
     }
-
-    const response = await fetch("https://api.resend.com/emails", {
+    return fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -89,10 +111,6 @@ export class AuthEmailService {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     });
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Resend email delivery failed: ${response.status} ${body}`.trim());
-    }
   }
 
   private logToConsole(message: AuthEmailMessage): void {
