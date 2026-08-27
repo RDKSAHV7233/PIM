@@ -30,7 +30,7 @@ if (!MAIL_TOKEN) {
   process.exit(1);
 }
 
-const MAILBOX_RESOURCE_ID = 'AC6a04a5fed4ed551d0bb09ad90a9b';
+const MAILBOX_RESOURCE_ID = process.env.HOSTINGER_MAILBOX_ID || 'AC6a04a5fed4ed551d0bb09ad90a9b';
 const PRIMARY_ADDRESS = 'info@vexapim.com';
 
 const ALIAS_FOLDER_MAP = {
