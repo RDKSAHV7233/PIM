@@ -46,6 +46,8 @@ assert(k6Script.includes("RES05B_ALLOW_DOCUMENTED_429"), "k6 script must require
 assert(k6Script.includes("isDistributedLoadProfile(PROFILE)"), "k6 script must detect distributed acceptance profiles");
 assert(k6Script.includes("defaultLoginStaggerSeconds(PROFILE, CREDENTIALS.length)"), "distributed setup must default to a safe login stagger");
 assert(k6Script.includes("sleep(LOGIN_STAGGER_SECONDS)"), "distributed credential login must be paced");
+assert(k6Script.includes("setupTimeoutForProfile(profile)"), "k6 options must extend setup timeout for paced distributed login");
+assert(k6Script.includes('return isDistributedLoadProfile(profile) ? "20m" : "1m"'), "distributed setup timeout must allow paced logins");
 assert(
   k6Script.includes("requires at least ${MIN_DISTRIBUTED_CREDENTIALS} credentials"),
   "expected/burst/sustained profiles must fail closed without distributed credentials",
@@ -87,6 +89,7 @@ assert(doc.includes("workflow-scope credential"), "doc must record the current w
 assert(doc.includes("RES05B_CREDENTIALS_JSON"), "doc must describe distributed credential input");
 assert(doc.includes("10 credentials"), "doc must record the approved distributed workload minimum");
 assert(doc.includes("RES05B_LOGIN_STAGGER_SECONDS"), "doc must document login pacing");
+assert(doc.includes("setupTimeout"), "doc must document distributed setup timeout behavior");
 assert(doc.includes("429 responses fail by default"), "doc must document default 429 failure behavior");
 assert(doc.includes("RES05B_ALLOW_DOCUMENTED_429"), "doc must document explicit rate-limit experiment opt-in");
 

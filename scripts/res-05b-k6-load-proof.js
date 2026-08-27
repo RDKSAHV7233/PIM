@@ -296,7 +296,10 @@ function buildOptions(profile) {
     },
   };
 
-  return profiles[profile];
+  return {
+    setupTimeout: setupTimeoutForProfile(profile),
+    ...profiles[profile],
+  };
 }
 
 function normalizeProfile(value) {
@@ -381,6 +384,10 @@ function defaultLoginStaggerSeconds(profile, credentialCount) {
     return 0;
   }
   return Math.ceil(900 / Math.max(1, credentialCount - 1));
+}
+
+function setupTimeoutForProfile(profile) {
+  return isDistributedLoadProfile(profile) ? "20m" : "1m";
 }
 
 function pickToken(tokens) {
