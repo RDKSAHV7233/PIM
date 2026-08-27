@@ -12,10 +12,10 @@ Use this runbook when a production incident requires restoring service from a ba
 
 | Target | Value | Basis |
 |--------|-------|-------|
-| RPO (max data loss) | 24 hours | Daily pg_dump backup to R2 / Neon daily PITR |
+| RPO (max data loss) | 24 hours | Daily `pg_dump` backup to R2 (`.github/workflows/backup-r2-daily.yml`) — the only real recovery path; no PITR is available (see `docs/runbooks/backup-restore.md` section 6) |
 | RTO (max downtime) | 4 hours | Manual restore + smoke test window |
 
-These are current-state targets for Pilot. Enterprise targets (lower RPO/RTO) require active streaming replication.
+These are current-state targets for Pilot. Enterprise targets (lower RPO/RTO) require either active streaming replication or a managed Postgres with built-in PITR (e.g. Neon, RDS) — neither is in place today.
 
 ---
 
@@ -37,12 +37,12 @@ railway logs --service pim-api | tail -100
 # 3. Identify the last good backup
 # Neon PITR: restore via Neon dashboard to the last known-good point in time
 # pg_dump backup: list available backups in R2:
-aws s3 ls s3://${R2_BUCKET_NAME}/backups/ \
+aws s3 ls s3://${R2_PRIVATE_BUCKET_NAME}/backups/ \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   --recursive | sort | tail -10
 
 # 4. Restore from pg_dump backup
-aws s3 cp "s3://${R2_BUCKET_NAME}/backups/<YYYY-MM-DD>.sql.gz" - \
+aws s3 cp "s3://${R2_PRIVATE_BUCKET_NAME}/backups/<YYYY-MM-DD>.sql.gz" - \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   | gunzip | psql "${DATABASE_URL_DIRECT}"
 

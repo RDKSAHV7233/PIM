@@ -14,28 +14,30 @@ Use this runbook to verify backup health, trigger an ad-hoc backup, and restore 
 
 | Data | Method | Frequency | Retention | Location |
 |------|--------|-----------|-----------|----------|
-| Postgres (full) | `pg_dump` → gzip → R2 | Daily (automated) | 30 days | `s3://${R2_BUCKET_NAME}/backups/` |
-| Postgres (PITR) | Neon daily PITR | Continuous | 7 days (Neon Pro) | Neon dashboard |
+| Postgres (full) | `pg_dump` → gzip → R2 | Daily (automated, `.github/workflows/backup-r2-daily.yml`) | 30 days (7-backup floor) | R2 `${R2_PRIVATE_BUCKET_NAME}/backups/` |
 | Media / images | Cloudflare R2 | Continuous (on upload) | Indefinite (pay-as-you-go) | R2 `media/` prefix |
-| Redis | Upstash Pro persistence | AOF (per-write) | N/A — cache is rebuilt on reconnect | Upstash managed |
+| Redis | Railway-managed volume, `--save 60 1` RDB snapshot | Snapshot on write activity | N/A — cache is rebuilt on reconnect | Railway `Redis` service volume |
 
-**Preferred recovery path:** Neon PITR for precision recovery (within 7-day window). Fall back to `pg_dump` for restores older than 7 days or if Neon PITR is unavailable.
+**Current environment note (corrected 2026-08-27):** staging/production Postgres runs as a **self-hosted Railway service** (`ghcr.io/railwayapp-templates/postgres-ssl` image + Railway volume), not Neon. There is no managed point-in-time-recovery product in front of it — this doc previously described a Neon PITR path that was never actually provisioned in this environment. **The daily `pg_dump` → R2 backup below is the only real recovery path.** RPO is bounded by the backup interval (up to 24h), not by continuous PITR. If Neon (or another PITR-capable managed Postgres) is adopted later, restore this section's PITR guidance and update RES-05E accordingly — until then, do not tell an incident responder to look for a Neon dashboard.
 
 ---
 
 ## 2. Automated Daily Backup
 
-The backup job is configured as a Railway cron service or GitHub Actions scheduled workflow. It runs at 02:00 UTC daily.
+The backup job is `.github/workflows/backup-r2-daily.yml`, running `scripts/r2-backup-run.cjs` on a `0 2 * * *` (02:00 UTC) schedule, or on-demand via the workflow's `workflow_dispatch` trigger (Actions tab → "Daily R2 Database Backup" → Run workflow).
+
+The script: `pg_dump` (plain SQL, PostgreSQL 18 client to match the server) → gzip → upload to `${R2_PRIVATE_BUCKET_NAME}/backups/<ISO-timestamp>.sql.gz` → verify the uploaded object is non-zero via a `HeadObject` call (fails the run if not) → prune backups older than 30 days, always keeping at least the 7 most recent regardless of age.
+
+Required GitHub Actions secrets (repo → Settings → Secrets and variables → Actions): `STAGING_DATABASE_URL_DIRECT` (already present), `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PRIVATE_BUCKET_NAME` (**not yet added as of 2026-08-27** — the workflow fails closed with a clear message if any are missing rather than silently no-op'ing).
+
+Manual reference command, for an ad-hoc backup outside the workflow (see section 4):
 
 ```bash
-# The cron command (reference — do not run manually unless triggering ad-hoc backup):
-pg_dump "${DATABASE_URL_DIRECT}" \
+pg_dump --format=plain --no-owner --no-privileges "${DATABASE_URL_DIRECT}" \
   | gzip \
-  | aws s3 cp - "s3://${R2_BUCKET_NAME}/backups/$(date +%Y-%m-%d).sql.gz" \
+  | aws s3 cp - "s3://${R2_PRIVATE_BUCKET_NAME}/backups/manual-$(date -u +%Y-%m-%dT%H%M%SZ).sql.gz" \
     --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 ```
-
-Required env vars: `DATABASE_URL_DIRECT`, `R2_BUCKET_NAME`, `R2_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
 
 ---
 
@@ -45,7 +47,7 @@ Run weekly. Confirm the most recent backup exists and is non-zero.
 
 ```bash
 # List last 10 backups
-aws s3 ls s3://${R2_BUCKET_NAME}/backups/ \
+aws s3 ls s3://${R2_PRIVATE_BUCKET_NAME}/backups/ \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   --recursive | sort | tail -10
 
@@ -63,13 +65,13 @@ Use before a risky migration or schema change.
 # Set env vars first (or export from Railway env)
 pg_dump "${DATABASE_URL_DIRECT}" \
   | gzip \
-  | aws s3 cp - "s3://${R2_BUCKET_NAME}/backups/manual-$(date +%Y-%m-%dT%H%M%S).sql.gz" \
+  | aws s3 cp - "s3://${R2_PRIVATE_BUCKET_NAME}/backups/manual-$(date +%Y-%m-%dT%H%M%S).sql.gz" \
     --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
 echo "Ad-hoc backup complete."
 
 # Verify it landed
-aws s3 ls s3://${R2_BUCKET_NAME}/backups/ \
+aws s3 ls s3://${R2_PRIVATE_BUCKET_NAME}/backups/ \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   | grep "manual-"
 ```
@@ -78,11 +80,11 @@ aws s3 ls s3://${R2_BUCKET_NAME}/backups/ \
 
 ## 5. Restore from pg_dump Backup
 
-Use when Neon PITR is unavailable or you need a backup older than 7 days.
+This is the only restore path in the current environment (see section 6 — no PITR is available). Use the most recent backup for the smallest possible data loss.
 
 ```bash
 # 1. Identify the target backup file
-aws s3 ls s3://${R2_BUCKET_NAME}/backups/ \
+aws s3 ls s3://${R2_PRIVATE_BUCKET_NAME}/backups/ \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   --recursive | sort | tail -20
 
@@ -90,7 +92,7 @@ aws s3 ls s3://${R2_BUCKET_NAME}/backups/ \
 #    This prevents writes during the restore window.
 
 # 3. Stream and restore (replaces all data in the target database)
-aws s3 cp "s3://${R2_BUCKET_NAME}/backups/<YYYY-MM-DD>.sql.gz" - \
+aws s3 cp "s3://${R2_PRIVATE_BUCKET_NAME}/backups/<YYYY-MM-DD>.sql.gz" - \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   | gunzip \
   | psql "${DATABASE_URL_DIRECT}"
@@ -108,18 +110,13 @@ npm run test:integration:rls-isolation
 
 ---
 
-## 6. Restore via Neon PITR (Preferred)
+## 6. Point-in-Time Recovery — NOT AVAILABLE
 
-Use for any restore within the last 7 days when you need a specific point in time.
+This section previously described restoring via Neon PITR. **Neon is not used in this environment** — Postgres runs as a self-hosted Railway service (`ghcr.io/railwayapp-templates/postgres-ssl` image on a Railway volume), which has no continuous point-in-time-recovery capability without separately configured WAL archiving (not currently set up).
 
-1. Go to the **Neon dashboard** → your project → **Branches**
-2. Click **Restore** on the main branch
-3. Select the target date and time (UTC)
-4. Neon creates a restore branch — validate it before promoting to main
-5. After validation, promote the restore branch to replace the main branch
-6. Reconnect the API: verify `DATABASE_URL_DIRECT` and `DATABASE_URL_POOLED` point to the correct Neon endpoint
+The only recovery path today is section 5 (restore from the daily `pg_dump` backup). This means recovery can only return the database to the state as of the most recent daily backup (up to 24h of data loss), not to an arbitrary point in time.
 
-PITR does not require stopping API traffic upfront, but **do stop traffic before promoting** the branch to main to avoid split-brain writes.
+If sub-24h RPO becomes a requirement, evaluate either (a) enabling WAL-archiving-based PITR against the existing Railway Postgres, or (b) migrating to a managed Postgres provider with built-in PITR (e.g. Neon, RDS). Until one of those is implemented, do not tell an incident responder to look for a Neon dashboard — it doesn't exist.
 
 ---
 

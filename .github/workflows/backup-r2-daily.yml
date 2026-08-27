@@ -1,0 +1,70 @@
+name: Daily R2 Database Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  r2-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    concurrency:
+      group: r2-backup-daily
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      APP_ENV: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install PostgreSQL 18 client (pg_dump, matching the staging server major version)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run daily backup
+        shell: bash
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PRIVATE_BUCKET_NAME: ${{ secrets.R2_PRIVATE_BUCKET_NAME }}
+        run: |
+          if [ -z "${DATABASE_URL_DIRECT}" ]; then
+            echo "Missing STAGING_DATABASE_URL_DIRECT secret — cannot run backup."
+            exit 1
+          fi
+          if [ -z "${R2_ACCOUNT_ID}" ] || [ -z "${R2_ACCESS_KEY_ID}" ] || [ -z "${R2_SECRET_ACCESS_KEY}" ] || [ -z "${R2_PRIVATE_BUCKET_NAME}" ]; then
+            echo "Missing one or more R2_* secrets — cannot run backup."
+            echo "Required: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PRIVATE_BUCKET_NAME."
+            exit 1
+          fi
+          node scripts/r2-backup-run.cjs
+
+      # NOTE: this does not yet push a failure alert into InternalOpsAlertsService /
+      # vexa-ops-alert-sink. That envelope has a fixed alertType enum
+      # (error_authority_new_p0p1_issue, stuck_jobs_threshold_exceeded,
+      # media_integrity_defect_detected — see apps/api/src/internal-ops/internal-ops-alerts.service.ts)
+      # with no backup-failure type. Adding one is a separate, small follow-up increment,
+      # not bundled here. Until then, a failed run is visible as a red GitHub Actions run
+      # and via docs/runbooks/backup-restore.md section 9's manual weekly check.
