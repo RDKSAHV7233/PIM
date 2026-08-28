@@ -4,6 +4,7 @@ import { Public } from "../auth/public.decorator";
 import { AdminBoundaryAccess } from "./rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "./rbac/api-client-policy.decorator";
 import { ObservabilityService } from "./observability/observability.service";
+import { CacheService } from "./cache/cache.service";
 import { AuthenticatedReadRoute } from "./rbac/read-access-policy.decorator";
 import { Roles } from "./rbac/roles";
 import { PrismaService } from "../prisma/prisma.service";
@@ -18,6 +19,7 @@ export class AppController {
     private readonly queueService: QueueService,
     private readonly authExportStorageService: AuthExportStorageService,
     private readonly observability: ObservabilityService,
+    private readonly cacheService: CacheService,
   ) {}
 
   @Public()
@@ -65,6 +67,7 @@ export class AppController {
   async healthInternal() {
     const dbPool = await this.prismaService.getPoolStats();
     const queueMetrics = await this.queueService.getMetrics();
+    const redis = await this.cacheService.getHealthSnapshot();
     const authMode = String(process.env.AUTH_MODE ?? "local").trim().toLowerCase();
     return {
       status: "ok",
@@ -74,6 +77,7 @@ export class AppController {
         identitySource: authMode === "db" ? "database" : "local_env",
       },
       db_pool: dbPool,
+      redis,
       queues: queueMetrics,
       queueRuntime: {
         backend: this.queueService.getBackend(),

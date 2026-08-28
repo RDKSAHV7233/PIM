@@ -18,6 +18,17 @@ const REDIS_RETRY_BACKOFF_MS = 30_000;
 
 type FallbackEntry = { value: unknown; expiresAt: number };
 
+export type RedisHealthSnapshot =
+  | {
+      available: true;
+      usedMemory: number | null;
+      maxMemory: number | null;
+      maxMemoryPolicy: string | null;
+      blockedClients: number | null;
+      connectedClients: number | null;
+    }
+  | { available: false };
+
 @Injectable()
 export class CacheService implements OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
@@ -96,6 +107,24 @@ export class CacheService implements OnModuleDestroy {
       }
     } catch (err) {
       this.markRedisUnavailable(err);
+    }
+  }
+
+  /**
+   * Return a small, allowlisted Redis health snapshot for internal operators.
+   * This deliberately avoids exposing raw INFO output, Redis URL, version, or config.
+   */
+  async getHealthSnapshot(): Promise<RedisHealthSnapshot> {
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return { available: false };
+    }
+
+    try {
+      const info = await this.redisClient.info();
+      return parseRedisHealthInfo(info);
+    } catch (err) {
+      this.markRedisUnavailable(err);
+      return { available: false };
     }
   }
 
@@ -214,4 +243,41 @@ export class CacheService implements OnModuleDestroy {
       this.logger.warn(`Redis unavailable, falling back to in-memory cache: ${String(err)}`);
     }
   }
+}
+
+export function parseRedisHealthInfo(info: string): RedisHealthSnapshot {
+  const fields = new Map<string, string>();
+  for (const line of info.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const separatorIndex = trimmed.indexOf(":");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    fields.set(trimmed.slice(0, separatorIndex), trimmed.slice(separatorIndex + 1));
+  }
+
+  return {
+    available: true,
+    usedMemory: parseRedisInteger(fields.get("used_memory")),
+    maxMemory: parseRedisInteger(fields.get("maxmemory")),
+    maxMemoryPolicy: normalizeRedisText(fields.get("maxmemory_policy")),
+    blockedClients: parseRedisInteger(fields.get("blocked_clients")),
+    connectedClients: parseRedisInteger(fields.get("connected_clients")),
+  };
+}
+
+function parseRedisInteger(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeRedisText(value: string | undefined): string | null {
+  const text = String(value ?? "").trim();
+  return text.length > 0 ? text : null;
 }

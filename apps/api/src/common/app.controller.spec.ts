@@ -5,12 +5,19 @@ describe("AppController - readiness", () => {
   function buildController(
     getPoolStats: () => Promise<unknown>,
     checkRedisReady: () => Promise<void> = () => Promise.resolve(),
+    getHealthSnapshot: () => Promise<unknown> = () => Promise.resolve({ available: false }),
   ) {
     const prismaService = { getPoolStats } as any;
-    const queueService = { checkRedisReady } as any;
+    const queueService = {
+      checkRedisReady,
+      getMetrics: jest.fn().mockResolvedValue({ export: { waiting: 0, active: 0, failed: 0 } }),
+      getBackend: jest.fn().mockReturnValue("bullmq"),
+      isWorkerEnabled: jest.fn().mockReturnValue(true),
+    } as any;
     const authExportStorageService = {} as any;
     const observability = {} as any;
-    return new AppController(prismaService, queueService, authExportStorageService, observability);
+    const cacheService = { getHealthSnapshot } as any;
+    return new AppController(prismaService, queueService, authExportStorageService, observability, cacheService);
   }
 
   it("returns 200 status:ready when database and queue are reachable", async () => {
@@ -69,5 +76,34 @@ describe("AppController - readiness", () => {
     );
 
     await expect(controller.readiness()).rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it("includes a sanitized Redis health snapshot on internal health", async () => {
+    const controller = buildController(
+      () => Promise.resolve({ active: 1, idle: 2, waiting: 0, applicationName: "vexa-pim-api" }),
+      () => Promise.resolve(),
+      () =>
+        Promise.resolve({
+          available: true,
+          usedMemory: 123456,
+          maxMemory: 0,
+          maxMemoryPolicy: "noeviction",
+          blockedClients: 2,
+          connectedClients: 9,
+        }),
+    );
+
+    const result = await controller.healthInternal();
+
+    expect(result.redis).toEqual({
+      available: true,
+      usedMemory: 123456,
+      maxMemory: 0,
+      maxMemoryPolicy: "noeviction",
+      blockedClients: 2,
+      connectedClients: 9,
+    });
+    expect(JSON.stringify(result.redis)).not.toContain("redis://");
+    expect(JSON.stringify(result.redis)).not.toContain("redis_version");
   });
 });
