@@ -573,6 +573,18 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
               {bulkAssociationStatus === "done" ? (
                 <p className="text-sm text-green-700">Bulk media association request completed.</p>
               ) : null}
+              {bulkAssociationStatus === "timeout" ? (
+                <p className="text-sm text-amber-700">
+                  The request timed out before Vexa could confirm the final result. Some rows may already have been
+                  associated. Check the Media Assets list below before retrying — resubmitting the full CSV may
+                  create duplicate assets for rows that already succeeded.
+                </p>
+              ) : null}
+              {bulkAssociationStatus === "error" ? (
+                <p className="text-sm text-red-700">
+                  Bulk media association failed. Verify the CSV format and SKU/variant references, then retry.
+                </p>
+              ) : null}
             </form>
           ) : (
             <p className="text-sm text-slate-600">Your role is read-only on bulk media association.</p>

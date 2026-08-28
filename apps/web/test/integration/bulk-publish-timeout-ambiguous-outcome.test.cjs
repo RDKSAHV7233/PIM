@@ -163,13 +163,16 @@ function run() {
     "The shared fetch/core API layer (apps/web/src/lib/api/core.ts) must stay completely unaware of bulk-publish " +
       "specifics — this fix belongs entirely in the bulk-publish action/message layer, not the generic fetch layer.",
   );
-  // The DOMException handling stays local to triggerBulkPublishAction — confirm it's not
-  // been hoisted into some shared helper that other actions would also pick up unreviewed.
+  // The DOMException handling stays local to each action's own try/catch — confirm it's not
+  // been hoisted into some shared helper that every action would pick up unreviewed. PIM#696
+  // deliberately added a second, reviewed instance (bulkAssociateMediaCsvAction) for the same
+  // defect class as #693 — any further broadening beyond these two still needs its own review.
   const timeoutCatchMatches = actionsSource.match(/error\.name === "TimeoutError" \|\| error\.name === "AbortError"/g) || [];
   assert(
-    timeoutCatchMatches.length === 1,
-    `Expected exactly one DOMException TimeoutError/AbortError handler in actions.ts (triggerBulkPublishAction's own) ` +
-      `— found ${timeoutCatchMatches.length}. This fix must not be broadened to other actions without separate review.`,
+    timeoutCatchMatches.length === 2,
+    `Expected exactly two DOMException TimeoutError/AbortError handlers in actions.ts ` +
+      `(triggerBulkPublishAction's #693 fix + bulkAssociateMediaCsvAction's #696 fix) ` +
+      `— found ${timeoutCatchMatches.length}. Any further broadening needs separate review.`,
   );
   validated.push("non_bulk_timeout_handling_and_shared_fetch_layer_untouched");
 

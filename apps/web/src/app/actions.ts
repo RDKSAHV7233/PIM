@@ -2255,9 +2255,24 @@ export async function bulkAssociateMediaCsvAction(formData: FormData) {
     throw new Error("CSV content is required.");
   }
 
-  await postJsonForAction(formData, "/media/bulk-associations", {
-    csvContent,
-  });
+  try {
+    await postJsonForAction(formData, "/media/bulk-associations", {
+      csvContent,
+    });
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    handleSessionExpired(error, "/media");
+    // PIM#696 (same class as #693): bulkAssociate runs a synchronous, per-row loop with
+    // real DB writes and outbound image fetches inside one request. A client-side timeout
+    // here only abandons the response — the API keeps writing MediaAsset rows after the
+    // client gives up. Never claim "nothing happened"; point the operator at the Media
+    // Assets grid, the one place that reflects real server state, instead of asserting an
+    // outcome the client cannot know.
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      redirect("/media?bulkAssociationStatus=timeout");
+    }
+    redirect("/media?bulkAssociationStatus=error");
+  }
 
   redirect("/media?bulkAssociationStatus=done");
 }
