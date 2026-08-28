@@ -4,14 +4,9 @@ import { revalidatePath } from "next/cache";
 import { postJson, patchJson } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
 
-function resolveTenantKey(formData: FormData): string {
-  const fromForm = String(formData.get("tenantKey") ?? "").trim();
-  if (fromForm) return fromForm;
-  return String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim() || "default";
-}
-
 async function resolveQualityActionOptions(formData: FormData) {
-  return { tenantKey: resolveTenantKey(formData), authHeader: await getServerAuthHeader() };
+  void formData;
+  return { authHeader: await getServerAuthHeader() };
 }
 
 /**

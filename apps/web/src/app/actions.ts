@@ -295,18 +295,9 @@ function parseStringList(value: FormDataEntryValue | null): string[] {
   );
 }
 
-function resolveTenantKey(formData: FormData): string {
-  const fromForm = String(formData.get("tenantKey") ?? "").trim();
-  if (fromForm) {
-    return fromForm;
-  }
-  const fromEnv = String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim();
-  return fromEnv || "default";
-}
-
 async function resolveActionOptions(formData: FormData) {
+  void formData;
   return {
-    tenantKey: resolveTenantKey(formData),
     authHeader: await getServerAuthHeader(),
   };
 }
@@ -1936,7 +1927,6 @@ export async function retrySubmissionInlineAction(
   }
   try {
     await postJson(`/submissions/${encodeURIComponent(trimmedId)}/retry`, {}, {
-      tenantKey: String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim() || "default",
       authHeader: await getServerAuthHeader(),
     });
     revalidatePath("/channels/submissions");
@@ -2356,11 +2346,9 @@ export async function retryConnectorRecoveryGroupAction(
   if (actorRole !== "admin") {
     throw new Error("Forbidden: admin role required.");
   }
-  const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
   const options: ApiRequestOptions = {
     authHeader,
     role: actorRole,
-    tenantKey,
   };
   const result = await postJson<{ queued: number }>(
     `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/recovery/retry-group`,
@@ -2380,11 +2368,9 @@ export async function importShopifyConfigAction(
   if (actorRole !== "admin") {
     throw new Error("Forbidden: admin role required.");
   }
-  const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
   const options: ApiRequestOptions = {
     authHeader,
     role: actorRole,
-    tenantKey,
   };
   const result = await postJson<{ metafields: unknown[]; collections: unknown[]; taxonomy: unknown[]; fetchedAt: string }>(
     `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/shopify-config/import`,
@@ -2598,8 +2584,7 @@ export async function confirmCatalogLinksAction(
   if (actorRole !== "admin") {
     throw new Error("Forbidden: admin role required.");
   }
-  const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
-  const options: ApiRequestOptions = { authHeader, role: actorRole, tenantKey };
+  const options: ApiRequestOptions = { authHeader, role: actorRole };
   const result = await postJson<{ confirmed: number }>(
     `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link/confirm`,
     { links },
