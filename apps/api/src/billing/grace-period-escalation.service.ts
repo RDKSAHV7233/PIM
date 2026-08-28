@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { CommercialNotificationsService } from "./commercial-notifications.service";
 import { PlanUsageService } from "./plan-usage.service";
@@ -49,8 +50,8 @@ export class GracePeriodEscalationService implements OnModuleInit, OnModuleDestr
     }
     this.logger.log("Grace-period escalation timer scheduled (6-hour interval).");
     this.initialTimeout = setTimeout(() => {
-      void this.runEscalation();
-      this.intervalHandle = setInterval(() => void this.runEscalation(), ESCALATION_INTERVAL_MS);
+      void this.runScheduledEscalation();
+      this.intervalHandle = setInterval(() => void this.runScheduledEscalation(), ESCALATION_INTERVAL_MS);
       this.intervalHandle.unref();
     }, ESCALATION_INITIAL_DELAY_MS);
     this.initialTimeout.unref();
@@ -73,6 +74,20 @@ export class GracePeriodEscalationService implements OnModuleInit, OnModuleDestr
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown");
       this.logger.error(`Grace-period escalation run failed: ${message}`);
+    }
+  }
+
+  private async runScheduledEscalation(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("grace-period-escalation", () => this.runEscalation());
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? "unknown");
+      this.logger.error(`Scheduler lock failure for grace-period-escalation: ${message}`);
+      return;
+    }
+    if (!ran) {
+      this.logger.debug("Skipped grace-period escalation: another replica holds the scheduler lock.");
     }
   }
 

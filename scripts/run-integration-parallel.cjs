@@ -61,6 +61,7 @@ const DEFAULT_TESTS = [
   "apps/api/test/integration/worker-backpressure.test.cjs",
   "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
   "apps/api/test/integration/error-authority-api-filter-runtime.test.cjs",
+  "apps/api/test/integration/advisory-lock-mutual-exclusion.test.cjs",
 ];
 
 // ── Runner ────────────────────────────────────────────────────────────────────

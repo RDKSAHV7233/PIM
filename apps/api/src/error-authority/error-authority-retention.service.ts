@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { ObservabilityDbService } from "./observability-db.service";
 
 /**
@@ -36,8 +37,8 @@ export class ErrorAuthorityRetentionService implements OnModuleInit, OnModuleDes
       `Error Authority retention purge timer scheduled (24-hour interval, ${this.retentionDays()}-day retention).`,
     );
     this.initialTimeout = setTimeout(() => {
-      void this.runPurge();
-      this.intervalHandle = setInterval(() => void this.runPurge(), PURGE_INTERVAL_MS);
+      void this.runScheduledPurge();
+      this.intervalHandle = setInterval(() => void this.runScheduledPurge(), PURGE_INTERVAL_MS);
       this.intervalHandle.unref();
     }, PURGE_INITIAL_DELAY_MS);
     this.initialTimeout.unref();
@@ -66,6 +67,20 @@ export class ErrorAuthorityRetentionService implements OnModuleInit, OnModuleDes
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown");
       this.logger.error(`Error Authority retention purge run failed: ${message}`);
+    }
+  }
+
+  private async runScheduledPurge(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("error-authority-retention", () => this.runPurge());
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? "unknown");
+      this.logger.error(`Scheduler lock failure for error-authority-retention: ${message}`);
+      return;
+    }
+    if (!ran) {
+      this.logger.debug("Skipped Error Authority retention purge: another replica holds the scheduler lock.");
     }
   }
 

@@ -1,5 +1,6 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown, Optional } from "@nestjs/common";
 import { LoggerService } from "../common/logging/logger.service";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { InternalOpsAlertsService } from "../internal-ops/internal-ops-alerts.service";
 import { MediaIntegrityService, MediaIntegrityScanResult } from "./media-integrity.service";
 
@@ -40,8 +41,8 @@ export class MediaIntegritySchedulerService implements OnApplicationBootstrap, O
     );
 
     this.initialTimer = setTimeout(() => {
-      void this.runScheduledScan();
-      this.intervalTimer = setInterval(() => void this.runScheduledScan(), intervalMs);
+      void this.runScheduledScanWithLock();
+      this.intervalTimer = setInterval(() => void this.runScheduledScanWithLock(), intervalMs);
       this.intervalTimer.unref();
     }, initialDelayMs);
     this.initialTimer.unref();
@@ -98,6 +99,22 @@ export class MediaIntegritySchedulerService implements OnApplicationBootstrap, O
       return { ran: false, reason: "failed_open" };
     } finally {
       this.running = false;
+    }
+  }
+
+  private async runScheduledScanWithLock(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("media-integrity-scan", () => this.runScheduledScan().then(() => undefined));
+    } catch (error: unknown) {
+      this.logger.warn("Scheduler lock failure for media-integrity-scan.", {
+        event: "MEDIA_INTEGRITY_SCAN_LOCK_FAILURE",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (!ran) {
+      this.logger.info("Skipped media integrity scheduled scan: another replica holds the scheduler lock.");
     }
   }
 

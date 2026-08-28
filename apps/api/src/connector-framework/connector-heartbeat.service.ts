@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
 import { resolveCurrentCredentialKeyVersion } from "../connector-installer/credential-encryption.util";
 import { LoggerService } from "../common/logging/logger.service";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorCredentialService } from "./connector-credential.service";
@@ -39,9 +40,41 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
     }
     // Delay first run so the app has time to finish booting and seed DB connections
     this.timer = setTimeout(() => {
-      void this.runStartupTasks();
-      this.intervalId = setInterval(() => void this.runHeartbeat(), HEARTBEAT_INTERVAL_MS);
+      void this.runScheduledStartupTasks();
+      this.intervalId = setInterval(() => void this.runScheduledHeartbeat(), HEARTBEAT_INTERVAL_MS);
     }, INITIAL_DELAY_MS);
+  }
+
+  private async runScheduledStartupTasks(): Promise<void> {
+    await this.runWithHeartbeatLock("startup", () => this.runStartupTasks());
+  }
+
+  private async runScheduledHeartbeat(): Promise<void> {
+    await this.runWithHeartbeatLock("heartbeat", () => this.runHeartbeat());
+  }
+
+  private async runWithHeartbeatLock(label: string, fn: () => Promise<void>): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("connector-heartbeat", async () => {
+        try {
+          await fn();
+        } catch (error: unknown) {
+          this.logger.warn("Connector heartbeat scheduled run failed open.", {
+            label,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    } catch (error: unknown) {
+      this.logger.error("Scheduler lock failure for connector-heartbeat.", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (!ran) {
+      this.logger.info("Skipped connector heartbeat: another replica holds the scheduler lock.", { label });
+    }
   }
 
   private async runStartupTasks(): Promise<void> {

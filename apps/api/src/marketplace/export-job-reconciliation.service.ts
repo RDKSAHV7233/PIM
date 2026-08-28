@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
 import { ExportJobStatus } from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { runWithTenantContext } from "../common/tenant/tenant-context";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -45,9 +46,9 @@ export class ExportJobReconciliationService
       return;
     }
     this.timer = setTimeout(() => {
-      void this.runReconciliation();
+      void this.runScheduledReconciliation();
       this.intervalId = setInterval(
-        () => void this.runReconciliation(),
+        () => void this.runScheduledReconciliation(),
         RECONCILE_INTERVAL_MS,
       );
       this.intervalId.unref();
@@ -152,5 +153,32 @@ export class ExportJobReconciliationService
     }
 
     return { examined, reconciled, errors };
+  }
+
+  private async runScheduledReconciliation(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("export-job-reconciliation", async () => {
+        try {
+          await this.runReconciliation();
+        } catch (error: unknown) {
+          this.logger.warn("Export job reconciliation scheduled run failed open.", {
+            event: "EXPORT_JOB_RECONCILIATION_SCHEDULED_FAILED_OPEN",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    } catch (error: unknown) {
+      this.logger.error("Scheduler lock failure for export-job-reconciliation.", {
+        event: "EXPORT_JOB_RECONCILIATION_LOCK_FAILURE",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (!ran) {
+      this.logger.info("Skipped export job reconciliation: another replica holds the scheduler lock.", {
+        event: "EXPORT_JOB_RECONCILIATION_LOCK_SKIPPED",
+      });
+    }
   }
 }

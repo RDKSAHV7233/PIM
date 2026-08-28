@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { CommercialNotificationsService } from "./commercial-notifications.service";
 import { PlanUsageService, type PlanProfileSummary } from "./plan-usage.service";
@@ -32,8 +33,8 @@ export class CommercialRemindersService implements OnModuleInit, OnModuleDestroy
       return;
     }
     this.initialTimeout = setTimeout(() => {
-      void this.runReminders();
-      this.intervalHandle = setInterval(() => void this.runReminders(), REMINDER_INTERVAL_MS);
+      void this.runScheduledReminders();
+      this.intervalHandle = setInterval(() => void this.runScheduledReminders(), REMINDER_INTERVAL_MS);
       this.intervalHandle.unref();
     }, REMINDER_INITIAL_DELAY_MS);
     this.initialTimeout.unref();
@@ -56,6 +57,20 @@ export class CommercialRemindersService implements OnModuleInit, OnModuleDestroy
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown");
       this.logger.error(`Commercial reminders run failed: ${message}`);
+    }
+  }
+
+  private async runScheduledReminders(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("commercial-reminders", () => this.runReminders());
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? "unknown");
+      this.logger.error(`Scheduler lock failure for commercial-reminders: ${message}`);
+      return;
+    }
+    if (!ran) {
+      this.logger.debug("Skipped commercial reminders: another replica holds the scheduler lock.");
     }
   }
 

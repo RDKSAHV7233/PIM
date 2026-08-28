@@ -31,6 +31,7 @@
     "test:integration:auth-revocation": "dotenv -o -e .env -- node apps/api/test/integration/auth-revocation.test.cjs",
     "test:integration:jwt-blocklist-contract": "node apps/api/test/integration/jwt-blocklist-contract.test.cjs",
     "test:integration:auth-mfa-login-contract": "node apps/api/test/integration/auth-mfa-login-contract.test.cjs",
+    "test:integration:advisory-lock-mutual-exclusion": "dotenv -o -e .env -- node apps/api/test/integration/advisory-lock-mutual-exclusion.test.cjs",
     "test:integration:mfa-enrollment": "dotenv -o -e .env -- node apps/api/test/integration/mfa-enrollment.test.cjs",
     "test:integration:auth-login-lockout": "dotenv -o -e .env -- node apps/api/test/integration/auth-login-lockout.test.cjs",
     "test:integration:auth-password-reset": "dotenv -o -e .env -- node apps/api/test/integration/auth-password-reset.test.cjs",

@@ -3,6 +3,7 @@ import { ModuleRef } from "@nestjs/core";
 import { BulkImportJobStatus, ExportJobStatus, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { LoggerService } from "../common/logging/logger.service";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import {
@@ -111,8 +112,8 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       return;
     }
     this.timer = setTimeout(() => {
-      void this.evaluateStuckJobs();
-      this.intervalId = setInterval(() => void this.evaluateStuckJobs(), OPS_ALERT_STUCK_EVALUATION_INTERVAL_MS);
+      void this.runScheduledStuckJobEvaluation();
+      this.intervalId = setInterval(() => void this.runScheduledStuckJobEvaluation(), OPS_ALERT_STUCK_EVALUATION_INTERVAL_MS);
       this.intervalId.unref();
     }, OPS_ALERT_INITIAL_DELAY_MS);
     this.timer.unref();
@@ -163,6 +164,21 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     });
 
     return { alerted: true, reason: "queued" };
+  }
+
+  private async runScheduledStuckJobEvaluation(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("internal-ops-alerts", () => this.evaluateStuckJobs().then(() => undefined));
+    } catch (error: unknown) {
+      this.logger.error("Scheduler lock failure for internal-ops-alerts.", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (!ran) {
+      this.logger.info("Skipped internal ops stuck-job alert evaluation: another replica holds the scheduler lock.");
+    }
   }
 
   async evaluateStuckJobs(now = new Date()): Promise<{ alerted: boolean; stuckCount: number; reason: string }> {

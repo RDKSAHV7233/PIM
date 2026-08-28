@@ -9,6 +9,7 @@
 
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
+import { runWithAdvisoryLock } from '../../common/scheduling/advisory-lock';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
 import { WooCommerceConnector } from './woocommerce.connector';
 import { ConnectorContext } from '../../connector-framework/connector.interface';
@@ -42,8 +43,8 @@ export class WooCommerceReconciliationService implements OnApplicationBootstrap,
       return;
     }
     this.timer = setTimeout(() => {
-      void this.runReconciliation();
-      this.intervalId = setInterval(() => void this.runReconciliation(), RECONCILE_INTERVAL_MS);
+      void this.runScheduledReconciliation();
+      this.intervalId = setInterval(() => void this.runScheduledReconciliation(), RECONCILE_INTERVAL_MS);
     }, INITIAL_DELAY_MS);
   }
 
@@ -99,6 +100,29 @@ export class WooCommerceReconciliationService implements OnApplicationBootstrap,
     } finally {
       this.running = false;
       this.logger.info('WooCommerce reconciliation completed.', { checked, republished, errors });
+    }
+  }
+
+  private async runScheduledReconciliation(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock('woocommerce-reconciliation', async () => {
+        try {
+          await this.runReconciliation();
+        } catch (error: unknown) {
+          this.logger.warn('WooCommerce reconciliation scheduled run failed open.', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    } catch (error: unknown) {
+      this.logger.error('Scheduler lock failure for woocommerce-reconciliation.', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (!ran) {
+      this.logger.info('Skipped WooCommerce reconciliation: another replica holds the scheduler lock.');
     }
   }
 

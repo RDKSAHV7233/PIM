@@ -1,6 +1,7 @@
 ﻿import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma, RecordStatus } from "@prisma/client";
 import { CacheService } from "../common/cache/cache.service";
+import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
@@ -2041,17 +2042,32 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     }
     const delayMs = Math.max(1000, next.getTime() - now.getTime());
     this.rollupTimeout = setTimeout(() => {
-      this.rollupAllTenantsUsage().catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Nightly usage rollup failed: ${message}`);
-      });
+      void this.runScheduledUsageRollup();
       this.rollupInterval = setInterval(() => {
-        this.rollupAllTenantsUsage().catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Nightly usage rollup failed: ${message}`);
-        });
+        void this.runScheduledUsageRollup();
       }, 24 * 60 * 60 * 1000);
     }, delayMs);
+  }
+
+  private async runScheduledUsageRollup(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("plan-usage-rollup", async () => {
+        try {
+          await this.rollupAllTenantsUsage();
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Nightly usage rollup failed: ${message}`);
+        }
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? "unknown");
+      this.logger.error(`Scheduler lock failure for plan-usage-rollup: ${message}`);
+      return;
+    }
+    if (!ran) {
+      this.logger.debug("Skipped plan usage rollup: another replica holds the scheduler lock.");
+    }
   }
 
   private async getUsageRow(tenantKey: string, month: string): Promise<UsageRow | null> {
