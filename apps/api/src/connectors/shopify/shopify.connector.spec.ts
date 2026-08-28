@@ -615,3 +615,182 @@ describe("ShopifyConnector.validateCredentials / validateStoredCredentialsDetail
     });
   });
 });
+
+// ─── buildVariantInput / buildProductSetInput ──────────────────────────────────
+// Coverage for the variant/media write-path request construction flagged as
+// "not verified" in the 2026-07-23 connector release verdict. These are pure
+// functions that build the GraphQL mutation input Shopify receives — they can't
+// substitute for a live-store round-trip, but they lock down the actual request
+// shape (price/compareAt/barcode/weight/HS-code logic, multi-variant option
+// derivation, and image filename handling) so regressions here are caught
+// without needing live Shopify credentials.
+
+describe("ShopifyConnector.buildVariantInput", () => {
+  let connector: ShopifyConnector;
+
+  beforeEach(() => {
+    connector = makeConnector();
+  });
+
+  function build(sku: string, sellingPrice: number, mrp: number, opts?: Record<string, unknown>) {
+    return (connector as any).buildVariantInput(sku, sellingPrice, mrp, opts) as Record<string, unknown>;
+  }
+
+  it("formats price to 2 decimals and derives compareAtPrice from mrp when higher", () => {
+    const result = build("SKU-1", 999, 1299);
+    expect(result.price).toBe("999.00");
+    expect(result.compareAtPrice).toBe("1299.00");
+  });
+
+  it("omits compareAtPrice when mrp is 0 and no explicit compareAtPrice is given", () => {
+    const result = build("SKU-1", 999, 0);
+    expect(result.compareAtPrice).toBeUndefined();
+  });
+
+  it("prefers an explicit compareAtPrice override over mrp", () => {
+    const result = build("SKU-1", 999, 1299, { compareAtPrice: 1499 });
+    expect(result.compareAtPrice).toBe("1499.00");
+  });
+
+  it("omits compareAtPrice when the resolved value is not a positive finite number", () => {
+    const result = build("SKU-1", 999, 1299, { compareAtPrice: -50 });
+    expect(result.compareAtPrice).toBeUndefined();
+  });
+
+  it("includes barcode only when provided", () => {
+    expect(build("SKU-1", 999, 1299, { barcode: "1234567890123" }).barcode).toBe("1234567890123");
+    expect(build("SKU-1", 999, 1299).barcode).toBeUndefined();
+  });
+
+  it("trims the SKU and sets inventoryItem.tracked to false (PIM tracks inventory, not Shopify)", () => {
+    const result = build("  SKU-1  ", 999, 1299) as any;
+    expect(result.inventoryItem.sku).toBe("SKU-1");
+    expect(result.inventoryItem.tracked).toBe(false);
+  });
+
+  it("includes weight/weightUnit only when weight is a positive number", () => {
+    const withWeight = build("SKU-1", 999, 1299, { weight: 0.5, weightUnit: "GRAMS" }) as any;
+    expect(withWeight.inventoryItem.measurement).toEqual({ weight: { value: 0.5, unit: "GRAMS" } });
+
+    const noWeight = build("SKU-1", 999, 1299, { weight: 0 }) as any;
+    expect(noWeight.inventoryItem.measurement).toBeUndefined();
+  });
+
+  it("defaults weightUnit to KILOGRAMS when weight is set without a unit", () => {
+    const result = build("SKU-1", 999, 1299, { weight: 2 }) as any;
+    expect(result.inventoryItem.measurement).toEqual({ weight: { value: 2, unit: "KILOGRAMS" } });
+  });
+
+  it("writes harmonizedSystemCode onto inventoryItem, not the top-level variant, when provided", () => {
+    const result = build("SKU-1", 999, 1299, { harmonizedSystemCode: "610910" }) as any;
+    expect(result.inventoryItem.harmonizedSystemCode).toBe("610910");
+    expect(result.harmonizedSystemCode).toBeUndefined();
+  });
+
+  it("defaults optionValues to a single Default Title option, and passes custom optionValues through unchanged", () => {
+    expect(build("SKU-1", 999, 1299).optionValues).toEqual([{ optionName: "Title", name: "Default Title" }]);
+    const custom = [{ optionName: "Color", name: "Red" }];
+    expect(build("SKU-1", 999, 1299, { optionValues: custom }).optionValues).toBe(custom);
+  });
+
+  it("defaults inventoryPolicy to CONTINUE and taxable to true, honoring overrides", () => {
+    const defaults = build("SKU-1", 999, 1299) as any;
+    expect(defaults.inventoryPolicy).toBe("CONTINUE");
+    expect(defaults.taxable).toBe(true);
+
+    const overridden = build("SKU-1", 999, 1299, { inventoryPolicy: "DENY", taxable: false }) as any;
+    expect(overridden.inventoryPolicy).toBe("DENY");
+    expect(overridden.taxable).toBe(false);
+  });
+});
+
+describe("ShopifyConnector.buildProductSetInput", () => {
+  let connector: ShopifyConnector;
+
+  const BASE: ProductPayload = {
+    sku: "SHOPIFY-TEST-001",
+    title: "Organic Cotton T-Shirt",
+    description: "100% organic cotton, breathable and comfortable.",
+    brand: "TestBrand",
+    hsnCode: "61091000",
+    gstRate: 5,
+    mrp: 1299,
+    sellingPrice: 999,
+    mainImageUrl: "https://cdn.example.com/media/tshirt.jpg",
+    attributes: { color: "White", size: "M" },
+    productType: "SHIRT",
+  };
+
+  beforeEach(() => {
+    connector = makeConnector();
+  });
+
+  function build(product: ProductPayload) {
+    return (connector as any).buildProductSetInput(product) as Record<string, unknown>;
+  }
+
+  it("builds a single-variant product with one Default Title variant and no productOptions override", () => {
+    const result = build(BASE) as any;
+    expect(result.variants).toHaveLength(1);
+    expect(result.variants[0].price).toBe("999.00");
+    expect(result.productOptions).toEqual([{ name: "Title", position: 1, values: [{ name: "Default Title" }] }]);
+  });
+
+  it("builds one Shopify variant per PIM variant when product.variants is present, deriving productOptions from the first variant's option names", () => {
+    const withVariants: ProductPayload = {
+      ...BASE,
+      variants: [
+        { sku: "SKU-RED-S", sellingPrice: 999, mrp: 1299, options: [{ optionName: "Color", name: "Red" }, { optionName: "Size", name: "S" }] },
+        { sku: "SKU-BLUE-M", sellingPrice: 1099, mrp: 1399, options: [{ optionName: "Color", name: "Blue" }, { optionName: "Size", name: "M" }] },
+      ],
+    };
+    const result = build(withVariants) as any;
+    expect(result.variants).toHaveLength(2);
+    expect(result.variants[0].inventoryItem.sku).toBe("SKU-RED-S");
+    expect(result.variants[1].inventoryItem.sku).toBe("SKU-BLUE-M");
+    expect(result.productOptions).toEqual([
+      { name: "Color", position: 1, values: [{ name: "Red" }, { name: "Blue" }] },
+      { name: "Size", position: 2, values: [{ name: "S" }, { name: "M" }] },
+    ]);
+  });
+
+  it("applies the product-level harmonizedSystemCode uniformly to every variant", () => {
+    const withVariants: ProductPayload = {
+      ...BASE,
+      hsnCode: "",
+      taxCodes: [{ regimeKey: "AE", key: "HS_CODE", value: "610910" }],
+      variants: [
+        { sku: "SKU-A", sellingPrice: 999, mrp: 1299 },
+        { sku: "SKU-B", sellingPrice: 1099, mrp: 1399 },
+      ],
+    } as ProductPayload;
+    const result = build(withVariants) as any;
+    expect(result.variants[0].inventoryItem.harmonizedSystemCode).toBe("610910");
+    expect(result.variants[1].inventoryItem.harmonizedSystemCode).toBe("610910");
+  });
+
+  it("derives an image filename with extension when the image URL path has a recognizable extension", () => {
+    const result = build(BASE) as any;
+    expect(result.files).toEqual([
+      { originalSource: BASE.mainImageUrl, alt: BASE.title, contentType: "IMAGE", filename: "product-image.jpg" },
+    ]);
+  });
+
+  it("omits the image filename when the URL has no recognizable extension, without dropping the image itself", () => {
+    const result = build({ ...BASE, mainImageUrl: "https://cdn.example.com/media/asset-id-abc123" }) as any;
+    expect(result.files).toEqual([
+      { originalSource: "https://cdn.example.com/media/asset-id-abc123", alt: BASE.title, contentType: "IMAGE" },
+    ]);
+  });
+
+  it("falls back to treating a malformed image URL as a raw path for extension derivation, rather than throwing", () => {
+    expect(() => build({ ...BASE, mainImageUrl: "not-a-valid-url.png" })).not.toThrow();
+    const result = build({ ...BASE, mainImageUrl: "not-a-valid-url.png" }) as any;
+    expect(result.files[0].filename).toBe("product-image.png");
+  });
+
+  it("marks DRAFT status through and defaults everything else to ACTIVE", () => {
+    expect((build({ ...BASE, status: "DRAFT" } as ProductPayload) as any).status).toBe("DRAFT");
+    expect((build(BASE) as any).status).toBe("ACTIVE");
+  });
+});
