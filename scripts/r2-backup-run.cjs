@@ -142,8 +142,10 @@ async function run() {
     console.log(`[r2-backup] pruned ${pruneKey} (older than ${RETENTION_DAYS}d, floor of ${MIN_BACKUPS_TO_KEEP} preserved)`);
   }
 
+  // `listed` was fetched after this run's upload, so it already includes the new
+  // backup — no +1 needed here (a prior version double-counted it).
   console.log(
-    `[r2-backup] done. total backups: ${listed.length - toPrune.length + 1}, pruned this run: ${toPrune.length}`,
+    `[r2-backup] done. total backups: ${listed.length - toPrune.length}, pruned this run: ${toPrune.length}`,
   );
 }
 
