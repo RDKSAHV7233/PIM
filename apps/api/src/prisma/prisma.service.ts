@@ -3,6 +3,12 @@ import { PrismaClient } from "@prisma/client";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { createTenantScopeExtension } from "./extensions/tenant-scope";
+import {
+  parseConnectionLimit,
+  withApplicationName,
+  withConnectionLimit,
+  withTenantDatabaseUrl,
+} from "./prisma-url";
 
 type DbPoolRow = {
   active: bigint | number;
@@ -17,44 +23,26 @@ export interface DbPoolStats {
   applicationName: string;
 }
 
-function withTenantDatabaseUrl(databaseUrl: string, tenantKey: string): string {
-  const encoded = encodeURIComponent(`-c app.tenant_key=${tenantKey}`);
-  if (databaseUrl.includes("options=")) {
-    return databaseUrl.replace(/([?&])options=[^&]*/, `$1options=${encoded}`);
-  }
-  if (databaseUrl.includes("?")) {
-    return `${databaseUrl}&options=${encoded}`;
-  }
-  return `${databaseUrl}?options=${encoded}`;
-}
-
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, PrismaClient>();
   private readonly CLIENT_LIMIT = 50;
   private readonly poolApplicationName = String(process.env.DB_POOL_APP_NAME ?? "vexa-pim-api").trim() || "vexa-pim-api";
+  private readonly connectionLimit = parseConnectionLimit(process.env.DB_POOL_CONNECTION_LIMIT);
 
   private getBaseDatabaseUrl(): string {
     const databaseUrl = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
     if (!databaseUrl) {
       throw new Error("DATABASE_URL_POOLED is not configured.");
     }
-    return this.withApplicationName(databaseUrl, this.poolApplicationName);
-  }
-
-  private withApplicationName(databaseUrl: string, appName: string): string {
-    if (databaseUrl.includes("application_name=")) {
-      return databaseUrl;
-    }
-    const encodedName = encodeURIComponent(appName);
-    if (databaseUrl.includes("?")) {
-      return `${databaseUrl}&application_name=${encodedName}`;
-    }
-    return `${databaseUrl}?application_name=${encodedName}`;
+    return withApplicationName(databaseUrl, this.poolApplicationName);
   }
 
   private createClient(tenantKey: string): PrismaClient {
-    const datasourceUrl = withTenantDatabaseUrl(this.getBaseDatabaseUrl(), tenantKey);
+    const datasourceUrl = withConnectionLimit(
+      withTenantDatabaseUrl(this.getBaseDatabaseUrl(), tenantKey),
+      this.connectionLimit,
+    );
     const baseClient = new PrismaClient({
       datasources: {
         db: {
