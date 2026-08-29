@@ -32,6 +32,15 @@ function makeService() {
 
   const queueService = {
     isJobPresent: jest.fn().mockResolvedValue(false),
+    getJobSnapshot: jest.fn().mockResolvedValue({
+      present: false,
+      state: null,
+      attemptsMade: null,
+      attemptsStarted: null,
+      processedOn: null,
+      finishedOn: null,
+      failedReasonPresent: false,
+    }),
   };
 
   const logger = {
@@ -55,7 +64,7 @@ describe("ExportJobReconciliationService", () => {
     const { service, queueService } = makeService();
     const result = await service.runReconciliation();
     expect(result).toEqual({ examined: 0, reconciled: 0, errors: 0 });
-    expect(queueService.isJobPresent).not.toHaveBeenCalled();
+    expect(queueService.getJobSnapshot).not.toHaveBeenCalled();
   });
 
   it("reconciles a stale row with no queue job", async () => {
@@ -66,12 +75,20 @@ describe("ExportJobReconciliationService", () => {
       status: ExportJobStatus.queued,
       retryCount: 0,
     });
-    queueService.isJobPresent.mockResolvedValue(false);
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: false,
+      state: null,
+      attemptsMade: null,
+      attemptsStarted: null,
+      processedOn: null,
+      finishedOn: null,
+      failedReasonPresent: false,
+    });
 
     const result = await service.runReconciliation();
 
     expect(result).toEqual({ examined: 1, reconciled: 1, errors: 0 });
-    expect(queueService.isJobPresent).toHaveBeenCalledWith(
+    expect(queueService.getJobSnapshot).toHaveBeenCalledWith(
       "connector-submission",
       "job-1_0",
     );
@@ -82,7 +99,7 @@ describe("ExportJobReconciliationService", () => {
     });
   });
 
-  it("skips a stale row whose queue job still exists", async () => {
+  it("skips a stale row whose queue job is still waiting or active", async () => {
     const { service, staleRows, updatedRows, queueService } = makeService();
     staleRows.push({
       id: "job-2",
@@ -90,16 +107,80 @@ describe("ExportJobReconciliationService", () => {
       status: ExportJobStatus.processing,
       retryCount: 1,
     });
-    queueService.isJobPresent.mockResolvedValue(true);
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: true,
+      state: "active",
+      attemptsMade: 0,
+      attemptsStarted: 1,
+      processedOn: new Date().toISOString(),
+      finishedOn: null,
+      failedReasonPresent: false,
+    });
 
     const result = await service.runReconciliation();
 
     expect(result).toEqual({ examined: 1, reconciled: 0, errors: 0 });
-    expect(queueService.isJobPresent).toHaveBeenCalledWith(
+    expect(queueService.getJobSnapshot).toHaveBeenCalledWith(
       "connector-submission",
       "job-2_1",
     );
     expect(updatedRows).toHaveLength(0);
+  });
+
+  it("reconciles a stale row when the queue job already completed", async () => {
+    const { service, staleRows, updatedRows, queueService } = makeService();
+    staleRows.push({
+      id: "job-completed",
+      tenantKey: "tenant-a",
+      status: ExportJobStatus.processing,
+      retryCount: 0,
+    });
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: true,
+      state: "completed",
+      attemptsMade: 1,
+      attemptsStarted: 1,
+      processedOn: new Date(Date.now() - 60_000).toISOString(),
+      finishedOn: new Date().toISOString(),
+      failedReasonPresent: false,
+    });
+
+    const result = await service.runReconciliation();
+
+    expect(result).toEqual({ examined: 1, reconciled: 1, errors: 0 });
+    expect(updatedRows).toHaveLength(1);
+    expect(updatedRows[0].data).toMatchObject({
+      status: ExportJobStatus.failed,
+      failureReason: expect.stringContaining('queue job reached terminal state "completed"'),
+    });
+  });
+
+  it("reconciles a stale row when the queue job already failed", async () => {
+    const { service, staleRows, updatedRows, queueService } = makeService();
+    staleRows.push({
+      id: "job-failed",
+      tenantKey: "tenant-a",
+      status: ExportJobStatus.queued,
+      retryCount: 0,
+    });
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: true,
+      state: "failed",
+      attemptsMade: 3,
+      attemptsStarted: 3,
+      processedOn: new Date(Date.now() - 60_000).toISOString(),
+      finishedOn: new Date().toISOString(),
+      failedReasonPresent: true,
+    });
+
+    const result = await service.runReconciliation();
+
+    expect(result).toEqual({ examined: 1, reconciled: 1, errors: 0 });
+    expect(updatedRows).toHaveLength(1);
+    expect(updatedRows[0].data).toMatchObject({
+      status: ExportJobStatus.failed,
+      failureReason: expect.stringContaining('queue job reached terminal state "failed"'),
+    });
   });
 
   it("uses the correct queue job ID with retryCount", async () => {
@@ -110,11 +191,19 @@ describe("ExportJobReconciliationService", () => {
       status: ExportJobStatus.retrying,
       retryCount: 2,
     });
-    queueService.isJobPresent.mockResolvedValue(false);
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: false,
+      state: null,
+      attemptsMade: null,
+      attemptsStarted: null,
+      processedOn: null,
+      finishedOn: null,
+      failedReasonPresent: false,
+    });
 
     await service.runReconciliation();
 
-    expect(queueService.isJobPresent).toHaveBeenCalledWith(
+    expect(queueService.getJobSnapshot).toHaveBeenCalledWith(
       "connector-submission",
       "job-3_2",
     );
@@ -127,7 +216,15 @@ describe("ExportJobReconciliationService", () => {
       { id: "j2", tenantKey: "t2", status: ExportJobStatus.queued, retryCount: 0 },
       { id: "j3", tenantKey: "t1", status: ExportJobStatus.retrying, retryCount: 1 },
     );
-    queueService.isJobPresent.mockResolvedValue(false);
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: false,
+      state: null,
+      attemptsMade: null,
+      attemptsStarted: null,
+      processedOn: null,
+      finishedOn: null,
+      failedReasonPresent: false,
+    });
 
     const result = await service.runReconciliation();
 
@@ -143,9 +240,17 @@ describe("ExportJobReconciliationService", () => {
       { id: "j1", tenantKey: "t1", status: ExportJobStatus.queued, retryCount: 0 },
       { id: "j2", tenantKey: "t1", status: ExportJobStatus.queued, retryCount: 0 },
     );
-    queueService.isJobPresent
+    queueService.getJobSnapshot
       .mockRejectedValueOnce(new Error("Redis connection failed"))
-      .mockResolvedValueOnce(false);
+      .mockResolvedValueOnce({
+        present: false,
+        state: null,
+        attemptsMade: null,
+        attemptsStarted: null,
+        processedOn: null,
+        finishedOn: null,
+        failedReasonPresent: false,
+      });
 
     const result = await service.runReconciliation();
 
@@ -161,7 +266,15 @@ describe("ExportJobReconciliationService", () => {
       status: ExportJobStatus.queued,
       retryCount: 0,
     });
-    queueService.isJobPresent.mockResolvedValue(false);
+    queueService.getJobSnapshot.mockResolvedValue({
+      present: false,
+      state: null,
+      attemptsMade: null,
+      attemptsStarted: null,
+      processedOn: null,
+      finishedOn: null,
+      failedReasonPresent: false,
+    });
 
     // First run: row is in active state, gets reconciled
     const updateMany1 = jest.fn().mockResolvedValue({ count: 1 });
@@ -184,9 +297,24 @@ describe("ExportJobReconciliationService", () => {
       status: ExportJobStatus.queued,
       retryCount: 0,
     });
-    // Make isJobPresent slow
-    queueService.isJobPresent.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(false), 50)),
+    // Make getJobSnapshot slow
+    queueService.getJobSnapshot.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                present: false,
+                state: null,
+                attemptsMade: null,
+                attemptsStarted: null,
+                processedOn: null,
+                finishedOn: null,
+                failedReasonPresent: false,
+              }),
+            50,
+          ),
+        ),
     );
 
     const [r1, r2] = await Promise.all([

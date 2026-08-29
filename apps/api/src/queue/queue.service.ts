@@ -71,6 +71,16 @@ export interface QueueFailedJobSummary {
   finishedOn: string | null;
 }
 
+export interface QueueJobSnapshot {
+  present: boolean;
+  state: string | null;
+  attemptsMade: number | null;
+  attemptsStarted: number | null;
+  processedOn: string | null;
+  finishedOn: string | null;
+  failedReasonPresent: boolean;
+}
+
 type MemoryQueueRegistration = {
   kind: "memory";
   handler: QueueHandler<unknown>;
@@ -175,6 +185,18 @@ function loadRedis(): typeof import("redis") {
     redisModule = require("redis") as typeof import("redis");
   }
   return redisModule;
+}
+
+function missingQueueJobSnapshot(): QueueJobSnapshot {
+  return {
+    present: false,
+    state: null,
+    attemptsMade: null,
+    attemptsStarted: null,
+    processedOn: null,
+    finishedOn: null,
+    failedReasonPresent: false,
+  };
 }
 
 const SCHEDULED_SYNC_QUEUE_ID = "connector-sync-schedule";
@@ -359,22 +381,38 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   async isJobPresent(queueName: QueueName, jobId: string): Promise<boolean> {
+    const snapshot = await this.getJobSnapshot(queueName, jobId);
+    return snapshot.present;
+  }
+
+  async getJobSnapshot(queueName: QueueName, jobId: string): Promise<QueueJobSnapshot> {
     const name = String(queueName);
     const registration = this.registrations.get(name);
-    if (!registration) return false;
+    if (!registration) return missingQueueJobSnapshot();
     if (registration.kind === "memory") {
       // Memory enqueue is synchronous: if we're checking after an enqueue
       // throw, the payload was never pushed — return false (genuinely absent).
       // Memory queue does not use jobId dedup, so we cannot look up by ID;
       // returning false is semantically correct because the enqueue either
       // fully succeeded (no throw, no inspection needed) or fully failed.
-      return false;
+      return missingQueueJobSnapshot();
     }
     for (const [, lane] of registration.lanes) {
       const job = await lane.queue.getJob(jobId);
-      if (job) return true;
+      if (job) {
+        const attemptsStarted = (job as { attemptsStarted?: unknown }).attemptsStarted;
+        return {
+          present: true,
+          state: await job.getState(),
+          attemptsMade: Number(job.attemptsMade ?? 0),
+          attemptsStarted: typeof attemptsStarted === "number" ? attemptsStarted : null,
+          processedOn: typeof job.processedOn === "number" ? new Date(job.processedOn).toISOString() : null,
+          finishedOn: typeof job.finishedOn === "number" ? new Date(job.finishedOn).toISOString() : null,
+          failedReasonPresent: Boolean(job.failedReason),
+        };
+      }
     }
-    return false;
+    return missingQueueJobSnapshot();
   }
 
   async getMetrics(): Promise<Record<string, QueueMetrics>> {

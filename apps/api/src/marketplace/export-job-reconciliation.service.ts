@@ -18,6 +18,7 @@ const ACTIVE_STATUSES: ExportJobStatus[] = [
   ExportJobStatus.processing,
   ExportJobStatus.retrying,
 ];
+const TERMINAL_QUEUE_STATES = new Set(["completed", "failed"]);
 
 @Injectable()
 export class ExportJobReconciliationService
@@ -105,14 +106,18 @@ export class ExportJobReconciliationService
         examined++;
         try {
           const queueJobId = `${row.id}_${row.retryCount}`;
-          const present = await this.queueService.isJobPresent(
+          const queueJob = await this.queueService.getJobSnapshot(
             QUEUE_NAMES.CONNECTOR_SUBMISSION,
             queueJobId,
           );
 
-          if (present) {
+          if (queueJob.present && !TERMINAL_QUEUE_STATES.has(String(queueJob.state ?? ""))) {
             continue;
           }
+
+          const failureReason = queueJob.present
+            ? `Reconciled: queue job reached terminal state "${queueJob.state}" while export job remained "${row.status}"`
+            : "Reconciled: no corresponding queue job found after staleness threshold";
 
           await runWithTenantContext(row.tenantKey, async () => {
             const updated = await this.prisma
@@ -124,8 +129,7 @@ export class ExportJobReconciliationService
                 },
                 data: {
                   status: ExportJobStatus.failed,
-                  failureReason:
-                    "Reconciled: no corresponding queue job found after staleness threshold",
+                  failureReason,
                 },
               });
 
