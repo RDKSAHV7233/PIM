@@ -37,6 +37,8 @@ function makeService(options: {
   maxApiKeys: number;
   maxOutboundWebhooks: number;
   billingStatus?: string;
+  skuCount?: number;
+  maxSkus?: number;
 }) {
   const apiAccessKey = { count: jest.fn().mockResolvedValue(options.apiKeyCount) };
   const outboundWebhookEndpoint = { count: jest.fn().mockResolvedValue(options.webhookCount) };
@@ -61,6 +63,7 @@ function makeService(options: {
   jest.spyOn(service as never, "recomputeUsage").mockResolvedValue({
     ...USAGE_STUB,
     planTier: options.planTier,
+    skuCount: options.skuCount ?? USAGE_STUB.skuCount,
   } as never);
 
   jest.spyOn(service as never, "getPlanLimits").mockResolvedValue({
@@ -68,6 +71,7 @@ function makeService(options: {
     planTier: options.planTier,
     maxApiKeys: options.maxApiKeys,
     maxOutboundWebhooks: options.maxOutboundWebhooks,
+    maxSkus: options.maxSkus ?? BASE_LIMITS.maxSkus,
   } as never);
 
   return { service, prisma, apiAccessKey, outboundWebhookEndpoint };
@@ -135,6 +139,67 @@ describe("PlanUsageService.checkLimit — api_keys", () => {
     expect(prisma.tenant).toHaveBeenCalledWith(
       expect.stringContaining("my-tenant"),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// skus enforcement — the headline plan-usage metric (Plan & Usage's own SKU
+// meter and the #593 commercial decision on how a SKU is counted both rest on
+// this boundary actually being enforced, not just displayed). Unlike
+// api_keys/outbound_webhooks above, skuCount comes from recomputeUsage's own
+// aggregate rather than a live .count() call, so there's no query-shape
+// assertion here — the boundary comparison itself is what's under test.
+// ---------------------------------------------------------------------------
+
+describe("PlanUsageService.checkLimit — skus", () => {
+  it("GROWTH (maxSkus=10000, existing=9999): creation allowed — current would be 10000", async () => {
+    const { service } = makeService({
+      planTier: "GROWTH", apiKeyCount: 0, webhookCount: 0, maxApiKeys: 3, maxOutboundWebhooks: 3,
+      skuCount: 9999, maxSkus: 10000,
+    });
+    const result = await service.checkLimit("skus", 1, "acme");
+    expect(result.allowed).toBe(true);
+    expect(result.current).toBe(10000);
+    expect(result.limit).toBe(10000);
+  });
+
+  it("GROWTH (maxSkus=10000, existing=10000): creation blocked — would exceed limit", async () => {
+    const { service } = makeService({
+      planTier: "GROWTH", apiKeyCount: 0, webhookCount: 0, maxApiKeys: 3, maxOutboundWebhooks: 3,
+      skuCount: 10000, maxSkus: 10000,
+    });
+    const result = await service.checkLimit("skus", 1, "acme");
+    expect(result.allowed).toBe(false);
+    expect(result.current).toBe(10001);
+    expect(result.limit).toBe(10000);
+    expect(result.resource).toBe("skus");
+  });
+
+  it("TRIAL (maxSkus=500, existing=500): creation blocked at the real trial ceiling", async () => {
+    const { service } = makeService({
+      planTier: "TRIAL", apiKeyCount: 0, webhookCount: 0, maxApiKeys: 0, maxOutboundWebhooks: 0,
+      skuCount: 500, maxSkus: 500,
+    });
+    const result = await service.checkLimit("skus", 1, "acme");
+    expect(result.allowed).toBe(false);
+    expect(result.limit).toBe(500);
+  });
+
+  it("bulk creation (requestDelta > 1): a batch that would cross the limit is blocked as a whole, not partially allowed", async () => {
+    const { service } = makeService({
+      planTier: "GROWTH", apiKeyCount: 0, webhookCount: 0, maxApiKeys: 3, maxOutboundWebhooks: 3,
+      skuCount: 9995, maxSkus: 10000,
+    });
+    // 9995 existing + a 10-row bulk import request = 10005, over the 10000 ceiling,
+    // even though there was headroom for some (but not all) of the 10 rows.
+    const result = await service.checkLimit("skus", 10, "acme");
+    expect(result.allowed).toBe(false);
+    expect(result.current).toBe(10005);
+  });
+
+  it("PLAN_LIMITS Enterprise maxSkus matches what Plan & Usage actually renders to the operator (65/100000 on the live Enterprise tenant, 2026-08-29)", () => {
+    const enterprise = PLAN_LIMITS.find((r) => r.planTier === "ENTERPRISE");
+    expect(enterprise?.maxSkus).toBe(100000);
   });
 });
 
