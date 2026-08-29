@@ -45,6 +45,14 @@ export class QueueRateLimitError extends Error {
   }
 }
 
+export interface RedisCapacityInfo {
+  usedMemoryBytes: number;
+  maxMemoryBytes: number;
+  maxMemoryPolicy: string;
+  connectedClients: number;
+  blockedClients: number;
+}
+
 export interface QueueMetrics {
   waiting: number;
   active: number;
@@ -140,6 +148,18 @@ const DEFAULT_REDIS_URL = "redis://localhost:6379";
 
 let bullmqModule: typeof import("bullmq") | null = null;
 let redisModule: typeof import("redis") | null = null;
+
+function parseRedisInfoValue(info: string, key: string): string | null {
+  const match = info.match(new RegExp(`^${key}:(.+)$`, "m"));
+  return match ? match[1].trim() : null;
+}
+
+function parseRedisInfoInt(info: string, key: string): number {
+  const raw = parseRedisInfoValue(info, key);
+  if (raw === null) return 0;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 function resolveQueueBackend(): QueueBackend {
   const raw = String(process.env.QUEUE_BACKEND ?? DEFAULT_QUEUE_BACKEND).trim().toLowerCase();
@@ -1037,6 +1057,29 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   private buildBullLaneRegistryKey(queueName: string): string {
     return `pim1--lane-registry--${queueName}`;
+  }
+
+  async getRedisCapacityInfo(): Promise<RedisCapacityInfo | null> {
+    if (this.backend !== "bullmq") {
+      return null;
+    }
+    try {
+      const client = await this.ensureMetadataRedis();
+      if (!client) return null;
+      const [memorySection, clientsSection] = await Promise.all([
+        client.info("memory"),
+        client.info("clients"),
+      ]);
+      return {
+        usedMemoryBytes: parseRedisInfoInt(memorySection, "used_memory"),
+        maxMemoryBytes: parseRedisInfoInt(memorySection, "maxmemory"),
+        maxMemoryPolicy: parseRedisInfoValue(memorySection, "maxmemory-policy") ?? "unknown",
+        connectedClients: parseRedisInfoInt(clientsSection, "connected_clients"),
+        blockedClients: parseRedisInfoInt(clientsSection, "blocked_clients"),
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async ensureMetadataRedis(): Promise<RedisClientType | null> {

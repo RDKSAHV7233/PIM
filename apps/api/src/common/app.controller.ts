@@ -65,9 +65,11 @@ export class AppController {
   @ApiOperation({ summary: "Internal health — db pool, queue metrics, auth mode (admin only)" })
   @ApiResponse({ status: 200, description: "Detailed internal health" })
   async healthInternal() {
-    const dbPool = await this.prismaService.getPoolStats();
-    const queueMetrics = await this.queueService.getMetrics();
-    const redis = await this.cacheService.getHealthSnapshot();
+    const [dbPool, queueMetrics, redis] = await Promise.all([
+      this.prismaService.getPoolStats(),
+      this.queueService.getMetrics(),
+      this.cacheService.getHealthSnapshot(),
+    ]);
     const authMode = String(process.env.AUTH_MODE ?? "local").trim().toLowerCase();
     return {
       status: "ok",

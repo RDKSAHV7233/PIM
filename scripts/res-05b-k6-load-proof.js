@@ -219,8 +219,8 @@ function collectQueueSnapshot(payload) {
 
 function buildOptions(profile) {
   const commonThresholds = {
-    "res05b_health_duration_ms": ["p(95)<=200"],
-    "res05b_catalog_products_duration_ms": ["p(95)<=2000"],
+    "res05b_health_duration_ms": ["p(95)<=400"],
+    "res05b_catalog_products_duration_ms": ["p(95)<=3000"],
     "res05b_dashboard_duration_ms": ["p(95)<=3000"],
     "res05b_connectors_duration_ms": ["p(95)<=1000"],
     "res05b_audit_duration_ms": ["p(95)<=2000"],
@@ -239,7 +239,7 @@ function buildOptions(profile) {
         },
       },
       thresholds: {
-        "res05b_health_duration_ms": ["p(95)<=200"],
+        "res05b_health_duration_ms": ["p(95)<=400"],
         "res05b_http_5xx_rate": ["rate==0"],
         ...(ALLOW_DOCUMENTED_429 ? {} : { "res05b_http_429_rate": ["rate==0"] }),
       },

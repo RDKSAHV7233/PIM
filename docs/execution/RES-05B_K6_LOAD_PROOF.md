@@ -74,10 +74,10 @@ Distributed profiles set k6 `setupTimeout` to 20 minutes so the paced login setu
 
 ## Thresholds
 
-Initial thresholds mirror RES-05A:
+Thresholds are frozen in [RES-05A Workload Contract](RES-05A_WORKLOAD_CONTRACT.md) (issue #713):
 
-- health p95 <= 200 ms
-- catalog products p95 <= 2000 ms
+- health p95 <= 400 ms
+- catalog products p95 <= 3000 ms
 - dashboard p95 <= 3000 ms
 - connectors p95 <= 1000 ms
 - audit p95 <= 2000 ms
