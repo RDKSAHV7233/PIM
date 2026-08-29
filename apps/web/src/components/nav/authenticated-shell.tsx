@@ -71,7 +71,17 @@ export function AuthenticatedShell({
         </div>
       ) : null}
 
-      <div className="grid w-full grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
+      {/*
+        PIM QA finding (2026-08-29): align-items defaults to `stretch` on a CSS grid,
+        which force-stretches the `<main>` cell to match the sidebar column's full
+        nav-list height (~1400px, taller than most pages' actual content). That left
+        dead scrollable space below short pages' content, inside which the Channels
+        tab's own sticky sub-nav would re-trigger mid-scroll, reading as a duplicate
+        header. `items-start` makes each column take its own natural height instead —
+        the sidebar's `sticky` positioning inside AppSidebar still pins it correctly
+        while scrolling.
+      */}
+      <div className="grid w-full grid-cols-1 items-start gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <AppSidebar actorRole={actorRole} adminBoundaryRoles={adminBoundaryRoles} showInternal={false} />
         </div>
