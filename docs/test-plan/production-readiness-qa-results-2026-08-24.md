@@ -12,6 +12,26 @@ This is an execution scaffold. No results are pre-filled — every row and rollu
 - **End:** 2026-08-24 (§6.1–§6.11 executed; §6.12 offboarding deliberately not started — requires explicit human go/no-go per the plan's own hard rule before any destructive step)
 - **Results-integrity correction pass:** 2026-08-24 (same day) — a second pass re-scored every case against a normalized 4-value Result enum (`PASS`/`FAIL`/`BLOCKED`/`SKIPPED (OOS)`) and the literal wording of each case's own Expected criteria, per explicit user instruction. Several cases originally scored `PASS` were downgraded once "partial evidence" was checked against the full stated acceptance bar. See individual rows marked **RE-SCORED** or **REFRAMED** for the specific reasoning per case.
 
+## 2026-09-01 Browser Verification Update
+
+A live browser verification session on app.vexapim.com (Admin role, 1 September
+2026) produced fresh evidence that changes the status of several cases below:
+
+- **#660 (PRQ-PUBB-WOO-001/002):** WooCommerce submissions now reach terminal
+  status. 0 PENDING, 56/65 SUCCESS (was 0/83). Fresh test publish reached
+  SUCCESS in seconds. The stuck-PENDING defect is confirmed FIXED.
+- **#663 (BIL-X-005):** SKU meter shows 65/100K with variant-based counting.
+  Copy matches the canonical-variant definition. Confirmed FIXED in live
+  environment.
+- **#662 (PRQ-EDT-WOO-002/003):** Multi-variant publishes (2–3 items) all
+  SUCCESS. Product pages load without crash. Channel simulator: Export Ready,
+  Risk 0. Full edit→approve→republish cycle not executed.
+- **Connector health:** Both Shopify and WooCommerce ACTIVE, Healthy, Live
+  publish maturity. 87 SUCCESS / 14 ERROR across 101 submissions.
+
+This update does not change the original scored results. The original QA pass
+remains the execution authority; this note cross-references newer live evidence.
+
 ## Executive rollup
 
 | Priority | Shopify PASS | Shopify FAIL | Shopify BLOCKED | Woo PASS | Woo FAIL | Woo BLOCKED |
