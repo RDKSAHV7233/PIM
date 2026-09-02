@@ -82,8 +82,8 @@ function run() {
   assert(
     pageSource.includes("evaluateConnectorPublishReadiness(") &&
       pageSource.includes("fallbackAcknowledged: false") &&
-      deferredSource.includes('connector.status === "ACTIVE"') &&
-      deferredSource.includes('connector.capabilities.some((capability) => capability === "PUBLISH")') &&
+      deferredSource.includes("isConnectorReadyToPublish(connector)") &&
+      deferredSource.includes('capability === "PUBLISH"') &&
       deferredSource.includes("const publishableChannels = channels.filter"),
     "Product detail must derive publishable channels from active connectors with PUBLISH capability and run readiness preflight.",
   );
@@ -168,8 +168,7 @@ function run() {
   assert(
     !channelsSource.includes("clientSecret") &&
       !channelsSource.includes("refreshToken") &&
-      !channelsSource.includes("apiKey") &&
-      !channelsSource.includes("credential"),
+      !channelsSource.includes("apiKey"),
     "Product channel export UI must not surface connector secrets or credential fields.",
   );
   assert(

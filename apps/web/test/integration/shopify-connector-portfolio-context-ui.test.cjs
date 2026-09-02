@@ -33,7 +33,7 @@ function run() {
   assert(
     source.includes("Publication targets") &&
       source.includes("Selected targets will be used during Shopify publish.") &&
-      source.includes("Open connector details to select the publication targets Vexa should publish to."),
+      source.includes("Set publication targets"),
     "Installed Shopify cards must summarize publication target readiness and guide operators to the detail page when targets are missing.",
   );
 

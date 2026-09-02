@@ -17,7 +17,9 @@ function run() {
 
   assert(
     source.includes('title="Search"') &&
-      source.includes('searchCatalogProducts({ q: query, limit: 20 }, { authHeader })'),
+      source.includes("searchCatalogProducts(") &&
+      source.includes("q: query, limit: PAGE_SIZE + 1") &&
+      source.includes("{ authHeader }"),
     "Search route must remain backed by the tenant-scoped product search API.",
   );
   assert(

@@ -23,11 +23,26 @@ A live browser verification session on app.vexapim.com (Admin role, 1 September
 - **#663 (BIL-X-005):** SKU meter shows 65/100K with variant-based counting.
   Copy matches the canonical-variant definition. Confirmed FIXED in live
   environment.
-- **#662 (PRQ-EDT-WOO-002/003):** Multi-variant publishes (2–3 items) all
-  SUCCESS. Product pages load without crash. Channel simulator: Export Ready,
-  Risk 0. Full edit→approve→republish cycle not executed.
+- **#662 (PRQ-EDT-WOO-002/003):** VERIFIED. Full edit→approve→republish cycle
+  executed on VX0109897: revert to draft → edit description → save → submit
+  for review → approve → queue WooCommerce export → SUCCESS at 1/9/2026,
+  11:00:03 PM.
+- **Shopify metafield/variant investigation:** 0 metafield definitions, 0
+  collections, 0 taxonomy nodes configured. All 13 Shopify errors are
+  "A primary HTTPS image is required" (data quality). No multi-variant
+  products in catalog — full variant/metafield testing requires seeded data.
 - **Connector health:** Both Shopify and WooCommerce ACTIVE, Healthy, Live
   publish maturity. 87 SUCCESS / 14 ERROR across 101 submissions.
+
+- **Cross-cutting regression (1/9/2026, contract fixes 2/9/2026):** API unit
+  tests: 62/63 suites passed, 1277/1295 tests (18 skipped), 0 failures. Web
+  integration tests: 180/183 passed (98%), 3 remaining. Known env blockers:
+  auth-cookie-csrf, error-authority-env-contract (need JWT_SECRET,
+  PIM_API_BASE_URL, AUTH_MODE=db). Known pre-existing: public-signup-web-flow
+  (hang). 8 UI contract drift tests fixed on 2/9/2026: quality-approvals,
+  quality-reviewer-role, rejection-route, search-route,
+  shopify-connector-portfolio-context, shopify-managed-install-handoff,
+  publish-export-pilot-proof, version-manager-responsive.
 
 This update does not change the original scored results. The original QA pass
 remains the execution authority; this note cross-references newer live evidence.

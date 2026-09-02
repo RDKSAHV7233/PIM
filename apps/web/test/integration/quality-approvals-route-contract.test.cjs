@@ -28,7 +28,7 @@ function run() {
       approvalsSource.includes("getIssueInbox(") &&
       approvalsSource.includes('productStatus: "in_review",') &&
       approvalsSource.includes("limit: 50,") &&
-      approvalsSource.includes("getProductListPage({ slim: true, limit: 1000 }, { role: actorRole, authHeader })") &&
+      approvalsSource.includes('getProductListPage({ slim: true, limit: 200, status: "in_review" }, { role: actorRole, authHeader })') &&
       approvalsSource.includes("loadSupportingRead(getWorkflowSla({ role: actorRole, authHeader }))") &&
       approvalsSource.includes("loadSupportingRead(getOverdueCount({ role: actorRole, authHeader }))"),
     "Approval Queue must load stats, in-review issue inbox data, and bounded product catalog page together from the shared auth context.",

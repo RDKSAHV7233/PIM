@@ -92,25 +92,25 @@ Current gate summary:
 
 - Shopify technical P0: **PARTIAL LIVE EVIDENCE**; connector healthy, live
   publish maturity, 31 SUCCESS / 5 ERROR submissions, all product readiness
-  dimensions green for sampled product. Remaining: variant/metafield
-  data-integrity investigation, full P0 evidence closure.
-- WooCommerce technical P0: **SUBSTANTIALLY ADVANCED**; #660 (stuck-PENDING)
-  confirmed FIXED with fresh live evidence (0 PENDING, 56/65 SUCCESS, fresh test
-  publish reached SUCCESS in seconds). Multi-variant publishes (2–3 items) all
-  SUCCESS. Channel simulator Export Ready, Risk 0. Full edit→approve→republish
-  cycle and store-admin evidence still pending.
+  dimensions green for sampled product. Metafield investigation: 0 definitions,
+  0 collections, 0 taxonomy nodes configured; all 13 Shopify errors are
+  missing-image data quality. No multi-variant products in catalog. Remaining:
+  seed multi-variant + metafield test data, store/admin evidence.
+- WooCommerce technical P0: **SUBSTANTIALLY ADVANCED**; #660 FIXED, #662
+  VERIFIED (full edit→approve→republish cycle on VX0109897 → SUCCESS at
+  1/9/2026, 11:00:03 PM). Channel simulator Export Ready, Risk 0.
+  Store-admin evidence still pending.
 - Plan commercial truth: **SUBSTANTIALLY ADVANCED**; #663 (SKU billing)
   confirmed FIXED in live environment (SKU meter shows 65/100K variant-based
   from 21,513 products, copy matches variant-based definition). ENTERPRISE plan
   active, no self-serve checkout, no public pricing shown. Product/Commercial
   owner signoff still pending.
-- Cross-cutting regression: **PARTIAL LOCAL COVERAGE**; targeted browser specs
-  pass, selected API-backed commercial/privacy/access checks pass locally after
-  startup harness hardening, and the 2026-09-01 targeted web-regression blocker
-  verification passes locally for auth/admin contracts, commercial/dashboard signup
-  controls, connector operations, catalog filters, bulk import/edit, mapping,
-  product-detail fetch orchestration, Internal Ops fallback UI, and pending
-  action feedback. Full sweep still pending.
+- Cross-cutting regression: **NEAR-FULL LOCAL COVERAGE**; API unit tests:
+  62/63 suites passed, 1277/1295 tests passed (18 skipped), 0 failures. Web
+  integration tests: 180/183 passed (98%), 3 remaining. Known environment
+  blockers: auth-cookie-csrf, error-authority-env-contract (need runtime
+  config). Known pre-existing: public-signup-web-flow (hang). 8 UI contract
+  assertion drift tests fixed on 2026-09-02.
 - Paid Pilot Readiness: **NOT READY**
 
 ### 2026-09-01 Browser Verification Evidence
@@ -133,20 +133,28 @@ following evidence on 1 September 2026:
 - Product channel readiness sampled: "FreshNest Checked Work Shirt Charcoal
   VX0109908" shows OK Shopify, OK WooCommerce, all dimensions green for
   Shopify, Connected + Approved + Completed for WooCommerce.
-- Multi-variant WooCommerce submissions (2–3 items) all reached SUCCESS in the
+- Multi-variant WooCommerce submissions (2–3 attempts) all reached SUCCESS in the
   submission log. Channel simulator for sampled product: Export Ready Yes,
   Risk Score 0, Compliance 0/0.
 - Bulk publish panel correctly shows eligible product count (31 of Ready
   products), confirmation dialog works, submission feedback banner renders.
+- Shopify connector detail: 0 metafield definitions, 0 collections, 0 taxonomy
+  nodes imported. All 13 Shopify errors are "A primary HTTPS image is required
+  for Shopify sync" (data quality, not connector). No multi-variant products
+  exist in the catalog — all products have only canonical variants.
+- Edit→approve→republish cycle verified end-to-end: VX0109897 reverted to
+  draft, description edited, submitted for review, approved, queued WooCommerce
+  export, reached SUCCESS at 1/9/2026, 11:00:03 PM.
 
 ### Confirmed blocker themes
 
 - **#660 (stuck-PENDING): FIXED** — confirmed with fresh live evidence on
   1/9/2026. WooCommerce submissions now reach terminal SUCCESS status.
 - **#663 (SKU billing): FIXED** — confirmed in live SKU meter and plan copy.
-- **#662 (variant edit/republish): STABLE** — multi-variant publishes succeed,
-  product pages load without crash, but full edit→approve→republish cycle not
-  executed in this verification.
+- **#662 (variant edit/republish): VERIFIED** — full edit→approve→republish
+  cycle executed on VX0109897: revert to draft → edit description → save →
+  submit for review → approve → queue WooCommerce export → SUCCESS at
+  1/9/2026, 11:00:03 PM.
 - **#661 (bulk count integrity): PARTIAL** — single-product bulk publish test
   passed with correct submission count; not retested at scale.
 - Several required evidence items remain blocked by credential-gated admin/store

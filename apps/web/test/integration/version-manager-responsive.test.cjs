@@ -16,18 +16,18 @@ function run() {
   const source = fs.readFileSync(VERSION_MANAGER, "utf8");
 
   assert(
-    source.includes("sm:hidden") || source.includes("sm:block"),
-    "version-manager.tsx must use sm: breakpoint classes to toggle between mobile and desktop layouts.",
+    source.includes("md:hidden") || source.includes("mobileHide"),
+    "version-manager.tsx must use md: breakpoint classes or DataGrid mobileHide to toggle between mobile and desktop layouts.",
   );
 
   assert(
-    source.includes("flex-col") && source.includes("space-y-"),
-    "version-manager.tsx must use flex-col and space-y-* for the mobile stacked layout.",
+    source.includes("space-y-") && source.includes("flex-wrap"),
+    "version-manager.tsx must use space-y-* and flex-wrap for stacked and responsive layouts.",
   );
 
   assert(
-    !source.includes("min-w-[980px]") || source.includes("sm:block"),
-    "version-manager.tsx must not expose min-w-[980px] without a responsive sm:block wrapper to prevent mobile overflow.",
+    !source.includes("min-w-[980px]") || source.includes("md:hidden"),
+    "version-manager.tsx must not expose min-w-[980px] without a responsive md:hidden wrapper to prevent mobile overflow.",
   );
 
   console.log(
