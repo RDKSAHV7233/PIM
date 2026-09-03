@@ -57,6 +57,8 @@ Current launch authority starts with:
   - Draft-only Shopify direct-token customer guide placeholder.
 - `CUSTOMER_PILOT_CLOSEOUT_TEMPLATE_2026-08-29.md`
   - Customer-specific controlled-evaluation closeout template.
+- `CONNECTOR_CLAIM_AUDIT_2026-09-03.md`
+  - Governing claim authority: Shopify & WooCommerce connector claim audit refreshed against current HEAD and 3 browser verification passes. CTO/PO signed.
 
 ## Team Review Rule
 
