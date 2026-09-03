@@ -2,7 +2,7 @@
 title: Master Service Agreement (MSA) — Structure Skeleton
 audience: internal-ops
 status: draft
-last_updated: 2026-05-26
+last_updated: 2026-09-03
 owner: PO / Legal
 ---
 

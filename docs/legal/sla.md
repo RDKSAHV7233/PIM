@@ -2,11 +2,17 @@
 title: Service Level Agreement (SLA) — Structure Skeleton
 audience: internal-ops
 status: draft
-last_updated: 2026-05-26
+last_updated: 2026-09-03
 owner: PO / Legal
 ---
 
 > **NOTE:** This document contains the section structure and key decisions that legal counsel must populate. Claude has provided the skeleton only. Do not publish or share this document with sellers until legal text has been reviewed and approved.
+
+> **Current-state notice, 2026-08-29:** This is a structure skeleton only.
+> Vexa has no approved contractual uptime, response-time, RPO/RTO,
+> support, PITR, or service-credit commitment until Legal, SRE/Ops, CTO, and PO
+> approve it with current telemetry, restore-drill, and on-call evidence. Current
+> infrastructure has no managed PITR.
 
 ---
 
@@ -23,12 +29,14 @@ Key decisions to document:
 
 ## 2. Service Availability Commitment
 
-**Proposed target (engineering baseline):** 99.5% monthly uptime for the Pilot release.
+**Current position:** no contractual uptime commitment is approved. Any uptime
+percentage is an internal planning target until Legal/SRE/PO sign off the
+measurement method, exclusions, monitoring source, and customer remedy.
 
 **[LEGAL TO CONFIRM AND SPECIFY]:**
 - Measurement window (monthly calendar month recommended)
 - Which endpoints are in scope (API `/api/v1/health`, Web app)
-- Which components are excluded from uptime calculation (third-party dependencies: Neon, Upstash, Railway, Cloudflare R2)
+- Which components are excluded from uptime calculation (third-party dependencies such as Railway, Redis provider, Cloudflare R2/CDN, marketplace APIs, Sentry/OTLP if enabled)
 - Definition of "unavailable" (API returns non-5xx vs. health check fails)
 - Measurement method (internal monitoring vs. third-party synthetic monitoring)
 
@@ -47,9 +55,9 @@ Key decisions:
 
 ## 4. Support Response Targets
 
-**[LEGAL TO CONFIRM AND SPECIFY]**
+**[LEGAL / SUPPORT OPS TO CONFIRM AND SPECIFY]**
 
-Proposed targets for Pilot:
+Draft non-binding internal targets for Pilot planning:
 
 | Severity | Response target | Resolution target |
 |----------|----------------|-------------------|
@@ -57,8 +65,12 @@ Proposed targets for Pilot:
 | P1 — major feature degraded | 4 hours | 24 hours |
 | P2 — minor issue | Next business day | 5 business days |
 
-Support channel: [FILL: email / Slack shared channel / ticket system]  
-Support hours: [FILL: business hours / 24×7 for P0]
+Support channel: email (bhoivishal216@gmail.com) — no ticket system for pilot  
+Support hours: best-effort business hours (sole operator); P0 response target is aspirational until secondary on-call is assigned
+
+Do not publish the table above until Support Ops confirms staffing, escalation,
+holiday coverage, and incident owner rotation. Current state: sole operator,
+no secondary on-call, no PagerDuty/Slack alerting configured.
 
 ---
 
@@ -89,10 +101,11 @@ Standard exclusions to consider:
 
 ## 7. Data Backup and Recovery
 
-**Engineering baseline (to be confirmed by legal):**
-- RPO: 24 hours (daily pg_dump to Cloudflare R2 + Neon 7-day PITR)
-- RTO: 4 hours (manual restore + smoke test)
-- These are Pilot targets. Enterprise RPO/RTO requires streaming replication (Phase 3).
+**Engineering planning baseline (not contractual):**
+- RPO target: 24 hours, based on daily `pg_dump` to Cloudflare R2 when backup secrets and workflow are configured.
+- RTO target: 4 hours, based on manual restore plus smoke test.
+- Current limitation: no managed PITR is available in the Railway Postgres baseline.
+- Enterprise RPO/RTO requires either WAL-archiving-based PITR, streaming replication, or migration to a managed Postgres provider with approved PITR.
 
 **[LEGAL TO CONFIRM]:** Whether RPO/RTO commitments are contractually binding or best-effort for Pilot.
 

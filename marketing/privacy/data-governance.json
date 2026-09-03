@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-03",
+  "approvalState": "BLOCKED_WAITING_ON_PRIVACY_SECURITY_LEGAL",
+  "rules": {
+    "codexMayInventPolicy": false,
+    "leadCollectionRequiresApproval": true,
+    "identifiableAttributionRequiresApproval": true,
+    "nonEssentialTrackingRequiresApproval": true,
+    "marketingCommunicationRequiresApproval": true,
+    "customerProofPublicationRequiresApproval": true
+  },
+  "approvalFieldsRequired": [
+    "privacyImpact",
+    "securityReviewStatus",
+    "legalReviewStatus",
+    "approver",
+    "approvalDate",
+    "policyVersion",
+    "expiryOrReviewTrigger"
+  ],
+  "dataFlows": [
+    {
+      "id": "MKT-PRIV-LEAD-FORM",
+      "name": "Lead forms",
+      "status": "BLOCKED_WAITING_ON_PRIVACY_SECURITY_LEGAL",
+      "privacyImpact": "PII",
+      "approver": null,
+      "approvalDate": null,
+      "policyVersion": null,
+      "expiryOrReviewTrigger": null
+    },
+    {
+      "id": "MKT-PRIV-ATTRIBUTION",
+      "name": "UTM attribution tied to identifiable leads",
+      "status": "BLOCKED_WAITING_ON_PRIVACY_SECURITY_LEGAL",
+      "privacyImpact": "PII_TRACKING",
+      "approver": null,
+      "approvalDate": null,
+      "policyVersion": null,
+      "expiryOrReviewTrigger": null
+    },
+    {
+      "id": "MKT-PRIV-EMAIL-NURTURE",
+      "name": "Email nurture and tracking",
+      "status": "BLOCKED_WAITING_ON_PRIVACY_SECURITY_LEGAL",
+      "privacyImpact": "MARKETING_COMMUNICATIONS",
+      "approver": null,
+      "approvalDate": null,
+      "policyVersion": null,
+      "expiryOrReviewTrigger": null
+    },
+    {
+      "id": "MKT-PRIV-ANALYTICS",
+      "name": "Non-essential analytics, pixels and cookies",
+      "status": "BLOCKED_WAITING_ON_PRIVACY_SECURITY_LEGAL",
+      "privacyImpact": "TRACKING",
+      "approver": null,
+      "approvalDate": null,
+      "policyVersion": null,
+      "expiryOrReviewTrigger": null
+    }
+  ]
+}

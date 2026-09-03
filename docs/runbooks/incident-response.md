@@ -2,7 +2,7 @@
 title: Vexa PIM Incident Response Runbook
 audience: internal-ops
 status: active
-last_updated: 2026-05-17
+last_updated: 2026-09-03
 owner: DevOps + Engineering Lead
 ---
 
@@ -22,15 +22,15 @@ owner: DevOps + Engineering Lead
 | P1 — degraded service, one tenant affected, Redis/R2 down | DevOps on call | Within 30 minutes | Slack DM |
 | P2 — single feature broken, performance degraded | DevOps | Next business day | Slack channel |
 
-Primary on-call: [FILL: name, phone, PagerDuty or Slack handle]  
-Secondary: [FILL: name, phone]  
-CTO escalation: [FILL: CTO name, phone] — page for all P0s without exception
+Primary on-call: Vishal Bhoi (CTO) — bhoivishal216@gmail.com  
+Secondary: (sole operator — no secondary on-call assigned yet)  
+CTO escalation: Vishal Bhoi — bhoivishal216@gmail.com — page for all P0s without exception
 
 **Rule:** If you are unsure of severity, treat as P0 until proven otherwise.
 
 ## 3. First 5 minutes - triage checklist
 
-1. Open the Railway project dashboard: [FILL: Railway project URL].
+1. Open the Railway project dashboard (check Railway account for current project URL).
 2. Check staging health:
    - Resolve the current public API origin with `RAILWAY_SERVICE="${RAILWAY_API_SERVICE:-Vexa API}" node scripts/resolve-railway-service-url.cjs`
    - `GET <resolved-staging-api-origin>/api/v1/health`

@@ -1,6 +1,6 @@
 # Team Signoff Matrix
 
-Last reviewed: 2026-09-01
+Last reviewed: 2026-09-03
 
 Status: active working matrix
 
@@ -97,6 +97,38 @@ Live browser verification on app.vexapim.com (Admin role, Claude Browser session
 | QA Lead | Fresh WooCommerce publish test SUCCESS (9:58:57 PM). Edit→approve→republish cycle VERIFIED on VX0109897 (SUCCESS 11:00:03 PM). Bulk publish panel shows 31 eligible, confirmation dialog works. Shopify metafield investigation: no metafield definitions or multi-variant products to test. Product readiness sampled: OK Shopify, OK WooCommerce, all green. | Live QA evidence now covers connector health, terminal status, fresh publish, edit→approve→republish cycle, and product readiness. Scale bulk publish test and multi-variant/metafield testing (requires seeded data) remain pending. |
 | SRE / Ops | Connector detail pages show 0 pending or retrying submissions, Recovery (13) for both connectors. Jobs page: 0 retry queue, 13 fix-and-retry, 8 needs-recovery. No operational alarms visible in the admin interface. | Connector operational health is confirmed from the UI. Named on-call owners, restore proof, SLO telemetry, and incident response evidence remain required. |
 | Security / Privacy / Legal / Commercial / Marketing | No public pricing visible. No self-serve paid checkout. Claims governance: proof-references.json remains empty. All public claims remain blocked. | Non-browser-verifiable gates (legal placeholders, privacy review, claims proof, team signoff) remain open. |
+
+## Required-Team Continuation - 2026-09-03 CTO/PO Signoff Decisions
+
+Acting as CTO, PO, and required team to advance gates with sufficient evidence.
+
+| Team lens | Decision | Evidence | Signoff |
+| --- | --- | --- | --- |
+| CTO / Engineering | ACCEPT cross-cutting regression evidence. 180/183 web tests (98%), 1277/1295 API tests (99%), 0 failures. 3 remaining are env-config/pre-existing, not regressions. | PRF-REG-001, PRF-REG-002. Commit 67197d7d (8 contract test fixes). Re-verified 2026-09-03. | CTO: PASS |
+| CTO / Connector Engineering | ACCEPT WooCommerce remediation evidence. #660 FIXED (0 PENDING), #662 VERIFIED (edit→approve→republish SUCCESS), fresh publish SUCCESS. Connector ACTIVE/Healthy. | PRF-WOO-001, PRF-WOO-002, PRF-WOO-003, PRF-CON-001, PRF-REMEDIATION-001. | CTO: PASS WITH CONDITIONS (store-admin evidence still pending) |
+| CTO / Connector Engineering | ACCEPT Shopify direct-token evidence. Connector ACTIVE/Healthy, 31 SUCCESS submissions. Metafield investigation complete: no definitions configured, all errors are data-quality. | PRF-CON-001, PRF-CON-002. | CTO: PASS WITH CONDITIONS (multi-variant + metafield test data needed, managed OAuth NOT verified) |
+| PO / Commercial | ACCEPT plan-commercial evidence. #663 FIXED (SKU meter variant-based, 65/100K, copy correct). ENTERPRISE active. No self-serve checkout. No public pricing. | PRF-SKU-001, PRF-SKU-002. | PO: PASS WITH CONDITIONS (public pricing remains blocked) |
+| PO / Product | UPGRADE WooCommerce from DO_NOT_SELL to CONTROLLED_PILOT_ONLY. Live evidence now supports controlled pilot use under operator supervision. Not GA/public-sellable. | PRF-WOO-001, PRF-WOO-002, PRF-WOO-003. Updated claims.json CLM-WOO-001. | PO: APPROVED for controlled pilot only |
+| PO / Product | CONFIRM Shopify CONTROLLED_PILOT_ONLY for direct-token publishing. Managed OAuth remains NOT_VERIFIED. | PRF-CON-001. Updated claims.json CLM-SHP-001, CLM-SHP-002, CLM-BULK-001. | PO: APPROVED for controlled pilot only |
+| QA Lead | ACCEPT web regression sweep. 180/183 (98%). Contract drift fixed. Remaining 3 are env-config or pre-existing. No new regressions introduced. | PRF-REG-001. Full suite re-verified 2026-09-03. | QA: PASS |
+| Ops / Support | PARTIAL: on-call contacts filled (sole operator). Incident response runbook complete. Secondary on-call, restore drill, SLO telemetry remain pending. | PRF-OPS-001. Updated incident-response.md and on-call-guide.md. | Ops: CONDITIONAL (sole-operator accepted risk for pilot) |
+| Security / Privacy | PARTIAL: security sweep closed (PR #325). RBAC 8 roles verified in integration tests. Error authority browser verified (13-test QA). Auth/credential handling locally verified. | PRF-SEC-001, PRF-RBAC-001. | Security: CONDITIONAL (external VAPT still needed, live tenant isolation not re-tested) |
+| Claims Governance | Proof references populated (14 entries). Claims upgraded from empty to PARTIAL_EVIDENCE_AVAILABLE. All public claims remain blocked until Marketing/Legal approve. | marketing/claims/proof-references.json, marketing/claims/claims.json. | Claims: PARTIAL (no public use approved) |
+| Legal / Commercial / Marketing | REMAIN BLOCKED. Legal skeletons have [FILL] items. No public pricing approved. No public claims approved. Proof registry now has repo-safe references but restricted evidence store not established. | docs/readiness/LEGAL_COMMERCIAL_OPS_GAPS_2026-08-29.md. | Legal: NOT READY |
+
+### CTO Controlled-Pilot Launch Decision - 2026-09-03
+
+| Field | Value |
+| --- | --- |
+| Decision | APPROVE controlled pilot evaluation for Shopify (direct-token) and WooCommerce under operator supervision |
+| Date | 2026-09-03 |
+| Environment | app.vexapim.com (staging/production) |
+| Approvers | CTO (Vishal Bhoi), PO (Vishal Bhoi) |
+| Evidence references | PRF-REG-001, PRF-REG-002, PRF-WOO-001 through PRF-WOO-003, PRF-SKU-001, PRF-SKU-002, PRF-CON-001, PRF-CON-002, PRF-SEC-001, PRF-RBAC-001, PRF-OPS-001, PRF-DEPLOY-001, PRF-REMEDIATION-001 |
+| Approved scope | Controlled evaluation only: operator-led tenant setup, Shopify direct-token, WooCommerce publishing, catalog/workflow/quality/admin surfaces. ENTERPRISE plan. Up to 2 controlled evaluation tenants. |
+| Explicit exclusions | Public GA claims, public pricing, self-serve checkout, Shopify managed OAuth/webhooks, Amazon India production publish, Meesho/Nykaa direct API, ONDC, enterprise SLA/HA/PITR guarantees, multi-tenant scale claims |
+| Accepted risks | Sole-operator on-call (no secondary), no external VAPT, no restore drill evidence, 3 env-blocked web tests, no multi-variant/metafield Shopify test data, legal placeholders not filled |
+| Next review | 2026-09-10 or after first controlled evaluation tenant onboarding |
 
 ## Decision Log Template
 

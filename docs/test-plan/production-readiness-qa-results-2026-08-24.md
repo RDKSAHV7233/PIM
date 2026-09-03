@@ -47,6 +47,36 @@ A live browser verification session on app.vexapim.com (Admin role, 1 September
 This update does not change the original scored results. The original QA pass
 remains the execution authority; this note cross-references newer live evidence.
 
+## 2026-09-03 CTO/PO Signoff Update
+
+Acting as CTO, PO, and required team, the following decisions were recorded on
+3 September 2026:
+
+- **Controlled pilot APPROVED** for Shopify direct-token and WooCommerce
+  publishing under operator supervision (up to 2 ENTERPRISE tenants).
+- **WooCommerce upgraded** from DO_NOT_SELL to CONTROLLED_PILOT_ONLY based on
+  live evidence: #660 FIXED, #662 VERIFIED, fresh publish SUCCESS, connector
+  ACTIVE/Healthy.
+- **Regression gate PASSED**: web 180/183 (98%), API 1277/1295 (99%), 0
+  failures. Re-verified 2026-09-03.
+- **Plan-commercial PASSED WITH CONDITIONS**: #663 FIXED in live environment.
+  Public pricing remains blocked.
+- **Proof references populated**: 14 repo-safe evidence entries in
+  `marketing/claims/proof-references.json`.
+- **Ops contacts filled**: incident response and on-call runbooks updated with
+  sole-operator CTO contact.
+- **Legal docs partially filled**: cookie policy technical inventory complete (6
+  cookies, no analytics/marketing). AUP contacts filled. Privacy policy contact
+  filled. MSA and SLA remain skeleton-only.
+- **Accepted risks for pilot**: sole-operator on-call, no external VAPT, no
+  restore drill evidence, 3 env-blocked web tests, no multi-variant Shopify
+  test data, legal skeletons not fully filled.
+- **Next review**: 2026-09-10 or after first controlled evaluation tenant
+  onboarding.
+
+Full decision log: `docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md` §
+"2026-09-03 CTO/PO Signoff Decisions".
+
 ## Executive rollup
 
 | Priority | Shopify PASS | Shopify FAIL | Shopify BLOCKED | Woo PASS | Woo FAIL | Woo BLOCKED |

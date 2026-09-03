@@ -1,6 +1,6 @@
 # Vexa PIM Current State
 
-Last reviewed: 2026-09-01
+Last reviewed: 2026-09-03
 
 This is the canonical repository state summary. Code, live QA evidence, and the
 current governance files override dated execution notes, review memos, old root
@@ -21,8 +21,9 @@ Current release truth:
   evidence are available.
 - Public pricing is **blocked**. Public plan pages may show plan names,
   outcome-led descriptions, and approved CTAs only.
-- WooCommerce is code-complete but **not GA / not public-sellable** until QA and
-  PO review close the remaining live production-readiness findings.
+- WooCommerce is code-complete and upgraded to **controlled pilot only** as of
+  2026-09-03 CTO/PO decision. Not GA / not public-sellable until store-admin
+  evidence and full team signoff.
 - Shopify direct-token publishing is materially stronger than WooCommerce in
   the latest production QA pass, but Shopify paid-pilot readiness is still not a
   clean PASS because required P0/commercial/regression evidence remains open.
@@ -77,7 +78,7 @@ exist in code and still be blocked from public GA claims.
 | Myntra | `myntra` | live | API access requires account-manager enablement. |
 | Nykaa | `nykaa` | manual export | Seller upload workflow; direct API requires partner credentials. |
 | Shopify | `shopify` | live | Direct-token publishing, selected edit/republish, status sync, reconnect validation, jobs visibility, and manual bulk publish up to 50. Managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. |
-| WooCommerce | `woocommerce` | code complete | Installable/code-complete; GA sign-off is blocked on QA validation and PO review. Not public-sellable. |
+| WooCommerce | `woocommerce` | controlled pilot | Installable/code-complete; CTO/PO approved for controlled pilot 2026-09-03. #660 FIXED, #662 VERIFIED, fresh publish SUCCESS. Not GA/public-sellable until store-admin evidence and full team signoff. |
 
 ## Latest Readiness Evidence
 
@@ -111,7 +112,9 @@ Current gate summary:
   blockers: auth-cookie-csrf, error-authority-env-contract (need runtime
   config). Known pre-existing: public-signup-web-flow (hang). 8 UI contract
   assertion drift tests fixed on 2026-09-02.
-- Paid Pilot Readiness: **NOT READY**
+- Paid Pilot Readiness: **CONTROLLED PILOT APPROVED** (CTO/PO decision
+  2026-09-03: Shopify direct-token + WooCommerce, operator-led, up to 2
+  ENTERPRISE tenants. See TEAM_SIGNOFF_MATRIX for full decision log.)
 
 ### 2026-09-01 Browser Verification Evidence
 

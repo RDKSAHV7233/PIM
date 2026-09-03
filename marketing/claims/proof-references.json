@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-03",
+  "restrictedEvidenceStore": {
+    "status": "PARTIAL_REPO_SAFE_EVIDENCE",
+    "required": true,
+    "description": "Actual browser captures, tenant/account details, private URLs, approval artifacts and sensitive proof material must live outside normal repo files. Repo-safe references below point to code evidence, commit SHAs, test results, and dated verification sessions."
+  },
+  "repoSafeOnly": true,
+  "forbiddenInRepo": [
+    "tenant names",
+    "account emails",
+    "access tokens",
+    "CRM exports",
+    "raw lead data",
+    "private screenshots",
+    "video captures with customer data",
+    "production URLs that reveal private tenants"
+  ],
+  "proofReferences": [
+    {
+      "id": "PRF-REG-001",
+      "area": "cross-cutting-regression",
+      "description": "Web integration test suite: 180/183 passed (98%)",
+      "evidenceType": "test-result",
+      "date": "2026-09-03",
+      "repoPath": "apps/web/test/integration/run-all.cjs",
+      "details": "3 remaining: 2 env-config (auth-cookie-csrf, error-authority-env-contract), 1 pre-existing hang (public-signup-web-flow). 8 UI contract assertions fixed in commit 67197d7d.",
+      "commitSha": "67197d7d"
+    },
+    {
+      "id": "PRF-REG-002",
+      "area": "cross-cutting-regression",
+      "description": "API unit test suite: 62/63 suites, 1277/1295 tests passed, 0 failures",
+      "evidenceType": "test-result",
+      "date": "2026-09-01",
+      "repoPath": "apps/api/src",
+      "details": "18 tests skipped (environment-dependent). 0 failures."
+    },
+    {
+      "id": "PRF-WOO-001",
+      "area": "woocommerce-publish",
+      "description": "WooCommerce fresh publish test SUCCESS on live environment",
+      "evidenceType": "browser-verification",
+      "date": "2026-09-01",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "VX0109940 AeroLite Formal Flat Front Trousers Navy reached SUCCESS at 9:58:57 PM 1/9/2026 on app.vexapim.com."
+    },
+    {
+      "id": "PRF-WOO-002",
+      "area": "woocommerce-edit-republish",
+      "description": "#662 VERIFIED: full edit→approve→republish cycle on VX0109897",
+      "evidenceType": "browser-verification",
+      "date": "2026-09-01",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "Revert to draft → edit description → save → submit for review → approve → queue WooCommerce export → SUCCESS at 11:00:03 PM 1/9/2026."
+    },
+    {
+      "id": "PRF-WOO-003",
+      "area": "woocommerce-stuck-pending",
+      "description": "#660 FIXED: WooCommerce submissions reach terminal status",
+      "evidenceType": "browser-verification",
+      "date": "2026-09-01",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "Submission log: 101 total, 0 PENDING, 87 SUCCESS, 14 ERROR. All terminal."
+    },
+    {
+      "id": "PRF-SKU-001",
+      "area": "plan-commercial",
+      "description": "#663 FIXED: SKU billing confirmed variant-based in live environment",
+      "evidenceType": "browser-verification",
+      "date": "2026-09-01",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "SKU meter shows 65/100K. Copy reads: A simple product counts as 1 SKU. A product with multiple variants counts once per sellable variant. ENTERPRISE plan active."
+    },
+    {
+      "id": "PRF-SKU-002",
+      "area": "plan-commercial",
+      "description": "Canonical variant creation unit + integration tests pass",
+      "evidenceType": "test-result",
+      "date": "2026-09-01",
+      "repoPath": "apps/api/test/integration/plan-usage-sku-definition.test.cjs",
+      "details": "14 unit tests (plan-usage-sellable-sku-lifecycle.spec.ts) + static integration test validate variant-based SKU, sellable filtering, soft-delete exclusion, limit enforcement.",
+      "commitSha": "981144f2"
+    },
+    {
+      "id": "PRF-CON-001",
+      "area": "connector-health",
+      "description": "Both connectors ACTIVE, Healthy, Live publish maturity",
+      "evidenceType": "browser-verification",
+      "date": "2026-09-01",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "Shopify: 42 products with submission history, 31 SUCCESS / 13 ERROR (all missing-image data quality). WooCommerce: 55 products, 56/65 SUCCESS (86%)."
+    },
+    {
+      "id": "PRF-CON-002",
+      "area": "shopify-metafield",
+      "description": "Shopify metafield investigation: 0 definitions, 0 collections, 0 taxonomy nodes",
+      "evidenceType": "browser-verification",
+      "date": "2026-09-01",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "All 13 Shopify errors are missing-image data quality. No multi-variant products in catalog. Variant/metafield sync requires seeded test data."
+    },
+    {
+      "id": "PRF-SEC-001",
+      "area": "security-sweep",
+      "description": "Security sweep PR #325: MFA, SSRF, CSRF, deploy pipeline",
+      "evidenceType": "code-change",
+      "date": "2026-06-27",
+      "repoPath": "docs/readiness/SECURITY_PRIVACY_EVIDENCE_PACK_2026-08-29.md",
+      "details": "9 commits, 80 files. CSP nonce, OAuth PKCE, dead tenantKey deferred items all CLOSED 2026-08-28."
+    },
+    {
+      "id": "PRF-OPS-001",
+      "area": "ops-contacts",
+      "description": "Incident response and on-call contacts filled",
+      "evidenceType": "doc-update",
+      "date": "2026-09-03",
+      "repoPath": "docs/runbooks/incident-response.md",
+      "details": "Primary on-call: CTO (sole operator). Secondary not yet assigned. Severity matrix, triage checklist, and customer comms template complete."
+    },
+    {
+      "id": "PRF-DEPLOY-001",
+      "area": "staging-deploy",
+      "description": "Staging deploy pipeline verified: PRs #478+#479 merged",
+      "evidenceType": "ci-verification",
+      "date": "2026-08-09",
+      "repoPath": "docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md",
+      "details": "SHA 976ab94a verified E2E. Session-auth sync + smoke retry fixed."
+    },
+    {
+      "id": "PRF-RBAC-001",
+      "area": "rbac",
+      "description": "8 app roles + admin boundary roles verified in web integration tests",
+      "evidenceType": "test-result",
+      "date": "2026-09-01",
+      "repoPath": "apps/web/test/integration",
+      "details": "quality-reviewer-role-ui, connector-access-admin-form, admin-privacy-ui, internal-commercial-ops-ui all pass. Role denial paths verified in error-authority browser QA (13-test extended QA ALL PASS)."
+    },
+    {
+      "id": "PRF-REMEDIATION-001",
+      "area": "woocommerce-remediation",
+      "description": "WooCommerce remediation evidence pack: code-complete",
+      "evidenceType": "doc-bundle",
+      "date": "2026-08-29",
+      "repoPath": "docs/readiness/WOOCOMMERCE_REMEDIATION_EVIDENCE_PACK_2026-08-29.md",
+      "details": "Targeted API unit tests, browser E2E coverage, reconnect validation, bulk-publish dialog across 3 connectors."
+    }
+  ]
+}

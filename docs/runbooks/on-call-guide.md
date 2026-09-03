@@ -2,7 +2,7 @@
 title: Vexa PIM On-Call and Monitoring Guide
 audience: internal-ops
 status: active
-last_updated: 2026-05-17
+last_updated: 2026-09-03
 owner: DevOps
 ---
 

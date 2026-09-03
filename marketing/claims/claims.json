@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-03",
+  "approvalState": "CONDITIONALLY_APPROVED_BLOCKED",
+  "commercialClaimsMatrix": {
+    "status": "PARTIAL_EVIDENCE_AVAILABLE",
+    "version": "2026-09-03",
+    "source": "marketing/claims/proof-references.json",
+    "requiredBeforePublicUse": true
+  },
+  "rules": {
+    "marketingPlanIsEvidence": false,
+    "claimsMatrixAloneIsEvidence": false,
+    "requireCurrentProofReference": true,
+    "requireRestrictedEvidenceStoreForSensitiveMaterial": true
+  },
+  "claims": [
+    {
+      "id": "CLM-SHP-001",
+      "channel": "shopify",
+      "proposedCopy": "Publish approved products to Shopify",
+      "commercialStatus": "CONTROLLED_PILOT_ONLY",
+      "publicUseAllowed": false,
+      "proofReferenceIds": ["PRF-CON-001", "PRF-CON-002", "PRF-REG-001"],
+      "plans": ["ENTERPRISE"],
+      "roles": ["admin", "publisher", "channel_manager"],
+      "denialPathRequired": true,
+      "reason": "Live evidence exists: connector ACTIVE/Healthy, 31 SUCCESS submissions. Controlled pilot only — public claim blocked until PO/Marketing/Legal approve."
+    },
+    {
+      "id": "CLM-SHP-002",
+      "channel": "shopify",
+      "proposedCopy": "Correct live Shopify listings through edit and republish",
+      "commercialStatus": "CONTROLLED_PILOT_ONLY",
+      "publicUseAllowed": false,
+      "proofReferenceIds": ["PRF-CON-001"],
+      "plans": ["ENTERPRISE"],
+      "roles": ["admin", "editor", "publisher"],
+      "denialPathRequired": true,
+      "reason": "Shopify edit/republish observed in prior sessions. No multi-variant products to test variant-level republish. Controlled pilot only."
+    },
+    {
+      "id": "CLM-BULK-001",
+      "channel": "shopify",
+      "proposedCopy": "Bulk publish up to 50 Shopify products per operation",
+      "commercialStatus": "CONTROLLED_PILOT_ONLY",
+      "publicUseAllowed": false,
+      "proofReferenceIds": ["PRF-CON-001", "PRF-REMEDIATION-001"],
+      "plans": ["ENTERPRISE"],
+      "roles": ["admin", "publisher"],
+      "denialPathRequired": true,
+      "reason": "Bulk publish panel verified with 31 eligible products. Single-product and 3-connector bulk dialog tested. Scale bulk (50) not retested. Controlled pilot only."
+    },
+    {
+      "id": "CLM-OAUTH-001",
+      "channel": "shopify",
+      "proposedCopy": "Managed Shopify OAuth",
+      "commercialStatus": "NOT_VERIFIED",
+      "publicUseAllowed": false,
+      "proofReferenceIds": [],
+      "plans": [],
+      "roles": [],
+      "denialPathRequired": true,
+      "reason": "Not marketable as proven without current managed OAuth evidence. Direct-token only."
+    },
+    {
+      "id": "CLM-WOO-001",
+      "channel": "woocommerce",
+      "proposedCopy": "WooCommerce production publishing",
+      "commercialStatus": "CONTROLLED_PILOT_ONLY",
+      "publicUseAllowed": false,
+      "proofReferenceIds": ["PRF-WOO-001", "PRF-WOO-002", "PRF-WOO-003", "PRF-REMEDIATION-001"],
+      "plans": ["ENTERPRISE"],
+      "roles": ["admin", "publisher", "channel_manager"],
+      "denialPathRequired": true,
+      "reason": "Live evidence: #660 FIXED (0 PENDING), #662 VERIFIED (edit→approve→republish SUCCESS), fresh publish SUCCESS. Upgraded from DO_NOT_SELL to CONTROLLED_PILOT_ONLY. Not GA/public-sellable until store-admin evidence and PO/QA/CTO signoff."
+    },
+    {
+      "id": "CLM-PLAN-001",
+      "channel": "platform",
+      "proposedCopy": "SKU-based plan metering with variant-level counting",
+      "commercialStatus": "CONTROLLED_PILOT_ONLY",
+      "publicUseAllowed": false,
+      "proofReferenceIds": ["PRF-SKU-001", "PRF-SKU-002"],
+      "plans": ["ENTERPRISE"],
+      "roles": ["admin"],
+      "denialPathRequired": false,
+      "reason": "#663 FIXED in live environment. SKU meter shows variant-based counting. Unit + integration tests pass. Commercial owner signoff pending."
+    }
+  ]
+}

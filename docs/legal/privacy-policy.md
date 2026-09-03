@@ -2,7 +2,7 @@
 
 - Document owner: Product + Legal + CTO
 - Status: Active baseline for controlled rollout
-- Last updated: 2026-03-19
+- Last updated: 2026-09-03
 
 ## 1. Purpose
 This Privacy Policy explains how Vexa PIM handles personal data in connection with the Vexa PIM platform and related controlled-rollout operations.
@@ -124,4 +124,5 @@ Vexa PIM is intended for business use and is not directed to children. Customers
 We may update this Privacy Policy to reflect product, legal, or operational changes. Material changes should be communicated through the service or associated customer communication channels.
 
 ## 13. Contact
-Privacy requests and notices should be directed to the operator contact listed in the customer’s onboarding, order form, or pilot documentation.
+Privacy requests and notices should be directed to: bhoivishal216@gmail.com
+(CTO/operator — sole contact during controlled pilot phase).

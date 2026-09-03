@@ -1,7 +1,7 @@
 # Vexa PIM Connector Index
 
 Status: Canonical
-Last reviewed: 2026-06-15
+Last reviewed: 2026-09-03
 
 ## Read This First
 
@@ -29,13 +29,13 @@ Current connector implementations present in code:
 
 | Connector | Slug | Implementation status | Launch-stage policy |
 |---|---|---|---|
-| Amazon India | `amazon-in` | implemented | `planned` experimental preview |
+| Amazon India | `amazon-in` | implemented | `under_development` experimental preview |
 | Flipkart | `flipkart` | implemented | `live` |
 | Meesho | `meesho` | `partial` export-only | `manual` |
 | Myntra | `myntra` | implemented | `live` |
 | Nykaa | `nykaa` | partial/manual path | `manual` |
 | Shopify | `shopify` | implemented | `live` |
-| WooCommerce | `woocommerce` | `partial` | `planned` / early-access posture |
+| WooCommerce | `woocommerce` | code-complete | `controlled_pilot` — CTO/PO approved 2026-09-03 for operator-led evaluation |
 
 Important nuance:
 
@@ -46,6 +46,8 @@ Important nuance:
 
 - The marketplace channel shell currently centers on `amazon`, `flipkart`, `meesho`, and `shopify`
 - The connector registry also supports additional connector slugs such as `myntra`, `nykaa`, and `woocommerce`
+- `under_development` connectors are not production-publish commitments
+- `code_complete` connectors can exist in code and be installable while still blocked from GA/public-sellable claims
 - The canonical mapping UI path is `/channels/mappings`
 - The legacy mapping route under `/connectors/[installationId]/mapping` redirects into `/channels/mappings`
 

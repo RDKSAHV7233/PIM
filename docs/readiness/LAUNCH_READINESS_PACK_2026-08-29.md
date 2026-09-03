@@ -1,6 +1,6 @@
 # Launch Readiness Pack
 
-Last reviewed: 2026-09-01
+Last reviewed: 2026-09-03
 
 Status: active working pack
 
@@ -63,6 +63,7 @@ Current gate summary:
 - Local API startup timeout was traced to slow `AppModule` import on the Windows-mounted checkout; the relevant API-backed commercial, privacy, and connector-access harnesses now use a configurable 240-second startup budget and pass locally after direct `tsc` rebuild.
 - Dedicated API-key integration coverage now also passes locally after the fixture creates migrated viewer credentials and promotes the tenant to an Enterprise quota before multiple key assertions.
 - Plan-commercial #663 local policy evidence now passes: product approval creates a single canonical variant when needed, SKU usage remains variant-based, and billing/web copy reflects that definition.
-- Legal placeholders in MSA, SLA, cookie policy, and AUP.
-- Ops/support placeholders for named on-call contacts, incident escalation, tenant support-channel approval, backup/restore proof, and SLO telemetry.
-- Claims governance: proof references are empty, so public claims remain blocked.
+- Legal placeholders: MSA and SLA remain skeleton-only. Cookie policy updated 2026-09-03 with verified technical inventory (6 cookies, no analytics/marketing cookies). AUP contact and response targets filled. Privacy policy contact filled. Data localisation timestamp refreshed. All still require legal counsel review before publication.
+- Ops/support: on-call contacts filled (sole operator — CTO). Incident response runbook complete with severity matrix, triage checklist, and customer comms templates. Secondary on-call not yet assigned. Restore drill, SLO telemetry, and tenant support-channel approval remain pending.
+- Claims governance: proof-references.json populated with 14 repo-safe evidence entries (PRF-REG-001 through PRF-REMEDIATION-001). Claims.json upgraded from MISSING_CURRENT_AUTHORITY to PARTIAL_EVIDENCE_AVAILABLE. WooCommerce upgraded from DO_NOT_SELL to CONTROLLED_PILOT_ONLY. Shopify direct-token claims upgraded to CONTROLLED_PILOT_ONLY. Public claims remain blocked until Marketing/Legal approve.
+- CTO controlled-pilot launch decision recorded 2026-09-03: APPROVED for controlled evaluation (Shopify direct-token + WooCommerce), operator-led, up to 2 tenants, ENTERPRISE plan only. See TEAM_SIGNOFF_MATRIX for full decision log.

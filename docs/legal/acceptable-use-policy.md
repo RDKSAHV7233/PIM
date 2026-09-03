@@ -2,7 +2,7 @@
 title: Acceptable Use Policy (AUP) — Structure Skeleton
 audience: internal-ops
 status: draft
-last_updated: 2026-05-26
+last_updated: 2026-09-03
 owner: PO / Legal
 ---
 
@@ -79,7 +79,7 @@ Key decisions:
 - Vexa reserves the right to suspend a workspace immediately upon discovering a material AUP violation
 - Suspension procedure: notice (where practical) → workspace access blocked → Customer Data preserved for 30 days
 - Suspension is implemented via the platform's `accessStatus = suspended` mechanism
-- Customers may appeal suspension by contacting [FILL: commercial contact]
+- Customers may appeal suspension by contacting the CTO/operator (bhoivishal216@gmail.com during pilot phase)
 
 ---
 
@@ -88,8 +88,8 @@ Key decisions:
 **[LEGAL TO FILL]**
 
 Key decisions:
-- Contact email for reporting AUP violations by other users: [FILL]
-- Vexa will investigate and respond within [FILL] business days
+- Contact email for reporting AUP violations by other users: bhoivishal216@gmail.com
+- Vexa will investigate and respond within 5 business days
 
 ---
 
