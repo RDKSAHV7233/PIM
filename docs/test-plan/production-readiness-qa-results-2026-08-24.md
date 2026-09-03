@@ -124,6 +124,41 @@ No regressions observed since 2026-09-01 verification. All previously-confirmed
 fixes (#660, #662, #663) remain stable. Connector health, submission terminal
 status, and plan metering all confirmed operational on 2026-09-03.
 
+## 2026-09-04 Browser Verification Update
+
+4th consecutive browser verification pass on app.vexapim.com (Admin role,
+4 September 2026) via Chrome extension. No regressions from prior passes.
+
+### Dashboard (app.vexapim.com/dashboard)
+- Catalog Health: 21,508 total products, 991 Ready to Publish, 5 needing
+  enrichment, 10 blocking issues, 0 Pending Approvals
+- Publishing Health: 2 Active Channels (2 installed), 100 Blocked Listings,
+  0 Warnings to Review, Pricing coverage: Not configured
+
+### Connections (app.vexapim.com/channels/connectors)
+- Action Rail: 2 connected, 0 attention, 2 live
+- Start Setup: 1 (setup lane)
+- Accounts Needing Attention: 0
+
+### Submission Log (app.vexapim.com/channels/submissions)
+- Total Submissions: 100, PENDING: 0, Accepted: 87, Rejected/Error: 13
+- Current Submission: SUCCESS
+- #660 stuck-PENDING fix stable (0 PENDING across 100 total)
+
+### Plan & Usage (app.vexapim.com/admin/plan)
+- Plan: ENTERPRISE | Billing: Active paid | Access: Active
+- Billing month: 2026-09 | Resets on 1/10/2026
+- SKUs: 65 / 100,000 (0%) | Submissions: 2 / 100,000
+- Storage: 0.01 / 500 GB | Users: 16 / 999 (2%)
+- Connector Installations: 2 / 100 (2%) | Accounts Per Connector: 1 / 20 (5%)
+- API Keys: 0 / 50 | Outbound Webhooks: 0 / 50
+- All meters healthy and within limits
+
+### Verification verdict
+4th consecutive pass with zero regressions across 2026-08-24, 2026-09-01,
+2026-09-03, and 2026-09-04. All P0 fixes (#660, #662, #663) holding. Metrics
+stable — no drift in submission counts, connector health, or plan metering.
+
 ## Executive rollup
 
 | Priority | Shopify PASS | Shopify FAIL | Shopify BLOCKED | Woo PASS | Woo FAIL | Woo BLOCKED |
