@@ -77,6 +77,53 @@ Acting as CTO, PO, and required team, the following decisions were recorded on
 Full decision log: `docs/readiness/TEAM_SIGNOFF_MATRIX_2026-08-29.md` §
 "2026-09-03 CTO/PO Signoff Decisions".
 
+## 2026-09-03 Browser Verification Update
+
+A live browser verification session on app.vexapim.com (Admin role, 3 September
+2026) confirmed continued health across all previously-verified areas:
+
+### Dashboard (app.vexapim.com/dashboard)
+- Catalog Health: 21,508 total products, 991 Ready to Publish, 5 needing
+  enrichment, 10 blocking issues, 0 Pending Approvals
+- Publishing Health: 2 Active Channels (2 installed), 100 Blocked Listings,
+  0 Warnings to Review, Pricing coverage: Not configured
+- Connector Performance: First Publish Success Rate 100% (WooCommerce, last
+  30 days), Avg Setup to First Publish 480h
+
+### Connections (app.vexapim.com/channels/connectors)
+- Action Rail: 2 connected, 0 attention, 2 live
+- Accounts Needing Attention: 0 (both connectors healthy)
+- Connector Capability Matrix (2 live lanes):
+  - Shopify: Live publish, 1 active account, Publish/Validate/Status sync/
+    Webhooks all Yes, Auth SHOPIFY_MANAGED_INSTALL v0.1.0
+  - Flipkart: Live publish, 0 accounts installed, Publish/Validate/Status sync
+    Yes, Auth OAUTH2_AUTHCODE
+- WooCommerce categorized as Export/Manual connector (1 in portfolio review),
+  consistent with CONTROLLED_PILOT_ONLY status
+
+### Submission Log (app.vexapim.com/channels/submissions)
+- Total Submissions: 100, PENDING: 0, Accepted: 87, Rejected/Error: 13
+- Current Submission: SUCCESS (ID 07163e2d-3033-4f56-aafd-76c5ce649cfe)
+- Latest timeline: Submitted to channel 1/9/2026 11:00:03 PM → Accepted by
+  channel 1/9/2026 11:00:03 PM
+- Confirms #660 stuck-PENDING fix remains stable (0 PENDING across 100 total)
+
+### Plan & Usage (app.vexapim.com/admin/plan)
+- Plan: ENTERPRISE | Billing: Active paid | Access: Active
+- Billing month: 2026-09 | Resets on 1/10/2026
+- SKUs: 65 / 100,000 (0% used) — variant-based counting confirmed in meter
+  description
+- Submissions: 2 / 100,000 | Storage: 0.01 / 500 GB
+- Users: 16 / 999 (2%) | Connector Installations: 2 / 100 (2%)
+- Accounts Per Connector: 1 / 20 (5%)
+- API Keys: 0 / 50 | Outbound Webhooks: 0 / 50
+- All meters healthy and within limits
+
+### Verification verdict
+No regressions observed since 2026-09-01 verification. All previously-confirmed
+fixes (#660, #662, #663) remain stable. Connector health, submission terminal
+status, and plan metering all confirmed operational on 2026-09-03.
+
 ## Executive rollup
 
 | Priority | Shopify PASS | Shopify FAIL | Shopify BLOCKED | Woo PASS | Woo FAIL | Woo BLOCKED |

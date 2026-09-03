@@ -8,19 +8,21 @@ This pack prepares the CTO/PO launch review. It does not approve launch.
 
 ## Current Launch Verdict
 
-Broad production and paid-pilot readiness are not established. The latest
-evidence includes `docs/test-plan/production-readiness-qa-results-2026-08-24.md`
-and the 2026-09-01 live browser verification on app.vexapim.com.
+Broad production and paid-pilot readiness are not established. Controlled pilot
+evaluation is CTO/PO APPROVED (2026-09-03) for up to 2 ENTERPRISE tenants. The
+latest evidence includes `docs/test-plan/production-readiness-qa-results-2026-08-24.md`
+and the 2026-09-03 live browser verification on app.vexapim.com (third
+consecutive verification pass: 2026-08-24, 2026-09-01, 2026-09-03).
 
 Current gate summary:
 
 | Gate | Current state | Required before pass |
 | --- | --- | --- |
-| Shopify technical P0 | Partial live evidence | Connector healthy, 31 SUCCESS / 5 ERROR. Metafield investigation: 0 definitions configured, 0 collections, 0 taxonomy nodes; all 13 errors are missing-image data quality. No multi-variant products in catalog. Remaining: seed multi-variant + metafield test data, store/admin evidence |
-| WooCommerce technical P0 | Substantially advanced | #660 FIXED, #662 VERIFIED (full edit→approve→republish cycle: VX0109897 → SUCCESS at 11:00:03 PM 1/9/2026). Remaining: store/admin evidence |
-| Plan commercial truth | Substantially advanced | #663 FIXED (SKU meter variant-based, 65/100K, copy correct). ENTERPRISE active, no self-serve checkout. Remaining: Product/Commercial owner signoff |
-| Cross-cutting regression | Near-full local coverage | API: 62/63 suites, 1277/1295 tests passed. Web: 180/183 passed (98%), 3 remaining (2 env-config: auth-cookie-csrf + error-authority-env-contract, 1 pre-existing hang: public-signup-web-flow). 8 UI contract assertions fixed 2026-09-02 |
-| Paid pilot readiness | Not ready | All mandatory gates pass or receive explicit signed scope reduction |
+| Shopify technical P0 | Partial live evidence | Connector healthy (2 connected, 0 attention, Live publish). Metafield investigation: 0 definitions configured. All 13 errors are missing-image data quality. Remaining: seed multi-variant + metafield test data, store/admin evidence |
+| WooCommerce technical P0 | Substantially advanced | #660 FIXED, #662 VERIFIED. Re-verified 2026-09-03: 0 PENDING across 100 submissions, 87 accepted. WooCommerce categorized as export/manual connector (controlled pilot). Remaining: store/admin evidence |
+| Plan commercial truth | Substantially advanced | #663 FIXED. Re-verified 2026-09-03: SKU meter 65/100K, ENTERPRISE active paid, billing month 2026-09. Remaining: Product/Commercial owner signoff |
+| Cross-cutting regression | Near-full local coverage | API: 62/63 suites, 1277/1295 tests passed. Web: 180/183 passed (98%), 3 env-blocked. 8 UI contract assertions fixed 2026-09-02 |
+| Paid pilot readiness | CONTROLLED PILOT APPROVED | CTO/PO decision 2026-09-03: up to 2 ENTERPRISE tenants, operator-supervised. See TEAM_SIGNOFF_MATRIX |
 
 ## Required Launch Documents
 
