@@ -15,18 +15,39 @@ webhooks, plan metadata, and operations recovery surfaces all exist in code.
 
 Current release truth:
 
-- Broad production / paid-pilot readiness is **not established**.
+- **Commercial readiness: CONTROLLED PILOT APPROVED** (CTO/PO decision
+  2026-09-03). This authorizes a tightly supervised ENTERPRISE pilot for up to
+  2 tenants. It is **not GA approval** and does not waive the deferred security,
+  DR, legal, or operational gates.
+- **Engineering: NO NEW GENERAL READINESS WORK REQUIRED** unless pilot
+  onboarding exposes a reproducible defect.
+- **GA: NOT APPROVED.** Deferred items (VAPT, restore drill, legal counsel
+  review, secondary on-call, store-admin evidence) remain named GA blockers
+  with owners and target dates. They must not quietly disappear because the
+  pilot starts.
+- **First-tenant go-live: PENDING** — requires named tenant, defined scope,
+  signed minimum legal terms, support/escalation channel, and completed tenant
+  onboarding record.
+- **Next formal review: 2026-09-10** or immediately after first tenant
+  onboarding, whichever comes first.
 - Public marketing claims are **blocked** until the current Claims Matrix,
   restricted Proof Registry, privacy/security/legal approvals, and browser
   evidence are available.
 - Public pricing is **blocked**. Public plan pages may show plan names,
   outcome-led descriptions, and approved CTAs only.
-- WooCommerce is code-complete and upgraded to **controlled pilot only** as of
-  2026-09-03 CTO/PO decision. Not GA / not public-sellable until store-admin
-  evidence and full team signoff.
-- Shopify direct-token publishing is materially stronger than WooCommerce in
-  the latest production QA pass, but Shopify paid-pilot readiness is still not a
-  clean PASS because required P0/commercial/regression evidence remains open.
+
+### Controlled Pilot Scope
+
+```
+Pilot tier:            ENTERPRISE
+Tenant count:          1 initially, 2 maximum under current approval
+Supported connectors:  Shopify direct-token, WooCommerce
+                       (only capabilities already runtime-verified)
+Operating mode:        operator-supervised
+No promise of:         broad GA support, unmanaged/self-service onboarding,
+                       enterprise SLA beyond signed pilot terms, unverified
+                       connector capabilities, 5k–20k native bulk architecture
+```
 
 ## Current Code-Truth Snapshot
 
@@ -83,11 +104,12 @@ exist in code and still be blocked from public GA claims.
 ## Latest Readiness Evidence
 
 Latest production-readiness QA evidence is split between the broader live pass,
-the local remediation pack, and the 2026-09-01 live browser verification:
+the local remediation pack, and three consecutive browser verifications:
 
 - `docs/test-plan/production-readiness-qa-results-2026-08-24.md`
 - `docs/readiness/WOOCOMMERCE_REMEDIATION_EVIDENCE_PACK_2026-08-29.md`
-- 2026-09-01 browser verification on app.vexapim.com (Admin role, Claude Browser)
+- Browser verifications: 2026-08-24, 2026-09-01, 2026-09-03 (all Admin role,
+  app.vexapim.com — no regressions across three passes)
 
 Current gate summary:
 
