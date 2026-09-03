@@ -2,7 +2,7 @@
 
 - Document owner: Legal + CTO
 - Status: Operational baseline pending customer-specific annexes
-- Last updated: 2026-03-19
+- Last updated: 2026-09-03
 
 ## 1. Parties and Scope
 This Data Processing Agreement applies where the customer uses Vexa PIM and the Vexa PIM operator processes personal data on the customer’s behalf.
@@ -78,6 +78,28 @@ At minimum, subprocessors must be bound to:
 - processing terms no less protective than those in this DPA.
 
 The operator should maintain a current subprocessor list in customer-facing contracting or onboarding materials where required.
+
+### Current Subprocessor List (as of 2026-09-03)
+
+| Subprocessor | Purpose | Data processed | Location |
+| --- | --- | --- | --- |
+| Railway | Application compute (API, web app) and PostgreSQL database hosting | All tenant data, authentication, audit logs | US |
+| Cloudflare (R2) | Object storage for media, database backups, and account export artifacts | Product images, database backups (encrypted at rest), account export files | Global (Cloudflare network) |
+| Stripe | Subscription billing and payment processing | Customer billing identity, plan tier, payment method tokens (Stripe-managed) | US |
+| Resend | Transactional email delivery (authentication, notifications) | Recipient email addresses, email content (password reset, verification, account notifications) | US |
+
+**Notes:**
+- Stripe processes payment method details directly; Vexa PIM never stores card
+  numbers or bank account details.
+- Database backups in Cloudflare R2 are gzipped `pg_dump` files stored in a
+  private bucket (`R2_PRIVATE_BUCKET_NAME`). Account export artifacts use a
+  separate private bucket path (`exports/`).
+- Resend is used only in staging and production environments
+  (`AUTH_EMAIL_PROVIDER=resend`). Development environments use console or file
+  output with no external email delivery.
+- This list will be updated when infrastructure providers change. The customer
+  will be notified of material subprocessor changes per the terms of their
+  agreement.
 
 ## 11. Assistance to Customer
 The operator will provide reasonable assistance, taking into account the nature of processing and available functionality, for:

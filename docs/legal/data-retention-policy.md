@@ -2,7 +2,7 @@
 
 - Document owner: Product Ops + Compliance + CTO
 - Status: Active operational baseline
-- Last updated: 2026-03-19
+- Last updated: 2026-09-03
 
 ## 1. Purpose
 This policy defines the baseline retention and deletion posture for data processed in Vexa PIM.
@@ -70,7 +70,121 @@ The operator may suspend deletion where reasonably required for:
 
 Any retention exception should be documented with scope and owner.
 
-## 8. Review Cycle
+## 8. Technical Implementation Reality (2026-09-03)
+
+This section documents the actual code-level mechanisms that implement or
+constrain the retention baselines above. Gaps between policy and implementation
+are flagged.
+
+### 8.1 Product Soft-Delete
+
+Products use a `deletedAt` timestamp column. The Prisma soft-delete middleware
+(`apps/api/src/common/prisma-soft-delete.middleware.ts`) auto-injects
+`deletedAt: null` into all Product read operations (findFirst, findMany, count,
+aggregate, groupBy, findUnique). A `withSoftDeleteBypass()` escape hatch
+exists for admin recovery paths. Hard-delete (purge) requires the product to
+be soft-deleted first (`catalog.service.ts`).
+
+**Gap:** No automated purge of soft-deleted products after a retention window.
+Soft-deleted products remain in the database indefinitely until operator
+intervention.
+
+### 8.2 Account Deletion
+
+The `AccountDeletionWorkerService` (`apps/api/src/auth/account-deletion-worker.service.ts`)
+implements a queue-based deletion pipeline:
+- 24-hour grace period (`DELETION_GRACE_PERIOD_MS`) between request and
+  execution.
+- On execution: deletes MFA enrollments and auth identities in a transaction,
+  marks the deletion request as `completed`.
+- On startup: sweeps overdue `scheduled` deletion requests (up to 50) and
+  re-enqueues them.
+- Failure: marks the request as `failed` and throws for retry.
+- All deletions are audit-logged (`account.deletion_executed`).
+
+**Gap:** The deletion scope covers auth artifacts (MFA, auth identities) but
+does not cascade to product data, connector credentials, or submissions. Full
+tenant-data purge for offboarding is a manual operational procedure.
+
+### 8.3 Account Export
+
+The `AuthExportStorageService` (`apps/api/src/auth/auth-export-storage.service.ts`)
+stores account export artifacts in either:
+- **Cloudflare R2** (production): `exports/{tenantId}/{jobId}.{json|csv}` in
+  `R2_PRIVATE_BUCKET_NAME`. Download URLs are signed with 15-minute expiry.
+- **Local filesystem** (dev/fallback): `storage/account-exports/{tenantId}/`.
+
+Export storage mode is determined by `ACCOUNT_EXPORT_STORAGE_MODE` env var
+(`auto` | `filesystem` | `object_storage`). The service includes health probes
+for storage verification.
+
+**Gap:** No automated expiry of export artifacts in R2. Files persist
+indefinitely unless manually deleted.
+
+### 8.4 Database Backups
+
+Per `docs/runbooks/backup-restore.md`:
+- **Method:** `pg_dump` → gzip → Cloudflare R2 (`R2_PRIVATE_BUCKET_NAME/backups/`).
+- **Frequency:** Daily at 02:00 UTC (`.github/workflows/backup-r2-daily.yml`).
+- **Retention:** 30 days with a 7-backup floor (pruning script keeps at least 7
+  most recent regardless of age).
+- **RPO:** Up to 24 hours (no PITR — self-hosted Postgres on Railway).
+- **RTO:** 4 hours target (manual restore + smoke test).
+- **Verification:** Non-zero HeadObject check after upload.
+
+**Gap:** No restore drill has been executed. R2 secrets not yet added to GitHub
+Actions as of last check. These are named GA blockers.
+
+### 8.5 Audit Logs
+
+Per `docs/runbooks/audit-log-retention.md`:
+- Audit logs serve as the system of record for product revision history (ADR-013).
+- Retention tiers: Local 30d, Staging 90d, Pilot 24mo, Growth 36mo,
+  Enterprise 60mo.
+- **No automated purge is running.** Purge spec exists but
+  `scripts/purge-audit-log.cjs` is not yet implemented.
+- Audit logs accumulate indefinitely in all environments.
+
+### 8.6 Media / Images
+
+Per backup-restore runbook:
+- Media stored in Cloudflare R2 (`media/` prefix).
+- Retention: indefinite (pay-as-you-go).
+- No expiry policy on unused media.
+
+### 8.7 Redis
+
+- Railway-managed volume with RDB snapshots (`--save 60 1`).
+- Treated as a cache layer — rebuilt on reconnect.
+- No retention policy needed (operational, not archival).
+
+### 8.8 Connector Credentials
+
+- Encrypted with AES-256-GCM (versioned keys, `enc::v{n}:` prefix).
+- Retained while active; removed on connector uninstall/revocation.
+- Credential material is never stored in plain text.
+- Rotation support via versioned encryption keys.
+
+### 8.9 Connector Job Metadata and Payload Snapshots
+
+- `ConnectorSubmission` model is tenant-scoped.
+- Payload snapshots stored alongside submissions.
+- **Gap:** No automated purge after the 180-day or 90-day baseline. Job
+  metadata and payloads accumulate indefinitely.
+
+### 8.10 Summary of Gaps
+
+| Area | Policy | Reality | Remediation |
+| --- | --- | --- | --- |
+| Soft-deleted products | Retained for active tenant lifetime | Retained indefinitely | Implement admin purge tooling |
+| Account deletion scope | Full data removal | Auth artifacts only | Extend to catalog/connector data |
+| Export artifact expiry | Not specified | Indefinite in R2 | Add R2 lifecycle rule |
+| Backup restore drill | Required before SLA | Not executed | Named GA blocker |
+| Audit log purge | Tier-based retention | No purge running | Implement purge script |
+| Connector job metadata | 180-day baseline | Indefinite | Add scheduled purge |
+| Payload snapshots | 90-day baseline | Indefinite | Add scheduled purge |
+
+## 9. Review Cycle
 This policy should be reviewed:
 - at least once per quarter during controlled rollout; and
 - whenever new privacy workflows, storage classes, or legal obligations are introduced.
