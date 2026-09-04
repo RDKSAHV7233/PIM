@@ -106,9 +106,17 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("woocommerce", () => {
-    it("is code_complete", () => {
+    it("is controlled_pilot (CTO/PO-approved controlled pilot, not GA)", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchStage).toBe("code_complete");
+      expect(policy.launchStage).toBe("controlled_pilot");
+    });
+
+    it("launchNote describes controlled-pilot scope and explicitly disclaims GA", () => {
+      const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
+      expect(policy.launchNote).toMatch(/controlled pilot/i);
+      expect(policy.launchNote).toMatch(/2026-09-03/);
+      expect(policy.launchNote).toMatch(/not general availability/i);
+      expect(policy.launchNote).not.toMatch(/sign-off.*(is )?still in progress/i);
     });
   });
 
@@ -146,7 +154,7 @@ describe("isCustomerVisibleStage", () => {
 
   const nonCustomerStages: ConnectorLaunchStage[] = [
     "under_development", "code_complete", "qa_validation",
-    "po_review", "early_access", "deprecated", "internal_diagnostic",
+    "po_review", "early_access", "controlled_pilot", "deprecated", "internal_diagnostic",
   ];
   for (const stage of nonCustomerStages) {
     it(`returns false for ${stage}`, () => {
@@ -169,6 +177,10 @@ describe("isInstallableStage", () => {
     expect(isInstallableStage("qa_validation")).toBe(true);
     expect(isInstallableStage("po_review")).toBe(true);
     expect(isInstallableStage("early_access")).toBe(true);
+  });
+
+  it("returns true for controlled_pilot (CTO/PO-approved pilot connectors)", () => {
+    expect(isInstallableStage("controlled_pilot")).toBe(true);
   });
 
   it("returns false for planned", () => {
@@ -199,6 +211,7 @@ describe("formatLaunchStageLabel", () => {
     expect(formatLaunchStageLabel("qa_validation")).toBe("QA validation");
     expect(formatLaunchStageLabel("po_review")).toBe("PO review");
     expect(formatLaunchStageLabel("early_access")).toBe("Early access");
+    expect(formatLaunchStageLabel("controlled_pilot")).toBe("Controlled pilot");
     expect(formatLaunchStageLabel("deprecated")).toBe("Deprecated");
     expect(formatLaunchStageLabel("internal_diagnostic")).toBe("Internal diagnostic");
   });
@@ -219,10 +232,13 @@ describe("resolveConnectorPipelineMetadata", () => {
     expect(amazon.milestone).toBe("Sprint F");
   });
 
-  it("returns blockers for code-complete connectors", () => {
+  it("returns GA blockers for controlled-pilot connectors (pilot itself is CTO/PO approved)", () => {
     const woo = resolveConnectorPipelineMetadata("woocommerce");
-    expect(woo.blockers).toContain("QA validation");
-    expect(woo.blockers).toContain("PO review");
+    expect(woo.milestone).toMatch(/controlled pilot approved/i);
+    expect(woo.blockers).toContain("store-admin/wp-admin live evidence for GA");
+    expect(woo.blockers).toContain("full regression sweep for GA");
+    expect(woo.blockers).not.toContain("QA validation");
+    expect(woo.blockers).not.toContain("PO review");
   });
 
   it("returns unknown owner for unregistered slugs", () => {

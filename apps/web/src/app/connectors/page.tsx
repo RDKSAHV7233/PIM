@@ -45,7 +45,7 @@ interface ConnectorsPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental";
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot";
 
 const CONNECTOR_CAPABILITY_BADGES = [
   { label: "Publish", capability: "PUBLISH" },
@@ -249,7 +249,7 @@ function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
-  if (stage === "manual") {
+  if (stage === "manual" || stage === "controlled_pilot") {
     return "warning";
   }
   return "info";
@@ -259,6 +259,9 @@ function connectorLaunchLabel(
   stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
+  if (stage === "controlled_pilot") {
+    return "Controlled pilot";
+  }
   if (stage === "live" && implementationStatus === "partial") {
     return "Beta";
   }
@@ -275,7 +278,7 @@ function connectorLaunchLabel(
 }
 
 function isConnectorPortfolioStage(stage: string): boolean {
-  return stage === "live" || stage === "manual" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
+  return stage === "live" || stage === "manual" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access" || stage === "controlled_pilot";
 }
 
 function resolveInstalledStatusPresentation(
@@ -1138,9 +1141,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
                             <input type="hidden" name="csrfToken" value={disableCsrfToken} />
                             <input type="hidden" name="connectorSlug" value={installation.slug} />
-                            <Button type="submit" variant="secondary">
-                              Reconnect
-                            </Button>
+                            <PendingSubmitButton
+                              type="submit"
+                              variant="secondary"
+                              idleLabel="Reconnect"
+                              pendingLabel="Reconnecting..."
+                            />
                           </form>
                         ) : (
                           <Link
@@ -1325,17 +1331,24 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/reconnect`}>
                           <input type="hidden" name="csrfToken" value={disableCsrfToken} />
                           <input type="hidden" name="connectorSlug" value={installation.slug} />
-                          <Button type="submit" variant="secondary">
-                            Reconnect
-                          </Button>
+                          <PendingSubmitButton
+                            type="submit"
+                            variant="secondary"
+                            idleLabel="Reconnect"
+                            pendingLabel="Reconnecting..."
+                          />
                         </form>
                       ) : null}
                       {installation.actions?.uninstall.allowed ? (
                         <form method="post" action={`/connector-operations/${encodeURIComponent(installation.id)}/disable`}>
                           <input type="hidden" name="csrfToken" value={disableCsrfToken} />
-                          <Button type="submit" variant="secondary" size="md">
-                            Disable
-                          </Button>
+                          <PendingSubmitButton
+                            type="submit"
+                            variant="secondary"
+                            size="md"
+                            idleLabel="Disable"
+                            pendingLabel="Disabling..."
+                          />
                         </form>
                       ) : null}
                     </div>

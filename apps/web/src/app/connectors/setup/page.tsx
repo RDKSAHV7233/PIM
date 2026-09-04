@@ -38,7 +38,7 @@ interface ConnectorSetupPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental";
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot";
 
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -120,7 +120,7 @@ function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
-  if (stage === "manual") {
+  if (stage === "manual" || stage === "controlled_pilot") {
     return "warning";
   }
   return "info";
@@ -130,6 +130,9 @@ function connectorLaunchLabel(
   stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
+  if (stage === "controlled_pilot") {
+    return "Controlled pilot";
+  }
   if (stage === "live" && implementationStatus === "partial") {
     return "Beta";
   }
@@ -145,6 +148,11 @@ function connectorLaunchLabel(
   return "Live publish";
 }
 
+// Note: for WooCommerce, this note is deliberately kept identical to
+// connector-launch-policy.ts's launchNote (see woocommerce-launch-copy-consistency.test.cjs,
+// PIM#633) — both surfaces must tell the customer the same thing. The render logic
+// (below, in the JSX) skips this box when it duplicates definition.launchNote verbatim,
+// so keeping the strings identical does not produce two stacked identical banners.
 function connectorStatusNote(
   slug: string,
   implementationStatus: string | undefined,
@@ -160,18 +168,18 @@ function connectorStatusNote(
       return "Myntra API access is account-manager gated. Credentials (Merchant ID, Secret Key, Warehouse ID) are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff and Postman collection receipt.";
     }
     if (slug === "woocommerce") {
-      return "WooCommerce is code-complete and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.";
+      return "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
   if (slug === "woocommerce") {
-    return "WooCommerce is code-complete and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.";
+    return "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.";
   }
   return null;
 }
 
 function isSetupLaneStage(stage: string): boolean {
-  return stage === "live" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
+  return stage === "live" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access" || stage === "controlled_pilot";
 }
 
 function formatCapabilityLabel(capability: string): string {
@@ -486,7 +494,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                       {definition.launchNote}
                     </p>
                   ) : null}
-                  {statusNote ? (
+                  {statusNote && statusNote !== definition.launchNote ? (
                     <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                       {statusNote}
                     </p>

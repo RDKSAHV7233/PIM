@@ -215,7 +215,7 @@ export interface ConnectorInstallation {
   status: "ACTIVE" | "PAUSED" | "CREDENTIAL_EXPIRED" | "DISABLED" | string;
   capabilities: string[];
   implementationStatus?: "full" | "partial" | "stub";
-  launchStage: "live" | "manual" | "planned" | "under_development" | "code_complete" | "qa_validation" | "po_review" | "early_access" | "deprecated" | "internal_diagnostic";
+  launchStage: "live" | "manual" | "planned" | "under_development" | "code_complete" | "qa_validation" | "po_review" | "early_access" | "controlled_pilot" | "deprecated" | "internal_diagnostic";
   launchNote: string | null;
   metadata: Record<string, unknown>;
   installedAt: string;
@@ -279,7 +279,7 @@ export interface ConnectorDefinition {
   authType: string;
   capabilities: string[];
   implementationStatus?: "full" | "partial" | "stub";
-  launchStage: "live" | "manual" | "planned" | "under_development" | "code_complete" | "qa_validation" | "po_review" | "early_access" | "deprecated" | "internal_diagnostic";
+  launchStage: "live" | "manual" | "planned" | "under_development" | "code_complete" | "qa_validation" | "po_review" | "early_access" | "controlled_pilot" | "deprecated" | "internal_diagnostic";
   launchNote: string | null;
   marketplaceId: string | null;
   connectorVersion: string;

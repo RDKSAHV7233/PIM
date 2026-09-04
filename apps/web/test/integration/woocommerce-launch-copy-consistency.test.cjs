@@ -15,6 +15,13 @@
 // zero account-manager contact and the account went straight to ACTIVE with full publish
 // capability. This test asserts the false claims are gone from both source files and
 // replaced with copy that doesn't promise a gate that isn't enforced in code.
+//
+// 2026-09-04 update: the "code-complete... GA sign-off in progress" copy that PIM#633
+// introduced became stale once CTO/PO approved WooCommerce controlled-pilot use on
+// 2026-09-03 (docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md) — the setup page was
+// still live-showing it, in two stacked amber boxes, on 2026-09-04. This test now also
+// guards against that staleness and against the duplicate-banner render bug that made the
+// same sentence appear twice on screen.
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
@@ -109,20 +116,32 @@ function run() {
       "launch-stage check anywhere in the connector or submission pipeline.",
   );
 
+  // 2026-09-04 update: CTO/PO approved WooCommerce controlled-pilot use on 2026-09-03
+  // (see docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md). The "code-complete... GA
+  // sign-off in progress" copy this test used to pin was accurate as of PIM#633 but is now
+  // stale — it predates that approval. This test still guards the same PIM#633 properties
+  // (no false account-manager gate, no false publish-blocked claim, and both surfaces telling
+  // the customer the same accurate thing) against the current, non-stale copy.
+  const WOOCOMMERCE_STATUS_COPY =
+    "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.";
+
   assert(
-    launchPolicySource.includes(
-      "WooCommerce connector is code-complete (W1–W10) and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.",
-    ),
-    "PIM#633: connector-launch-policy.ts's WooCommerce launchNote must accurately describe that install " +
-      "and use are available now, with only general-availability sign-off still pending.",
+    launchPolicySource.includes(WOOCOMMERCE_STATUS_COPY),
+    "connector-launch-policy.ts's WooCommerce launchNote must carry the current, non-stale " +
+      "controlled-pilot-approved description (not the pre-2026-09-03 'code-complete... GA sign-off " +
+      "in progress' copy, which is now stale relative to the CTO/PO approval).",
   );
   assert(
-    setupPageSource.includes(
-      "WooCommerce is code-complete and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.",
-    ),
-    "PIM#633: apps/web/src/app/connectors/setup/page.tsx's WooCommerce status note must match the same " +
-      "honest, accurate description as connector-launch-policy.ts's launchNote — both surfaces should " +
-      "tell a customer the same thing.",
+    setupPageSource.includes(WOOCOMMERCE_STATUS_COPY),
+    "apps/web/src/app/connectors/setup/page.tsx's WooCommerce status note must match the same " +
+      "honest, accurate, non-stale description as connector-launch-policy.ts's launchNote — both " +
+      "surfaces should tell a customer the same thing.",
+  );
+  assert(
+    !launchPolicySource.includes("code-complete (W1–W10) and available to install and use now. General-availability sign-off") &&
+      !setupPageSource.includes("is code-complete and available to install and use now. General-availability sign-off"),
+    "The pre-2026-09-03 'code-complete... GA sign-off in progress' copy must not remain in either " +
+      "file — it is stale now that controlled-pilot use is CTO/PO approved.",
   );
 
   // Live-verified follow-up: WooCommerce's implementationStatus resolves to "partial", and
@@ -135,11 +154,24 @@ function run() {
   const connectorStatusNote = loadRealConnectorStatusNote();
   const liveResult = connectorStatusNote("woocommerce", "partial");
   assert(
-    liveResult === "WooCommerce is code-complete and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.",
-    "PIM#633 follow-up: connectorStatusNote('woocommerce', 'partial') must return the WooCommerce-specific " +
-      `message, not the generic partial-connector fallback. Got: ${JSON.stringify(liveResult)}. ` +
+    liveResult === WOOCOMMERCE_STATUS_COPY,
+    "connectorStatusNote('woocommerce', 'partial') must return the current, non-stale WooCommerce-specific " +
+      `message, not the generic partial-connector fallback or the pre-2026-09-03 copy. Got: ${JSON.stringify(liveResult)}. ` +
       "The woocommerce check must be evaluated inside the `implementationStatus === \"partial\"` branch " +
       "(alongside meesho/myntra), not after it, or it can never be reached for this connector.",
+  );
+
+  // 2026-09-04: fixed a real duplicate-banner bug — the setup page rendered both
+  // definition.launchNote and statusNote as separate stacked amber boxes even when they
+  // carried the same text (WooCommerce's case). The render now skips statusNote when it is
+  // identical to definition.launchNote. Guard that this dedupe condition exists in source, so
+  // a future edit that makes the two WooCommerce strings diverge doesn't silently reintroduce
+  // two boxes showing the same sentence twice.
+  assert(
+    setupPageSource.includes("statusNote && statusNote !== definition.launchNote"),
+    "apps/web/src/app/connectors/setup/page.tsx must not render the statusNote banner when it " +
+      "duplicates definition.launchNote verbatim — otherwise WooCommerce (whose two notes are " +
+      "intentionally kept identical) shows the same sentence in two stacked amber boxes.",
   );
 
   console.log(
@@ -149,9 +181,11 @@ function run() {
         validated: [
           "no_false_account_manager_gate_claim",
           "no_false_publish_blocked_claim",
-          "launch_policy_note_is_accurate",
+          "launch_policy_note_is_accurate_and_not_stale",
           "setup_page_note_matches_launch_policy_note",
+          "stale_pre_2026_09_03_copy_absent",
           "woocommerce_status_note_genuinely_reachable_when_partial",
+          "duplicate_banner_dedupe_guard_present",
         ],
         checkedAt: new Date().toISOString(),
       },

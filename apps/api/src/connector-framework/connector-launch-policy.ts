@@ -8,6 +8,7 @@ export type ConnectorLaunchStage =
   | "qa_validation"
   | "po_review"
   | "early_access"
+  | "controlled_pilot"
   | "manual"
   | "live"
   | "deprecated"
@@ -79,9 +80,9 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
-      launchStage: "code_complete",
+      launchStage: "controlled_pilot",
       launchNote:
-        "WooCommerce connector is code-complete (W1–W10) and available to install and use now. General-availability sign-off (QA validation, PO review) is still in progress.",
+        "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -112,7 +113,8 @@ export function isInstallableStage(stage: ConnectorLaunchStage): boolean {
     stage === "code_complete" ||
     stage === "qa_validation" ||
     stage === "po_review" ||
-    stage === "early_access"
+    stage === "early_access" ||
+    stage === "controlled_pilot"
   );
 }
 
@@ -123,6 +125,7 @@ const LAUNCH_STAGE_LABELS: Record<ConnectorLaunchStage, string> = {
   qa_validation: "QA validation",
   po_review: "PO review",
   early_access: "Early access",
+  controlled_pilot: "Controlled pilot",
   manual: "Manual export",
   live: "Live",
   deprecated: "Deprecated",
@@ -155,7 +158,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     return { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
-    return { owner: "Platform", milestone: "W10 complete", blockers: ["QA validation", "PO review"], internalNotes: "W1–W10 code-complete. 59 static + 49 runtime assertions passing." };
+    return {
+      owner: "Platform",
+      milestone: "Controlled pilot approved 2026-09-03",
+      blockers: ["store-admin/wp-admin live evidence for GA", "full regression sweep for GA"],
+      internalNotes:
+        "W1–W10 code-complete; P0 defects #660/#662/#663 closed. CTO/PO approved controlled-pilot use " +
+        "(operator-supervised, up to 2 ENTERPRISE tenants) on 2026-09-03 — see CONNECTOR_CLAIM_AUDIT_2026-09-03.md. " +
+        "Not GA: bulk batch behavior, multi-variant, multi-image, and webhook auto-sync remain unverified.",
+    };
   }
   return { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };
 }
