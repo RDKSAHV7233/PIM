@@ -4,7 +4,10 @@ Last reviewed: 2026-09-04
 
 Status: INTERNAL PILOT USE ONLY — not approved for public distribution
 
-Owner: Product / Connector Engineering / CTO
+Owner: Product / PO / Connector Engineering / CTO
+
+Reviewed by: Connector Engineering/QA, Product/Claims Governance, Security
+(2026-09-04) — see review notes at the end of this document.
 
 Audience: Vexa operator and first-tenant pilot customer (ENTERPRISE tier,
 operator-supervised onboarding)
@@ -44,7 +47,11 @@ involved.
 5. Click **Configure Admin API scopes**. Grant these scopes:
    - `write_products` (required — Vexa creates and updates products)
    - `read_products` (required — Vexa reads product data for validation)
-   - `read_locations` (recommended — for inventory location awareness)
+
+   Do not grant broader scopes (orders, customers, etc.) — Vexa's Shopify
+   connector does not use them. `read_locations` is not currently used by
+   any Vexa Shopify functionality (inventory/location sync is out of scope
+   — see Section 4) and should not be granted for this integration.
 6. Click **Save** and then **Install app**.
 7. After install, go to the **API credentials** tab. Copy the **Admin API
    access token**. You will only see it once — store it securely.
@@ -53,9 +60,11 @@ involved.
    Admin or in your browser URL bar.
 
 **Security note:** The access token grants write access to your Shopify
-product catalog. Vexa encrypts it at rest using AES-256-GCM with versioned
-keys. The token is never displayed in the Vexa UI after initial entry and is
-redacted from API responses and error payloads.
+product catalog. Vexa applies encryption-at-rest and credential-redaction
+controls as part of its security architecture: the token is never displayed
+in the Vexa UI after initial entry and is not returned in API responses or
+error payloads. Do not share this token over email or chat — enter it only
+into the Vexa install form (Section 3).
 
 ---
 
@@ -66,10 +75,15 @@ redacted from API responses and error payloads.
 3. Find **Shopify** in the connector list and click **Install**.
 4. Fill in the install form:
    - **Account alias** (optional): a friendly name like `My Main Store`
-   - **Shop domain**: your `*.myshopify.com` domain (e.g.
+   - **External account ref** (optional): leave blank unless your operator
+     asks you to set one
+   - **Store Domain**: your `*.myshopify.com` domain (e.g.
      `your-store.myshopify.com`)
-   - **Access token**: paste the Admin API access token from step 2.7
-5. Click **Install**. Vexa will validate the token against your store.
+   - **Admin API Access Token (SHPAT)**: paste the token from step 2.7
+   - **Client ID** (optional): leave blank — this field is only used for
+     managed OAuth installs, which are not part of this direct-token flow
+5. Click **Install**. Vexa will validate the token against your store with a
+   live lookup before saving.
 6. On success, the connector status changes to **Connected** and appears in
    the Connections action rail.
 
@@ -111,6 +125,9 @@ Products must meet these conditions before they can be published to Shopify:
 
 ## 5. Publish Products
 
+Claim reference: `CLM-SHP-PUBLISH-001`, `CLM-SHP-EDIT-001`, `CLM-SHP-BULK-001`
+in `docs/product/claim-register.md`.
+
 ### Single product publish
 
 1. Open a product from **Products** in the catalog.
@@ -138,8 +155,13 @@ If you need to correct a live Shopify listing:
 
 1. Edit the product in Vexa PIM (update title, description, price, etc.).
 2. Re-approve if required by your workflow.
-3. Publish again — Vexa detects the existing Shopify product link and updates
-   it rather than creating a duplicate.
+3. Publish again through Vexa's governed publish flow. For a single-variant
+   product previously published from Vexa, republish creates a new listing
+   or updates the linked listing — this behavior is verified for the
+   single-variant case only. It is not verified across every failure mode
+   (e.g. network retries, partial failures); if you ever see a duplicate
+   listing appear, treat it as reportable (see Section 9) rather than
+   assumed-safe.
 4. Verify the change in **Submission Log** (status: accepted) and confirm in
    Shopify Admin.
 
@@ -170,17 +192,31 @@ contact the Vexa operator. Stuck submissions are a P0 issue.
 
 ---
 
-## 7. Reconnect or Update Credentials
+## 7. Reconnect or Rotate Credentials
 
-If your Shopify access token is rotated or revoked:
+**Important:** Direct-token Shopify connectors do not currently support
+in-product credential replacement. There is no "Update credentials" action
+for Shopify installations — this is different from other Vexa connectors.
+
+### Reconnect (re-validate existing token)
+
+Use this only to confirm your already-stored token is still valid — it does
+**not** accept a new token:
 
 1. Go to **Connections** in the sidebar.
 2. Find your Shopify connector account.
 3. Click the account to open the detail view.
-4. Use the **Update credentials** action (requires admin or connector_admin
-   role; may require step-up authentication).
-5. Paste the new access token.
-6. Vexa re-validates against your store on save.
+4. Use the **Reconnect** action (requires admin or connector_admin role).
+5. Vexa re-runs a live check against your store using the token already on
+   file.
+
+### If your Shopify access token is rotated or revoked
+
+Self-service token replacement is not available for Shopify in this pilot.
+**Contact the Vexa operator directly** (Section 9) rather than attempting to
+replace the token through the UI — the update-credentials action will reject
+the request for Shopify installations. The operator will walk you through
+the supported remediation (which may involve a reinstall).
 
 ---
 
@@ -193,12 +229,15 @@ If your Shopify access token is rotated or revoked:
 | OAuth | Managed OAuth is not available. Direct-token (custom app) only. |
 | Webhooks | Shopify webhook subscriptions are not created. There is no automatic inbound sync from Shopify to Vexa. |
 | Inventory | Inventory quantity sync is not in scope. |
-| Collections | Shopify collections/tags are not managed by Vexa. |
+| Collections | Shopify collections are not managed by Vexa. |
+| Tags | Tag-writing exists in the connector but is not verified as a customer-facing capability — do not rely on it for tag management. |
 | Batch size | Bulk publish is limited to 50 products per batch. |
 | Automatic sync | There is no scheduled or automatic push. All publishes are user-initiated. |
 
-For the full list of platform limitations, see the Known Limitations page in
-Vexa PIM documentation.
+This table is more detailed than the platform-wide Known Limitations page in
+Vexa PIM documentation, which carries a single summarized Shopify row. Treat
+this guide's table as authoritative for Shopify specifics; the platform page
+is not a superset of it.
 
 ---
 
@@ -218,6 +257,14 @@ Report any of the following immediately:
 - Access token validation failures after a successful install
 - Products appearing duplicated in Shopify after republish
 
+**Report as a possible security incident (not a sync issue) if you see:**
+- Products appearing in Shopify that you did not publish from Vexa
+- Any connector or account activity you don't recognize
+
+Treat these differently from an ordinary sync bug — flag them to the
+operator explicitly as a suspected security incident so they're triaged with
+the correct urgency.
+
 ---
 
 ## 10. Scope Boundary
@@ -236,3 +283,30 @@ All claims in this guide are bounded by the connector claim audit at
 `docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md`. No claim in this
 guide may exceed the verdict in that audit without a fresh audit refresh
 and CTO/PO sign-off.
+
+---
+
+## Review Notes (2026-09-04)
+
+This guide was reviewed by three required-team perspectives before pilot
+use, per the readiness pack's Team Review Rule
+(`docs/readiness/README.md`):
+
+- **Connector Engineering / QA** — verified every technical claim against
+  source code. Found Section 7 described a Shopify credential-update flow
+  that does not exist (`CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED` for
+  Shopify installs) and the install form was missing two fields. **Fixed.**
+- **Product / Claims Governance** — checked every claim against
+  `CONNECTOR_CLAIM_AUDIT_2026-09-03.md` and `claim-register.md`. Found the
+  edit/republish claim exceeded the audit's approved wording and
+  contradicted the guide's own escalation section; found the encryption
+  claim needed a qualifier for customer-facing (not internal-only)
+  distribution. **Fixed.**
+- **Security** — verified credential-handling accuracy. Found the
+  `read_locations` scope recommendation contradicted the guide's own
+  "not in scope" statement on inventory; found the security-incident
+  escalation trigger was missing from Section 9. **Fixed.**
+
+All required edits from all three reviews have been applied. This guide is
+approved for pilot onboarding use (internal, not public distribution) as of
+2026-09-04.
