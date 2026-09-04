@@ -1,3 +1,9 @@
+> **Restricted evidence notice, 2026-08-29:** This schema note is technical
+> reference only. WooCommerce is code-complete but not GA/public-sellable, and
+> WooCommerce production-readiness QA currently failed. Do not use this file as
+> customer-facing idempotency or production-publish proof. Use
+> `docs/readiness/WOOCOMMERCE_REMEDIATION_EVIDENCE_PACK_2026-08-29.md`.
+
 # WooCommerce — Vexa `_vexa_*` meta_data schema
 
 Vexa PIM writes the following `meta_data` keys to every WooCommerce product and variation it manages. These keys serve as idempotency anchors, sync timestamps, and structured GST/HSN fields that Indian tax plugins can read.
@@ -41,6 +47,30 @@ Any plugin that reads `meta_data` from the WooCommerce REST API response will se
 
 ## Reconciliation and idempotency guarantees
 
-- **Re-publish safety:** `findExistingProductId` queries `?meta_key=_vexa_pim_product_id&meta_value={sku}` before every publish. If a product with this meta_data exists, Vexa performs `PUT /products/{id}` instead of `POST /products`. This makes repeated publishes fully idempotent.
-- **Timestamp freshness:** `_vexa_pim_sync_ts` is always updated, even on idempotent re-publishes, so merchants can tell when Vexa last touched the product.
-- **GST flag stability:** `_vexa_gst_applicable` is written on every publish; it will be absent after a manual WooCommerce edit that strips meta_data. The W6 reconciliation job will re-write it on the next drift pass.
+**Corrected 2026-09-04:** the meta_key/meta_value lookup described below was
+the original design but was found broken against a real store (it returned
+the same product for every distinct SKU) and was deliberately abandoned.
+See `apps/api/src/connectors/woocommerce/woocommerce.connector.ts:304-335`
+and the regression test at `woocommerce.connector.spec.ts:284-311`.
+
+- **Re-publish safety:** `findExistingProductId` queries WooCommerce's
+  **native `sku` query parameter** (`GET /products?sku={sku}`) before every
+  publish — **not** `_vexa_pim_product_id` meta_data. If a product with
+  that SKU exists, Vexa performs `PUT /products/{id}` instead of
+  `POST /products`. The `_vexa_pim_product_id` meta_data key is still
+  written to every product for reference/traceability, but it is never
+  read back for matching. Changing a Vexa-managed product's WooCommerce SKU
+  directly (bypassing Vexa) will break re-publish matching; stripping the
+  `_vexa_pim_product_id` meta field has no effect on idempotency.
+- **Timestamp freshness:** `_vexa_pim_sync_ts` is always updated, even on
+  idempotent re-publishes, so merchants can tell when Vexa last touched the
+  product.
+- **GST flag stability:** `_vexa_gst_applicable` is written on every
+  publish; it will be absent after a manual WooCommerce edit that strips
+  meta_data. A background reconciliation job
+  (`woocommerce-reconciliation.service.ts`) runs on a schedule (roughly
+  every 4 hours, enabled by default) and can automatically re-publish
+  drifted products — this is not verified as production-ready against a
+  live pilot store. See
+  `docs/readiness/WOOCOMMERCE_CONTROLLED_PILOT_CUSTOMER_GUIDE_2026-09-04.md`
+  Section 8 for the customer-facing operational warning.

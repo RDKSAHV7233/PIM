@@ -2,11 +2,11 @@
 title: Known Limitations
 audience: sellers
 status: active
-last_updated: 2026-05-26
+last_updated: 2026-09-04
 owner: Product
 ---
 
-Use this page to understand what is not available in the current version before starting your Vexa PIM setup. These are known limitations in v0.9.1 (Pilot release), not bugs.
+Use this page to understand what is not available in the current controlled-rollout version before starting your Vexa PIM setup. These are known limitations and launch constraints, not general bugs.
 
 ## 1. Import
 
@@ -22,9 +22,12 @@ Use this page to understand what is not available in the current version before 
 
 | Limitation | Detail |
 |------------|--------|
-| Meesho direct publish not available | Meesho connector is in development. Export and direct publish are not live. Continue using Meesho Supplier Panel manually until Vexa's Meesho export ships. |
+| Meesho direct publish not available | Meesho is a manual-export workflow. Generate the export file and upload it through Meesho Supplier Panel until partner API access is available. |
+| Nykaa direct publish not available | Nykaa is a manual-export workflow. Direct API publishing requires Nykaa platform-partner credentials. |
 | ONDC not live | ONDC connector exists but is behind a feature flag (`FEATURE_ONDC_ENABLED`). Not available to sellers in the current release. |
-| Amazon India — limited validation | Amazon India connector credentials can be entered, but full SP-API publish is not yet live. Credential validation is feature-flagged (`FEATURE_REAL_SPAPI_VALIDATION`). |
+| Amazon India under development | Seller install and credential validation are available; publish and status sync remain under active validation and are not recommended for production catalogues. |
+| WooCommerce not GA/public-sellable | WooCommerce is approved for CTO/PO-signed controlled pilot use only (operator-supervised, single-product level, up to 2 ENTERPRISE tenants) as of 2026-09-03 — see `docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md`. It is not GA and not public-sellable. Do not sell WooCommerce production publishing as ready. |
+| Shopify public claims restricted | Shopify direct-token publishing has real evidence, but managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. Public claims require the claims governance process. |
 
 ---
 
@@ -33,7 +36,8 @@ Use this page to understand what is not available in the current version before 
 | Limitation | Detail |
 |------------|--------|
 | No self-serve upgrade | Plan upgrades are handled manually by Vexa commercial ops. Use the upgrade request form in **Admin → Plan & Usage** or contact Vexa directly. |
-| No Stripe integration | Payment processing is not live in v0.9.1. Trial and paid status is set manually by ops using the internal billing API. |
+| No public self-serve paid checkout | Stripe-backed checkout exists behind feature/config and operator controls, but public paid checkout is not approved for the current controlled rollout. Trial and paid status remain ops/commercial controlled. |
+| No public pricing | Vexa does not publish plan prices, setup fees, implementation ranges, add-on pricing, discount bands, annual contract values, minimum contract values, or exact plan limits without separate claim approval. |
 
 ---
 

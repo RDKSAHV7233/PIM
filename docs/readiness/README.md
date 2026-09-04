@@ -54,7 +54,9 @@ Current launch authority starts with:
 - `AMAZON_INDIA_VALIDATION_EVIDENCE_PACK_2026-08-29.md`
   - Blocked Amazon India production-publish evidence placeholder.
 - `SHOPIFY_DIRECT_TOKEN_CUSTOMER_GUIDE_DRAFT_2026-08-29.md`
-  - Draft-only Shopify direct-token customer guide placeholder.
+  - Shopify direct-token onboarding guide. Team-reviewed (Connector Engineering/QA, Product/Claims Governance, Security) and approved for pilot onboarding use, 2026-09-04.
+- `WOOCOMMERCE_CONTROLLED_PILOT_CUSTOMER_GUIDE_2026-09-04.md`
+  - WooCommerce controlled-pilot onboarding guide. Team-reviewed (Connector Engineering/QA, Product/Claims Governance, Security) and approved for pilot onboarding use, 2026-09-04.
 - `CUSTOMER_PILOT_CLOSEOUT_TEMPLATE_2026-08-29.md`
   - Customer-specific controlled-evaluation closeout template.
 - `CONNECTOR_CLAIM_AUDIT_2026-09-03.md`
