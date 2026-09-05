@@ -38,12 +38,26 @@ function run() {
   );
   assert(
     source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&
-      source.includes("return Array.isArray(value.items) ? value.items : [];") &&
+      source.includes("return value.filter(Boolean);") &&
+      source.includes("return Array.isArray(value.items) ? value.items.filter(Boolean) : [];") &&
       source.includes("if (submissionsResult.state === \"restricted\") {") &&
       source.includes("if (submissionsResult.state === \"unavailable\") {") &&
       source.includes("const selectedSubmission = selectedSubmissionId") &&
       source.includes("submissions.find((submission) => submission.id === selectedSubmissionId) ?? null"),
     "Operations jobs must normalize list payload shapes, gate the core submission feed honestly, and resolve the selected submission from the current result set.",
+  );
+  assert(
+    source.includes("function safeText(value: unknown, fallback = \"-\"): string") &&
+      source.includes("function safeCount(value: unknown): number") &&
+      source.includes("function channelErrorsFor(value: {") &&
+      source.includes("function bulkPublishRunStatusLabel(status: unknown): string") &&
+      source.includes("function bulkPublishRunProgressLabel(run: {") &&
+      source.includes("channelErrorsFor(selectedSubmission).length === 0 ? (") &&
+      source.includes("bulkPublishRunProgressLabel(run)") &&
+      source.includes("getRowKey={(run) => safeText(run.id)}") &&
+      !source.includes("selectedSubmission.channelErrors.length === 0 ? (") &&
+      !source.includes("run.status.replace(/_/g, \" \")"),
+    "Operations jobs must defensively normalize live operational row fields before rendering Server Components.",
   );
   assert(
     source.includes("const statusCounts = submissions.reduce<Record<string, number>>(") &&
@@ -76,7 +90,7 @@ function run() {
     source.includes('className={`border-t border-slate-200 ${') &&
       source.includes('selectedSubmissionId === submission.id ? "bg-amber-50" : "hover:bg-slate-50/50"') &&
       source.includes("CardTitle>Selected Submission Detail</CardTitle>") &&
-      source.includes("selectedSubmission.channelErrors.length === 0 ? (") &&
+      source.includes("channelErrorsFor(selectedSubmission).length === 0 ? (") &&
       source.includes('text-sm font-medium text-slate-900">Submission recovery timeline</p>') &&
       source.includes("Timeline className=\"mt-3\" items={submissionTimelineItems(selectedSubmission)}"),
     "Operations jobs must highlight the selected submission row and surface a detail panel with honest channel-error handling.",
@@ -98,6 +112,7 @@ function run() {
           "operations_jobs_route_normalizes_filter_inputs",
           "operations_jobs_route_fetches_submissions_and_dead_letter_in_parallel",
           "operations_jobs_route_normalizes_payload_shapes_and_selected_submission",
+          "operations_jobs_route_defensively_normalizes_live_operational_fields",
           "operations_jobs_route_derives_kpis_from_live_status_counts",
           "operations_jobs_route_exposes_refresh_and_filter_controls",
           "operations_jobs_route_surfaces_empty_state_with_repair_escalation",

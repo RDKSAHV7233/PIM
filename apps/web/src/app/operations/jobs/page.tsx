@@ -43,9 +43,9 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
     return [];
   }
   if (Array.isArray(value)) {
-    return value;
+    return value.filter(Boolean);
   }
-  return Array.isArray(value.items) ? value.items : [];
+  return Array.isArray(value.items) ? value.items.filter(Boolean) : [];
 }
 
 function normalizeStatus(status: string): string {
@@ -70,6 +70,32 @@ function statusTone(status: string): "neutral" | "success" | "warning" | "danger
   return "neutral";
 }
 
+function safeText(value: unknown, fallback = "-"): string {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
+
+function safeCount(value: unknown): number {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function channelErrorsFor(value: {
+  channelErrors?: unknown;
+}): Array<{ code: string; fieldPath: string | null; severity: "error" | "warning"; sellerMessage: string }> {
+  if (!Array.isArray(value.channelErrors)) {
+    return [];
+  }
+  return value.channelErrors
+    .filter((issue): issue is Record<string, unknown> => Boolean(issue) && typeof issue === "object" && !Array.isArray(issue))
+    .map((issue) => ({
+      code: safeText(issue.code, "UNKNOWN_ISSUE"),
+      fieldPath: safeText(issue.fieldPath, "") || null,
+      severity: String(issue.severity ?? "").trim().toLowerCase() === "warning" ? "warning" : "error",
+      sellerMessage: safeText(issue.sellerMessage ?? issue.message, "No channel error details available yet."),
+    }));
+}
+
 function recoveryLaneLabel(status: string, deadLetter: boolean): string {
   if (deadLetter) {
     return "Needs recovery";
@@ -89,14 +115,15 @@ function recoveryLaneLabel(status: string, deadLetter: boolean): string {
 
 function recoveryActionLabel(submission: {
   status: string;
-  channelErrors: Array<{ sellerMessage: string }>;
+  channelErrors?: unknown;
 }): string {
   const normalized = normalizeStatus(submission.status);
+  const channelErrors = channelErrorsFor(submission);
   if (normalized === "RETRYING" || normalized === "PENDING") {
     return "Monitor queue progress before retrying again.";
   }
   if (normalized === "REJECTED" || normalized === "ERROR") {
-    return submission.channelErrors.length > 0
+    return channelErrors.length > 0
       ? "Fix the catalog or mapping issue, then retry."
       : "Inspect connector health, then retry.";
   }
@@ -112,8 +139,9 @@ function submissionTimelineItems(submission: {
   attemptNumber: number;
   submittedAt: string;
   resolvedAt: string | null;
-  channelErrors: Array<{ sellerMessage: string }>;
+  channelErrors?: unknown;
 }): TimelineItem[] {
+  const channelErrors = channelErrorsFor(submission);
   const items: TimelineItem[] = [
     {
       id: `${submission.id}-submitted`,
@@ -134,10 +162,10 @@ function submissionTimelineItems(submission: {
   }
 
   const normalized = normalizeStatus(submission.status);
-  const hasErrors = submission.channelErrors.length > 0;
+  const hasErrors = channelErrors.length > 0;
   const effectiveStatus = normalized === "SUCCESS" && hasErrors ? "PARTIAL_SUCCESS" : normalized;
   const resolvedDescription = hasErrors
-    ? submission.channelErrors[0].sellerMessage
+    ? channelErrors[0].sellerMessage
     : normalized === "SUCCESS"
       ? "The connector accepted the submission."
       : "The latest channel outcome still needs operator review.";
@@ -160,19 +188,33 @@ function submissionTimelineItems(submission: {
 // Bulk-Publish Goes Async, Story 7: same status-tone mapping as submissions'
 // statusTone, but for MarketplaceBulkPublishRun's own status enum (schema.prisma).
 function bulkPublishRunStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
-  if (status === "completed") {
+  const normalized = safeText(status, "unknown").toLowerCase();
+  if (normalized === "completed") {
     return "success";
   }
-  if (status === "queued" || status === "processing") {
+  if (normalized === "queued" || normalized === "processing") {
     return "info";
   }
-  if (status === "completed_with_errors") {
+  if (normalized === "completed_with_errors") {
     return "warning";
   }
-  if (status === "failed") {
+  if (normalized === "failed") {
     return "danger";
   }
   return "neutral";
+}
+
+function bulkPublishRunStatusLabel(status: unknown): string {
+  return safeText(status, "unknown").replace(/_/g, " ");
+}
+
+function bulkPublishRunProgressLabel(run: {
+  succeededCount?: unknown;
+  failedCount?: unknown;
+  excludedCount?: unknown;
+  requestedCount?: unknown;
+}): string {
+  return `${safeCount(run.succeededCount)} succeeded, ${safeCount(run.failedCount)} failed, ${safeCount(run.excludedCount)} excluded of ${safeCount(run.requestedCount)}`;
 }
 
 function isOperationsJobsApiUnavailable(error: unknown): boolean {
@@ -343,7 +385,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         selectedSubmissionId === submission.id ? "bg-amber-50" : "hover:bg-slate-50/50"
       }`;
     const submissionReason = (submission: (typeof submissions)[number]) =>
-      submission.channelErrors[0]?.sellerMessage || submission.externalRef || "No channel error details available yet.";
+      channelErrorsFor(submission)[0]?.sellerMessage || submission.externalRef || "No channel error details available yet.";
     const submissionColumns: Column<(typeof submissions)[number]>[] = [
       {
         key: "submission",
@@ -377,12 +419,15 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       {
         key: "reason",
         header: "Reason",
-        render: (submission) => (
-          <StatusChip
-            label={submissionReason(submission)}
-            tone={submission.channelErrors.length > 0 ? "danger" : statusTone(submission.status)}
-          />
-        ),
+        render: (submission) => {
+          const channelErrors = channelErrorsFor(submission);
+          return (
+            <StatusChip
+              label={submissionReason(submission)}
+              tone={channelErrors.length > 0 ? "danger" : statusTone(submission.status)}
+            />
+          );
+        },
       },
       {
         key: "attempts",
@@ -435,22 +480,22 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       {
         key: "submission",
         header: "Job",
-        render: (job) => <span className="font-mono text-xs text-slate-700">{job.id}</span>,
+        render: (job) => <span className="font-mono text-xs text-slate-700">{safeText(job.id)}</span>,
       },
-      { key: "connector", header: "Connector", render: (job) => job.channel },
+      { key: "connector", header: "Connector", render: (job) => safeText(job.channel) },
       {
         key: "product",
         header: "Product",
         render: (job) => (
-          <Link href={`/products/${encodeURIComponent(job.productId)}`} className="underline">
-            {job.product?.title || job.productId}
+          <Link href={`/products/${encodeURIComponent(safeText(job.productId, ""))}`} className="underline">
+            {safeText(job.product?.title || job.productId)}
           </Link>
         ),
       },
       {
         key: "reason",
         header: "Reason",
-        render: (job) => <span className="text-sm text-slate-700">{job.dlqReason || job.failureReason || "Needs recovery."}</span>,
+        render: (job) => <span className="text-sm text-slate-700">{safeText(job.dlqReason || job.failureReason, "Needs recovery.")}</span>,
       },
       {
         key: "submitted",
@@ -468,20 +513,20 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       {
         key: "run",
         header: "Run",
-        render: (run) => <span className="font-mono text-xs text-slate-700">{run.id}</span>,
+        render: (run) => <span className="font-mono text-xs text-slate-700">{safeText(run.id)}</span>,
       },
-      { key: "connector", header: "Connector", render: (run) => run.connectorSlug },
+      { key: "connector", header: "Connector", render: (run) => safeText(run.connectorSlug) },
       {
         key: "status",
         header: "Status",
-        render: (run) => <StatusChip label={run.status.replace(/_/g, " ")} tone={bulkPublishRunStatusTone(run.status)} />,
+        render: (run) => <StatusChip label={bulkPublishRunStatusLabel(run.status)} tone={bulkPublishRunStatusTone(run.status)} />,
       },
       {
         key: "progress",
         header: "Progress",
         render: (run) => (
           <span className="text-xs text-slate-600">
-            {run.succeededCount} succeeded, {run.failedCount} failed, {run.excludedCount} excluded of {run.requestedCount}
+            {bulkPublishRunProgressLabel(run)}
           </span>
         ),
       },
@@ -735,7 +780,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
             <DataGrid
               columns={submissionColumns}
               rows={submissions.slice(0, 100)}
-              getRowKey={(submission) => submission.id}
+              getRowKey={(submission) => safeText(submission.id)}
               rowClassName={selectedRowClassName}
             />
           )}
@@ -758,7 +803,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
               className="mt-3"
               columns={bulkPublishRunColumns}
               rows={bulkPublishRuns}
-              getRowKey={(run) => run.id}
+              getRowKey={(run) => safeText(run.id)}
             />
           )}
         </Card>
@@ -780,7 +825,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
                 className="mt-3"
                 columns={deadLetterColumns}
                 rows={deadLetterSubmissions}
-                getRowKey={(submission) => submission.id}
+                getRowKey={(submission) => safeText(submission.id)}
               />
             </div>
           )}
@@ -815,11 +860,11 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
                   tone={statusTone(selectedSubmission.status)}
                 />
                 <p className="text-sm text-slate-600">{recoveryActionLabel(selectedSubmission)}</p>
-                {selectedSubmission.channelErrors.length === 0 ? (
+                {channelErrorsFor(selectedSubmission).length === 0 ? (
                   <p className="text-sm text-slate-600">No channel error details available for this submission.</p>
                 ) : (
                   <ul className="space-y-2 text-sm">
-                    {selectedSubmission.channelErrors.slice(0, 5).map((error, index) => (
+                    {channelErrorsFor(selectedSubmission).slice(0, 5).map((error, index) => (
                       <li key={`${error.code}-${index}`} className="rounded-md border border-slate-200 px-3 py-2">
                         <p className="font-mono text-xs text-slate-700">{error.code}</p>
                         <p className="text-slate-700">{error.sellerMessage}</p>
