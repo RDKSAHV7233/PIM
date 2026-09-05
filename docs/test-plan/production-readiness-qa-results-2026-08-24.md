@@ -159,6 +159,85 @@ status, and plan metering all confirmed operational on 2026-09-03.
 2026-09-03, and 2026-09-04. All P0 fixes (#660, #662, #663) holding. Metrics
 stable — no drift in submission counts, connector health, or plan metering.
 
+## 2026-09-05 Browser Verification Update — regression found
+
+5th browser verification pass on app.vexapim.com (Admin role, 5 September
+2026) via Claude Browser (in-app browser tool, not the Chrome extension used
+in prior passes). **Scope note:** this pass verifies currently-deployed
+production behavior only. PR #719 (Bulk-Publish Goes Async: the new
+Jobs-workspace "Bulk Publish Runs" panel, async non-native bulk-publish, and
+the billing plan-limit fixes) is unmerged and not deployed — confirmed absent
+from the live Jobs page (see below) — so none of that PR's new functionality
+was exercised here.
+
+### Dashboard (app.vexapim.com/dashboard)
+- Catalog Health: 21,508 total products, 991 Ready to Publish, 5 needing
+  enrichment, 10 blocking issues, 0 Pending Approvals — unchanged from 2026-09-04
+
+### Connections (app.vexapim.com/channels/connectors)
+- Action Rail: 2 connected, 0 attention, 2 live — unchanged
+- Shopify (`vpim-6hzarsxc.myshopify.com`) and WooCommerce (`www.vexapim.com`,
+  controlled-pilot status) both ACTIVE, 0 accounts needing attention
+
+### Submission Log (app.vexapim.com/channels/submissions)
+- Total Submissions: 100, PENDING: 0, Accepted: 87, Rejected/Error: 13 —
+  unchanged from 2026-09-04. #660 stuck-PENDING fix still stable.
+
+### Plan & Usage (app.vexapim.com/admin/plan)
+- Plan: ENTERPRISE | Billing: Active paid
+- SKUs: 65/100,000 | Submissions: 2/100,000 | Storage: 0.01/500 GB |
+  Users: 16/999 (2%) | Connector Installations: 2/100 (2%) | Accounts Per
+  Connector: 1/20 (5%) — all unchanged from 2026-09-04, all meters healthy
+- No hydration-mismatch error observed on this page under this session's
+  browser locale. Note: PR #719 contains an unmerged fix for a
+  `toLocaleString`-driven hydration mismatch on this exact page — not
+  reproduced here, but also not proof the underlying bug is absent, since
+  this class of bug is often locale-dependent and this session's browser
+  locale may not trigger it.
+
+### Additional surfaces checked this pass (beyond the standard 4)
+- Approval Queue (`/quality/approvals`): loads clean, 0 pending — consistent
+  with dashboard
+- Issue Inbox (`/quality/issues`): loads clean
+- Imports (`/operations/imports`): loads clean, job history renders
+- Bulk Edit (`/operations/bulk-edit`): loads clean
+- Repair Center (`/operations/repair`): loads clean
+
+### NEW REGRESSION: Jobs Workspace (`/operations/jobs`) is broken
+
+`/operations/jobs` throws a Next.js error boundary — "Something went wrong.
+An unexpected error occurred." — for the Admin role. Confirmed via browser
+console: `{digest: 2519536013, message: "An error occurred in the Server
+Components render..."}`. This is a genuine server-side render failure, not a
+client-side fluke:
+
+- Reproduced 3 times: initial load, clicking "Try again" in the error
+  boundary, and a full hard navigation (fresh page load, not client-side
+  router cache)
+- Same digest (`2519536013`) every time
+- Isolated to this one route — the four adjacent `/operations/*` and
+  `/quality/*` pages checked above all load cleanly, so this is not a
+  systemic auth/session issue
+- Next.js production builds redact the underlying error message from the
+  client by design; the digest is what correlates to the real server-side
+  stack trace in application logs, which this session does not have access
+  to (no Railway/hosting log access from Claude Browser)
+
+This was not present in any of the 4 prior consecutive passes
+(2026-08-24, 2026-09-01, 2026-09-03, 2026-09-04), each of which recorded
+Jobs-adjacent surfaces as healthy. This is a new production regression,
+introduced sometime between the 2026-09-04 pass and now. Filed as
+[#720](https://github.com/Vexasaas/PIM/issues/720) for someone with server
+log access to pull the stack trace for digest `2519536013`.
+
+### Verification verdict
+Dashboard, Connections, Submissions, Plan & Usage, Approval Queue, Issue
+Inbox, Imports, Bulk Edit, and Repair Center all healthy with zero drift from
+2026-09-04. **Jobs Workspace (`/operations/jobs`) is a new, reproducible
+production regression** — Admin role gets a Server Components render error
+on every load. This blocks the exact page the Submission Log's own triage
+guide tells operators to use for retrying rejected/erroring submissions.
+
 ## Executive rollup
 
 | Priority | Shopify PASS | Shopify FAIL | Shopify BLOCKED | Woo PASS | Woo FAIL | Woo BLOCKED |
