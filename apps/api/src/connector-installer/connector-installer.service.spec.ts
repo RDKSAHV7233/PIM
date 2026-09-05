@@ -423,6 +423,24 @@ describe("ConnectorInstallerService", () => {
         expect.objectContaining({ action: "CONNECTOR_RECONNECT_SUCCESS" }),
       );
     });
+
+    it("does not live-validate Meesho reconnect while RD-MEESHO-1 validation is deferred", async () => {
+      const { service, queryMock, executeMock, auditService, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "meesho" }));
+      executeMock.mockResolvedValue(1);
+      const validateCredentials = jest.fn().mockResolvedValue(false);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ validateCredentials });
+
+      const result = await service.reconnect("inst_1", { actorId: "user_1", actorRole: "admin" });
+
+      expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+      expect(validateCredentials).not.toHaveBeenCalled();
+      expect(executeMock).toHaveBeenCalled();
+      expect(result).toEqual({ id: "inst_1", status: "ACTIVE" });
+      expect(auditService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CONNECTOR_RECONNECT_SUCCESS", resourceId: "inst_1" }),
+      );
+    });
   });
 
   it("listAvailableDefinitions delegates to buildDefinitionActionsForSlugs (batch path)", async () => {

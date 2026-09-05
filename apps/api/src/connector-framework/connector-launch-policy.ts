@@ -9,6 +9,7 @@ export type ConnectorLaunchStage =
   | "po_review"
   | "early_access"
   | "controlled_pilot"
+  | "p1_blocker_hold"
   | "manual"
   | "live"
   | "deprecated"
@@ -80,9 +81,9 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
-      launchStage: "controlled_pilot",
+      launchStage: "p1_blocker_hold",
       launchNote:
-        "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.",
+        "WooCommerce onboarding and install are paused while P1 blocker closure is in progress. P1-1 tenant-owned app-auth credential verification, P1-2 auth revocation policy, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff are required before any customer pilot restarts.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -113,8 +114,7 @@ export function isInstallableStage(stage: ConnectorLaunchStage): boolean {
     stage === "code_complete" ||
     stage === "qa_validation" ||
     stage === "po_review" ||
-    stage === "early_access" ||
-    stage === "controlled_pilot"
+    stage === "early_access"
   );
 }
 
@@ -126,6 +126,7 @@ const LAUNCH_STAGE_LABELS: Record<ConnectorLaunchStage, string> = {
   po_review: "PO review",
   early_access: "Early access",
   controlled_pilot: "Controlled pilot",
+  p1_blocker_hold: "P1 blocker-closure hold",
   manual: "Manual export",
   live: "Live",
   deprecated: "Deprecated",
@@ -160,12 +161,14 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
       owner: "Platform",
-      milestone: "Controlled pilot approved 2026-09-03",
-      blockers: ["store-admin/wp-admin live evidence for GA", "full regression sweep for GA"],
+      milestone: "P1 blocker-closure hold",
+      blockers: [
+        "P1-1 tenant-owned app-auth credential verification",
+        "P1-2 auth revocation failure policy",
+        "staging runtime proof and fresh CTO/PO/Security/QA/SRE signoff",
+      ],
       internalNotes:
-        "W1–W10 code-complete; P0 defects #660/#662/#663 closed. CTO/PO approved controlled-pilot use " +
-        "(operator-supervised, up to 2 ENTERPRISE tenants) on 2026-09-03 — see CONNECTOR_CLAIM_AUDIT_2026-09-03.md. " +
-        "Not GA: bulk batch behavior, multi-variant, multi-image, and webhook auto-sync remain unverified.",
+        "W1-W10 code-complete and historical P0 remediation evidence exists, but the 2026-09-03 pilot approval is superseded for onboarding while P1-1/P1-2 are open. Not GA, not public-sellable, and not customer-installable until fresh signoff.",
     };
   }
   return { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };

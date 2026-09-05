@@ -53,6 +53,7 @@ import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dt
 
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
+const RECONNECT_VALIDATION_DEFERRED_SLUGS = new Set(["meesho"]);
 
 type CursorPayload = {
   installedAt: string;
@@ -955,17 +956,18 @@ export class ConnectorInstallerService {
         accountAlias: installation.accountAlias,
       });
 
-      // #564: this used to flip the badge to ACTIVE unconditionally — a genuinely
-      // broken connector would look "reconnected" without anything ever being
-      // checked. Reuse the same validateCredentials() call the heartbeat already
-      // makes for every installation, so Reconnect actually proves the account works.
-      const connector = this.connectorRegistry.getConnector(installation.slug);
-      await this.validateStoredCredentialsOrThrow(
-        connector,
-        this.buildConnectorContext(installation),
-        "CONNECTOR_CREDENTIALS_STILL_INVALID",
-        `${installation.slug} credentials could not be validated. Update the stored credentials via setup, then try reconnecting again.`,
-      );
+      // #564: live-checkable connectors must prove stored credentials before
+      // Reconnect marks them ACTIVE. Meesho M-1 is export-only and has no partner
+      // ping endpoint yet, so validation is explicitly deferred until RD-MEESHO-1.
+      if (!RECONNECT_VALIDATION_DEFERRED_SLUGS.has(installation.slug)) {
+        const connector = this.connectorRegistry.getConnector(installation.slug);
+        await this.validateStoredCredentialsOrThrow(
+          connector,
+          this.buildConnectorContext(installation),
+          "CONNECTOR_CREDENTIALS_STILL_INVALID",
+          `${installation.slug} credentials could not be validated. Update the stored credentials via setup, then try reconnecting again.`,
+        );
+      }
 
       const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         UPDATE connector_installations
@@ -2564,4 +2566,3 @@ export class ConnectorInstallerService {
     return ctx;
   }
 }
-

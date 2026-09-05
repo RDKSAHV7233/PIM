@@ -45,7 +45,7 @@ interface ConnectorsPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot";
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold";
 
 const CONNECTOR_CAPABILITY_BADGES = [
   { label: "Publish", capability: "PUBLISH" },
@@ -249,7 +249,7 @@ function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
-  if (stage === "manual" || stage === "controlled_pilot") {
+  if (stage === "manual" || stage === "controlled_pilot" || stage === "p1_blocker_hold") {
     return "warning";
   }
   return "info";
@@ -261,6 +261,9 @@ function connectorLaunchLabel(
 ): ConnectorMaturity {
   if (stage === "controlled_pilot") {
     return "Controlled pilot";
+  }
+  if (stage === "p1_blocker_hold") {
+    return "P1 blocker hold";
   }
   if (stage === "live" && implementationStatus === "partial") {
     return "Beta";
@@ -278,7 +281,7 @@ function connectorLaunchLabel(
 }
 
 function isConnectorPortfolioStage(stage: string): boolean {
-  return stage === "live" || stage === "manual" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access" || stage === "controlled_pilot";
+  return stage === "live" || stage === "manual" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
 }
 
 function resolveInstalledStatusPresentation(

@@ -1,6 +1,6 @@
 # Launch Readiness Pack
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-04
 
 Status: active working pack
 
@@ -8,21 +8,22 @@ This pack prepares the CTO/PO launch review. It does not approve launch.
 
 ## Current Launch Verdict
 
-Broad production and paid-pilot readiness are not established. Controlled pilot
-evaluation is CTO/PO APPROVED (2026-09-03) for up to 2 ENTERPRISE tenants. The
-latest evidence includes `docs/test-plan/production-readiness-qa-results-2026-08-24.md`
-and the 2026-09-03 live browser verification on app.vexapim.com (third
-consecutive verification pass: 2026-08-24, 2026-09-01, 2026-09-03).
+Broad production and paid-pilot readiness are not established. The 2026-09-03
+controlled-pilot approval is superseded for onboarding by the P1 blocker-closure
+hold. The latest historical evidence includes
+`docs/test-plan/production-readiness-qa-results-2026-08-24.md` and the
+2026-09-03 live browser verification on app.vexapim.com, but those records do
+not close the P1-1 Woo app-auth or P1-2 auth revocation gates.
 
 Current gate summary:
 
 | Gate | Current state | Required before pass |
 | --- | --- | --- |
 | Shopify technical P0 | Partial live evidence | Connector healthy (2 connected, 0 attention, Live publish). Metafield investigation: 0 definitions configured. All 13 errors are missing-image data quality. Remaining: seed multi-variant + metafield test data, store/admin evidence |
-| WooCommerce technical P0 | Substantially advanced | #660 FIXED, #662 VERIFIED. Re-verified 2026-09-03: 0 PENDING across 100 submissions, 87 accepted. WooCommerce categorized as export/manual connector (controlled pilot). Remaining: store/admin evidence |
+| WooCommerce technical P0 | P1 blocker-closure hold | #660 FIXED, #662 VERIFIED as historical remediation evidence. WooCommerce is hidden/blocked from customer setup and install lanes until P1-1/P1-2 review, CI, staging runtime proof, and fresh signoff. Remaining: store/admin evidence |
 | Plan commercial truth | Substantially advanced | #663 FIXED. Re-verified 2026-09-03: SKU meter 65/100K, ENTERPRISE active paid, billing month 2026-09. Remaining: Product/Commercial owner signoff |
 | Cross-cutting regression | Near-full local coverage | API: 62/63 suites, 1277/1295 tests passed. Web: 180/183 passed (98%), 3 env-blocked. 8 UI contract assertions fixed 2026-09-02 |
-| Paid pilot readiness | CONTROLLED PILOT APPROVED | CTO/PO decision 2026-09-03: up to 2 ENTERPRISE tenants, operator-supervised. See TEAM_SIGNOFF_MATRIX |
+| Paid pilot readiness | CONTROLLED PILOT HOLD | P1-2 auth revocation implementation review, P1-1 Woo app-auth CI/staging/runtime verification, and fresh CTO/PO/Security/QA/SRE signoff required |
 
 ## Required Launch Documents
 
@@ -32,7 +33,7 @@ Current gate summary:
 | Production-readiness QA result | Yes: `docs/test-plan/production-readiness-qa-results-2026-08-24.md` | Current blocker authority | Rerun after fixes |
 | Connector index | Yes: `docs/connectors/README.md` | Current | Keep launch stages aligned with code |
 | Known limitations | Yes: `docs/product/known-limitations.md` | Current | Review before any customer handoff |
-| Pilot scope | Yes: `docs/pilot-scope.md` | Current controlled-evaluation scope | Fill per-tenant owner/evidence references |
+| Pilot scope | Yes: `docs/pilot-scope.md` | Current hold authority | Reopen only after P1 closure and fresh signoff |
 | Legal pack | Partial: `docs/legal/*` | Not customer-ready | Legal to fill placeholders and approve |
 | Ops/support pack | Partial: `docs/runbooks/*` | Not signoff-ready; pilot support draft exists | Fill named contacts, restore proof, SLO/on-call evidence, and tenant support approvals |
 | Claim-to-proof pack | Partial: `docs/marketing/*`, `marketing/*` | Blocked; public CTA policy guard passes after 2026-08-30 correction | Add restricted proof references and approvals |
@@ -67,5 +68,8 @@ Current gate summary:
 - Plan-commercial #663 local policy evidence now passes: product approval creates a single canonical variant when needed, SKU usage remains variant-based, and billing/web copy reflects that definition.
 - Legal placeholders: MSA and SLA remain skeleton-only. Cookie policy updated 2026-09-03 with verified technical inventory (6 cookies, no analytics/marketing cookies). AUP contact and response targets filled. Privacy policy contact filled. Data localisation timestamp refreshed. All still require legal counsel review before publication.
 - Ops/support: on-call contacts filled (sole operator — CTO). Incident response runbook complete with severity matrix, triage checklist, and customer comms templates. Secondary on-call not yet assigned. Restore drill, SLO telemetry, and tenant support-channel approval remain pending.
-- Claims governance: proof-references.json populated with 14 repo-safe evidence entries (PRF-REG-001 through PRF-REMEDIATION-001). Claims.json upgraded from MISSING_CURRENT_AUTHORITY to PARTIAL_EVIDENCE_AVAILABLE. WooCommerce upgraded from DO_NOT_SELL to CONTROLLED_PILOT_ONLY. Shopify direct-token claims upgraded to CONTROLLED_PILOT_ONLY. Public claims remain blocked until Marketing/Legal approve.
-- CTO controlled-pilot launch decision recorded 2026-09-03: APPROVED for controlled evaluation (Shopify direct-token + WooCommerce), operator-led, up to 2 tenants, ENTERPRISE plan only. See TEAM_SIGNOFF_MATRIX for full decision log.
+- Claims governance: proof-references.json populated with 14 repo-safe evidence entries (PRF-REG-001 through PRF-REMEDIATION-001). Claims.json upgraded from MISSING_CURRENT_AUTHORITY to PARTIAL_EVIDENCE_AVAILABLE. WooCommerce historical remediation evidence exists, but current WooCommerce claims are blocker-closure hold. Shopify direct-token claims remain CONTROLLED_PILOT_ONLY. Public claims remain blocked until Marketing/Legal approve.
+- CTO controlled-pilot launch decision recorded 2026-09-03: superseded for
+  onboarding by the P1 blocker-closure hold. Treat TEAM_SIGNOFF_MATRIX as
+  historical decision context until P1-2 implementation review, P1-1 verification, and
+  fresh CTO/PO/Security/QA/SRE signoff are complete.

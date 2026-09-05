@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, Optional, UnauthorizedException } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { createClient } from "redis";
 import { ErrorCaptureService } from "../error-authority/error-capture.service";
 
@@ -206,11 +206,7 @@ export class JwtBlocklistService implements OnModuleDestroy {
 
     await this.ensureRedisConnection();
     if (!this.redisAvailable || !this.redisClient) {
-      if (process.env["JWT_BLOCKLIST_FAIL_OPEN"] === "true") {
-        this.cache.set(normalizedJti, { value: false, expiresAtMs: nowMs + CACHE_TTL_MS });
-        return false;
-      }
-      throw new UnauthorizedException("Auth service temporarily unavailable.");
+      throw new ServiceUnavailableException("Auth service temporarily unavailable.");
     }
 
     try {
@@ -221,8 +217,17 @@ export class JwtBlocklistService implements OnModuleDestroy {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown error");
       this.markRedisUnavailable(`Failed reading JWT blocklist key for jti=${normalizedJti}: ${message}`);
-      this.cache.set(normalizedJti, { value: false, expiresAtMs: nowMs + CACHE_TTL_MS });
-      return false;
+      void this.errorCaptureService
+        ?.captureUnexpected({
+          runtime: "api",
+          service: "vexa-pim-api",
+          error,
+          category: "cache",
+          severity: "p1",
+          routeTemplate: "jwt-blocklist:is-revoked",
+        })
+        .catch(() => {});
+      throw new ServiceUnavailableException("Auth service temporarily unavailable.");
     }
   }
 
@@ -270,10 +275,7 @@ export class JwtBlocklistService implements OnModuleDestroy {
 
     await this.ensureRedisConnection();
     if (!this.redisAvailable || !this.redisClient) {
-      if (process.env["JWT_BLOCKLIST_FAIL_OPEN"] === "true") {
-        return false;
-      }
-      throw new UnauthorizedException("Auth service temporarily unavailable.");
+      throw new ServiceUnavailableException("Auth service temporarily unavailable.");
     }
     try {
       const raw = await this.redisClient.get(key);
@@ -290,7 +292,17 @@ export class JwtBlocklistService implements OnModuleDestroy {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown");
       this.markRedisUnavailable(`Failed reading cred_rev key ${key}: ${message}`);
-      return false;
+      void this.errorCaptureService
+        ?.captureUnexpected({
+          runtime: "api",
+          service: "vexa-pim-api",
+          error,
+          category: "cache",
+          severity: "p1",
+          routeTemplate: "jwt-blocklist:is-credential-revoked",
+        })
+        .catch(() => {});
+      throw new ServiceUnavailableException("Auth service temporarily unavailable.");
     }
   }
 

@@ -2,12 +2,13 @@
 
 Last reviewed: 2026-09-04
 
-Status: INTERNAL PILOT USE ONLY — not approved for public distribution
+Status: DRAFT ON HOLD — not approved for customer onboarding or public distribution
 
 Owner: Product / PO / Connector Engineering / QA / CTO / Support
 
 Reviewed by: Connector Engineering/QA, Product/Claims Governance, Security
-(2026-09-04) — see review notes at the end of this document.
+(2026-09-04) — see review notes at the end of this document. Superseded for
+onboarding by the P1 blocker-closure hold until re-signed.
 
 Audience: Vexa operator and first-tenant pilot customer (ENTERPRISE tier,
 operator-supervised onboarding)
@@ -15,7 +16,13 @@ operator-supervised onboarding)
 Governing claim authority:
 `docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md`
 
-**WooCommerce is Controlled Pilot Only, not GA.** Shopify's own verdict in
+**WooCommerce is on P1 blocker-closure hold, not GA and not customer-ready.**
+This guide is a draft operator/customer playbook for after the hold is lifted.
+Do not use it to onboard a tenant until P1-2 auth revocation disposition,
+P1-1 Woo app-auth credential write/read verification, CI, staging runtime proof,
+and fresh CTO/PO/Security/QA/SRE signoff are complete.
+
+Shopify's own verdict in
 the governing audit is "Conditional — live only for the bounded
 direct-token, single-variant pilot scope," not an unqualified GA claim
 either. WooCommerce sits behind that: publish/validate/status-sync are
@@ -29,7 +36,7 @@ production-ready or as equivalent in verified scope to Shopify.
 
 ## 1. Prerequisites
 
-Before starting, confirm:
+Before starting, confirm the P1 hold has been lifted and then confirm:
 
 - [ ] Vexa PIM workspace provisioned (ENTERPRISE plan, active paid)
 - [ ] User account with **admin** or **connector_admin** role
@@ -39,6 +46,9 @@ Before starting, confirm:
       readiness passing for WooCommerce
 - [ ] Operator present for the first publish — this is a supervised pilot,
       not self-service onboarding
+- [ ] P1-2 auth revocation disposition signed by Security/SRE/CTO
+- [ ] P1-1 Woo app-auth credential write/read fix reviewed, CI-green, staged,
+      and runtime-verified
 
 ---
 
@@ -272,23 +282,23 @@ rewrite WooCommerce products without you clicking Publish.**
 
 | Area | Limitation |
 | --- | --- |
-| Overall status | Controlled pilot only — not GA, not production-ready, not SLA-backed. Verified at single-product level under operator supervision. |
-| Bulk publish | The bulk-publish UI accepts WooCommerce as a channel, but only single-product-level publish is verified. Publish one product at a time during this pilot. |
+| Overall status | P1 blocker-closure hold — not customer-ready, not GA, not production-ready, not SLA-backed. Historical single-product evidence exists, but onboarding is paused until fresh signoff. |
+| Bulk publish | The bulk-publish UI has historical WooCommerce evidence at single-product level only. Do not use WooCommerce bulk publish for a tenant while the P1 hold is open. |
 | Variants | Variable-product code exists but has no verified multi-variant test data. Use single-variant (simple) products only. |
 | Images | Main image is included in the verified single-product publish path. Additional images (up to 8) exist in code but are not customer-verified — treat as experimental. |
 | Webhooks | Webhook-receive code with HMAC signature verification exists, but no live webhook has been accepted end-to-end in this pilot. Do not rely on inbound sync from WooCommerce to Vexa. |
 | **Automatic background reconciliation** | **This is automatic, not optional, unless the operator disables it.** A background job checks every connected WooCommerce store on a fixed schedule (roughly every 4 hours) and, if it finds the WooCommerce listing has drifted from what Vexa expects, automatically pushes an update back to WooCommerce — with no publish click from you. If you or anyone on your team edits a Vexa-managed product directly in WooCommerce Admin between Vexa publishes, this job may silently overwrite that edit within a few hours. This behavior itself is not production-verified (no live pilot evidence yet), but it is running by default. Ask the operator whether this job is enabled for your tenant before making any direct WooCommerce-side edits you want to keep. |
 | GST/HSN tax fields | Custom fields are written when set, documented for two third-party GST plugins, but this is code-level reference material, not a verified compliance workflow. |
 
-This table is authoritative for WooCommerce specifics during the pilot. The
-platform-wide Known Limitations page carries a single summarized
-WooCommerce row and is not a superset of this table.
+This table is authoritative for WooCommerce specifics while preparing for a
+possible future pilot restart. The platform-wide Known Limitations page carries
+a single summarized WooCommerce row and is not a superset of this table.
 
 ---
 
 ## 9. Support and Escalation
 
-During the controlled pilot:
+During any controlled pilot after the P1 hold is lifted:
 
 - **Primary contact:** Vexa operator (CTO) — provided during onboarding.
 - **Response time:** Best-effort during business hours. No formal SLA
@@ -320,10 +330,10 @@ with the correct urgency.
 
 ## 10. Scope Boundary
 
-This guide covers only the verified controlled-pilot WooCommerce connector
-scope: operator-supervised, single-product publish/validate/status-sync,
-credential install and update, and idempotent re-publish for single-variant
-products. It does not cover or imply:
+After the P1 hold is lifted, this guide covers only the bounded WooCommerce
+connector scope: operator-supervised, single-product publish/validate/status-
+sync, credential install and update, and idempotent re-publish for single-
+variant products. It does not cover or imply:
 
 - Production-ready or GA status
 - SLA-backed availability
@@ -339,9 +349,10 @@ products. It does not cover or imply:
 - Public pricing or plan commitments
 
 All claims in this guide are bounded by the connector claim audit at
-`docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md`. No claim in this
-guide may exceed the verdict in that audit without a fresh audit refresh
-and CTO/PO sign-off.
+`docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md` and by the P1
+blocker-closure hold. No claim in this guide may exceed those authorities
+without a fresh evidence update and Product / CTO / Security / QA / SRE
+approval.
 
 ---
 
@@ -376,14 +387,15 @@ onboarding guide.
   `CLM-WOO-OAUTH-001` entry was mislabeled (its content was actually
   about Shopify OAuth). **Fixed** — claim register updated with the two
   new IDs and the mislabeled entry renamed to `CLM-SHP-OAUTH-001`;
-  `known-limitations.md` WooCommerce row refreshed to reflect the
-  2026-09-03 controlled-pilot approval.
+  `known-limitations.md` WooCommerce row refreshed before the P1
+  blocker-closure hold superseded onboarding approval.
 - **Security** — verified credential-handling accuracy: encryption
   claims, REST API permission scope (Read/Write is genuinely required, not
   over-broad), step-up enforcement, HTTPS rejection, and escalation
   coverage. Result: **Approve as-is** — no defects found; the guide was
   found to under-claim rather than over-claim throughout.
 
-All required edits from all three reviews have been applied. This guide is
-approved for pilot onboarding use (internal, not public distribution) as of
-2026-09-04.
+All required edits from all three reviews have been applied, but the P1
+blocker-closure review now supersedes onboarding approval. This guide is not
+approved for pilot onboarding use until P1-2 implementation review, P1-1
+verification, and fresh required-team signoff are complete.

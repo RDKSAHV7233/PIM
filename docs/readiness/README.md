@@ -54,13 +54,13 @@ Current launch authority starts with:
 - `AMAZON_INDIA_VALIDATION_EVIDENCE_PACK_2026-08-29.md`
   - Blocked Amazon India production-publish evidence placeholder.
 - `SHOPIFY_DIRECT_TOKEN_CUSTOMER_GUIDE_DRAFT_2026-08-29.md`
-  - Shopify direct-token onboarding guide. Team-reviewed (Connector Engineering/QA, Product/Claims Governance, Security) and approved for pilot onboarding use, 2026-09-04.
+  - Shopify direct-token onboarding guide. Team-reviewed, but onboarding use is superseded by the P1 auth revocation hold until re-signed.
 - `WOOCOMMERCE_CONTROLLED_PILOT_CUSTOMER_GUIDE_2026-09-04.md`
-  - WooCommerce controlled-pilot onboarding guide. Team-reviewed (Connector Engineering/QA, Product/Claims Governance, Security) and approved for pilot onboarding use, 2026-09-04.
+  - WooCommerce controlled-pilot onboarding guide draft. Team-reviewed, but not approved for customer onboarding while P1-1/P1-2 holds remain open.
 - `CUSTOMER_PILOT_CLOSEOUT_TEMPLATE_2026-08-29.md`
   - Customer-specific controlled-evaluation closeout template.
 - `CONNECTOR_CLAIM_AUDIT_2026-09-03.md`
-  - Governing claim authority: Shopify & WooCommerce connector claim audit refreshed against current HEAD and 3 browser verification passes. CTO/PO signed.
+  - Connector claim audit refreshed against its reviewed HEAD and 3 browser verification passes; WooCommerce onboarding authority is now superseded by the 2026-09-03 P1 blocker-closure hold.
 
 ## Team Review Rule
 

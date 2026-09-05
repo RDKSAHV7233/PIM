@@ -6,7 +6,7 @@
 // Auth: WooCommerce REST API v3, HTTP Basic Auth (consumer_key:consumer_secret).
 // Webhook HMAC: X-WC-Webhook-Signature = base64(HMAC-SHA256(rawBody, webhook_secret)).
 //   W1 uses env var PIM_WOOCOMMERCE_WEBHOOK_SECRET (app-level, shared across installs).
-//   W5 will extend with per-installation secret lookup once framework supports ctx in parseWebhookEvent.
+//   W5 prefers tenant-owned per-installation secrets when webhook context is available.
 //
 // Install paths:
 //   Manual-key: site_url + consumer_key + consumer_secret + webhook_secret entered in form.
@@ -226,10 +226,18 @@ export class WooCommerceConnector implements ConnectorInterface {
 
   // ─── credential helpers ─────────────────────────────────────────────────────
 
-  private async fetchCredentialPlaintext(installationId: string, type: string): Promise<string | null> {
+  private requireTenantKey(ctx: Pick<ConnectorContext, 'tenantId'>, action: string): string {
+    const tenantKey = String(ctx.tenantId ?? '').trim();
+    if (!tenantKey) {
+      throw new Error(`WooCommerce ${action} missing tenant context.`);
+    }
+    return tenantKey;
+  }
+
+  private async fetchCredentialPlaintext(tenantKey: string, installationId: string, type: string): Promise<string | null> {
     const db = this.prismaDirect.getClient();
     const row = await db.connectorCredential.findFirst({
-      where: { installationId, credentialType: type },
+      where: { tenantKey, installationId, credentialType: type },
       select: { encryptedValue: true, keyVersion: true },
     });
     if (!row) return null;
@@ -240,7 +248,7 @@ export class WooCommerceConnector implements ConnectorInterface {
   }
 
   private async getPlainCredential(ctx: ConnectorContext, type: string): Promise<string | null> {
-    return this.fetchCredentialPlaintext(ctx.installationId, type);
+    return this.fetchCredentialPlaintext(this.requireTenantKey(ctx, 'credential lookup'), ctx.installationId, type);
   }
 
   private async resolveCredentials(ctx: ConnectorContext): Promise<{
@@ -1022,12 +1030,13 @@ export class WooCommerceConnector implements ConnectorInterface {
   async parseWebhookEvent(
     rawBody: Buffer,
     headers: Record<string, string>,
-    ctx?: { installationId: string },
+    ctx?: { tenantId?: string; installationId: string },
   ): Promise<ParsedWebhookEvent | null> {
     // W5a: prefer per-installation secret; fall back to shared env var
     let webhookSecret: string | null = null;
-    if (ctx?.installationId) {
-      webhookSecret = await this.fetchCredentialPlaintext(ctx.installationId, 'webhook_secret');
+    const tenantKey = String(ctx?.tenantId ?? '').trim();
+    if (tenantKey && ctx?.installationId) {
+      webhookSecret = await this.fetchCredentialPlaintext(tenantKey, ctx.installationId, 'webhook_secret');
     }
     if (!webhookSecret) {
       webhookSecret = String(process.env['PIM_WOOCOMMERCE_WEBHOOK_SECRET'] ?? '').trim() || null;
@@ -1125,9 +1134,13 @@ export class WooCommerceConnector implements ConnectorInterface {
   ): Promise<void> {
     const consumerKey    = String(params['consumer_key']    ?? '').trim();
     const consumerSecret = String(params['consumer_secret'] ?? '').trim();
+    const tenantKey = String(ctx.tenantId ?? '').trim();
 
     if (!consumerKey || !consumerSecret) {
       throw new Error('WooCommerce app-auth callback missing consumer_key or consumer_secret.');
+    }
+    if (!tenantKey) {
+      throw new Error('WooCommerce app-auth callback missing tenant context.');
     }
 
     const db = this.prismaDirect.getClient();
@@ -1143,37 +1156,41 @@ export class WooCommerceConnector implements ConnectorInterface {
 
     await tenantExecRaw(db, `
       INSERT INTO connector_credentials (
-        id, installation_id, credential_type, encrypted_value, key_version,
+        id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
         status, metadata, last_refresh_at, updated_at
       ) VALUES (
-        $1, $2, 'consumer_key', $3, $4, 'ACTIVE',
+        $1, $2, $3, 'consumer_key', $4, $5, 'ACTIVE',
         '{"source":"app_auth_callback"}'::jsonb, NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
+        tenant_key       = EXCLUDED.tenant_key,
+        installation_id  = EXCLUDED.installation_id,
         encrypted_value = EXCLUDED.encrypted_value,
         key_version     = EXCLUDED.key_version,
         status          = 'ACTIVE',
         metadata        = EXCLUDED.metadata,
         last_refresh_at = NOW(),
         updated_at      = NOW()
-    `, [`${ctx.installationId}:consumer_key`, ctx.installationId, encKey.cipher, versionLabel]);
+    `, [`${ctx.installationId}:consumer_key`, tenantKey, ctx.installationId, encKey.cipher, versionLabel]);
 
     await tenantExecRaw(db, `
       INSERT INTO connector_credentials (
-        id, installation_id, credential_type, encrypted_value, key_version,
+        id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
         status, metadata, last_refresh_at, updated_at
       ) VALUES (
-        $1, $2, 'consumer_secret', $3, $4, 'ACTIVE',
+        $1, $2, $3, 'consumer_secret', $4, $5, 'ACTIVE',
         '{"source":"app_auth_callback"}'::jsonb, NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
+        tenant_key       = EXCLUDED.tenant_key,
+        installation_id  = EXCLUDED.installation_id,
         encrypted_value = EXCLUDED.encrypted_value,
         key_version     = EXCLUDED.key_version,
         status          = 'ACTIVE',
         metadata        = EXCLUDED.metadata,
         last_refresh_at = NOW(),
         updated_at      = NOW()
-    `, [`${ctx.installationId}:consumer_secret`, ctx.installationId, encSecret.cipher, versionLabel]);
+    `, [`${ctx.installationId}:consumer_secret`, tenantKey, ctx.installationId, encSecret.cipher, versionLabel]);
 
     this.logger.info('WooCommerce app-auth callback credentials stored', {
       installationId: ctx.installationId,

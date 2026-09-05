@@ -1,6 +1,6 @@
 # Vexa PIM Current State
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-04
 
 This is the canonical repository state summary. Code, live QA evidence, and the
 current governance files override dated execution notes, review memos, old root
@@ -15,12 +15,14 @@ webhooks, plan metadata, and operations recovery surfaces all exist in code.
 
 Current release truth:
 
-- **Commercial readiness: CONTROLLED PILOT APPROVED** (CTO/PO decision
-  2026-09-03). This authorizes a tightly supervised ENTERPRISE pilot for up to
-  2 tenants. It is **not GA approval** and does not waive the deferred security,
-  DR, legal, or operational gates.
-- **Engineering: NO NEW GENERAL READINESS WORK REQUIRED** unless pilot
-  onboarding exposes a reproducible defect.
+- **Commercial readiness: CONTROLLED PILOT HOLD**. The 2026-09-03 CTO/PO
+  controlled-pilot approval is superseded for onboarding by the P1 blocker
+  closure review. Customer onboarding remains paused until P1-2 auth revocation
+  implementation and P1-1 Woo app-auth verification are reviewed, CI-verified,
+  staged, runtime-proven, and re-signed.
+- **Engineering: BLOCKER CLOSURE REQUIRED** for the P1 auth revocation and Woo
+  app-auth tenant-ownership findings. Optimization and general readiness
+  expansion remain blocked until those gates are closed.
 - **GA: NOT APPROVED.** Deferred items (VAPT, restore drill, legal counsel
   review, secondary on-call, store-admin evidence) remain named GA blockers
   with owners and target dates. They must not quietly disappear because the
@@ -38,15 +40,15 @@ Current release truth:
 
 ### Controlled Pilot Scope
 
-```
-Pilot tier:            ENTERPRISE
-Tenant count:          1 initially, 2 maximum under current approval
-Supported connectors:  Shopify direct-token, WooCommerce
-                       (only capabilities already runtime-verified)
-Operating mode:        operator-supervised
+```text
+Pilot tier:            Not authorized while P1 hold is open
+Tenant count:          0 until re-signed
+Supported connectors:  None for customer onboarding until P1-2 implementation
+                       and required fixes are reviewed and verified
+Operating mode:        blocker closure / internal evidence only
 No promise of:         broad GA support, unmanaged/self-service onboarding,
                        enterprise SLA beyond signed pilot terms, unverified
-                       connector capabilities, 5k–20k native bulk architecture
+                       connector capabilities, 5k-20k native bulk architecture
 ```
 
 ## Current Code-Truth Snapshot
@@ -99,7 +101,7 @@ exist in code and still be blocked from public GA claims.
 | Myntra | `myntra` | live | API access requires account-manager enablement. |
 | Nykaa | `nykaa` | manual export | Seller upload workflow; direct API requires partner credentials. |
 | Shopify | `shopify` | live | Direct-token publishing, selected edit/republish, status sync, reconnect validation, jobs visibility, and manual bulk publish up to 50. Managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. |
-| WooCommerce | `woocommerce` | controlled pilot | Installable/code-complete; CTO/PO approved for controlled pilot 2026-09-03. #660 FIXED, #662 VERIFIED, fresh publish SUCCESS. Not GA/public-sellable until store-admin evidence and full team signoff. |
+| WooCommerce | `woocommerce` | P1 blocker-closure hold | Code-complete internally, but hidden/blocked from customer setup and install lanes while P1-1 tenant-owned credential persistence and P1-2 auth revocation behavior are reviewed, CI-verified, staged, and runtime-verified. #660/#662 evidence remains useful historical remediation context, not current onboarding approval. |
 
 ## Latest Readiness Evidence
 
@@ -134,9 +136,10 @@ Current gate summary:
   blockers: auth-cookie-csrf, error-authority-env-contract (need runtime
   config). Known pre-existing: public-signup-web-flow (hang). 8 UI contract
   assertion drift tests fixed on 2026-09-02.
-- Paid Pilot Readiness: **CONTROLLED PILOT APPROVED** (CTO/PO decision
-  2026-09-03: Shopify direct-token + WooCommerce, operator-led, up to 2
-  ENTERPRISE tenants. See TEAM_SIGNOFF_MATRIX for full decision log.)
+- Paid Pilot Readiness: **CONTROLLED PILOT HOLD**. The 2026-09-03 CTO/PO
+  decision is superseded for onboarding until P1-2 auth revocation
+  implementation, P1-1 Woo app-auth verification, CI/staging/runtime evidence,
+  and fresh CTO/PO/Security/QA/SRE signoff are complete.
 
 ### 2026-09-01 Browser Verification Evidence
 

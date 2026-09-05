@@ -26,7 +26,7 @@ Use this page to understand what is not available in the current controlled-roll
 | Nykaa direct publish not available | Nykaa is a manual-export workflow. Direct API publishing requires Nykaa platform-partner credentials. |
 | ONDC not live | ONDC connector exists but is behind a feature flag (`FEATURE_ONDC_ENABLED`). Not available to sellers in the current release. |
 | Amazon India under development | Seller install and credential validation are available; publish and status sync remain under active validation and are not recommended for production catalogues. |
-| WooCommerce not GA/public-sellable | WooCommerce is approved for CTO/PO-signed controlled pilot use only (operator-supervised, single-product level, up to 2 ENTERPRISE tenants) as of 2026-09-03 — see `docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md`. It is not GA and not public-sellable. Do not sell WooCommerce production publishing as ready. |
+| WooCommerce not GA/public-sellable | WooCommerce customer onboarding is on P1 blocker-closure hold pending P1-1 credential write/read verification, P1-2 auth revocation implementation review, CI, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff. It is hidden/blocked from customer setup and install lanes while the hold is open. |
 | Shopify public claims restricted | Shopify direct-token publishing has real evidence, but managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. Public claims require the claims governance process. |
 
 ---

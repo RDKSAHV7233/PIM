@@ -6,17 +6,18 @@ last_updated: 2026-09-03
 owner: Support / Customer Success
 ---
 
-Use this runbook for controlled-evaluation tenants only. It does not approve
-paid-pilot readiness, WooCommerce GA, public pricing, SLA claims, or customer
-support commitments beyond an explicitly approved pilot scope.
+Use this runbook for controlled-evaluation tenants only after the current P1
+hold is lifted. It does not approve paid-pilot readiness, WooCommerce GA, public
+pricing, SLA claims, security readiness, or customer support commitments beyond
+an explicitly approved pilot scope.
 
 ## 1. Intake Triage
 
 | Customer issue | Severity | First owner | Escalate to | Evidence to capture |
 | --- | --- | --- | --- | --- |
-| Login blocked, tenant suspended, or admin cannot access approved scope | P1 unless all tenants are affected | Support | Ops + CTO | Tenant key, user role, timestamp, browser screenshot, API error code |
+| Login blocked, tenant suspended, or admin cannot access approved scope | P1 unless all tenants are affected | Support | Ops + CTO + Security | Tenant key, user role, timestamp, browser screenshot, API error code |
 | Publish/export blocked for an approved connector | P1 | Support | Connector Engineering + QA | Connector slug, product IDs, job/submission IDs, visible status, non-secret provider response |
-| WooCommerce publish request | P1 if in approved live rerun, otherwise scope block | Support | PO + Connector Engineering | Confirmation that WooCommerce is code-complete but not GA/public-sellable |
+| WooCommerce app-auth or publish request | Scope block until P1-1 is merged, staged, and runtime-verified | Support | PO + Connector Engineering + Security | Confirmation that WooCommerce app-auth is in blocker closure, not customer-ready |
 | Plan-limit, SKU-meter, or quota dispute | P2 unless access is blocked for an approved pilot | Support | Commercial + Product | Tenant key, plan tier, SKU meter screenshot, product/variant examples |
 | Data loss concern, broad outage, or security/privacy issue | P0 | Support | CTO + Ops + Security/Privacy | Follow `docs/runbooks/incident-response.md` immediately |
 
@@ -28,13 +29,15 @@ secrets if they have already shared them.
 
 Current support wording:
 
-> WooCommerce is approved for controlled pilot evaluation as of 2026-09-03
-> (CTO/PO decision). It is not GA or public-sellable. We can support
-> operator-supervised publishing for approved ENTERPRISE tenants only.
+> WooCommerce app-auth is in blocker closure as of 2026-09-03. It is not GA,
+> public-sellable, or approved for customer app-auth onboarding until P1-1 is
+> reviewed, CI-verified, staged, and runtime-verified. The broader customer
+> onboarding hold also remains until P1-2 auth revocation has Security/SRE/CTO
+> disposition.
 
-Support may help collect evidence for:
+Support may help collect internal evidence for:
 
-- fresh install/reconnect against an approved safe store
+- fresh install/reconnect against an approved safe staging store
 - single-item publish and idempotent republish
 - bulk publish accounting and terminal status reconciliation
 - variable-product edit/republish confirmation
@@ -43,7 +46,8 @@ Support may help collect evidence for:
 Support must not promise:
 
 - WooCommerce GA availability
-- production publishing for an unapproved tenant
+- WooCommerce app-auth customer onboarding
+- production publishing for any tenant while the P1 hold remains open
 - a paid feature entitlement
 - public customer proof, case study, or claim text
 
@@ -99,7 +103,8 @@ Support readiness for a controlled evaluation is complete only when:
 - evidence capture rules are understood by the support owner
 - the closeout record is stored in the restricted readiness tracker
 
-Until those items are recorded, support readiness remains draft-only.
+Until those items are recorded and the P1 hold is lifted, support readiness
+remains draft-only.
 
 ## 6. Current Escalation Owners (Pilot Phase)
 

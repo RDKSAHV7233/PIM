@@ -106,17 +106,19 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("woocommerce", () => {
-    it("is controlled_pilot (CTO/PO-approved controlled pilot, not GA)", () => {
+    it("is p1_blocker_hold while P1 closure is open", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchStage).toBe("controlled_pilot");
+      expect(policy.launchStage).toBe("p1_blocker_hold");
     });
 
-    it("launchNote describes controlled-pilot scope and explicitly disclaims GA", () => {
+    it("launchNote blocks onboarding and install until required signoff", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchNote).toMatch(/controlled pilot/i);
-      expect(policy.launchNote).toMatch(/2026-09-03/);
-      expect(policy.launchNote).toMatch(/not general availability/i);
-      expect(policy.launchNote).not.toMatch(/sign-off.*(is )?still in progress/i);
+      expect(policy.launchNote).toMatch(/onboarding and install are paused/i);
+      expect(policy.launchNote).toMatch(/P1-1/);
+      expect(policy.launchNote).toMatch(/P1-2/);
+      expect(policy.launchNote).toMatch(/fresh CTO\/PO\/Security\/QA\/SRE signoff/i);
+      expect(policy.launchNote).not.toMatch(/approved.*controlled pilot/i);
+      expect(policy.launchNote).not.toMatch(/available to install/i);
     });
   });
 
@@ -154,7 +156,7 @@ describe("isCustomerVisibleStage", () => {
 
   const nonCustomerStages: ConnectorLaunchStage[] = [
     "under_development", "code_complete", "qa_validation",
-    "po_review", "early_access", "controlled_pilot", "deprecated", "internal_diagnostic",
+    "po_review", "early_access", "controlled_pilot", "p1_blocker_hold", "deprecated", "internal_diagnostic",
   ];
   for (const stage of nonCustomerStages) {
     it(`returns false for ${stage}`, () => {
@@ -179,8 +181,9 @@ describe("isInstallableStage", () => {
     expect(isInstallableStage("early_access")).toBe(true);
   });
 
-  it("returns true for controlled_pilot (CTO/PO-approved pilot connectors)", () => {
-    expect(isInstallableStage("controlled_pilot")).toBe(true);
+  it("returns false for controlled_pilot and p1_blocker_hold while customer installs are process-gated", () => {
+    expect(isInstallableStage("controlled_pilot")).toBe(false);
+    expect(isInstallableStage("p1_blocker_hold")).toBe(false);
   });
 
   it("returns false for planned", () => {
@@ -192,7 +195,7 @@ describe("isInstallableStage", () => {
   });
 
   const nonInstallableStages: ConnectorLaunchStage[] = [
-    "under_development", "deprecated", "internal_diagnostic",
+    "under_development", "controlled_pilot", "p1_blocker_hold", "deprecated", "internal_diagnostic",
   ];
   for (const stage of nonInstallableStages) {
     it(`returns false for ${stage}`, () => {
@@ -212,6 +215,7 @@ describe("formatLaunchStageLabel", () => {
     expect(formatLaunchStageLabel("po_review")).toBe("PO review");
     expect(formatLaunchStageLabel("early_access")).toBe("Early access");
     expect(formatLaunchStageLabel("controlled_pilot")).toBe("Controlled pilot");
+    expect(formatLaunchStageLabel("p1_blocker_hold")).toBe("P1 blocker-closure hold");
     expect(formatLaunchStageLabel("deprecated")).toBe("Deprecated");
     expect(formatLaunchStageLabel("internal_diagnostic")).toBe("Internal diagnostic");
   });
@@ -232,11 +236,11 @@ describe("resolveConnectorPipelineMetadata", () => {
     expect(amazon.milestone).toBe("Sprint F");
   });
 
-  it("returns GA blockers for controlled-pilot connectors (pilot itself is CTO/PO approved)", () => {
+  it("returns P1 blockers for held WooCommerce connectors", () => {
     const woo = resolveConnectorPipelineMetadata("woocommerce");
-    expect(woo.milestone).toMatch(/controlled pilot approved/i);
-    expect(woo.blockers).toContain("store-admin/wp-admin live evidence for GA");
-    expect(woo.blockers).toContain("full regression sweep for GA");
+    expect(woo.milestone).toBe("P1 blocker-closure hold");
+    expect(woo.blockers).toContain("P1-1 tenant-owned app-auth credential verification");
+    expect(woo.blockers).toContain("P1-2 auth revocation failure policy");
     expect(woo.blockers).not.toContain("QA validation");
     expect(woo.blockers).not.toContain("PO review");
   });

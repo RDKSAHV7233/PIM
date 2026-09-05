@@ -2,11 +2,28 @@ import type { ProductPayload } from "../../connector-framework/connector.interfa
 import { ConnectorNetworkError } from "../../connector-framework/connector.errors";
 import { WooCommerceConnector } from "./woocommerce.connector";
 
-function makeConnector() {
+const TEST_KEY = "c".repeat(64);
+
+function makeConnectorWithDb(mockDbClient: any) {
+  process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = TEST_KEY;
+  process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+
   return new WooCommerceConnector(
-    { getClient: jest.fn() } as never,
+    { getClient: () => mockDbClient } as never,
     { info: jest.fn(), warn: jest.fn(), error: jest.fn(), log: jest.fn() } as never,
   );
+}
+
+function makeConnector() {
+  return makeConnectorWithDb({
+    connectorCredential: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({}),
+    },
+    $queryRawUnsafe: jest.fn().mockResolvedValue([]), // RLS-BYPASS: manual tenant filter — test mock
+    $executeRawUnsafe: jest.fn().mockResolvedValue(1), // RLS-BYPASS: manual tenant filter — test mock
+  });
 }
 
 describe("WooCommerceConnector product payload", () => {
@@ -46,6 +63,138 @@ describe("WooCommerceConnector product payload", () => {
       { key: "fabric_care", value: "Machine wash" },
     ]));
     expect(payload.meta_data.filter((entry: { key: string }) => entry.key === "_vexa_pim_product_id")).toHaveLength(1);
+  });
+});
+
+describe("WooCommerceConnector.handleOAuthCallback app-auth credential persistence", () => {
+  it("stores consumer credentials with explicit tenant ownership", async () => {
+    const db = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1), // RLS-BYPASS: manual tenant filter — test mock
+    };
+    const connector = makeConnectorWithDb(db);
+    const ctx = {
+      tenantId: "tenant-a",
+      installationId: "woo-install-a",
+      connectorId: "woocommerce",
+    };
+
+    await expect(connector.handleOAuthCallback(ctx as any, {
+      consumer_key: "ck_live",
+      consumer_secret: "cs_live",
+      key_permissions: "read_write",
+    })).resolves.toBeUndefined();
+
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(2); // RLS-BYPASS: manual tenant filter — test mock
+    for (const call of db.$executeRawUnsafe.mock.calls) { // RLS-BYPASS: manual tenant filter — test mock
+      expect(String(call[0]).toLowerCase()).toContain("tenant_key");
+      expect(call[2]).toBe(ctx.tenantId);
+      expect(call[3]).toBe(ctx.installationId);
+    }
+    expect(db.$executeRawUnsafe.mock.calls[0][1]).toBe("woo-install-a:consumer_key"); // RLS-BYPASS: manual tenant filter — test mock
+    expect(db.$executeRawUnsafe.mock.calls[1][1]).toBe("woo-install-a:consumer_secret"); // RLS-BYPASS: manual tenant filter — test mock
+  });
+
+  it("denies app-auth persistence without a tenant context", async () => {
+    const db = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1), // RLS-BYPASS: manual tenant filter — test mock
+    };
+    const connector = makeConnectorWithDb(db);
+
+    await expect(connector.handleOAuthCallback({
+      tenantId: "",
+      installationId: "woo-install-a",
+      connectorId: "woocommerce",
+    } as any, {
+      consumer_key: "ck_live",
+      consumer_secret: "cs_live",
+    })).rejects.toThrow("tenant");
+
+    expect(db.$executeRawUnsafe).not.toHaveBeenCalled(); // RLS-BYPASS: manual tenant filter — test mock
+  });
+});
+
+describe("WooCommerceConnector stored credential tenant isolation", () => {
+  it("scopes every stored credential read by tenant, installation, and type", async () => {
+    const db = {
+      connectorCredential: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const connector = makeConnectorWithDb(db);
+
+    await expect((connector as any).resolveCredentials({
+      tenantId: "tenant-a",
+      installationId: "woo-install-a",
+      connectorId: "woocommerce",
+    })).rejects.toThrow("incomplete");
+
+    expect(db.connectorCredential.findFirst).toHaveBeenCalledTimes(3);
+    expect(db.connectorCredential.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { tenantKey: "tenant-a", installationId: "woo-install-a", credentialType: "site_url" },
+      select: { encryptedValue: true, keyVersion: true },
+    });
+    expect(db.connectorCredential.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { tenantKey: "tenant-a", installationId: "woo-install-a", credentialType: "consumer_key" },
+      select: { encryptedValue: true, keyVersion: true },
+    });
+    expect(db.connectorCredential.findFirst).toHaveBeenNthCalledWith(3, {
+      where: { tenantKey: "tenant-a", installationId: "woo-install-a", credentialType: "consumer_secret" },
+      select: { encryptedValue: true, keyVersion: true },
+    });
+  });
+
+  it("denies stored credential reads before DB access when tenant context is missing", async () => {
+    const db = {
+      connectorCredential: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const connector = makeConnectorWithDb(db);
+
+    await expect((connector as any).resolveCredentials({
+      tenantId: "",
+      installationId: "woo-install-a",
+      connectorId: "woocommerce",
+    })).rejects.toThrow("tenant context");
+
+    expect(db.connectorCredential.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("scopes per-installation webhook secret reads by tenant when webhook context includes tenant", async () => {
+    const db = {
+      connectorCredential: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const connector = makeConnectorWithDb(db);
+
+    await expect(connector.parseWebhookEvent(
+      Buffer.from("{}"),
+      {},
+      { tenantId: "tenant-a", installationId: "woo-install-a" },
+    )).resolves.toBeNull();
+
+    expect(db.connectorCredential.findFirst).toHaveBeenCalledWith({
+      where: { tenantKey: "tenant-a", installationId: "woo-install-a", credentialType: "webhook_secret" },
+      select: { encryptedValue: true, keyVersion: true },
+    });
+  });
+
+  it("does not read a per-installation webhook secret without tenant context", async () => {
+    const db = {
+      connectorCredential: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const connector = makeConnectorWithDb(db);
+
+    await expect(connector.parseWebhookEvent(
+      Buffer.from("{}"),
+      {},
+      { installationId: "woo-install-a" },
+    )).resolves.toBeNull();
+
+    expect(db.connectorCredential.findFirst).not.toHaveBeenCalled();
   });
 });
 

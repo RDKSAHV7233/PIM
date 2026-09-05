@@ -16,12 +16,9 @@
 // capability. This test asserts the false claims are gone from both source files and
 // replaced with copy that doesn't promise a gate that isn't enforced in code.
 //
-// 2026-09-04 update: the "code-complete... GA sign-off in progress" copy that PIM#633
-// introduced became stale once CTO/PO approved WooCommerce controlled-pilot use on
-// 2026-09-03 (docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md) — the setup page was
-// still live-showing it, in two stacked amber boxes, on 2026-09-04. This test now also
-// guards against that staleness and against the duplicate-banner render bug that made the
-// same sentence appear twice on screen.
+// 2026-09-04 update: the controlled-pilot-approved copy is no longer current while
+// P1-1/P1-2 blocker closure is open. WooCommerce must be hidden/blocked from customer
+// setup/install lanes until fresh CTO/PO/Security/QA/SRE signoff exists.
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
@@ -116,32 +113,47 @@ function run() {
       "launch-stage check anywhere in the connector or submission pipeline.",
   );
 
-  // 2026-09-04 update: CTO/PO approved WooCommerce controlled-pilot use on 2026-09-03
-  // (see docs/readiness/CONNECTOR_CLAIM_AUDIT_2026-09-03.md). The "code-complete... GA
-  // sign-off in progress" copy this test used to pin was accurate as of PIM#633 but is now
-  // stale — it predates that approval. This test still guards the same PIM#633 properties
-  // (no false account-manager gate, no false publish-blocked claim, and both surfaces telling
-  // the customer the same accurate thing) against the current, non-stale copy.
-  const WOOCOMMERCE_STATUS_COPY =
-    "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.";
+  const WOOCOMMERCE_POLICY_HOLD_COPY =
+    "WooCommerce onboarding and install are paused while P1 blocker closure is in progress. P1-1 tenant-owned app-auth credential verification, P1-2 auth revocation policy, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff are required before any customer pilot restarts.";
+  const WOOCOMMERCE_SETUP_HOLD_COPY =
+    "WooCommerce setup is paused while P1 blocker closure is in progress. Customer self-serve install and pilot onboarding require fresh CTO/PO/Security/QA/SRE signoff after P1-1 and P1-2 are closed.";
 
   assert(
-    launchPolicySource.includes(WOOCOMMERCE_STATUS_COPY),
-    "connector-launch-policy.ts's WooCommerce launchNote must carry the current, non-stale " +
-      "controlled-pilot-approved description (not the pre-2026-09-03 'code-complete... GA sign-off " +
-      "in progress' copy, which is now stale relative to the CTO/PO approval).",
+    launchPolicySource.includes('launchStage: "p1_blocker_hold"'),
+    "connector-launch-policy.ts must put WooCommerce in p1_blocker_hold while P1 closure is open.",
   );
   assert(
-    setupPageSource.includes(WOOCOMMERCE_STATUS_COPY),
-    "apps/web/src/app/connectors/setup/page.tsx's WooCommerce status note must match the same " +
-      "honest, accurate, non-stale description as connector-launch-policy.ts's launchNote — both " +
-      "surfaces should tell a customer the same thing.",
+    launchPolicySource.includes(WOOCOMMERCE_POLICY_HOLD_COPY),
+    "connector-launch-policy.ts's WooCommerce launchNote must state the P1 hold and fresh signoff gate.",
+  );
+  assert(
+    setupPageSource.includes(WOOCOMMERCE_SETUP_HOLD_COPY),
+    "apps/web/src/app/connectors/setup/page.tsx must carry hold copy if WooCommerce status text is evaluated.",
   );
   assert(
     !launchPolicySource.includes("code-complete (W1–W10) and available to install and use now. General-availability sign-off") &&
       !setupPageSource.includes("is code-complete and available to install and use now. General-availability sign-off"),
     "The pre-2026-09-03 'code-complete... GA sign-off in progress' copy must not remain in either " +
-      "file — it is stale now that controlled-pilot use is CTO/PO approved.",
+      "file because WooCommerce is now on P1 blocker-closure hold.",
+  );
+  assert(
+    !launchPolicySource.includes("approved for CTO/PO-signed controlled pilot use") &&
+      !setupPageSource.includes("approved for CTO/PO-signed controlled pilot use"),
+    "WooCommerce must not claim CTO/PO-controlled-pilot approval while the P1 blocker hold is open.",
+  );
+  assert(
+    !launchPolicySource.includes("available to install and use now") &&
+      !setupPageSource.includes("available to install and use now"),
+    "WooCommerce must not claim it is available to install and use now while the P1 blocker hold is open.",
+  );
+  assert(
+    !setupPageSource.includes('stage === "controlled_pilot"') ||
+      !extractFunction(setupPageSource, "isSetupLaneStage").includes('stage === "controlled_pilot"'),
+    "apps/web/src/app/connectors/setup/page.tsx must not include controlled_pilot in customer setup lanes.",
+  );
+  assert(
+    !extractFunction(setupPageSource, "isSetupLaneStage").includes("p1_blocker_hold"),
+    "apps/web/src/app/connectors/setup/page.tsx must not include p1_blocker_hold in customer setup lanes.",
   );
 
   // Live-verified follow-up: WooCommerce's implementationStatus resolves to "partial", and
@@ -154,9 +166,9 @@ function run() {
   const connectorStatusNote = loadRealConnectorStatusNote();
   const liveResult = connectorStatusNote("woocommerce", "partial");
   assert(
-    liveResult === WOOCOMMERCE_STATUS_COPY,
-    "connectorStatusNote('woocommerce', 'partial') must return the current, non-stale WooCommerce-specific " +
-      `message, not the generic partial-connector fallback or the pre-2026-09-03 copy. Got: ${JSON.stringify(liveResult)}. ` +
+    liveResult === WOOCOMMERCE_SETUP_HOLD_COPY,
+    "connectorStatusNote('woocommerce', 'partial') must return the current WooCommerce hold " +
+      `message, not the generic partial-connector fallback or a pilot-open copy. Got: ${JSON.stringify(liveResult)}. ` +
       "The woocommerce check must be evaluated inside the `implementationStatus === \"partial\"` branch " +
       "(alongside meesho/myntra), not after it, or it can never be reached for this connector.",
   );
@@ -170,8 +182,7 @@ function run() {
   assert(
     setupPageSource.includes("statusNote && statusNote !== definition.launchNote"),
     "apps/web/src/app/connectors/setup/page.tsx must not render the statusNote banner when it " +
-      "duplicates definition.launchNote verbatim — otherwise WooCommerce (whose two notes are " +
-      "intentionally kept identical) shows the same sentence in two stacked amber boxes.",
+      "duplicates definition.launchNote verbatim.",
   );
 
   console.log(
@@ -181,9 +192,12 @@ function run() {
         validated: [
           "no_false_account_manager_gate_claim",
           "no_false_publish_blocked_claim",
-          "launch_policy_note_is_accurate_and_not_stale",
-          "setup_page_note_matches_launch_policy_note",
+          "launch_policy_uses_p1_blocker_hold",
+          "setup_page_note_blocks_customer_onboarding",
           "stale_pre_2026_09_03_copy_absent",
+          "controlled_pilot_approval_copy_absent",
+          "install_use_now_copy_absent",
+          "woocommerce_hidden_from_customer_setup_lanes",
           "woocommerce_status_note_genuinely_reachable_when_partial",
           "duplicate_banner_dedupe_guard_present",
         ],

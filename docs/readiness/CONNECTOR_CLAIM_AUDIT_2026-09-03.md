@@ -7,8 +7,12 @@
 (Admin role, 2026-08-24, 2026-09-01, 2026-09-03 — no regressions)
 **Marketing source reviewed:** "Vexa PIM — Sales Channel Connectors: Shopify &
 WooCommerce Feature Reference"
-**Authority:** this refresh supersedes the 2026-08-30 audit for commercial
-decisions. The original audit methodology and status taxonomy are retained.
+**Authority:** this refresh superseded the 2026-08-30 audit for commercial
+decisions until the 2026-09-03 blocker-closure review found clean-main P1
+blockers. The blocker-closure review now supersedes any customer-onboarding
+permission in this audit until P1-2 auth revocation is dispositioned and P1-1
+Woo app-auth verification is complete. The original audit methodology and status
+taxonomy are retained.
 
 ## Changes from the 2026-08-30 audit
 
@@ -21,9 +25,11 @@ now closed:
 | #662 edit/republish | Open P0 | **VERIFIED** — full edit-approve-republish cycle on VX0109897, SUCCESS 1/9/2026 |
 | #663 SKU billing | Open P0 | **FIXED** — variant-based counting confirmed in live SKU meter (65/100K) |
 
-CTO/PO controlled-pilot approval was recorded 2026-09-03: up to 2 ENTERPRISE
-tenants, operator-supervised. WooCommerce upgraded from DO_NOT_SELL to
-CONTROLLED_PILOT_ONLY.
+CTO/PO controlled-pilot approval was recorded 2026-09-03, but it is now held by
+the later blocker-closure review. WooCommerce remains not GA/public-sellable and
+is not customer app-auth-ready until P1-1 is reviewed, CI-verified, staged, and
+runtime-verified. Customer onboarding also remains held until P1-2 auth
+revocation has Security/SRE/CTO disposition.
 
 ## Status meanings
 
@@ -42,10 +48,11 @@ CONTROLLED_PILOT_ONLY.
   edit/republish, reconnect, Jobs/submission visibility, publication target
   selection exercised for Online Store/POS, a single main HTTPS image, and
   manual bulk publish of up to 50 products per batch.
-- **WooCommerce:** **Controlled pilot only.** The three P0 defects that blocked
-  the original "do not sell" verdict are now closed. Fresh publish reaches
-  SUCCESS. 100% first-publish success rate (last 30 days). Not GA or
-  public-sellable until store-admin evidence and full team signoff.
+- **WooCommerce:** **Blocker closure.** The three P0 defects that blocked the
+  original "do not sell" verdict are closed, but clean-main P1 app-auth tenant
+  ownership and cross-cutting auth revocation findings now hold customer
+  onboarding. Not GA or public-sellable until P1 closure, store-admin evidence,
+  and full team signoff.
 - **Combined "both connectors" positioning:** not approved. Shared framework
   code is not proof that both connectors deliver the same customer outcome.
 - **Absolute wording:** remove "no duplicates, ever," "safe to retry anything,"
@@ -57,8 +64,8 @@ CONTROLLED_PILOT_ONLY.
 | Claim in supplied reference | Verdict | Evidence-based correction |
 | --- | --- | --- |
 | "Shopify — Live" | **Conditional** | Shopify is live only for the bounded direct-token, single-variant pilot scope. This is not a managed-OAuth, webhook-enabled, multi-image, multi-variant GA claim. |
-| "WooCommerce — Code Complete" | **Controlled pilot only** | Code-complete is an internal engineering stage, not availability. For pilot material: "WooCommerce is available for operator-supervised evaluation." Never customer-facing as "live" or "GA." |
-| "2 connectors" | **Conditional** | Two connector implementations exist. Shopify has the broader verified scope; WooCommerce is controlled-pilot-only. Do not present them as equivalent. |
+| "WooCommerce — Code Complete" | **Hold / blocker closure** | Code-complete is an internal engineering stage, not availability. Current material must say WooCommerce app-auth is in blocker closure. Never customer-facing as "live" or "GA." |
+| "2 connectors" | **Conditional** | Two connector implementations exist. Shopify has the broader verified scope; WooCommerce is in blocker closure. Do not present them as equivalent. |
 | "14 Shopify sprints shipped" | **Not verified / unsuitable** | Delivery-count metrics do not establish a buyer outcome. Remove from the feature reference. |
 | "10 WooCommerce increments" | **Not verified / unsuitable** | Same issue; remove. |
 | "4 declared capabilities each" | **Contradicted as a delivery claim** | Registry-declared capabilities are metadata. Shopify webhook subscription creation is absent, and WooCommerce capabilities are controlled-pilot-only. |
@@ -194,16 +201,17 @@ CONTROLLED_PILOT_ONLY.
 
 ## CTO/PO sign-off on this refresh
 
-**CTO decision:** ACCEPT. This refresh is adopted as the governing claim
-authority, superseding the 2026-08-30 original. All "Not verified" items remain
-not verified. No silent promotions. WooCommerce upgrades from DO_NOT_SELL to
-CONTROLLED_PILOT_ONLY only where underlying evidence supports it.
+**CTO decision:** SUPERSEDED FOR ONBOARDING. This refresh remains useful claim
+evidence, but the 2026-09-03 blocker-closure review is now the governing
+customer-onboarding authority until P1-1 and P1-2 are closed or explicitly
+accepted by the required owners. All "Not verified" items remain not verified.
+No silent promotions.
 
-**PO decision:** ACCEPT. No public connector page, comparison badge, logo grid,
-or feature matrix may be published without explicit PO approval against this
-audit. For the controlled pilot, internal material may reference WooCommerce as
-"available for operator-supervised evaluation" — never as "live," "GA," or
-"production-ready."
+**PO decision:** SUPERSEDED FOR ONBOARDING. No public connector page,
+comparison badge, logo grid, feature matrix, or customer-onboarding material may
+be published without explicit PO approval against the current blocker-closure
+state. During blocker closure, internal material may reference WooCommerce as
+under P1 remediation only, never customer-ready, public-sellable, or GA.
 
 **Next refresh:** before first tenant onboarding, or after any material
 connector code change, whichever comes first.

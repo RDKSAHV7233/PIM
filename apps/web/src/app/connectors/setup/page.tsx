@@ -38,7 +38,7 @@ interface ConnectorSetupPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot";
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold";
 
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -120,7 +120,7 @@ function connectorLaunchTone(stage: string): StatusTone {
   if (stage === "live") {
     return "success";
   }
-  if (stage === "manual" || stage === "controlled_pilot") {
+  if (stage === "manual" || stage === "controlled_pilot" || stage === "p1_blocker_hold") {
     return "warning";
   }
   return "info";
@@ -132,6 +132,9 @@ function connectorLaunchLabel(
 ): ConnectorMaturity {
   if (stage === "controlled_pilot") {
     return "Controlled pilot";
+  }
+  if (stage === "p1_blocker_hold") {
+    return "P1 blocker hold";
   }
   if (stage === "live" && implementationStatus === "partial") {
     return "Beta";
@@ -168,18 +171,18 @@ function connectorStatusNote(
       return "Myntra API access is account-manager gated. Credentials (Merchant ID, Secret Key, Warehouse ID) are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff and Postman collection receipt.";
     }
     if (slug === "woocommerce") {
-      return "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.";
+      return "WooCommerce setup is paused while P1 blocker closure is in progress. Customer self-serve install and pilot onboarding require fresh CTO/PO/Security/QA/SRE signoff after P1-1 and P1-2 are closed.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
   if (slug === "woocommerce") {
-    return "WooCommerce is approved for CTO/PO-signed controlled pilot use (operator-supervised, up to 2 ENTERPRISE tenants) as of 2026-09-03. It is not general availability and not public-sellable. See the WooCommerce Controlled-Pilot Onboarding Guide for setup and known limitations.";
+    return "WooCommerce setup is paused while P1 blocker closure is in progress. Customer self-serve install and pilot onboarding require fresh CTO/PO/Security/QA/SRE signoff after P1-1 and P1-2 are closed.";
   }
   return null;
 }
 
 function isSetupLaneStage(stage: string): boolean {
-  return stage === "live" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access" || stage === "controlled_pilot";
+  return stage === "live" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
 }
 
 function formatCapabilityLabel(capability: string): string {
@@ -460,6 +463,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
             {setupDefinitions.map((item) => {
               const { definition, installedForDefinition, statusNote, workspaceState } = item;
               const existingAliases = installedForDefinition.map((installation) => installation.accountAlias).join(", ");
+              const installFormAllowed = Boolean(definition.actions?.install.allowed) && isSetupLaneStage(definition.launchStage);
 
               return (
                 <section key={definition.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
@@ -500,44 +504,50 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                     </p>
                   ) : null}
 
-                  <form action={installConnectorAction} className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-                    <input type="hidden" name="slug" value={definition.slug} />
-                    <input type="hidden" name="returnTo" value={returnToBase} />
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <label htmlFor={`install-alias-${definition.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                          Account Alias
-                        </label>
-                        <Input id={`install-alias-${definition.id}`} name="accountAlias" defaultValue="primary" />
+                  {installFormAllowed ? (
+                    <form action={installConnectorAction} className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                      <input type="hidden" name="slug" value={definition.slug} />
+                      <input type="hidden" name="returnTo" value={returnToBase} />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <label htmlFor={`install-alias-${definition.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Account Alias
+                          </label>
+                          <Input id={`install-alias-${definition.id}`} name="accountAlias" defaultValue="primary" />
+                        </div>
+                        <div className="space-y-1">
+                          <label htmlFor={`install-external-account-${definition.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            {connectorAccountReferenceLabel(definition.slug)}
+                          </label>
+                          <Input
+                            id={`install-external-account-${definition.id}`}
+                            name="externalAccountRef"
+                            autoComplete="off"
+                            placeholder={connectorAccountReferencePlaceholder(definition.slug)}
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label htmlFor={`install-external-account-${definition.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                          {connectorAccountReferenceLabel(definition.slug)}
-                        </label>
-                        <Input
-                          id={`install-external-account-${definition.id}`}
-                          name="externalAccountRef"
-                          autoComplete="off"
-                          placeholder={connectorAccountReferencePlaceholder(definition.slug)}
+
+                      <ConnectorCredentialFields definitionId={definition.id} slug={definition.slug} mode="install" />
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                        <p className="text-xs text-slate-500">
+                          {definition.slug === "shopify"
+                            ? "Provide store domain and SHPAT to complete setup now, or leave the token blank to finish via managed install in connector detail."
+                            : "Install here, then return to the portfolio to open mappings, detail, or catalog account operations."}
+                        </p>
+                        <PendingSubmitButton
+                          type="submit"
+                          idleLabel={definition.slug === "shopify" ? "Create Shopify connector" : "Install connector"}
+                          pendingLabel={definition.slug === "shopify" ? "Creating Shopify connector..." : "Installing connector..."}
                         />
                       </div>
-                    </div>
-
-                    <ConnectorCredentialFields definitionId={definition.id} slug={definition.slug} mode="install" />
-
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
-                      <p className="text-xs text-slate-500">
-                        {definition.slug === "shopify"
-                          ? "Provide store domain and SHPAT to complete setup now, or leave the token blank to finish via managed install in connector detail."
-                          : "Install here, then return to the portfolio to open mappings, detail, or catalog account operations."}
-                      </p>
-                      <PendingSubmitButton
-                        type="submit"
-                        idleLabel={definition.slug === "shopify" ? "Create Shopify connector" : "Install connector"}
-                        pendingLabel={definition.slug === "shopify" ? "Creating Shopify connector..." : "Installing connector..."}
-                      />
-                    </div>
-                  </form>
+                    </form>
+                  ) : (
+                    <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      Setup is not open for this connector in the current release state.
+                    </p>
+                  )}
                 </section>
               );
             })}

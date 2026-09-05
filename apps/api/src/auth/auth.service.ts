@@ -610,13 +610,12 @@ export class AuthService implements OnModuleDestroy {
     if (!claims || claims.tokenType !== "refresh") {
       return { type: "invalid_token" };
     }
-    // Fail-open when Redis is down: refresh tokens are short-lived and the
-    // access token check in JwtAuthGuard applies the same policy.
     let revoked = false;
     try {
       revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
     } catch {
-      this.logger.warn("JWT blocklist unavailable during refresh — failing open");
+      this.logger.warn("JWT blocklist unavailable during refresh - failing closed");
+      return { type: "invalid_token" };
     }
     if (revoked) {
       return { type: "invalid_token" };
@@ -629,7 +628,8 @@ export class AuthService implements OnModuleDestroy {
         claims.iat,
       );
     } catch {
-      this.logger.warn("JWT blocklist unavailable during credential check on refresh — failing open");
+      this.logger.warn("JWT blocklist unavailable during credential check on refresh - failing closed");
+      return { type: "invalid_token" };
     }
     if (credRevoked) {
       return { type: "invalid_token" };

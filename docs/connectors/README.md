@@ -1,7 +1,7 @@
 # Vexa PIM Connector Index
 
 Status: Canonical
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-04
 
 ## Read This First
 
@@ -35,7 +35,7 @@ Current connector implementations present in code:
 | Myntra | `myntra` | implemented | `live` |
 | Nykaa | `nykaa` | partial/manual path | `manual` |
 | Shopify | `shopify` | implemented | `live` |
-| WooCommerce | `woocommerce` | code-complete | `controlled_pilot` — CTO/PO approved 2026-09-03 for operator-led evaluation |
+| WooCommerce | `woocommerce` | code-complete | `blocker_closure` — no customer app-auth onboarding until P1-1 tenant-owned credential persistence and reads are reviewed, CI-verified, staged, and runtime-verified |
 
 Important nuance:
 

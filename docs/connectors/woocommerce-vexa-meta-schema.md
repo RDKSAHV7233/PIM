@@ -1,7 +1,8 @@
 > **Restricted evidence notice, 2026-08-29:** This schema note is technical
 > reference only. WooCommerce is code-complete but not GA/public-sellable, and
-> WooCommerce production-readiness QA currently failed. Do not use this file as
-> customer-facing idempotency or production-publish proof. Use
+> customer onboarding is on P1 blocker-closure hold pending P1-1 credential
+> write/read verification and P1-2 auth revocation disposition. Do not use this
+> file as customer-facing idempotency or production-publish proof. Use
 > `docs/readiness/WOOCOMMERCE_REMEDIATION_EVIDENCE_PACK_2026-08-29.md`.
 
 # WooCommerce — Vexa `_vexa_*` meta_data schema

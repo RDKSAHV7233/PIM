@@ -2,12 +2,13 @@
 
 Last reviewed: 2026-09-04
 
-Status: INTERNAL PILOT USE ONLY — not approved for public distribution
+Status: DRAFT ON HOLD — not approved for customer onboarding or public distribution
 
 Owner: Product / PO / Connector Engineering / CTO
 
 Reviewed by: Connector Engineering/QA, Product/Claims Governance, Security
-(2026-09-04) — see review notes at the end of this document.
+(2026-09-04) — see review notes at the end of this document. Superseded for
+onboarding by the P1 auth revocation hold until re-signed.
 
 Audience: Vexa operator and first-tenant pilot customer (ENTERPRISE tier,
 operator-supervised onboarding)
@@ -19,7 +20,8 @@ Governing claim authority:
 
 ## 1. Prerequisites
 
-Before starting, confirm:
+Before starting, confirm the P1 auth revocation hold has been lifted and then
+confirm:
 
 - [ ] Vexa PIM workspace provisioned (ENTERPRISE plan, active paid)
 - [ ] User account with **admin** or **connector_admin** role
@@ -28,6 +30,8 @@ Before starting, confirm:
 - [ ] Access to Shopify Admin for the target store
 - [ ] Products in Vexa PIM catalog with status **Approved** and channel
       readiness passing for Shopify
+- [ ] P1-2 auth revocation disposition signed by Security/SRE/CTO
+- [ ] Any required auth fix reviewed, CI-green, staged, and runtime-verified
 
 ---
 
@@ -307,6 +311,7 @@ use, per the readiness pack's Team Review Rule
   "not in scope" statement on inventory; found the security-incident
   escalation trigger was missing from Section 9. **Fixed.**
 
-All required edits from all three reviews have been applied. This guide is
-approved for pilot onboarding use (internal, not public distribution) as of
-2026-09-04.
+All required edits from all three reviews have been applied, but the P1 auth
+revocation hold now supersedes onboarding approval. This guide is not approved
+for pilot onboarding use until P1-2 implementation review and fresh
+required-team signoff are complete.

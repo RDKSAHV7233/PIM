@@ -10,7 +10,7 @@ import { AuthService } from "./auth.service";
 // login()/verifyLoginMfa() flows — those methods have a large dependency surface
 // (password hashing, rate limiting, MFA, audit, notifications) unrelated to this fix;
 // this proves the exact behavior that changed without needing to mock all of that.
-function makeService(updateMany: jest.Mock) {
+function makeService(updateMany: jest.Mock, jwtBlocklistService: Record<string, jest.Mock> = {}) {
   const prisma = {
     tenant: jest.fn().mockReturnValue({
       authIdentity: { updateMany },
@@ -20,7 +20,7 @@ function makeService(updateMany: jest.Mock) {
   const errorCaptureService = { captureUnexpected: jest.fn().mockResolvedValue(undefined) };
 
   const service = new AuthService(
-    {} as never, // jwtBlocklistService
+    jwtBlocklistService as never,
     prisma as never,
     {} as never, // prismaDirect
     {} as never, // auditService
@@ -107,5 +107,49 @@ describe("AuthService.recordLastSignInAt — no unhandled rejection on write fai
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
+  });
+});
+
+describe("AuthService.refresh — fail closed on revocation-authority outage", () => {
+  const originalSecret = process.env.JWT_SECRET;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = "test-secret-with-enough-entropy-for-refresh-policy";
+  });
+
+  afterEach(() => {
+    if (originalSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalSecret;
+    }
+  });
+
+  it("returns invalid_token when the refresh-token JTI revocation check throws", async () => {
+    const jwtBlocklistService = {
+      isRevoked: jest.fn().mockRejectedValue(new Error("redis unavailable")),
+      isCredentialRevoked: jest.fn(),
+    };
+    const { service } = makeService(jest.fn(), jwtBlocklistService);
+    const refreshToken = service.issueRefreshToken({ userId: "user1", tenantId: "tenant1", role: "admin" });
+
+    await expect(service.refresh(refreshToken)).resolves.toEqual({ type: "invalid_token" });
+
+    expect(jwtBlocklistService.isRevoked).toHaveBeenCalledTimes(1);
+    expect(jwtBlocklistService.isCredentialRevoked).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid_token when the credential-revocation check throws during refresh", async () => {
+    const jwtBlocklistService = {
+      isRevoked: jest.fn().mockResolvedValue(false),
+      isCredentialRevoked: jest.fn().mockRejectedValue(new Error("credential revocation unavailable")),
+    };
+    const { service } = makeService(jest.fn(), jwtBlocklistService);
+    const refreshToken = service.issueRefreshToken({ userId: "user1", tenantId: "tenant1", role: "admin" });
+
+    await expect(service.refresh(refreshToken)).resolves.toEqual({ type: "invalid_token" });
+
+    expect(jwtBlocklistService.isRevoked).toHaveBeenCalledTimes(1);
+    expect(jwtBlocklistService.isCredentialRevoked).toHaveBeenCalledWith("tenant1", "user1", expect.any(Number));
   });
 });

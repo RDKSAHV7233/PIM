@@ -15,6 +15,7 @@ const STAGE_LABELS: Record<string, string> = {
   po_review: "PO review",
   early_access: "Early access",
   controlled_pilot: "Controlled pilot",
+  p1_blocker_hold: "P1 blocker-closure hold",
   manual: "Manual export",
   live: "Live",
   deprecated: "Deprecated",
@@ -26,6 +27,7 @@ const STAGE_TONES: Record<string, string> = {
   manual: "bg-sky-100 text-sky-900",
   early_access: "bg-violet-100 text-violet-900",
   controlled_pilot: "bg-amber-100 text-amber-900",
+  p1_blocker_hold: "bg-rose-100 text-rose-900",
   code_complete: "bg-amber-100 text-amber-900",
   qa_validation: "bg-amber-100 text-amber-900",
   po_review: "bg-amber-100 text-amber-900",
@@ -55,7 +57,17 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
   meesho: { owner: "Platform", milestone: "RD-MEESHO-1", blockers: ["Meesho API access pending"], internalNotes: "Export-only. Waiting on Meesho partner API programme." },
   nykaa: { owner: "Platform", milestone: null, blockers: ["Nykaa platform-partner credentials"], internalNotes: "Export-only. Direct API requires partner credentials." },
   "amazon-in": { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." },
-  woocommerce: { owner: "Platform", milestone: "W10 complete", blockers: ["QA validation", "PO review"], internalNotes: "W1–W10 code-complete. 59 static + 49 runtime assertions passing." },
+  woocommerce: {
+    owner: "Platform",
+    milestone: "P1 blocker-closure hold",
+    blockers: [
+      "P1-1 tenant-owned app-auth credential verification",
+      "P1-2 auth revocation failure policy",
+      "staging runtime proof and fresh CTO/PO/Security/QA/SRE signoff",
+    ],
+    internalNotes:
+      "W1-W10 code-complete and historical P0 remediation evidence exists, but WooCommerce is not customer-installable while P1-1/P1-2 are open.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {
@@ -224,7 +236,7 @@ export default async function ConnectorPipelinePage() {
           </div>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="font-semibold">Setup page</div>
-            <div className="mt-1 text-xs text-slate-500">Shows only <strong>live</strong> stage connectors for new installations.</div>
+            <div className="mt-1 text-xs text-slate-500">Shows customer-eligible setup stages for new installations; controlled-pilot and P1 hold connectors stay hidden.</div>
           </div>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="font-semibold">This pipeline page</div>

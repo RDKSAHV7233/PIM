@@ -73,7 +73,7 @@ export class ConnectorWebhookIngestionService {
     const parsedEvent = await connector.parseWebhookEvent(
       input.rawBody,
       input.headers,
-      { installationId: input.installationId },
+      { tenantId: input.tenantKey, installationId: input.installationId },
     );
     if (!parsedEvent) {
       this.logger.warn("connector.webhook.rejected", {

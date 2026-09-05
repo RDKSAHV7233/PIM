@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
@@ -12,8 +13,15 @@ import { extractApiKeyFromHeaders } from "../api-keys/api-key-auth";
 import { ApiKeysService, type ResolvedApiKeyIdentity } from "../api-keys/api-keys.service";
 import { AuthPolicyService } from "./auth-policy.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
+import { ADMIN_BOUNDARY_ACCESS_KEY, type AdminBoundaryAccessConfig } from "../common/rbac/admin-boundary.decorator";
+import {
+  AUTHENTICATED_READ_ROUTE_KEY,
+  READ_ACCESS_POLICY_KEY,
+  type AuthenticatedReadRouteConfig,
+  type ReadAccessPolicyId,
+} from "../common/rbac/read-access-policy.decorator";
 import { resolveDefaultRole, resolveEffectiveRoles } from "../common/rbac/role-utils";
-import { AppRole } from "../common/rbac/roles";
+import { AppRole, ROLES_KEY } from "../common/rbac/roles";
 import { normalizeTenantKey, TENANT_HEADER } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { ALLOW_MFA_ENROLLMENT_TOKEN_KEY } from "./allow-mfa-enrollment.decorator";
@@ -21,6 +29,7 @@ import { ALLOW_SUSPENDED_TENANT_KEY } from "./allow-suspended.decorator";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, decodePimJwtFromAuthHeader } from "./jwt";
 import { IS_PUBLIC_KEY } from "./public.decorator";
+import { STEP_UP_REQUIRED_KEY, type StepUpRequirement } from "./step-up.decorator";
 
 interface AuthenticatedRequest extends Request {
   pimRole?: AppRole;
@@ -33,6 +42,10 @@ interface AuthenticatedRequest extends Request {
   pimAdminBoundaryRoles?: string[];
   pimApiScopes?: string[];
 }
+
+const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const DEGRADED_READ_CLASSIFICATIONS = new Set<AuthenticatedReadRouteConfig["classification"]>(["public_safe"]);
+const DEGRADED_READ_ACCESS_POLICIES = new Set<ReadAccessPolicyId>(["taxonomy_safe_metadata"]);
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -86,25 +99,22 @@ export class JwtAuthGuard implements CanActivate {
           throw new UnauthorizedException({ error: "MFA_ENROLLMENT_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
         }
       }
-      // Fail-open at the guard level when Redis is down: short-lived access tokens
-      // are still bounded by JWT_EXPIRY (4h). Step-up operations remain fail-closed
-      // via StepUpGuard, which does NOT catch this exception.
-      let revoked = false;
-      try {
-        revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
-      } catch {
-        this.logger.warn("JWT blocklist unavailable — failing open for access token revocation check");
-      }
+      const revoked = await this.checkRevocationWithRoutePolicy(
+        context,
+        request,
+        "access_token",
+        () => this.jwtBlocklistService.isRevoked(claims.jti),
+      );
       if (revoked) {
         throw new UnauthorizedException({ error: "TOKEN_REVOKED" });
       }
       const tenantId = normalizeTenantKey(claims.tenantId);
-      let credRevoked = false;
-      try {
-        credRevoked = await this.jwtBlocklistService.isCredentialRevoked(tenantId, claims.sub, claims.iat);
-      } catch {
-        this.logger.warn("JWT blocklist unavailable — failing open for credential revocation check");
-      }
+      const credRevoked = await this.checkRevocationWithRoutePolicy(
+        context,
+        request,
+        "credential",
+        () => this.jwtBlocklistService.isCredentialRevoked(tenantId, claims.sub, claims.iat),
+      );
       if (credRevoked) {
         throw new UnauthorizedException({ error: "CREDENTIALS_CHANGED" });
       }
@@ -155,6 +165,75 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     throw new UnauthorizedException("Bearer token or API key is required.");
+  }
+
+  private async checkRevocationWithRoutePolicy(
+    context: ExecutionContext,
+    request: AuthenticatedRequest,
+    check: "access_token" | "credential",
+    operation: () => Promise<boolean>,
+  ): Promise<boolean> {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      if (this.allowsBoundedReadOnlyDegradedMode(context, request)) {
+        this.logger.warn(
+          `Revocation authority unavailable for ${check} check - allowing explicitly classified read-only degraded route`,
+          {
+            method: request.method ?? "GET",
+            path: request.path ?? request.url ?? "unknown",
+          },
+        );
+        return false;
+      }
+
+      this.logger.warn(`Revocation authority unavailable for ${check} check - failing closed`, {
+        method: request.method ?? "GET",
+        path: request.path ?? request.url ?? "unknown",
+        error: error instanceof Error ? error.message : String(error ?? "unknown"),
+      });
+      throw new ServiceUnavailableException({
+        error: "REVOCATION_AUTHORITY_UNAVAILABLE",
+        check,
+      });
+    }
+  }
+
+  private allowsBoundedReadOnlyDegradedMode(context: ExecutionContext, request: AuthenticatedRequest): boolean {
+    const method = String(request.method ?? "GET").toUpperCase();
+    if (!READ_ONLY_METHODS.has(method)) {
+      return false;
+    }
+
+    const targets = [context.getHandler(), context.getClass()];
+    const stepUpRequirement = this.reflector.getAllAndOverride<StepUpRequirement>(STEP_UP_REQUIRED_KEY, targets);
+    if (stepUpRequirement) {
+      return false;
+    }
+
+    const adminBoundaryAccess = this.reflector.getAllAndOverride<AdminBoundaryAccessConfig>(
+      ADMIN_BOUNDARY_ACCESS_KEY,
+      targets,
+    );
+    if (adminBoundaryAccess) {
+      return false;
+    }
+
+    const requiredRoles = this.reflector.getAllAndOverride<AppRole[]>(ROLES_KEY, targets) ?? [];
+    if (requiredRoles.includes("admin")) {
+      return false;
+    }
+
+    const readRoute = this.reflector.getAllAndOverride<AuthenticatedReadRouteConfig>(
+      AUTHENTICATED_READ_ROUTE_KEY,
+      targets,
+    );
+    if (readRoute?.classification && DEGRADED_READ_CLASSIFICATIONS.has(readRoute.classification)) {
+      return true;
+    }
+
+    const readAccessPolicy = this.reflector.getAllAndOverride<ReadAccessPolicyId>(READ_ACCESS_POLICY_KEY, targets);
+    return Boolean(readAccessPolicy && DEGRADED_READ_ACCESS_POLICIES.has(readAccessPolicy));
   }
 
   private async assertTenantAccessActive(tenantKeyInput: string): Promise<void> {
