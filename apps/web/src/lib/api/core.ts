@@ -1355,6 +1355,37 @@ export interface BulkEditOperation {
   updatedAt: string;
 }
 
+// Bulk-Publish Goes Async, Story 7: mirrors MarketplaceBulkPublishRun/RunItem
+// (packages/db/prisma/schema.prisma) — the run/item pair createBulkPublishRun and
+// processBulkPublishRun operate on (apps/api/src/marketplace/marketplace.service.ts).
+export interface MarketplaceBulkPublishRunItem {
+  id: string;
+  productId: string;
+  status: "pending" | "queued" | "succeeded" | "failed" | "excluded";
+  exportJobId: string | null;
+  attemptCount: number;
+  retryEligible: boolean;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketplaceBulkPublishRun {
+  id: string;
+  installationId: string;
+  connectorSlug: string;
+  channel: MarketplaceChannel;
+  requestedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  excludedCount: number;
+  status: "queued" | "processing" | "completed" | "completed_with_errors" | "failed";
+  createdBy: string | null;
+  items?: MarketplaceBulkPublishRunItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MediaAsset {
   id: string;
   productId: string | null;

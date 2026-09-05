@@ -2505,6 +2505,14 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
   redirect(appendQueryParams(returnTo, { status: "schedule-deleted" }));
 }
 
+// Bulk-Publish Goes Async, Story 6: native-feed connectors (Amazon) still respond
+// synchronously with created submissions; connectors without a native batch API
+// (Shopify, WooCommerce) now respond 202 with a queued run — see createBulkPublishRun
+// (marketplace.service.ts). Both shapes come back from the same endpoint.
+type BulkPublishActionResult =
+  | { submissionIds: string[]; excluded: Array<{ productId: string; reason: string }> }
+  | { async: true; runId: string; requestedCount: number; excludedCount: number; excluded: Array<{ productId: string; reason: string }> };
+
 export async function triggerBulkPublishAction(formData: FormData) {
   "use server";
   const { actorRole } = await getServerSession();
@@ -2526,9 +2534,9 @@ export async function triggerBulkPublishAction(formData: FormData) {
   const productIds = productIdsRaw
     ? productIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
-  let result: { submissionIds: string[]; excluded: Array<{ productId: string; reason: string }> };
+  let result: BulkPublishActionResult;
   try {
-    result = await postJsonForAction<{ submissionIds: string[]; excluded: Array<{ productId: string; reason: string }> }>(
+    result = await postJsonForAction<BulkPublishActionResult>(
       formData,
       `/marketplace/connectors/${encodeURIComponent(installationId)}/bulk-publish`,
       { productIds },
@@ -2578,6 +2586,21 @@ export async function triggerBulkPublishAction(formData: FormData) {
     redirect(appendQueryParams(returnTo, { bulkPublishStatus: "bulk-publish-error" }));
   }
   revalidatePath(`/channels/connectors/${installationId}`);
+  // Bulk-Publish Goes Async, Story 6: the async branch has nothing submitted yet at this
+  // point — only queued — so it gets its own status rather than reusing
+  // "bulk-publish-queued", which (pre-existing copy) already promises the Jobs workspace
+  // shows "results."
+  if ("async" in result) {
+    redirect(
+      appendQueryParams(returnTo, {
+        bulkPublishStatus: "bulk-publish-run-queued",
+        runId: result.runId,
+        queuedCount: String(result.requestedCount),
+        excludedCount: String(result.excludedCount),
+      }),
+    );
+    return;
+  }
   // Every excluded product failed approval status or destination readiness silently on the
   // backend — surface the split so an operator can't read "8 approved products selected"
   // followed by a flat success banner as "all 8 were queued" when most were dropped.

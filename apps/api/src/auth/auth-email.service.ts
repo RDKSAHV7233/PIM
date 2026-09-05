@@ -20,7 +20,8 @@ export interface AuthEmailMessage {
     | "account_export_ready"
     | "signup_verification"
     | "commercial_status_notice"
-    | "commercial_upgrade_request";
+    | "commercial_upgrade_request"
+    | "commercial_overage_flag";
   metadata?: Record<string, unknown>;
 }
 

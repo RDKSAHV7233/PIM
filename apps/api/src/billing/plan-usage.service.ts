@@ -28,7 +28,11 @@ const PLAN_PROFILE_CACHE_TTL_SECONDS = 300;
  * This only ever lowers a tenant's counted usage relative to the previous unconditional
  * count — no tenant is billed more under this predicate, some are billed less (correctly).
  */
-const SELLABLE_VARIANT_STATUSES: RecordStatus[] = [RecordStatus.approved, RecordStatus.active];
+// Exported so callers that need to compute a SKU-limit delta *before* a status transition
+// happens (catalog.service.ts's enforceSkuLimitForApproval) use the exact same definition
+// of "counts toward the SKU entitlement" as the usage query below — see workflow-transitions.ts
+// for why this codebase treats duplicated status-set definitions as a bug class of their own.
+export const SELLABLE_VARIANT_STATUSES: RecordStatus[] = [RecordStatus.approved, RecordStatus.active];
 const SELLABLE_VARIANT_WHERE = {
   status: { in: SELLABLE_VARIANT_STATUSES },
   product: {

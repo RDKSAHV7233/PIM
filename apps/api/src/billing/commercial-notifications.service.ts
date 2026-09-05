@@ -252,6 +252,60 @@ export class CommercialNotificationsService {
     return { recipientCount: 1 };
   }
 
+  /**
+   * Deliberately its own method, not a reuse of notifyCommercialOpsUpgradeRequest — that
+   * one's subject/body ("Upgrade request: {name}" / "{requestedBy} requested a commercial
+   * plan review") narrates a tenant-initiated request. An overage flag is the opposite: a
+   * system-detected limit breach from a non-blocking action (nobody asked for anything, and
+   * nothing was blocked) — reusing that copy verbatim would misrepresent what happened to
+   * the person reading the email.
+   */
+  async notifyCommercialOpsOverageFlag(input: { tenantKey: string; request: CommercialRequestSummary }): Promise<{ recipientCount: number }> {
+    const contactEmail = String(process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim().toLowerCase();
+    if (!contactEmail) {
+      return { recipientCount: 0 };
+    }
+
+    const workspaceSlug = String(input.request.workspaceSlug ?? input.tenantKey).trim() || input.tenantKey;
+    const displayName = String(input.request.displayName ?? workspaceSlug).trim() || workspaceSlug;
+    const snapshot = input.request.usageSnapshot ?? {};
+    const resource = String(snapshot.resource ?? "unknown resource");
+    const current = snapshot.current ?? "?";
+    const limit = snapshot.limit ?? "?";
+    const subject = `Plan limit exceeded: ${displayName}`;
+    const brand = resolveEmailBrandConfig();
+
+    const detailLines: Array<[string, string]> = [
+      ["Workspace", displayName], ["Workspace slug", workspaceSlug], ["Tenant key", input.tenantKey],
+      ["Resource over limit", resource], ["Current usage", String(current)], ["Plan limit", String(limit)],
+      ["Current plan tier", input.request.currentPlanTier],
+      ["Current billing status", input.request.currentBillingStatus], ["Current access status", input.request.currentAccessStatus],
+      ["Detected via", input.request.source],
+    ];
+    if (input.request.notes) detailLines.push(["Notes", input.request.notes]);
+
+    const introText = `${displayName}'s ${resource} usage (${current}) exceeded its plan limit (${limit}). No customer action was blocked — this is a follow-up flag for commercial review, not an incident.`;
+    const bodyText = [introText, "", ...detailLines.map(([k, v]) => `${k}: ${v}`), "", "Review this in the Vexa commercial workflow."].join("\n");
+    const bodyHtml = `<p>${escapeHtml(introText)}</p>${this.buildDetailTableHtml(detailLines)}<p>Review this in the Vexa commercial workflow.</p>`;
+
+    const templateInput = {
+      logoUrl: brand.logoUrl, bannerUrl: brand.bannerUrl, title: subject, bodyHtml, bodyText,
+      workspaceName: displayName, workspaceSlug,
+      footerReason: "You received this email because you are the Vexa PIM commercial operations contact.",
+      signatureType: "commercial" as const,
+      commercialContactUrl: brand.commercialContactUrl, commercialContactEmail: brand.commercialContactEmail,
+      supportUrl: brand.supportUrl, supportEmail: brand.supportEmail,
+    };
+
+    await this.authEmailService.send({
+      to: contactEmail, subject,
+      text: renderEmailText(templateInput), html: renderEmailHtml(templateInput),
+      category: "commercial_overage_flag",
+      metadata: { event: "commercial_overage_flag_created", tenantKey: input.tenantKey, requestId: input.request.id, workspaceSlug, resource, current, limit, currentPlanTier: input.request.currentPlanTier, currentBillingStatus: input.request.currentBillingStatus, currentAccessStatus: input.request.currentAccessStatus },
+    });
+    return { recipientCount: 1 };
+  }
+
   async notifyTenantAdminsUpgradeRequestStatus(input: { tenantKey: string; request: CommercialRequestSummary }): Promise<{ recipientCount: number }> {
     if (!this.assertCommercialContactPath("notifyTenantAdminsUpgradeRequestStatus")) {
       return { recipientCount: 0 };

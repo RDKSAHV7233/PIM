@@ -25,6 +25,7 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockResolvedValue({ ...product, category: {}, variants: [] }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ ...product, category: {}, variants: [] }),
+      create: jest.fn().mockResolvedValue({ ...product, id: "prod1", status: "draft", category: {}, variants: [] }),
     },
     category: {
       findUnique: jest.fn().mockResolvedValue({ id: "cat1", name: "Category" }),
@@ -42,6 +43,11 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
     variant: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: "var-new" }),
+      // Only consulted by enforceSkuLimitForApproval when findFirst found an existing
+      // variant (i.e. NOT the zero-variant/canonical-creation case, which uses delta=1
+      // without ever calling count). Default 0 so existing tests that never override this
+      // — because they exercise the zero-variant branch — stay unaffected either way.
+      count: jest.fn().mockResolvedValue(0),
     },
   };
   tenantClient.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(tenantClient));
@@ -54,7 +60,12 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
     validateAndPersistProduct: jest.fn().mockResolvedValue(undefined),
   };
 
-  const planUsageService = {};
+  // Default: never blocks. Tests that need to exercise the SKU-limit rejection path
+  // override this per-case (see the dedicated describe block for it).
+  const planUsageService = {
+    checkLimit: jest.fn().mockResolvedValue({ allowed: true, resource: "skus", limit: 999999, current: 0 }),
+    touchUsageForCurrentTenant: jest.fn().mockResolvedValue(undefined),
+  };
 
   const auditService = {
     record: jest.fn().mockResolvedValue(undefined),
@@ -82,7 +93,7 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
     cache as never,
   );
 
-  return { service, tenantClient, prisma, complianceService, auditService, accessPolicy };
+  return { service, tenantClient, prisma, complianceService, auditService, accessPolicy, planUsageService };
 }
 
 describe("CatalogService.updateProduct — approval-transition guard (F-1)", () => {
@@ -372,5 +383,146 @@ describe("CatalogService — canonical variant auto-creation on first approval (
 
     expect(tenantClient.variant.findFirst).not.toHaveBeenCalled();
     expect(tenantClient.variant.create).not.toHaveBeenCalled();
+  });
+});
+
+// CTO-directed correction to the plan-limit enforcement introduced by the earlier SKU-limit
+// fixes (commits 82b533af / c51a10c5): Plan & Usage's own copy states drafts, archived,
+// deleted, and parent-only records don't count toward SKU usage. checkLimit belongs on the
+// transition INTO the approved/active canonical bucket (enforceSkuLimitForApproval), not on
+// product/variant creation. See catalog.controller.ts / products.controller.ts for the
+// removed creation-time guard.
+describe("CatalogService — SKU plan-limit enforcement moved to approval, not creation", () => {
+  it("createProduct never calls checkLimit — draft creation is not gated by the SKU limit", async () => {
+    const { service, planUsageService } = makeService();
+
+    await service.createProduct(
+      { title: "New Product", description: "d", brand: "B", categoryId: "cat1" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+  });
+
+  it("updateProduct: zero-variant approval calls checkLimit with delta=1 (the canonical variant about to be created)", async () => {
+    const { service, tenantClient, planUsageService } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(planUsageService.checkLimit).toHaveBeenCalledWith("skus", 1, expect.anything());
+  });
+
+  it("updateProduct: approving a product with 2 pre-existing active-status variants calls checkLimit with delta=2 — not 1 (ignoring them) and not 3 (double-counting the parent as a SKU)", async () => {
+    const { service, tenantClient, planUsageService } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue({ id: "v1" }); // non-null -> "has variants" branch
+    tenantClient.variant.count.mockResolvedValue(2);
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(tenantClient.variant.count).toHaveBeenCalledWith({
+      where: { productId: "prod1", status: { in: ["approved", "active"] } },
+    });
+    expect(planUsageService.checkLimit).toHaveBeenCalledWith("skus", 2, expect.anything());
+  });
+
+  it("updateProduct: approving a product whose existing variants are all still draft calls checkLimit with delta=0 → no block, nothing becomes billable", async () => {
+    const { service, tenantClient, planUsageService } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue({ id: "v1" });
+    tenantClient.variant.count.mockResolvedValue(0); // none of the existing variants are approved/active
+
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+    expect(tenantClient.product.updateMany).toHaveBeenCalled(); // approval still proceeds
+  });
+
+  it("updateProduct: approval is blocked with PLAN_LIMIT_EXCEEDED when checkLimit disallows it, and the product is never written", async () => {
+    const { service, tenantClient, planUsageService } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+    planUsageService.checkLimit.mockResolvedValue({ allowed: false, resource: "skus", limit: 500, current: 501 });
+
+    await expect(
+      service.updateProduct(
+        "prod1",
+        { expectedVersion: 1, status: "approved" } as never,
+        { id: "admin1", role: "admin" },
+      ),
+    ).rejects.toMatchObject({
+      status: 402,
+      response: { error: "PLAN_LIMIT_EXCEEDED", resource: "skus", limit: 500, current: 501 },
+    });
+
+    expect(tenantClient.product.updateMany).not.toHaveBeenCalled();
+    expect(tenantClient.variant.create).not.toHaveBeenCalled();
+  });
+
+  it("decideProductReview: approval is blocked with PLAN_LIMIT_EXCEEDED when checkLimit disallows it, and neither the product nor a variant is written", async () => {
+    const { service, tenantClient, planUsageService } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null);
+    planUsageService.checkLimit.mockResolvedValue({ allowed: false, resource: "skus", limit: 500, current: 501 });
+
+    await expect(
+      service.decideProductReview("prod1", { status: "approved" }, { id: "admin1", role: "admin" }),
+    ).rejects.toMatchObject({
+      status: 402,
+      response: { error: "PLAN_LIMIT_EXCEEDED", resource: "skus" },
+    });
+
+    expect(tenantClient.product.update).not.toHaveBeenCalled();
+    expect(tenantClient.variant.create).not.toHaveBeenCalled();
+  });
+
+  // The exact RED -> GREEN sequence from the CTO's regression spec:
+  //   Plan limit = N, current billable SKUs = N
+  //   Create draft product -> allowed, billable usage remains N
+  //   Approve/activate that draft -> blocked with PLAN_LIMIT_EXCEEDED
+  //   Archive one existing billable SKU -> usage becomes N-1
+  //   Retry approval -> succeeds, usage returns to N
+  it("RED -> GREEN: at-limit tenant is blocked approving a new draft, then succeeds after archiving one existing SKU", async () => {
+    const { service, tenantClient, planUsageService } = makeService({ status: "in_review", version: 1 });
+    tenantClient.variant.findFirst.mockResolvedValue(null); // zero-variant product -> delta=1 on approval
+
+    // Step 1: create the draft. Never touches checkLimit — draft creation is free.
+    await service.createProduct(
+      { title: "New Product", description: "d", brand: "B", categoryId: "cat1" } as never,
+      { id: "admin1", role: "admin" },
+    );
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+
+    // Step 2: at the limit (N/N) — approving this draft would make it N+1. Blocked.
+    planUsageService.checkLimit.mockResolvedValueOnce({ allowed: false, resource: "skus", limit: 500, current: 501 });
+    await expect(
+      service.updateProduct(
+        "prod1",
+        { expectedVersion: 1, status: "approved" } as never,
+        { id: "admin1", role: "admin" },
+      ),
+    ).rejects.toMatchObject({ status: 402, response: { error: "PLAN_LIMIT_EXCEEDED" } });
+    expect(tenantClient.product.updateMany).not.toHaveBeenCalled();
+
+    // Step 3: archive one existing billable SKU elsewhere (out of band — this test only
+    // needs the effect: usage is now N-1=499, so approving this draft (->500) fits again).
+    // Step 4: retry the exact same approval. Now allowed.
+    planUsageService.checkLimit.mockResolvedValueOnce({ allowed: true, resource: "skus", limit: 500, current: 500 });
+    await service.updateProduct(
+      "prod1",
+      { expectedVersion: 1, status: "approved" } as never,
+      { id: "admin1", role: "admin" },
+    );
+    expect(tenantClient.product.updateMany).toHaveBeenCalledTimes(1);
+    expect(tenantClient.variant.create).toHaveBeenCalledTimes(1);
   });
 });

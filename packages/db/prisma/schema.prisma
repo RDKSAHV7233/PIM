@@ -107,6 +107,29 @@ enum BulkEditItemStatus {
   failed
 }
 
+// Bulk-Publish Goes Async, Story 2. Mirrors BulkImportRunStatus/BulkEditOperationStatus —
+// same shape for the same reason: a run that queues work for a worker to process later.
+enum MarketplaceBulkPublishRunStatus {
+  queued
+  processing
+  completed
+  completed_with_errors
+  failed
+}
+
+// One row per product in a run. "excluded" (failed the eligibility/readiness gate before
+// ever being queued) is distinct from "failed" (queued, attempted, the connector call
+// itself failed) — the retry-failed UI action (Story 7) only ever targets "failed", never
+// "excluded", since re-queuing an ineligible product would just fail again for the same
+// reason.
+enum MarketplaceBulkPublishItemStatus {
+  pending
+  queued
+  succeeded
+  failed
+  excluded
+}
+
 enum ConnectorPermissionPrincipalType {
   user
   role
@@ -209,6 +232,7 @@ model Product {
   exportJobs        MarketplaceExportJob[]
   importedRows      BulkImportRow[]
   bulkEditItems     BulkEditOperationItem[]
+  bulkPublishItems  MarketplaceBulkPublishRunItem[]
   changeRequests    ChangeRequest[]
   relationshipsFrom ProductRelationship[] @relation("RelationshipSource")
   relationshipsTo   ProductRelationship[] @relation("RelationshipTarget")
@@ -580,6 +604,55 @@ model BulkEditOperationItem {
   @@index([operationId, status])
   @@index([productId])
   @@index([tenantKey])
+}
+
+// Bulk-Publish Goes Async, Story 2 — the schema gap review caught: a parent run record
+// alone can't back resumability or per-product retry, there was nowhere for either to
+// actually read or write state. Mirrors BulkImportRun/BulkEditOperationItem's run+item
+// split exactly, not a new pattern.
+model MarketplaceBulkPublishRun {
+  id             String                          @id @default(cuid())
+  tenantKey      String                          @default("default")
+  installationId String
+  connectorSlug  String
+  channel        String
+  requestedCount Int                             @default(0)
+  succeededCount Int                             @default(0)
+  failedCount    Int                             @default(0)
+  excludedCount  Int                             @default(0)
+  status         MarketplaceBulkPublishRunStatus @default(queued)
+  createdBy      String?
+  items          MarketplaceBulkPublishRunItem[]
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+
+  @@index([tenantKey, status, createdAt])
+  @@index([tenantKey, installationId])
+}
+
+model MarketplaceBulkPublishRunItem {
+  id             String                            @id @default(cuid())
+  tenantKey      String                            @default("default")
+  runId          String
+  run            MarketplaceBulkPublishRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product                           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  status         MarketplaceBulkPublishItemStatus  @default(pending)
+  exportJobId    String?
+  idempotencyKey String
+  attemptCount   Int                               @default(0)
+  retryEligible  Boolean                           @default(true)
+  reason         String?
+  createdAt      DateTime                          @default(now())
+  updatedAt      DateTime                          @updatedAt
+
+  // One row per product per run — the worker's resumability (Story 4) depends on this:
+  // redelivery re-processes the run, finds the existing item by (runId, productId), and
+  // skips it if already terminal instead of creating a duplicate.
+  @@unique([runId, productId])
+  @@index([runId, status])
+  @@index([tenantKey])
+  @@index([productId])
 }
 
 model AccountConsentEvent {

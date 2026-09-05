@@ -109,6 +109,29 @@ function run() {
     "The Submissions row must render through formatLimit(plan.limits.submissions, ...) — reading the live seeded value, not a hardcoded display string.",
   );
 
+  // Regression guard: React error #418 on /admin/plan, live on production. This file has
+  // "use client" — its output gets hydrated, meaning the SSR pass and the browser's own
+  // client-side render of the same markup must produce byte-identical text. A bare
+  // .toLocaleString() (no locale argument) resolves the default locale from whatever
+  // environment is running it — the Node SSR process on first render, the browser's own
+  // locale on hydration — and those aren't guaranteed to agree. This is exactly what fired:
+  // the server and the browser disagreed on how to group Starter's "2,500", React detected
+  // the mismatch, and threw. The fix is a pinned, explicit locale argument, not a correct
+  // *result* — a test asserting the OUTPUT string would pass by coincidence on any single
+  // machine where server and client locale happen to match. Assert the call shape instead.
+  assert(
+    /plan-comparison\.tsx$/.test(PLAN_COMPARISON_FILE) && /"use client"/.test(pageSource),
+    "This file must stay a client component for the hydration-mismatch class of bug this test guards against to be meaningful at all — if it's ever converted to a server component, this assertion (and the bug it guards) no longer apply.",
+  );
+  assert(
+    !/\.toLocaleString\(\s*\)/.test(pageSource),
+    "toLocaleString() must never be called with no arguments in this client component — the default locale is resolved from the runtime environment (SSR server vs. browser), which can differ and produce a hydration mismatch (React error #418, reproduced live on /admin/plan). Pass an explicit locale.",
+  );
+  assert(
+    /\.toLocaleString\(\s*"en-IN"\s*\)/.test(pageSource),
+    "formatLimit's toLocaleString() call must pin an explicit locale (\"en-IN\", matching the rest of this codebase's date-formatting convention) so the server-rendered value and the client's hydration pass always agree.",
+  );
+
   console.log(
     JSON.stringify(
       {

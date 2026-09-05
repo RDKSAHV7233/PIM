@@ -54,7 +54,13 @@ function main() {
   assert(script.includes("/export-jobs/"), "runner must inspect export-job history");
   assert(script.includes("/requeue"), "runner must exercise retry when a failed job exists");
   assert(script.includes("no_eligible_products"), "runner must prove no_eligible_products rejection");
-  assert(script.includes("batch_too_large"), "runner must prove 51-product rejection");
+  // Bulk-Publish Goes Async (Story 8) retired the old size-based batch_too_large rejection —
+  // the runner now proves a 51-product batch is evaluated on merits instead of being
+  // rejected for size alone.
+  assert(
+    script.includes("verifyOversizedBatchNotRejectedBySizeAlone"),
+    "runner must prove a 51-product batch is no longer rejected for size alone",
+  );
   assert(script.includes("BLOCKED"), "runner must report unavailable real fixtures as BLOCKED");
   assert(!script.includes("DATABASE_URL"), "runner must not use direct database access");
   assert(!script.includes("PrismaClient"), "runner must not use Prisma/direct DB access");
@@ -113,7 +119,7 @@ function main() {
           "connector_inventory",
           "bulk_publish_success_or_blocked_matrix",
           "no_eligible_products_path",
-          "batch_too_large_path",
+          "oversized_batch_not_size_rejected_path",
           "export_job_history_and_retry_path",
           "manual_staging_workflow",
           "artifact_upload",

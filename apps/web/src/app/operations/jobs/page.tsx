@@ -13,7 +13,7 @@ import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
-import { ApiHttpError, getDeadLetterSubmissions, getSubmissions } from "@/lib/api";
+import { ApiHttpError, getBulkPublishRuns, getDeadLetterSubmissions, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
@@ -157,6 +157,24 @@ function submissionTimelineItems(submission: {
   return items;
 }
 
+// Bulk-Publish Goes Async, Story 7: same status-tone mapping as submissions'
+// statusTone, but for MarketplaceBulkPublishRun's own status enum (schema.prisma).
+function bulkPublishRunStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  if (status === "completed") {
+    return "success";
+  }
+  if (status === "queued" || status === "processing") {
+    return "info";
+  }
+  if (status === "completed_with_errors") {
+    return "warning";
+  }
+  if (status === "failed") {
+    return "danger";
+  }
+  return "neutral";
+}
+
 function isOperationsJobsApiUnavailable(error: unknown): boolean {
   if (error instanceof ApiHttpError) {
     return error.status === 429 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
@@ -248,7 +266,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
   const canWrite = canEditWorkspace(actorRole);
 
   try {
-    const [submissionsResult, deadLetterResult] = await Promise.all([
+    const [submissionsResult, deadLetterResult, bulkPublishRunsResult] = await Promise.all([
       loadSharedRead(getSubmissions(
         {
           limit: visibleSubmissionLimit,
@@ -258,6 +276,10 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         { role: actorRole, authHeader },
       )),
       loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader })),
+      // Bulk-Publish Goes Async, Story 7: recent async bulk-publish runs (Shopify,
+      // WooCommerce, ...) — separate from the submissions/dead-letter data above since
+      // a run isn't a ConnectorSubmission until the worker actually processes each item.
+      loadSharedRead(getBulkPublishRuns(20, { role: actorRole, authHeader })),
     ]);
 
     if (submissionsResult.state === "restricted") {
@@ -437,6 +459,40 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         render: (job) => <span className="text-xs text-slate-600">{formatDateTime(job.updatedAt)}</span>,
       },
     ];
+    // Bulk-Publish Goes Async, Story 7: bulkPublishRunsResult mirrors the same
+    // available/restricted/unavailable handling as deadLetterResult above — a run list
+    // that silently defaulted to empty on a real API failure would read as "nothing is
+    // running" when it might mean "we can't tell you."
+    const bulkPublishRuns = bulkPublishRunsResult.state === "available" ? toItems(bulkPublishRunsResult.value) : [];
+    const bulkPublishRunColumns: Column<(typeof bulkPublishRuns)[number]>[] = [
+      {
+        key: "run",
+        header: "Run",
+        render: (run) => <span className="font-mono text-xs text-slate-700">{run.id}</span>,
+      },
+      { key: "connector", header: "Connector", render: (run) => run.connectorSlug },
+      {
+        key: "status",
+        header: "Status",
+        render: (run) => <StatusChip label={run.status.replace(/_/g, " ")} tone={bulkPublishRunStatusTone(run.status)} />,
+      },
+      {
+        key: "progress",
+        header: "Progress",
+        render: (run) => (
+          <span className="text-xs text-slate-600">
+            {run.succeededCount} succeeded, {run.failedCount} failed, {run.excludedCount} excluded of {run.requestedCount}
+          </span>
+        ),
+      },
+      {
+        key: "updated",
+        header: "Updated",
+        mobileHide: true,
+        render: (run) => <span className="text-xs text-slate-600">{formatDateTime(run.updatedAt)}</span>,
+      },
+    ];
+
     const deadLetterCount =
       deadLetterResult.state === "available"
         ? deadLetterSubmissions.length
@@ -681,6 +737,28 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
               rows={submissions.slice(0, 100)}
               getRowKey={(submission) => submission.id}
               rowClassName={selectedRowClassName}
+            />
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle>Bulk Publish Runs</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Connectors without a native batch-publish API (Shopify, WooCommerce, ...) queue an
+            async run per bulk-publish request instead of publishing inline — track progress here.
+          </p>
+          {bulkPublishRunsResult.state === "restricted" ? (
+            <p className="mt-2 text-sm text-slate-600">Bulk publish run details are restricted for your role.</p>
+          ) : bulkPublishRunsResult.state === "unavailable" ? (
+            <p className="mt-2 text-sm text-slate-600">Bulk publish run details are temporarily unavailable.</p>
+          ) : bulkPublishRuns.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-600">No bulk publish runs yet.</p>
+          ) : (
+            <DataGrid
+              className="mt-3"
+              columns={bulkPublishRunColumns}
+              rows={bulkPublishRuns}
+              getRowKey={(run) => run.id}
             />
           )}
         </Card>

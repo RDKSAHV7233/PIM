@@ -6403,6 +6403,64 @@
           }
         },
         {
+          "name": "MarketplaceController_listBulkPublishRuns",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/marketplace/bulk-publish-runs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "marketplace",
+                "bulk-publish-runs"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "MarketplaceController_getBulkPublishRun",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/marketplace/bulk-publish-runs/:runId",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "marketplace",
+                "bulk-publish-runs",
+                ":runId"
+              ],
+              "variable": [
+                {
+                  "key": "runId",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "Generate and download Meesho Excel export file",
           "request": {
             "method": "POST",

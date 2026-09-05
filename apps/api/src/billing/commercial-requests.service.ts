@@ -45,6 +45,17 @@ export interface CreateUpgradeRequestInput {
   source?: string | null;
 }
 
+export interface CreateOverageFlagInput {
+  resource: string;
+  current: number;
+  limit: number;
+  currentPlanTier: string;
+  currentBillingStatus: string;
+  currentAccessStatus: string;
+  source: string;
+  notes?: string | null;
+}
+
 interface UpgradeRequestOverviewRow {
   totalRequests: number;
   openRequests: number;
@@ -176,6 +187,68 @@ export class CommercialRequestsService {
       },
     });
     return { item: await this.mapRequest(created), created: true };
+  }
+
+  /**
+   * Deliberately separate from createOrReuseUpgradeRequest: an overage flag is
+   * system-detected (a plan limit was silently exceeded by a non-blocking action —
+   * e.g. SSO auto-provisioning pushing user count over the plan cap), not something
+   * the tenant asked for. Using requestType: "upgrade" here would make it appear on
+   * the tenant admin's own /admin/plan page ("Upgrade request pending — Vexa
+   * commercial ops is reviewing this request") via getOpenUpgradeRequestForTenant,
+   * which hardcodes requestType: "upgrade" — confusing for an admin who never
+   * clicked anything. requestType: "<resource>_limit_overage" keeps this row
+   * internal-only (visible to commercial ops, invisible to the tenant) while still
+   * reusing the same TenantCommercialRequest table and resolve/audit workflow.
+   */
+  async createOrReuseOverageFlag(
+    tenantKeyInput: string,
+    input: CreateOverageFlagInput,
+  ): Promise<{ item: CommercialRequestSummary; created: boolean }> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const requestType = this.buildOverageRequestType(input.resource);
+
+    const existing = await this.prisma.tenant(tenantKey).tenantCommercialRequest.findFirst({
+      where: {
+        tenantKey,
+        requestType,
+        status: {
+          in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    if (existing) {
+      return { item: await this.mapRequest(existing), created: false };
+    }
+
+    const usageSnapshot: Prisma.JsonObject = {
+      resource: input.resource,
+      current: input.current,
+      limit: input.limit,
+    };
+    const created = await this.prisma.tenant(tenantKey).tenantCommercialRequest.create({
+      data: {
+        tenantKey,
+        requestType,
+        status: "open",
+        requestedBy: "system",
+        requesterRole: "system",
+        currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
+        requestedPlanTier: null,
+        currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
+        currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
+        usageSnapshot,
+        notes: this.normalizeOptionalText(input.notes, 1000),
+        source: this.normalizeSource(input.source),
+      },
+    });
+    return { item: await this.mapRequest(created), created: true };
+  }
+
+  private buildOverageRequestType(resource: string): string {
+    const normalized = String(resource ?? "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+    return `${normalized || "resource"}_limit_overage`;
   }
 
   async listUpgradeRequestsInternal(input?: {

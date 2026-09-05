@@ -188,12 +188,14 @@ function run() {
     "appendQueryParams must parse returnTo's existing query string and only .set() the specific keys passed to it — every other existing param (categoryId, brand, search, view, page, status, ...) must survive untouched. If this text drifts, re-verify the behavior by hand before changing the assertion.",
   );
 
-  // All five triggerBulkPublishAction outcome branches must redirect under the dedicated
-  // bulkPublishStatus key — none may still use the shared `status` key.
+  // All six triggerBulkPublishAction outcome branches must redirect under the dedicated
+  // bulkPublishStatus key — none may still use the shared `status` key. Bulk-Publish Goes
+  // Async, Story 6 added "bulk-publish-run-queued" (the non-native-connector async path)
+  // alongside the original five.
   const bulkPublishStatusKeyMatches = actionsSource.match(/bulkPublishStatus: "bulk-publish-[a-z-]+"/g) || [];
   assert(
-    bulkPublishStatusKeyMatches.length === 5,
-    `triggerBulkPublishAction must redirect all five outcome branches (queued, none-eligible, too-large, timeout, error) under the dedicated bulkPublishStatus query key — found ${bulkPublishStatusKeyMatches.length}.`,
+    bulkPublishStatusKeyMatches.length === 6,
+    `triggerBulkPublishAction must redirect all six outcome branches (run-queued, queued, none-eligible, too-large, timeout, error) under the dedicated bulkPublishStatus query key — found ${bulkPublishStatusKeyMatches.length}.`,
   );
   assert(
     !/\bstatus:\s*"bulk-publish-/.test(actionsSource),

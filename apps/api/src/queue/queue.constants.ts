@@ -1,6 +1,7 @@
 export const QUEUE_NAMES = {
   BULK_IMPORT: "bulk-import",
   BULK_EDIT: "bulk-edit",
+  MARKETPLACE_BULK_PUBLISH: "marketplace-bulk-publish",
   CONNECTOR_SUBMISSION: "connector-submission",
   CONNECTOR_WEBHOOK: "connector-webhook",
   WEBHOOK_EVENT: "webhook-event",

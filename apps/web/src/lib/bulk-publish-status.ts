@@ -26,6 +26,7 @@ export interface BulkPublishStatusCounts {
   excludedCount?: string;
   ceiling?: string;
   submittedCount?: string;
+  runId?: string;
 }
 
 export function resolveBulkPublishStatusMessage(
@@ -46,6 +47,21 @@ export function resolveBulkPublishStatusMessage(
     return {
       tone: "success",
       message: "Bulk publish submitted. Native feed connectors create one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.",
+    };
+  }
+  if (normalized === "bulk-publish-run-queued") {
+    // Bulk-Publish Goes Async, Story 6: connectors without a native batch API (Shopify,
+    // WooCommerce) now queue a run instead of publishing inline — nothing has actually
+    // been submitted yet when this redirect happens, unlike "bulk-publish-queued" below.
+    const queuedCount = Number(counts?.queuedCount ?? "");
+    const excludedCount = Number(counts?.excludedCount ?? "");
+    const excludedSuffix =
+      Number.isFinite(excludedCount) && excludedCount > 0
+        ? ` ${excludedCount} product(s) were skipped up front (not approved or not found).`
+        : "";
+    return {
+      tone: "success",
+      message: `Bulk publish queued: ${Number.isFinite(queuedCount) ? queuedCount : ""} product(s) are being published in the background.${excludedSuffix} Track progress in the Jobs workspace.`,
     };
   }
   if (normalized === "bulk-publish-none-eligible") {

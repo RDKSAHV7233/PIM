@@ -3416,6 +3416,43 @@
           }
         },
         "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/bulk-publish-runs": {
+      "get": {
+        "operationId": "MarketplaceController_listBulkPublishRuns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/bulk-publish-runs/{runId}": {
+      "get": {
+        "operationId": "MarketplaceController_getBulkPublishRun",
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
           "200": {
             "description": ""
           }
@@ -5010,9 +5047,6 @@
         "responses": {
           "201": {
             "description": "Product created"
-          },
-          "402": {
-            "description": "Plan limit exceeded"
           }
         },
         "summary": "Create product",
@@ -5697,9 +5731,6 @@
         "responses": {
           "201": {
             "description": "Product created"
-          },
-          "402": {
-            "description": "Plan limit exceeded"
           }
         },
         "summary": "Create product",

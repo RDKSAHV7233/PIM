@@ -1,6 +1,7 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { ExportJobStatus } from "@prisma/client";
 import { UnrecoverableError } from "bullmq";
+import { QUEUE_NAMES } from "../queue/queue.constants";
 import { MarketplaceService } from "./marketplace.service";
 
 function makeService(productOverride?: Record<string, unknown>) {
@@ -296,6 +297,102 @@ describe("MarketplaceService.triggerConnectorExport", () => {
 
 // ─── MarketplaceService.triggerBulkPublish — F-4 approval/readiness gate ──────
 
+// Bulk-Publish Goes Async, Story 3/4: minimal in-memory fake for the two new Prisma
+// models (MarketplaceBulkPublishRun/RunItem) — enough of create/findUnique/update/
+// findMany/updateMany/groupBy behavior for createBulkPublishRun + processBulkPublishRun
+// to run against for real, the same "real pipeline, fake DB" approach
+// makeRealExportPipelineService already uses for the export-job tables above.
+function makeBulkPublishRunStore() {
+  const runs = new Map<string, Record<string, unknown>>();
+  const items = new Map<string, Record<string, unknown>>();
+  let seq = 0;
+
+  const run = {
+    create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
+      const id = `run_${++seq}`;
+      const { items: itemsInput, ...runFields } = data as { items?: { create?: Array<Record<string, unknown>> } };
+      const row = { id, ...runFields };
+      runs.set(id, row);
+      for (const itemData of itemsInput?.create ?? []) {
+        const itemId = `item_${++seq}`;
+        items.set(itemId, { id: itemId, runId: id, attemptCount: 0, retryEligible: true, ...itemData });
+      }
+      return Promise.resolve(row);
+    }),
+    findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) => Promise.resolve(runs.get(id) ?? null)),
+    update: jest.fn(({ where: { id }, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      const existing = runs.get(id);
+      if (!existing) return Promise.resolve(null);
+      const merged = { ...existing };
+      for (const [key, value] of Object.entries(data)) {
+        merged[key] =
+          value && typeof value === "object" && "increment" in (value as Record<string, unknown>)
+            ? Number(existing[key] ?? 0) + Number((value as { increment: number }).increment)
+            : value;
+      }
+      runs.set(id, merged);
+      return Promise.resolve(merged);
+    }),
+  };
+
+  const item = {
+    findMany: jest.fn(({ where }: { where: { runId: string; status?: string } }) =>
+      Promise.resolve(
+        [...items.values()].filter(
+          (row) => row.runId === where.runId && (where.status === undefined || row.status === where.status),
+        ),
+      ),
+    ),
+    updateMany: jest.fn(({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
+      const existing = items.get(where.id);
+      if (!existing || (where.status !== undefined && existing.status !== where.status)) {
+        return Promise.resolve({ count: 0 });
+      }
+      items.set(where.id, { ...existing, ...data });
+      return Promise.resolve({ count: 1 });
+    }),
+    update: jest.fn(({ where: { id }, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      const existing = items.get(id);
+      if (!existing) return Promise.resolve(null);
+      const merged = { ...existing };
+      for (const [key, value] of Object.entries(data)) {
+        merged[key] =
+          value && typeof value === "object" && "increment" in (value as Record<string, unknown>)
+            ? Number(existing[key] ?? 0) + Number((value as { increment: number }).increment)
+            : value;
+      }
+      items.set(id, merged);
+      return Promise.resolve(merged);
+    }),
+    groupBy: jest.fn(({ where }: { where: { runId: string } }) => {
+      const counts = new Map<string, number>();
+      for (const row of items.values()) {
+        if (row.runId !== where.runId) continue;
+        const status = String(row.status);
+        counts.set(status, (counts.get(status) ?? 0) + 1);
+      }
+      return Promise.resolve([...counts.entries()].map(([status, count]) => ({ status, _count: { status: count } })));
+    }),
+  };
+
+  return { marketplaceBulkPublishRun: run, marketplaceBulkPublishRunItem: item, runs, items };
+}
+
+// Bulk-Publish Goes Async, Story 3/4: triggerBulkPublish's return type is now a union
+// (synchronous Amazon-native result vs. queued async run) — these narrow it for tests
+// that know statically which branch their fixture takes, instead of `as any`-casting
+// at every call site.
+type BulkPublishSyncResult = { feedId: string; feedDocumentId: string; productCount: number; submissionIds: string[]; excluded: Array<{ productId: string; reason: string }> };
+type BulkPublishAsyncResult = { async: true; runId: string; status: "queued"; requestedCount: number; excludedCount: number; excluded: Array<{ productId: string; reason: string }> };
+function expectSyncResult(result: BulkPublishSyncResult | BulkPublishAsyncResult): BulkPublishSyncResult {
+  if ("async" in result) throw new Error("expected a synchronous bulk-publish result, got an async run");
+  return result;
+}
+function expectAsyncResult(result: BulkPublishSyncResult | BulkPublishAsyncResult): BulkPublishAsyncResult {
+  if (!("async" in result)) throw new Error("expected an async bulk-publish run, got a synchronous result");
+  return result;
+}
+
 describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", () => {
   const MOCK_RESOLVED_ROW = {
     id: "inst_1",
@@ -311,6 +408,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
   ) {
     const connectorSlug = options.connectorSlug ?? "amazon";
     const capabilities = options.capabilities ?? ["BULK_PUBLISH"];
+    const bulkPublishRunStore = makeBulkPublishRunStore();
 
     const tenantDb = {
       $queryRaw: jest.fn().mockResolvedValue([{ ...MOCK_RESOLVED_ROW, connectorSlug }]),
@@ -318,12 +416,18 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
         findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
           Promise.resolve(productsById[id] ? { id, ...productsById[id] } : null),
         ),
+        findMany: jest.fn(({ where: { id } }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            id.in.filter((productId) => productsById[productId]).map((productId) => ({ id: productId, ...productsById[productId] })),
+          ),
+        ),
       },
       connectorSubmission: {
         upsert: jest.fn(({ create }: { create: { id?: string } }) =>
           Promise.resolve({ id: `sub_${create.id ?? Math.random()}` }),
         ),
       },
+      ...bulkPublishRunStore,
     };
 
     const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
@@ -346,12 +450,20 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       evaluatePublishReadiness: jest.fn().mockResolvedValue({ ok: true, blockers: [], warnings: [] }),
     };
 
+    // Default: never blocks. Tests that need to exercise the submissions plan-limit
+    // preflight override this per-case (see the nested describe block below).
+    const planUsageService = {
+      checkLimit: jest.fn().mockResolvedValue({ allowed: true, resource: "submissions", limit: 999999, current: 0 }),
+    };
+
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined) };
+
     const svc = new MarketplaceService(
       prisma as never,
       connectorFramework as never,
       {} as never,
-      {} as never,
-      {} as never,
+      planUsageService as never,
+      queueService as never,
       {} as never,
       connectorMappingService as never,
       {} as never,
@@ -363,7 +475,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
       .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
 
-    return { svc, connectorFramework, connectorMappingService, tenantDb };
+    return { svc, connectorFramework, connectorMappingService, tenantDb, planUsageService, queueService, bulkPublishRunStore };
   }
 
   // Builds a service where createExportJob runs for real (not spied away), with a
@@ -379,12 +491,18 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
   ) {
     const connectorSlug = options.connectorSlug ?? "shopify";
     const capabilities = options.capabilities ?? ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"];
+    const bulkPublishRunStore = makeBulkPublishRunStore();
 
     const tenantDb = {
       $queryRaw: jest.fn().mockResolvedValue([{ ...MOCK_RESOLVED_ROW, connectorSlug }]),
       product: {
         findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
           Promise.resolve(productsById[id] ? { id, version: 1, updatedAt: new Date("2026-01-01"), brand: "B", ...productsById[id] } : null),
+        ),
+        findMany: jest.fn(({ where: { id } }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            id.in.filter((productId) => productsById[productId]).map((productId) => ({ id: productId, ...productsById[productId] })),
+          ),
         ),
       },
       connectorSubmission: {
@@ -398,6 +516,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
           Promise.resolve({ id: `job_${data.productId}`, retryCount: 0 }),
         ),
       },
+      ...bulkPublishRunStore,
     };
 
     const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
@@ -415,14 +534,16 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
 
     // Mirrors the real AccessPolicyService.canExportToMarketplace gate (admin/publisher/
     // channel_manager only) instead of unconditionally allowing every actor — the one
-    // check #550 broke.
+    // check #550 broke. Throws ForbiddenException, matching the real deny() helper
+    // (access-policy.service.ts) exactly, since Bulk-Publish Goes Async's worker
+    // (processBulkPublishRun) classifies exceptions by type to decide excluded-vs-failed.
     const accessPolicy = {
       assertSensitivePayloadAccessAllowed: jest.fn(
         async (actor: { actorRole?: string } | undefined, opts: { action: string }) => {
           if (opts.action !== "marketplace.export") return;
           const role = String(actor?.actorRole ?? "").trim().toLowerCase();
           if (role === "admin" || role === "publisher" || role === "channel_manager") return;
-          throw new Error("SENSITIVE_PAYLOAD_RESTRICTED: marketplace.export denied for this actor");
+          throw new ForbiddenException("SENSITIVE_PAYLOAD_RESTRICTED: marketplace.export denied for this actor");
         },
       ),
       assertProductAccess: jest.fn().mockResolvedValue(undefined),
@@ -431,12 +552,18 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
 
     const errorCaptureService = { captureUnexpected: jest.fn().mockResolvedValue(undefined) };
 
+    const planUsageService = {
+      checkLimit: jest.fn().mockResolvedValue({ allowed: true, resource: "submissions", limit: 999999, current: 0 }),
+    };
+
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined) };
+
     const svc = new MarketplaceService(
       prisma as never,
       connectorFramework as never,
       {} as never,
-      {} as never,
-      {} as never,
+      planUsageService as never,
+      queueService as never,
       {} as never,
       connectorMappingService as never,
       {} as never,
@@ -458,7 +585,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
       .mockImplementation((id: unknown) => Promise.resolve({ sku: `SKU-${id}`, title: "T", mrp: 1, sellingPrice: 1 }));
 
-    return { svc, tenantDb, connectorMappingService, errorCaptureService };
+    return { svc, tenantDb, connectorMappingService, errorCaptureService, planUsageService, queueService, bulkPublishRunStore };
   }
 
   // #550: bulkPublishViaQueuedExportJobs called createExportJob(productId, dto, undefined)
@@ -470,30 +597,48 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
   // double: it is the concrete regression guard for the invariant that a batch of
   // genuinely ready products must never come back fully excluded.
   it("never returns an all-excluded result for an all-ready Shopify batch with a valid actor (regression guard for #550)", async () => {
-    const { svc } = makeRealExportPipelineService({
+    const { svc, queueService, bulkPublishRunStore } = makeRealExportPipelineService({
       "a1": { status: "approved", categoryId: "cat1" },
       "a2": { status: "active", categoryId: "cat1" },
     });
     const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
 
-    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor);
-
-    expect(result.productCount).toBeGreaterThan(0);
+    // Bulk-Publish Goes Async, Story 3: for a non-native connector this now only queues
+    // a run — the approval-status excludes still happen synchronously (asserted below),
+    // but the actor/access-policy check #550 regression-guards moved into the worker
+    // (processBulkPublishRun), so this test runs that worker directly against the
+    // payload triggerBulkPublish actually enqueued, same as production would.
+    const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor));
+    expect(result.requestedCount).toBe(2);
     expect(result.excluded).toHaveLength(0);
-    expect(result.submissionIds).toHaveLength(2);
+
+    const payload = queueService.enqueue.mock.calls[0][1];
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
+
+    const items = [...bulkPublishRunStore.items.values()];
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.status === "succeeded")).toBe(true);
   });
 
   it("returns an all-excluded result when the actor is missing, even though every product is ready — proves the guard above is meaningful", async () => {
-    const { svc } = makeRealExportPipelineService({
+    const { svc, queueService, bulkPublishRunStore } = makeRealExportPipelineService({
       "a1": { status: "approved", categoryId: "cat1" },
       "a2": { status: "active", categoryId: "cat1" },
     });
 
-    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], undefined);
+    // The approval-status-only preflight can't see the missing-actor problem — both
+    // products are still eligible at queue time. The access-policy denial only surfaces
+    // once the worker actually calls createExportJob per item.
+    const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", ["a1", "a2"], undefined));
+    expect(result.excluded).toHaveLength(0);
 
-    expect(result.productCount).toBe(0);
-    expect(result.excluded).toHaveLength(2);
-    expect(result.excluded.every((e) => e.reason.includes("SENSITIVE_PAYLOAD_RESTRICTED"))).toBe(true);
+    const payload = queueService.enqueue.mock.calls[0][1];
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
+
+    const items = [...bulkPublishRunStore.items.values()];
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.status === "excluded")).toBe(true);
+    expect(items.every((item) => String(item.reason).includes("SENSITIVE_PAYLOAD_RESTRICTED"))).toBe(true);
   });
 
   // #554: the eligibility loop and createExportJob previously each independently fetched the
@@ -527,18 +672,35 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(captureArgs.routeTemplate).toBe("marketplace:create-export-job:pre-flight-validation");
   });
 
-  it("evaluates readiness and fetches each product exactly once per product across the whole bulk-publish request (#554)", async () => {
-    const { svc, tenantDb, connectorMappingService } = makeRealExportPipelineService({
+  // Bulk-Publish Goes Async, Story 3/4 superseded the original #554 fix's premise for this
+  // path: the old synchronous eligibility loop and createExportJob each independently
+  // evaluated readiness/fetched the product, so #554 deduplicated that overlap. The async
+  // run creation (createBulkPublishRun) does no per-product readiness check at all — only
+  // a batched approval-status query — so there's no longer a second evaluation to dedupe
+  // against here; each product is fetched/readiness-checked exactly once, inside
+  // createExportJob, when the worker processes its item. (createExportJob's own internal
+  // dedup between its product fetch and simulateProduct's — the other half of #554 — is
+  // covered directly by the "Phase 655"/createExportJob-level tests, unaffected by this.)
+  it("fetches and readiness-checks each product exactly once, inside the worker, not during run creation (#554)", async () => {
+    const { svc, tenantDb, connectorMappingService, queueService, bulkPublishRunStore } = makeRealExportPipelineService({
       "a1": { status: "approved", categoryId: "cat1" },
       "a2": { status: "active", categoryId: "cat1" },
     });
     const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
 
-    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor);
-
+    const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor));
     expect(result.excluded).toHaveLength(0);
-    expect(result.submissionIds).toHaveLength(2);
-    expect(connectorMappingService.evaluatePublishReadiness).toHaveBeenCalledTimes(2); // once per product, not 4
+    // Run creation itself must not have fetched or readiness-checked any product yet —
+    // only the batched approval-status query (product.findMany) runs at this point.
+    expect(tenantDb.product.findUnique).not.toHaveBeenCalled();
+    expect(connectorMappingService.assertPublishReadyForExport).not.toHaveBeenCalled();
+
+    const payload = queueService.enqueue.mock.calls[0][1];
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
+
+    const items = [...bulkPublishRunStore.items.values()];
+    expect(items.every((item) => item.status === "succeeded")).toBe(true);
+    expect(connectorMappingService.assertPublishReadyForExport).toHaveBeenCalledTimes(2); // once per product, not 4
     expect(tenantDb.product.findUnique).toHaveBeenCalledTimes(2); // once per product, not 4-6
   });
 
@@ -549,7 +711,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     });
     connectorMappingService.evaluatePublishReadiness.mockResolvedValue({ ok: true, blockers: [], warnings: [] });
 
-    const result = await svc.triggerBulkPublish("inst_1", ["draft-1", "approved-1"]);
+    const result = expectSyncResult(await svc.triggerBulkPublish("inst_1", ["draft-1", "approved-1"]));
 
     expect(result.submissionIds).toHaveLength(1);
     expect(result.excluded).toHaveLength(1);
@@ -584,15 +746,15 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       "a2": { status: "active", categoryId: "cat1" },
     });
 
-    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"]);
+    const result = expectSyncResult(await svc.triggerBulkPublish("inst_1", ["a1", "a2"]));
 
     expect(result.excluded).toHaveLength(0);
     expect(result.submissionIds).toHaveLength(2);
     expect(connectorFramework.publishBulk.mock.calls[0][1]).toHaveLength(2);
   });
 
-  it("falls back to queued per-product export jobs for a connector without BULK_PUBLISH (Shopify)", async () => {
-    const { svc, connectorFramework } = makeBulkPublishService(
+  it("queues an async run for a connector without BULK_PUBLISH (Shopify), and the worker publishes each item via createExportJob", async () => {
+    const { svc, connectorFramework, queueService, bulkPublishRunStore } = makeBulkPublishService(
       {
         "a1": { status: "approved", categoryId: "cat1" },
         "a2": { status: "active", categoryId: "cat1" },
@@ -604,36 +766,39 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       .mockImplementation((productId: unknown) => Promise.resolve({ id: `job_${productId as string}` }));
     const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
 
-    const result = await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor);
+    const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor));
 
     // the Amazon feed path must never be invoked for a connector lacking BULK_PUBLISH
     expect(connectorFramework.publishBulk).not.toHaveBeenCalled();
+    expect(result.excluded).toHaveLength(0);
+    expect(result.requestedCount).toBe(2);
+    expect(result.status).toBe("queued");
+
+    const payload = queueService.enqueue.mock.calls[0][1] as { actor: unknown };
+    // #550: the request actor must reach the worker's createExportJob call — payloads
+    // enqueued without one caused every product to be denied by the real permission
+    // check, which is exactly what made bulk publish 0% functional for Shopify/WooCommerce
+    // in production.
+    expect(payload.actor).toEqual(actor);
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
+
     expect(createExportJobSpy).toHaveBeenCalledTimes(2);
-    // #550: the request actor must reach createExportJob per-product — passing undefined here
-    // causes createExportJob's assertSensitivePayloadAccessAllowed(actor ?? {}, ...) check to
-    // deny every product (an actor with no actorRole can never satisfy canExportToMarketplace),
-    // which is exactly what made bulk publish 0% functional for Shopify/WooCommerce in production.
-    // #554: the eligibility loop's already-fetched product + already-computed readiness must
-    // also reach createExportJob as a 4th "precomputed" argument, so it skips its own redundant
-    // product fetch and second evaluatePublishReadiness call.
+    // Bulk-Publish Goes Async, Story 4: unlike the old synchronous fallback, the worker
+    // calls createExportJob WITHOUT a precomputed product/readiness — a fresh re-check
+    // after the async delay is correct here, since the product may have changed since
+    // the run was requested.
     expect(createExportJobSpy).toHaveBeenCalledWith(
       "a1",
       expect.objectContaining({ channel: "shopify", installationId: "inst_1" }),
       actor,
-      {
-        product: expect.objectContaining({ id: "a1", status: "approved", categoryId: "cat1" }),
-        readiness: { ok: true, blockers: [], warnings: [] },
-      },
     );
-    expect(result.excluded).toHaveLength(0);
-    expect(result.submissionIds.sort()).toEqual(["job_a1", "job_a2"]);
-    expect(result.feedId).toMatch(/^queued-batch:/);
-    expect(result.feedDocumentId).toBe(result.feedId);
-    expect(result.productCount).toBe(2);
+    const items = [...bulkPublishRunStore.items.values()];
+    expect(items.every((item) => item.status === "succeeded")).toBe(true);
+    expect(items.map((item) => item.exportJobId).sort()).toEqual(["job_a1", "job_a2"]);
   });
 
-  it("excludes only the product whose queued export job fails, in the Shopify fallback path", async () => {
-    const { svc } = makeBulkPublishService(
+  it("excludes only the item whose export job fails, in the async Shopify worker", async () => {
+    const { svc, queueService, bulkPublishRunStore } = makeBulkPublishService(
       {
         "ok-1": { status: "approved", categoryId: "cat1" },
         "bad-1": { status: "approved", categoryId: "cat1" },
@@ -649,37 +814,48 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
         return Promise.resolve({ id: `job_${productId as string}` });
       });
 
-    const result = await svc.triggerBulkPublish("inst_1", ["ok-1", "bad-1"]);
+    await svc.triggerBulkPublish("inst_1", ["ok-1", "bad-1"]);
+    const payload = queueService.enqueue.mock.calls[0][1];
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
 
-    expect(result.submissionIds).toEqual(["job_ok-1"]);
-    expect(result.excluded).toHaveLength(1);
-    expect(result.excluded[0]).toMatchObject({ productId: "bad-1", reason: "readiness check failed" });
+    const items = [...bulkPublishRunStore.items.values()];
+    const ok = items.find((item) => item.productId === "ok-1");
+    const bad = items.find((item) => item.productId === "bad-1");
+    expect(ok).toMatchObject({ status: "succeeded", exportJobId: "job_ok-1" });
+    // a plain Error (not BadRequest/NotFound/Forbidden) is an operational failure, not an
+    // ineligible-product exclusion — left retry-eligible for a future requeue.
+    expect(bad).toMatchObject({ status: "failed", reason: "readiness check failed", retryEligible: true });
+
+    const runs = [...bulkPublishRunStore.runs.values()];
+    expect(runs[0]).toMatchObject({ status: "completed_with_errors", succeededCount: 1, failedCount: 1 });
   });
 
-  // ─── TC-06 / #545: non-BULK_PUBLISH batch-size ceiling ──────────────────────
-  // Wave 1 fix for the timeout that made bulk publish fail atomically at 46
-  // products for connectors without a native batch-feed API (Shopify, WooCommerce).
+  // ─── TC-06 / #545 / Story 8: non-BULK_PUBLISH batch size ──────────────────────
+  // The synchronous per-product loop that timed out at 46 products (#545/TC-06) is gone
+  // for this path — createBulkPublishRun only queues a run, so an oversized batch no
+  // longer risks the 20s web-request timeout. The old hard 50-product service-level
+  // ceiling is retired; TriggerBulkPublishDto's ArrayMaxSize(2000) is the only remaining
+  // bound, and it's a sanity limit on request size, not a scaling workaround.
 
-  it("rejects a non-BULK_PUBLISH batch over the 50-product ceiling before any product lookup runs", async () => {
+  it("accepts a non-BULK_PUBLISH batch well over the old 50-product ceiling — queues a run instead of running any per-product loop synchronously", async () => {
     const productIds = Array.from({ length: 51 }, (_, i) => `p${i}`);
     const productsById: Record<string, { status: string; categoryId: string }> = {};
     for (const id of productIds) {
       productsById[id] = { status: "approved", categoryId: "cat1" };
     }
-    const { svc, tenantDb } = makeBulkPublishService(productsById, {
+    const { svc, queueService } = makeBulkPublishService(productsById, {
       connectorSlug: "shopify",
       capabilities: ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"],
     });
 
-    await expect(svc.triggerBulkPublish("inst_1", productIds)).rejects.toMatchObject({
-      response: expect.objectContaining({ error: "batch_too_large", ceiling: 50, submittedCount: 51 }),
-    });
-    // the ceiling must reject up front — the expensive per-product eligibility loop
-    // (the actual root cause of the timeout) must never run for an oversized batch.
-    expect(tenantDb.product.findUnique).not.toHaveBeenCalled();
+    const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", productIds));
+
+    expect(result.requestedCount).toBe(51);
+    expect(result.excluded).toHaveLength(0);
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
   });
 
-  it("does not apply the non-BULK_PUBLISH ceiling to a native BULK_PUBLISH connector (Amazon)", async () => {
+  it("still runs the native BULK_PUBLISH path (Amazon) synchronously for a large batch", async () => {
     const productIds = Array.from({ length: 60 }, (_, i) => `p${i}`);
     const productsById: Record<string, { status: string; categoryId: string }> = {};
     for (const id of productIds) {
@@ -690,11 +866,204 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
       capabilities: ["BULK_PUBLISH"],
     });
 
-    const result = await svc.triggerBulkPublish("inst_1", productIds);
+    const result = expectSyncResult(await svc.triggerBulkPublish("inst_1", productIds));
 
     expect(result.excluded).toHaveLength(0);
     expect(result.submissionIds).toHaveLength(60);
     expect(connectorFramework.publishBulk).toHaveBeenCalled();
+  });
+
+  // Regression coverage for the second bypass found during the Rev. 7 report review: the
+  // single-product export-job endpoints (createExportJob / createExportJobAlias) enforce
+  // the plan's monthly submissions limit via PlanGuard at the controller layer, but
+  // PlanGuard is an HTTP decorator — triggerBulkPublish is a separate route that never
+  // passes through it, and neither branch inside it (native Amazon feed, or the
+  // queued-per-product fallback used for Shopify/WooCommerce) called checkLimit itself.
+  // A tenant could call this endpoint repeatedly — each call individually within
+  // NON_BULK_PUBLISH_BATCH_CEILING — to blow past their monthly submissions cap entirely.
+  describe("submissions plan-limit enforcement", () => {
+    it("checkLimit is called with the eligible-product count, not the raw requested count", async () => {
+      const { svc, planUsageService } = makeBulkPublishService({
+        a1: { status: "approved", categoryId: "cat1" },
+        a2: { status: "active", categoryId: "cat1" },
+        "not-ready": { status: "draft", categoryId: "cat1" }, // excluded by the readiness gate
+      });
+
+      await svc.triggerBulkPublish("inst_1", ["a1", "a2", "not-ready"]);
+
+      // 3 requested, but only 2 are eligible — the limit check must reflect what will
+      // actually create a submission, not the raw batch size.
+      expect(planUsageService.checkLimit).toHaveBeenCalledWith("submissions", 2, "tenant1");
+    });
+
+    it("blocks the whole batch with PLAN_LIMIT_EXCEEDED when it would exceed the monthly submissions cap (native BULK_PUBLISH path)", async () => {
+      const { svc, tenantDb, connectorFramework, planUsageService } = makeBulkPublishService({
+        a1: { status: "approved", categoryId: "cat1" },
+        a2: { status: "active", categoryId: "cat1" },
+      });
+      planUsageService.checkLimit.mockResolvedValue({
+        allowed: false,
+        resource: "submissions",
+        limit: 500,
+        current: 502,
+      });
+
+      await expect(svc.triggerBulkPublish("inst_1", ["a1", "a2"])).rejects.toMatchObject({
+        status: 402,
+        response: {
+          error: "PLAN_LIMIT_EXCEEDED",
+          resource: "submissions",
+          limit: 500,
+          current: 502,
+        },
+      });
+
+      // Blocked before any submission is actually created.
+      expect(connectorFramework.publishBulk).not.toHaveBeenCalled();
+      expect(tenantDb.connectorSubmission.upsert).not.toHaveBeenCalled();
+    });
+
+    it("blocks the whole batch with PLAN_LIMIT_EXCEEDED when it would exceed the cap (queued-per-product fallback path, e.g. Shopify/WooCommerce)", async () => {
+      const { svc, tenantDb, planUsageService } = makeRealExportPipelineService({
+        a1: { status: "approved", categoryId: "cat1" },
+        a2: { status: "active", categoryId: "cat1" },
+      });
+      planUsageService.checkLimit.mockResolvedValue({
+        allowed: false,
+        resource: "submissions",
+        limit: 500,
+        current: 502,
+      });
+      const actor = { actorId: "user_1", actorRole: "publisher" as const, tenantId: "tenant1" };
+
+      await expect(svc.triggerBulkPublish("inst_1", ["a1", "a2"], actor)).rejects.toMatchObject({
+        status: 402,
+        response: { error: "PLAN_LIMIT_EXCEEDED", resource: "submissions" },
+      });
+
+      expect(tenantDb.marketplaceExportJob.create).not.toHaveBeenCalled();
+    });
+
+    it("an in-limit batch is unaffected — still publishes normally", async () => {
+      const { svc, planUsageService } = makeBulkPublishService({
+        a1: { status: "approved", categoryId: "cat1" },
+        a2: { status: "active", categoryId: "cat1" },
+      });
+      planUsageService.checkLimit.mockResolvedValue({
+        allowed: true,
+        resource: "submissions",
+        limit: 500,
+        current: 2,
+      });
+
+      const result = expectSyncResult(await svc.triggerBulkPublish("inst_1", ["a1", "a2"]));
+
+      expect(result.submissionIds).toHaveLength(2);
+      expect(result.excluded).toHaveLength(0);
+    });
+  });
+});
+
+// Bulk-Publish Goes Async, Story 5/7: getBulkPublishRun (single-run status polling) and
+// listBulkPublishRuns (Jobs workspace panel listing) — both read-only, so a lean
+// purpose-built prisma double is enough here rather than the full run/item store used
+// by the createBulkPublishRun/processBulkPublishRun tests above.
+describe("MarketplaceService.getBulkPublishRun / listBulkPublishRuns", () => {
+  function makeReadOnlyService(runs: Array<Record<string, unknown>>) {
+    const tenantDb = {
+      marketplaceBulkPublishRun: {
+        findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
+          Promise.resolve(runs.find((run) => run.id === id) ?? null),
+        ),
+        findMany: jest.fn(({ where, orderBy, take }: { where?: { OR?: Array<Record<string, unknown>> }; orderBy: unknown; take: number }) => {
+          let filtered = runs;
+          const cursorClause = where?.OR;
+          if (cursorClause) {
+            filtered = runs.filter((run) => {
+              const updatedAtLt = cursorClause[0]?.updatedAt as { lt: Date } | undefined;
+              const eqClause = cursorClause[1] as { updatedAt: Date; id: { lt: string } } | undefined;
+              const runUpdatedAt = run.updatedAt as Date;
+              if (updatedAtLt && runUpdatedAt < updatedAtLt.lt) return true;
+              if (eqClause && runUpdatedAt.getTime() === eqClause.updatedAt.getTime() && (run.id as string) < eqClause.id.lt) return true;
+              return false;
+            });
+          }
+          const sorted = [...filtered].sort((a, b) => {
+            const diff = (b.updatedAt as Date).getTime() - (a.updatedAt as Date).getTime();
+            return diff !== 0 ? diff : (b.id as string).localeCompare(a.id as string);
+          });
+          return Promise.resolve(sorted.slice(0, take));
+        }),
+      },
+    };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
+    const svc = new MarketplaceService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      { isLocalMode: jest.fn().mockReturnValue(false) } as never,
+    );
+    return { svc, tenantDb };
+  }
+
+  it("getBulkPublishRun returns the run with its items", async () => {
+    const { svc, tenantDb } = makeReadOnlyService([{ id: "run_1", status: "completed", updatedAt: new Date("2026-01-01") }]);
+    tenantDb.marketplaceBulkPublishRun.findUnique.mockResolvedValueOnce({
+      id: "run_1",
+      status: "completed",
+      items: [{ id: "item_1", status: "succeeded" }],
+    });
+
+    const result = await svc.getBulkPublishRun("run_1");
+
+    expect(result).toMatchObject({ id: "run_1", status: "completed" });
+  });
+
+  it("getBulkPublishRun throws NotFoundException for an unknown run", async () => {
+    const { svc } = makeReadOnlyService([]);
+    await expect(svc.getBulkPublishRun("missing")).rejects.toThrow(NotFoundException);
+  });
+
+  it("listBulkPublishRuns without pagination returns the most recent runs first, capped", async () => {
+    const runs = Array.from({ length: 5 }, (_, i) => ({
+      id: `run_${i}`,
+      status: "completed",
+      updatedAt: new Date(2026, 0, i + 1),
+    }));
+    const { svc } = makeReadOnlyService(runs);
+
+    const result = (await svc.listBulkPublishRuns()) as Array<{ id: string }>;
+
+    expect(result[0].id).toBe("run_4"); // most recently updated first
+    expect(result).toHaveLength(5);
+  });
+
+  it("listBulkPublishRuns with cursor pagination pages through runs in updatedAt-desc order", async () => {
+    const runs = Array.from({ length: 5 }, (_, i) => ({
+      id: `run_${i}`,
+      status: "completed",
+      updatedAt: new Date(2026, 0, i + 1),
+    }));
+    const { svc } = makeReadOnlyService(runs);
+
+    const page1 = await svc.listBulkPublishRuns({ pagination: "cursor", limit: 2 });
+    expect("items" in page1 ? page1.items.map((r) => r.id) : []).toEqual(["run_4", "run_3"]);
+    expect("nextCursor" in page1 ? page1.nextCursor : null).toBeTruthy();
+
+    const page2 = await svc.listBulkPublishRuns({
+      pagination: "cursor",
+      limit: 2,
+      cursor: "nextCursor" in page1 ? (page1.nextCursor ?? undefined) : undefined,
+    });
+    expect("items" in page2 ? page2.items.map((r) => r.id) : []).toEqual(["run_2", "run_1"]);
   });
 });
 
@@ -1312,9 +1681,16 @@ describe("CONNECTOR_SUBMISSION worker boundary — tenant context restoration", 
 
   function captureWorkerHandler(svc: MarketplaceService, queueService: { processWithBackpressure: jest.Mock }) {
     svc.onModuleInit();
-    expect(queueService.processWithBackpressure).toHaveBeenCalledTimes(1);
+    // Bulk-Publish Goes Async, Story 4 registered a second processWithBackpressure
+    // consumer (MARKETPLACE_BULK_PUBLISH) alongside this one (CONNECTOR_SUBMISSION) in
+    // the same registerConnectorWorker() — select by queue name (arg 0) rather than
+    // assuming this is the only/first call.
+    const call = queueService.processWithBackpressure.mock.calls.find(
+      (c: unknown[]) => c[0] === QUEUE_NAMES.CONNECTOR_SUBMISSION,
+    );
+    expect(call).toBeDefined();
     // processWithBackpressure(queueName, options, handler)
-    return queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    return call![2] as (payload: unknown) => Promise<void>;
   }
 
   it("restores the payload's tenant before dispatch — the job is found under the correct tenant", async () => {

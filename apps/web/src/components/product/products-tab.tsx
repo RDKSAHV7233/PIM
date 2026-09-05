@@ -569,13 +569,15 @@ export function ProductsTab({
   }
 
   const selectedPublishCount = selectedProductIds.size;
-  // UX-only soft-warning ceiling — NOT authoritative. The server enforces the real ceiling
-  // per connector: 50 for connectors without native BULK_PUBLISH (NON_BULK_PUBLISH_BATCH_CEILING
-  // in apps/api/src/marketplace/marketplace.service.ts) and a 200-product DTO hard cap
-  // (@ArrayMaxSize(200) in trigger-bulk-publish.dto.ts) for native BULK_PUBLISH connectors like
-  // Amazon. This constant only decides when to show an early warning before submit; changing it
-  // does not change what the backend accepts or rejects.
-  const bulkPublishSoftWarningCeiling = selectedPublishConnector?.hasNativeBulkPublish ? 200 : 50;
+  // UX-only soft-warning ceiling — NOT authoritative. Bulk-Publish Goes Async (Story 8)
+  // retired the old 50-product NON_BULK_PUBLISH_BATCH_CEILING: connectors without native
+  // BULK_PUBLISH now queue an async run (createBulkPublishRun in marketplace.service.ts)
+  // instead of publishing inline, so there's no longer a synchronous per-connector-type
+  // scaling wall to warn about. The only remaining backend bound is the shared
+  // @ArrayMaxSize(2000) on TriggerBulkPublishDto.productIds (trigger-bulk-publish.dto.ts),
+  // the same for every connector. This constant only decides when to show an early warning
+  // before submit; changing it does not change what the backend accepts or rejects.
+  const bulkPublishSoftWarningCeiling = 2000;
   const isNearBulkPublishCeiling =
     selectedPublishCount >= Math.ceil(bulkPublishSoftWarningCeiling * 0.8) &&
     selectedPublishCount <= bulkPublishSoftWarningCeiling;
@@ -1129,7 +1131,9 @@ export function ProductsTab({
                 `${count} product${count === 1 ? "" : "s"} selected for ${formatMarketplaceChannelLabel(selectedPublishConnector.channel)}.`
               }
               confirmDescription={(count) =>
-                `This will submit ${count} selected product${count === 1 ? "" : "s"} to ${selectedPublishConnector.displayName}. Native feed connectors send one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.`
+                selectedPublishConnector.hasNativeBulkPublish
+                  ? `This will submit ${count} selected product${count === 1 ? "" : "s"} to ${selectedPublishConnector.displayName} as a single batch feed. Track results in the Jobs workspace.`
+                  : `This will queue a background run to submit ${count} selected product${count === 1 ? "" : "s"} to ${selectedPublishConnector.displayName}, one export job per product. Submitting returns immediately — track the run's progress in the Jobs workspace.`
               }
             />
           ) : (

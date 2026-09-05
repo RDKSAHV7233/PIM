@@ -20,6 +20,14 @@ interface BulkPublishConfirmFormProps {
   hintWhenEmpty?: string;
   summaryLabel?: (count: number) => string;
   confirmDescription?: (count: number) => string;
+  /**
+   * Bulk-Publish Goes Async, Story 6/7: a plain "native" | "async" tag, not a function —
+   * this component is also rendered from a Server Component (the connector Sync tab,
+   * [installationId]/page.tsx), and a function prop can't cross that RSC boundary
+   * ("Functions cannot be passed directly to Client Components"). Only used when the
+   * caller doesn't supply its own `confirmDescription` override.
+   */
+  bulkPublishMode?: "native" | "async";
 }
 
 export function BulkPublishConfirmForm({
@@ -30,10 +38,13 @@ export function BulkPublishConfirmForm({
   action,
   idleLabelWhenEmpty = "No approved products",
   hintWhenEmpty = "Approve at least one product before bulk publish.",
+  bulkPublishMode = "async",
   summaryLabel = (count) =>
     `${count} approved product${count === 1 ? "" : "s"} selected from this connector workspace.`,
   confirmDescription = (count) =>
-    `This will submit ${count} approved product${count === 1 ? "" : "s"} to the marketplace. Native feed connectors send one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.`,
+    bulkPublishMode === "native"
+      ? `This will submit ${count} approved product${count === 1 ? "" : "s"} to the marketplace as a single batch feed. Track results in the Jobs workspace.`
+      : `This will queue a background run to submit ${count} approved product${count === 1 ? "" : "s"} to the marketplace, one export job per product. Submitting returns immediately — track the run's progress in the Jobs workspace.`,
 }: BulkPublishConfirmFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const confirmedRef = useRef(false);

@@ -1,4 +1,4 @@
-import type { AiAttributeEnrichment, AiCategorySuggestion, AiTitleSuggestion, ApiRequestOptions, BulkEditOperation, BulkEditPreview, BulkEditScope, BulkEditUpdates, BulkImportJob, BulkImportMappingSuggestion, BulkImportRow, BulkImportRowStatus, BulkImportRun, BulkImportRunRow, BulkImportRunStatus, BulkImportTemplate, BulkMediaAssociationResult, ConnectorSubmission, ConnectorSubmissionIssue, MarketplaceChannel, MarketplaceExportJob, MediaAsset, MediaValidation, OndcMapping, OndcSimulation, OndcVersionInfo, PaginatedResponse, RejectionIntelligenceScore, SubmissionCountResponse } from "./core";
+import type { AiAttributeEnrichment, AiCategorySuggestion, AiTitleSuggestion, ApiRequestOptions, BulkEditOperation, BulkEditPreview, BulkEditScope, BulkEditUpdates, BulkImportJob, BulkImportMappingSuggestion, BulkImportRow, BulkImportRowStatus, BulkImportRun, BulkImportRunRow, BulkImportRunStatus, BulkImportTemplate, BulkMediaAssociationResult, ConnectorSubmission, ConnectorSubmissionIssue, MarketplaceBulkPublishRun, MarketplaceChannel, MarketplaceExportJob, MediaAsset, MediaValidation, OndcMapping, OndcSimulation, OndcVersionInfo, PaginatedResponse, RejectionIntelligenceScore, SubmissionCountResponse } from "./core";
 import { fetchJson, postFormData, postJson } from "./core";
 
 export async function getSubmissions(
@@ -87,6 +87,26 @@ export async function getDeadLetterSubmissions(
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<PaginatedResponse<MarketplaceExportJob> | MarketplaceExportJob[]>(
     `/submissions/dead-letter${query}`,
+    undefined,
+    options,
+  );
+}
+
+// Bulk-Publish Goes Async, Story 7: recent async bulk-publish runs for the Jobs
+// workspace panel (createBulkPublishRun/processBulkPublishRun in
+// apps/api/src/marketplace/marketplace.service.ts).
+export async function getBulkPublishRuns(limit = 20, options?: ApiRequestOptions) {
+  const response = await fetchJson<PaginatedResponse<MarketplaceBulkPublishRun> | MarketplaceBulkPublishRun[]>(
+    `/marketplace/bulk-publish-runs?limit=${encodeURIComponent(String(limit))}`,
+    undefined,
+    options,
+  );
+  return Array.isArray(response) ? response : (response.items ?? []);
+}
+
+export async function getBulkPublishRun(runId: string, options?: ApiRequestOptions) {
+  return fetchJson<MarketplaceBulkPublishRun>(
+    `/marketplace/bulk-publish-runs/${encodeURIComponent(runId)}`,
     undefined,
     options,
   );

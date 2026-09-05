@@ -42,6 +42,8 @@ module.exports = {
     "**/billing/plan-guard.guard.spec.ts",
     "**/billing/plan-usage-resource-limits.spec.ts",
     "**/billing/plan-usage-sellable-sku-lifecycle.spec.ts",
+    "**/billing/commercial-requests.service.spec.ts",
+    "**/billing/commercial-notifications.service.spec.ts",
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",
     "**/bulk-import/bulk-import-run-validate.service.spec.ts",
@@ -76,6 +78,7 @@ module.exports = {
     "**/auth/jwt.step-up-scope.spec.ts",
     "**/auth/jwt-blocklist.service.spec.ts",
     "**/auth/auth.service.spec.ts",
+    "**/auth/oidc-auth.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

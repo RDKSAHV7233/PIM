@@ -5,6 +5,9 @@ import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { CommercialNotificationsService } from "../billing/commercial-notifications.service";
+import { CommercialRequestsService } from "../billing/commercial-requests.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { AuthPolicyService } from "./auth-policy.service";
 import { signPimJwt } from "./jwt";
 import { OidcService } from "./oidc.service";
@@ -31,6 +34,9 @@ export class OidcAuthService {
     private readonly tenantDirectoryService: TenantDirectoryService,
     private readonly authPolicyService: AuthPolicyService,
     private readonly auditService: AuditService,
+    private readonly planUsageService: PlanUsageService,
+    private readonly commercialRequestsService: CommercialRequestsService,
+    private readonly commercialNotificationsService: CommercialNotificationsService,
   ) {}
 
   async completeLogin(state: string, code: string): Promise<OidcLoginResult> {
@@ -120,7 +126,73 @@ export class OidcAuthService {
 
     this.logger.log(`Provisioned OIDC user ${userId} in tenant ${tenantKey} with role ${role}`);
 
+    // PO decision (option 2, TC-37): SSO auto-provisioning is continuous and passive — it
+    // happens on every new person's first login, not a deliberate bulk action a customer
+    // chooses to trigger. Blocking a login over a plan limit is a real support-flow risk
+    // (an employee locked out mid-workday because *someone else's* org grew past the plan's
+    // seat count). So: never block here. Instead, flag the tenant for commercial follow-up
+    // the same way this codebase already handles "something needs Vexa's commercial
+    // attention" — a TenantCommercialRequest row plus a one-time email, same idiom as
+    // billing.controller.ts's upgrade-request flow. Awaited (not fire-and-forget) so this
+    // stays deterministic and testable — the extra query is cheap, and try/catch guarantees
+    // a failure here can never turn into a failed login.
+    try {
+      await this.flagUserLimitOverageIfNeeded(tenantKey);
+    } catch (error) {
+      this.logger.error(
+        `Failed to flag user-limit overage for tenant ${tenantKey} (login was still allowed): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
     return { userId, role, assignedRoles: claimedRoles };
+  }
+
+  private async flagUserLimitOverageIfNeeded(tenantKey: string): Promise<void> {
+    const check = await this.planUsageService.checkLimit("users", 0, tenantKey);
+    if (check.allowed) {
+      return;
+    }
+
+    const profile = await this.planUsageService.getTenantPlanProfile(tenantKey);
+    const result = await this.commercialRequestsService.createOrReuseOverageFlag(tenantKey, {
+      resource: "users",
+      current: check.current,
+      limit: check.limit,
+      currentPlanTier: profile.planTier,
+      currentBillingStatus: profile.billingStatus,
+      currentAccessStatus: profile.accessStatus,
+      source: "sso_auto_provisioning",
+      notes:
+        `SSO auto-provisioning brought active user count to ${check.current}, over the plan's ` +
+        `limit of ${check.limit}. The login was allowed — user-count enforcement here is a ` +
+        `flag for commercial follow-up, not a block.`,
+    });
+
+    if (!result.created) {
+      return;
+    }
+
+    await this.auditService.record({
+      actorId: "system",
+      actorRole: "system",
+      action: "billing.user_limit_overage_flagged",
+      resource: "TENANT_COMMERCIAL_REQUEST",
+      resourceId: result.item.id,
+      tenantKey,
+      metadata: {
+        event: "sso_user_limit_overage_flagged",
+        tenantKey,
+        current: check.current,
+        limit: check.limit,
+      },
+    });
+
+    await this.commercialNotificationsService.notifyCommercialOpsOverageFlag({
+      tenantKey,
+      request: result.item,
+    });
   }
 
   private resolveRoleFromClaims(claimedRoles: string[]): AppRole {

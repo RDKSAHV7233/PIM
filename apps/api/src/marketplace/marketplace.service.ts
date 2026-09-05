@@ -1,8 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import { UnrecoverableError } from "bullmq";
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Optional,
+} from "@nestjs/common";
 import {
   ExportJobStatus,
+  MarketplaceBulkPublishItemStatus,
+  MarketplaceBulkPublishRunStatus,
   Prisma,
   RuleSeverity,
   ValidationIssueStatus,
@@ -184,6 +196,15 @@ type SimulationProduct = Prisma.ProductGetPayload<{
     validationIssues: true;
   };
 }>;
+
+// Bulk-Publish Goes Async, Story 4: queue payload for MARKETPLACE_BULK_PUBLISH — mirrors
+// BulkEditApplyJobPayload's shape (bulk-edit.service.ts) deliberately, since the worker
+// follows the same "find run, resume from unprocessed items, finalize" pattern.
+type MarketplaceBulkPublishJobPayload = {
+  runId: string;
+  tenantKey: string;
+  actor: PolicyActor;
+};
 
 type MarketplaceReadinessStatus = "ready" | "warnings" | "errors" | "unknown";
 
@@ -744,7 +765,17 @@ export class MarketplaceService implements OnModuleInit {
       resource: "MarketplaceExportJob",
       resourceId: productId,
     });
-    const product = precomputed?.product ?? await this.prisma.tenant().product.findUnique({ where: { id: productId } });
+    // Bulk-Publish Goes Async, Story 4: #554 deduplicated this method's own product
+    // fetch against the bulk eligibility loop's, but left a second one standing —
+    // simulateProduct() (below) always did its own separate fetch regardless of
+    // precomputed, ignoring it entirely. When precomputed isn't given (every caller
+    // except the legacy bulkPublishViaQueuedExportJobs path), fetch once here with
+    // the full shape buildSimulationFromProduct needs and reuse it directly instead
+    // of letting simulateProduct() re-fetch. precomputed.product's narrower shape
+    // (no attributes/validationIssues) can't serve double duty this way, so that
+    // path is unchanged — it was never the common case this fixes.
+    const fetchedProduct = precomputed?.product ?? await this.getProductForSimulation(productId);
+    const product = fetchedProduct;
     if (!product) {
       throw new NotFoundException("Product not found");
     }
@@ -776,7 +807,21 @@ export class MarketplaceService implements OnModuleInit {
       throw error;
     }
 
-    const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId, resolvedInstallationId);
+    // Still goes through the public simulateProduct() — not buildSimulationFromProduct()
+    // directly — so callers/tests that spy on simulateProduct (mocking it out entirely
+    // instead of its underlying Prisma calls) keep working unmodified. The fetch reuse
+    // happens *inside* simulateProduct via its new precomputedProduct param (above);
+    // this call site just supplies it when available. precomputed.product is narrower
+    // than SimulationProduct (no attributes/validationIssues), so that path passes
+    // nothing through and simulateProduct falls back to its own fetch — unchanged
+    // behavior for that caller.
+    const simulation = await this.simulateProduct(
+      productId,
+      dto.channel,
+      dto.templateId,
+      resolvedInstallationId,
+      precomputed?.product ? undefined : (product as SimulationProduct),
+    );
     if (precomputed?.readiness) {
       if (!precomputed.readiness.ok) {
         throw new BadRequestException({
@@ -2111,6 +2156,36 @@ export class MarketplaceService implements OnModuleInit {
         });
       },
     );
+
+    // Bulk-Publish Goes Async, Story 4: one run per triggerBulkPublish call on
+    // non-native connectors. Lane-by-tenant mirrors BulkEditService's own queue
+    // registration (bulk-edit.service.ts) — the closest precedent for this exact
+    // "one job kicks off a resumable multi-item background operation" shape.
+    this.queueService.processWithBackpressure<MarketplaceBulkPublishJobPayload>(
+      QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH,
+      { laneResolver: (payload) => payload.tenantKey },
+      async (payload) => {
+        try {
+          await runWithTenantContext(payload.tenantKey, () => this.processBulkPublishRun(payload));
+        } catch (error) {
+          this.logger.error("Bulk publish run failed unexpectedly", {
+            runId: payload.runId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await runWithTenantContext(payload.tenantKey, async () => {
+            try {
+              await this.prisma.tenant().marketplaceBulkPublishRun.update({
+                where: { id: payload.runId },
+                data: { status: MarketplaceBulkPublishRunStatus.failed },
+              });
+            } catch {
+              this.logger.error("Failed to mark bulk publish run as failed", { runId: payload.runId });
+            }
+          });
+          throw error;
+        }
+      },
+    );
   }
 
   async requeueExportJob(jobId: string) {
@@ -2145,8 +2220,21 @@ export class MarketplaceService implements OnModuleInit {
     return updated;
   }
 
-  async simulateProduct(productId: string, channelInput: string, templateId?: string, installationId?: string | null) {
-    const product = await this.getProductForSimulation(productId);
+  async simulateProduct(
+    productId: string,
+    channelInput: string,
+    templateId?: string,
+    installationId?: string | null,
+    // Bulk-Publish Goes Async, Story 4: createExportJob already fetches the product with
+    // this exact shape (via getProductForSimulation) when it doesn't have a precomputed
+    // one — passing it through here skips this method's own redundant re-fetch, closing
+    // the gap #554 left (that fix deduplicated createExportJob's own fetch against the
+    // caller's, but this method still did a second one regardless, ignoring it entirely).
+    // Optional and additive: every other caller (single-product simulate, getBatchReadiness,
+    // ...) omits it and behaves exactly as before.
+    precomputedProduct?: SimulationProduct,
+  ) {
+    const product = precomputedProduct ?? await this.getProductForSimulation(productId);
     if (!product) {
       throw new NotFoundException("Product not found");
     }
@@ -4994,13 +5082,23 @@ export class MarketplaceService implements OnModuleInit {
     installationId: string,
     productIds: string[],
     actor?: PolicyActor,
-  ): Promise<{
-    feedId: string;
-    feedDocumentId: string;
-    productCount: number;
-    submissionIds: string[];
-    excluded: Array<{ productId: string; reason: string }>;
-  }> {
+  ): Promise<
+    | {
+        feedId: string;
+        feedDocumentId: string;
+        productCount: number;
+        submissionIds: string[];
+        excluded: Array<{ productId: string; reason: string }>;
+      }
+    | {
+        async: true;
+        runId: string;
+        status: "queued";
+        requestedCount: number;
+        excludedCount: number;
+        excluded: Array<{ productId: string; reason: string }>;
+      }
+  > {
     if (!productIds.length) {
       throw new BadRequestException("productIds must contain at least one product.");
     }
@@ -5020,39 +5118,25 @@ export class MarketplaceService implements OnModuleInit {
     );
     const hasNativeBulkPublish = installation.capabilities.includes("BULK_PUBLISH");
 
-    // TC-06 (BUG-BULK-PUBLISH-TIMEOUT-001): connectors without a native batch-feed API fall
-    // through to bulkPublishViaQueuedExportJobs below, which does per-product DB + connector
-    // work rather than Amazon's single-call batch feed. That path was timing out (20s web
-    // ceiling) once the eligibility loop below covered ~46+ products. Reject oversized batches
-    // for that path up front, before running the expensive loop at all, rather than letting the
-    // request die partway through with a generic error. This ceiling is a deliberately
-    // conservative operational limit (see #545), not a permanent architectural maximum — raise
-    // only from measured production-latency evidence. Native BULK_PUBLISH connectors (Amazon)
-    // are unaffected: their 200-product DTO ceiling already governs them.
-    const NON_BULK_PUBLISH_BATCH_CEILING = 50;
-    if (!hasNativeBulkPublish && productIds.length > NON_BULK_PUBLISH_BATCH_CEILING) {
-      throw new BadRequestException({
-        error: "batch_too_large",
-        message:
-          `This connector queues one export job per product and supports at most ` +
-          `${NON_BULK_PUBLISH_BATCH_CEILING} products per bulk-publish batch. ` +
-          `Submitted ${productIds.length} products — split into smaller batches.`,
-        ceiling: NON_BULK_PUBLISH_BATCH_CEILING,
-        submittedCount: productIds.length,
-      });
+    // Bulk-Publish Goes Async (Story 3/8): connectors without a native batch-feed API used
+    // to fall through to a synchronous per-product loop here — the thing that caused
+    // BUG-BULK-PUBLISH-TIMEOUT-001 and the 50-product ceiling this replaces. That entire
+    // synchronous path (eligibility loop, submission-limit check, per-product export-job
+    // creation) is gone for this branch — createBulkPublishRun below does only cheap,
+    // batch-cost-independent work (one status query, one plan-limit check using that
+    // count, one run+items insert) before returning, and a worker does everything else.
+    // Native BULK_PUBLISH connectors (Amazon) are unaffected — their own 200-product DTO
+    // ceiling already governs them, and their single real batch-feed call already scales.
+    if (!hasNativeBulkPublish) {
+      const channel = this.mapConnectorSlugToChannel(installationRow.connectorSlug);
+      return this.createBulkPublishRun(installationRow.connectorSlug, installationId, channel, productIds, tenantKey, actor);
     }
 
-    // Bulk-publish previously skipped both the internal-approval-status check and the
-    // destination-readiness check that the single-product path (createExportJob, above)
-    // enforces — a product could reach a live marketplace feed without ever being
-    // approved or without a valid mapping/credentials. Gate each product independently
-    // here rather than failing the whole batch for one ineligible product.
-    //
     // TC-06: this loop was previously sequential (one await chain per product), which made
     // the whole request scale linearly with batch size against a DB path that isn't privately
-    // networked (see #531 item 4) — 46 products alone exceeded the web layer's 20s timeout.
-    // Evaluate concurrently instead, same runWithConcurrency pattern already used for the
-    // per-product export-job queuing a few lines below.
+    // networked (see #531 item 4). Evaluate concurrently instead, same runWithConcurrency
+    // pattern already used for the per-product export-job queuing a few lines below. Amazon's
+    // batch is small enough (its own 200-product DTO ceiling) that this stays synchronous.
     type EligibleProduct = {
       productId: string;
       product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
@@ -5112,14 +5196,32 @@ export class MarketplaceService implements OnModuleInit {
       });
     }
 
-    // Connectors without a native async feed API (Shopify, WooCommerce, ...) can't produce
-    // a single BulkSubmissionRef the way Amazon's Feeds API does — each product publishes
-    // synchronously via its own GraphQL/REST call. For those, fall back to queuing one
-    // MarketplaceExportJob per eligible product through the same connector-agnostic pipeline
-    // createExportJob already uses for the single-product "Queue channel export" action —
-    // proven to work for Shopify — instead of forcing them through the Amazon-shaped path.
-    if (!hasNativeBulkPublish) {
-      return this.bulkPublishViaQueuedExportJobs(installationRow.connectorSlug, installationId, eligibleProducts, excluded, actor);
+    // The single-product path (createExportJob, above) enforces the plan's monthly
+    // submissions limit via PlanGuard at the controller layer — but that's an HTTP
+    // decorator, and this bulk-publish endpoint is a separate route that never passes
+    // through it. This branch (Amazon's native feed) creates a ConnectorSubmission per
+    // eligible product, so without this check a tenant could repeatedly call this
+    // endpoint to blow past their monthly cap. Same enforcement, same error shape as
+    // PlanGuard, applied here as a preflight. (The non-native branch above has its own
+    // equivalent check, using an approval-status-only count — see createBulkPublishRun.)
+    const submissionLimitCheck = await this.planUsageService.checkLimit(
+      "submissions",
+      eligibleProductIds.length,
+      tenantKey,
+    );
+    if (!submissionLimitCheck.allowed) {
+      const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() || null;
+      throw new HttpException(
+        {
+          error: "PLAN_LIMIT_EXCEEDED",
+          resource: submissionLimitCheck.resource,
+          limit: submissionLimitCheck.limit,
+          current: submissionLimitCheck.current,
+          upgrade_url: "/admin/plan",
+          contact_url: contactUrl,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
     }
 
     const products = await Promise.all(
@@ -5188,78 +5290,369 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   /**
-   * Fallback bulk-publish path for connectors without a native async batch/feed API
-   * (Shopify, WooCommerce, ...). These publish synchronously per product — there is no
-   * single feed submission to poll for status the way Amazon's Feeds API works, so they
-   * can't produce a real BulkSubmissionRef. Instead, queue one MarketplaceExportJob per
-   * eligible product through the exact same connector-agnostic pipeline createExportJob
-   * already uses for the single-product "Queue channel export" action (queued job →
-   * CONNECTOR_SUBMISSION queue → connector.publishProduct), reusing its idempotency,
-   * readiness re-check, and retry handling as-is rather than duplicating any of it here.
-   * One product failing is added to `excluded`, not a batch-wide failure.
+   * Bulk-Publish Goes Async, Stories 3+4: entry point for connectors without a native
+   * async batch/feed API (Shopify, WooCommerce, ...). These publish synchronously per
+   * product — there is no single feed submission to poll the way Amazon's Feeds API
+   * works — so the old synchronous fallback (bulkPublishViaQueuedExportJobs, removed)
+   * ran the full per-product createExportJob loop inline in the HTTP request, which is
+   * exactly what caused BUG-BULK-PUBLISH-TIMEOUT-001/#545/TC-06 once a batch got large.
    *
-   * `feedId`/`feedDocumentId` are synthesized (prefixed `queued-batch:`) to keep the
-   * response shape identical to the Amazon path for existing callers — they are not real
-   * external feed identifiers, only a label for this batch in logs.
+   * This replacement does only batch-cost-independent work before returning: one
+   * status-only query, the plan-limit check against that count, and one run+items
+   * insert. Everything per-product — the readiness re-check and the actual
+   * createExportJob call — moves into processBulkPublishRun, run by the
+   * MARKETPLACE_BULK_PUBLISH queue consumer registered in registerConnectorWorker().
    */
-  private async bulkPublishViaQueuedExportJobs(
+  private async createBulkPublishRun(
     connectorSlug: string,
     installationId: string,
-    eligibleProducts: Array<{
-      productId: string;
-      product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };
-      readiness: { ok: boolean; blockers: string[]; warnings: string[] };
-    }>,
-    excluded: Array<{ productId: string; reason: string }>,
+    channel: MarketplaceChannel,
+    productIdsInput: string[],
+    tenantKey: string,
     actor?: PolicyActor,
   ): Promise<{
-    feedId: string;
-    feedDocumentId: string;
-    productCount: number;
-    submissionIds: string[];
+    async: true;
+    runId: string;
+    status: "queued";
+    requestedCount: number;
+    excludedCount: number;
     excluded: Array<{ productId: string; reason: string }>;
   }> {
-    const channel = this.mapConnectorSlugToChannel(connectorSlug);
+    const productIds = this.uniqueStrings(productIdsInput);
+    const db = this.prisma.tenant();
 
-    const outcomes = await this.runWithConcurrency(
-      eligibleProducts.map(({ productId, product, readiness }) => async () => {
+    // Cheap approval-status-only check — the full readiness re-evaluation
+    // (evaluatePublishReadiness) happens per item in the worker instead, since it's
+    // not needed to decide whether this run is worth creating at all, and running it
+    // here for every product would reintroduce the exact synchronous cost this story
+    // removes.
+    const rows = await db.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, status: true },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    const excluded: Array<{ productId: string; reason: string }> = [];
+    const eligibleProductIds: string[] = [];
+    for (const productId of productIds) {
+      const row = byId.get(productId);
+      if (!row) {
+        excluded.push({ productId, reason: "Product not found." });
+      } else if (row.status !== "approved" && row.status !== "active") {
+        excluded.push({
+          productId,
+          reason: `Product must be approved before publishing. Current status: ${row.status}.`,
+        });
+      } else {
+        eligibleProductIds.push(productId);
+      }
+    }
+
+    if (!eligibleProductIds.length) {
+      throw new BadRequestException({
+        error: "no_eligible_products",
+        message: "No products in this batch are approved and publish-ready.",
+        excluded,
+      });
+    }
+
+    // Same PlanGuard-equivalent preflight as the native-connector branch above — this
+    // route never passes through the HTTP-decorator PlanGuard, so it's enforced here.
+    // Uses the cheap approval-status count rather than the full readiness result;
+    // items the worker later excludes on readiness grounds still counted toward this
+    // request's limit check, matching how the old synchronous path counted them too
+    // (readiness-excluded items were already past the limit check by the time they
+    // were excluded there).
+    const submissionLimitCheck = await this.planUsageService.checkLimit(
+      "submissions",
+      eligibleProductIds.length,
+      tenantKey,
+    );
+    if (!submissionLimitCheck.allowed) {
+      const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() || null;
+      throw new HttpException(
+        {
+          error: "PLAN_LIMIT_EXCEEDED",
+          resource: submissionLimitCheck.resource,
+          limit: submissionLimitCheck.limit,
+          current: submissionLimitCheck.current,
+          upgrade_url: "/admin/plan",
+          contact_url: contactUrl,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+
+    const run = await db.marketplaceBulkPublishRun.create({
+      data: {
+        tenantKey,
+        installationId,
+        connectorSlug,
+        channel,
+        requestedCount: eligibleProductIds.length,
+        excludedCount: excluded.length,
+        status: MarketplaceBulkPublishRunStatus.queued,
+        createdBy: actor?.actorId ?? null,
+        items: {
+          create: eligibleProductIds.map((productId) => ({
+            tenantKey,
+            productId,
+            idempotencyKey: `${channel}:${installationId}:${productId}`,
+            status: MarketplaceBulkPublishItemStatus.pending,
+          })),
+        },
+      },
+    });
+
+    await this.queueService.enqueue<MarketplaceBulkPublishJobPayload>(QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH, {
+      runId: run.id,
+      tenantKey,
+      actor: actor ?? {},
+    });
+
+    this.logger.info("Bulk publish run queued (connector has no native batch API)", {
+      runId: run.id,
+      installationId,
+      connectorSlug,
+      requestedCount: eligibleProductIds.length,
+      excludedCount: excluded.length,
+    });
+
+    return {
+      async: true,
+      runId: run.id,
+      status: "queued",
+      requestedCount: eligibleProductIds.length,
+      excludedCount: excluded.length,
+      excluded,
+    };
+  }
+
+  /**
+   * Queue handler for a single bulk-publish run. Idempotent and resumable — same shape
+   * as BulkEditService.processApplyJob (bulk-edit.service.ts): on redelivery it skips
+   * items already resolved to a terminal status and continues from there, rather than
+   * re-publishing or double-counting. Each item goes through the exact same
+   * createExportJob() pipeline as the single-product "Queue channel export" action —
+   * no precomputed product/readiness is passed, since a fresh re-check after an async
+   * delay is the correct behavior here (the product may have changed since the run was
+   * requested), unlike the synchronous native-connector path above where staleness
+   * within the same request isn't a concern.
+   */
+  private async processBulkPublishRun(payload: MarketplaceBulkPublishJobPayload): Promise<void> {
+    const db = this.prisma.tenant();
+    const run = await db.marketplaceBulkPublishRun.findUnique({ where: { id: payload.runId } });
+    if (!run) {
+      this.logger.warn("Bulk publish run not found — skipping.", { runId: payload.runId });
+      return;
+    }
+    if (
+      run.status !== MarketplaceBulkPublishRunStatus.queued &&
+      run.status !== MarketplaceBulkPublishRunStatus.processing
+    ) {
+      // Already terminal — redelivery no-op.
+      return;
+    }
+    if (run.status === MarketplaceBulkPublishRunStatus.queued) {
+      await db.marketplaceBulkPublishRun.update({
+        where: { id: run.id },
+        data: { status: MarketplaceBulkPublishRunStatus.processing },
+      });
+    }
+
+    const pendingItems = await db.marketplaceBulkPublishRunItem.findMany({
+      where: { runId: run.id, status: MarketplaceBulkPublishItemStatus.pending },
+      select: { id: true, productId: true },
+    });
+
+    await this.runWithConcurrency(
+      pendingItems.map((item) => async () => {
+        // Claim the item first (queued, mirroring the row's own pending->queued
+        // transition) so a concurrent redelivery of this same job can't double-process
+        // it — same defensive intent as the run-level status guard above, one level
+        // down.
+        const claimed = await db.marketplaceBulkPublishRunItem.updateMany({
+          where: { id: item.id, status: MarketplaceBulkPublishItemStatus.pending },
+          data: { status: MarketplaceBulkPublishItemStatus.queued },
+        });
+        if (claimed.count === 0) {
+          return;
+        }
         try {
-          const job = await this.createExportJob(productId, { channel, installationId }, actor, { product, readiness });
-          return { productId, jobId: job.id as string };
+          const job = await this.createExportJob(
+            item.productId,
+            // run.channel is stored as a plain string (see MarketplaceBulkPublishRun in
+            // schema.prisma) but was itself produced by mapConnectorSlugToChannel when
+            // this run was created — already a valid MarketplaceChannel.
+            { channel: run.channel as MarketplaceChannel, installationId: run.installationId },
+            payload.actor,
+          );
+          await db.marketplaceBulkPublishRunItem.update({
+            where: { id: item.id },
+            data: {
+              status: MarketplaceBulkPublishItemStatus.succeeded,
+              exportJobId: job.id as string,
+              attemptCount: { increment: 1 },
+            },
+          });
         } catch (error: unknown) {
+          // Same distinction the old synchronous eligibility loop made between an
+          // ineligible product (excluded from the batch, not retried) and an
+          // operational failure (retryable): BadRequestException (status/validation),
+          // NotFoundException (product deleted mid-run) and ForbiddenException (the
+          // actor/access-policy gate — see access-policy.service.ts's deny()) all mean
+          // createExportJob's own gates rejected the product for a reason retrying
+          // won't change. Anything else (network, transient DB, connector error) is
+          // left retry-eligible for a future requeue.
           const reason = error instanceof Error ? error.message : String(error);
-          return { productId, error: reason };
+          const isIneligible =
+            error instanceof BadRequestException ||
+            error instanceof NotFoundException ||
+            error instanceof ForbiddenException;
+          await db.marketplaceBulkPublishRunItem.update({
+            where: { id: item.id },
+            data: {
+              status: isIneligible
+                ? MarketplaceBulkPublishItemStatus.excluded
+                : MarketplaceBulkPublishItemStatus.failed,
+              reason,
+              retryEligible: !isIneligible,
+              attemptCount: { increment: 1 },
+            },
+          });
         }
       }),
       5,
     );
 
-    const submissionIds: string[] = [];
-    const allExcluded = [...excluded];
-    for (const outcome of outcomes) {
-      if (outcome.jobId) {
-        submissionIds.push(outcome.jobId);
+    await this.finalizeBulkPublishRun(run.id);
+  }
+
+  /**
+   * Recomputes succeeded/failed/excluded counts from MarketplaceBulkPublishRunItem via
+   * groupBy — same pattern as BulkEditService.finalizeOperation (bulk-edit.service.ts)
+   * — rather than accumulating in-memory counters, so this stays correct across
+   * resumed/redelivered runs where a prior partial attempt already wrote some items.
+   */
+  private async finalizeBulkPublishRun(runId: string): Promise<void> {
+    const db = this.prisma.tenant();
+    const statusGroups = await db.marketplaceBulkPublishRunItem.groupBy({
+      by: ["status"],
+      where: { runId },
+      _count: { status: true },
+    });
+
+    let succeededCount = 0;
+    let failedCount = 0;
+    let excludedCount = 0;
+    let pendingOrQueuedCount = 0;
+    for (const group of statusGroups) {
+      if (group.status === MarketplaceBulkPublishItemStatus.succeeded) {
+        succeededCount = group._count.status;
+      } else if (group.status === MarketplaceBulkPublishItemStatus.failed) {
+        failedCount = group._count.status;
+      } else if (group.status === MarketplaceBulkPublishItemStatus.excluded) {
+        excludedCount = group._count.status;
       } else {
-        allExcluded.push({ productId: outcome.productId, reason: outcome.error ?? "Failed to queue export job." });
+        pendingOrQueuedCount += group._count.status;
       }
     }
 
-    const batchId = `queued-batch:${randomUUID()}`;
-    this.logger.warn("Bulk publish queued via per-product export jobs (connector has no native batch API)", {
-      installationId,
-      connectorSlug,
-      batchId,
-      productCount: submissionIds.length,
-      excludedCount: allExcluded.length,
-    });
+    if (pendingOrQueuedCount > 0) {
+      // Items are still mid-flight (e.g. a concurrent redelivery claimed some after
+      // this run's own batch already returned) — leave the run in processing rather
+      // than finalizing early; the redelivery's own finalize call will complete it.
+      return;
+    }
 
-    return {
-      feedId: batchId,
-      feedDocumentId: batchId,
-      productCount: submissionIds.length,
-      submissionIds,
-      excluded: allExcluded,
-    };
+    const status =
+      failedCount > 0 && succeededCount === 0
+        ? MarketplaceBulkPublishRunStatus.failed
+        : failedCount > 0
+          ? MarketplaceBulkPublishRunStatus.completed_with_errors
+          : MarketplaceBulkPublishRunStatus.completed;
+
+    await db.marketplaceBulkPublishRun.update({
+      where: { id: runId },
+      data: { status, succeededCount, failedCount, excludedCount: { increment: excludedCount } },
+    });
+  }
+
+  /**
+   * Bulk-Publish Goes Async, Story 7: list recent runs for the Jobs workspace's bulk-
+   * publish panel — mirrors listDeadLetterSubmissions' cursor-pagination shape above
+   * (same tenant-scoped findMany + updatedAt/id cursor pattern) so the Jobs page can
+   * page through history the same way it already does for dead-letter jobs.
+   */
+  async listBulkPublishRuns(pagination?: CursorPaginationQuery) {
+    const db = this.prisma.tenant();
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+
+      const runs = await db.marketplaceBulkPublishRun.findMany({
+        where: {
+          ...(token && cursorDate
+            ? {
+                OR: [
+                  { updatedAt: { lt: cursorDate } },
+                  { updatedAt: cursorDate, id: { lt: token.id } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
+
+      const hasNext = runs.length > limit;
+      const items = hasNext ? runs.slice(0, limit) : runs;
+      const last = items[items.length - 1];
+      return {
+        items,
+        limit,
+        nextCursor:
+          hasNext && last
+            ? encodeCursorToken({
+                sort: last.updatedAt.toISOString(),
+                id: last.id,
+              })
+            : null,
+      };
+    }
+
+    return db.marketplaceBulkPublishRun.findMany({
+      orderBy: [{ updatedAt: "desc" }],
+      take: resolveCollectionLimit(pagination?.limit),
+    });
+  }
+
+  /**
+   * Bulk-Publish Goes Async, Story 5: status polling for a run created by
+   * createBulkPublishRun. Mirrors BulkEditService.listOperations' per-operation shape
+   * (items included, capped) rather than requiring a second round trip for item detail.
+   */
+  async getBulkPublishRun(runId: string) {
+    const run = await this.prisma.tenant().marketplaceBulkPublishRun.findUnique({
+      where: { id: runId },
+      include: {
+        items: {
+          take: 500,
+          orderBy: [{ createdAt: "asc" }],
+        },
+      },
+    });
+    if (!run) {
+      throw new NotFoundException("Bulk publish run not found.");
+    }
+    return run;
   }
 
   // ─── Meesho Excel export ─────────────────────────────────────────────────

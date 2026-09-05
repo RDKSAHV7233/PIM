@@ -1,7 +1,16 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity, TaxCodeKey, ValidationIssueStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
-import { PlanUsageService } from "../billing/plan-usage.service";
+import { PlanUsageService, SELLABLE_VARIANT_STATUSES } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { CacheService } from "../common/cache/cache.service";
 import { ComplianceService } from "../compliance/compliance.service";
@@ -951,6 +960,12 @@ export class CatalogService {
           blockingIssues,
         });
       }
+      if (nextCanonicalStatus === RecordStatus.approved) {
+        // Plan-limit check belongs here, not on creation — see enforceSkuLimitForApproval.
+        // Gated on the canonical bucket since "approved" and "active" are equivalent for
+        // entitlement purposes (both are in SELLABLE_VARIANT_STATUSES).
+        await this.enforceSkuLimitForApproval(productId);
+      }
     }
 
     // Resolve SLA deadline when transitioning to in_review.
@@ -1094,6 +1109,8 @@ export class CatalogService {
           blockingIssues,
         });
       }
+      // Plan-limit check belongs here, not on creation — see enforceSkuLimitForApproval.
+      await this.enforceSkuLimitForApproval(productId);
     }
 
     if (nextStatus === RecordStatus.approved) {
@@ -1868,6 +1885,59 @@ export class CatalogService {
   // flat sku/mrp/price at the product level gets a variant reflecting real data, not a
   // fabricated placeholder — only a product with no usable data anywhere falls back to
   // its own id as the SKU, matching that same existing connector-payload behavior.
+  /**
+   * SKU-limit enforcement lives here, not on product/variant creation. Draft and
+   * parent-only records don't consume SKU entitlement (Plan & Usage's own copy states
+   * this) — a variant only becomes billable once BOTH its own status and its parent
+   * product's status are in SELLABLE_VARIANT_STATUSES. Call this immediately before a
+   * product transitions into that canonical "approved" bucket, with productId pointing
+   * at the product about to be approved.
+   *
+   * Delta:
+   *   - zero existing variants → 1 (ensureCanonicalVariant is about to create exactly one,
+   *     at the new approved/active status)
+   *   - existing variants → however many of them already sit at status ∈
+   *     {approved, active}. Those were created via createVariant/updateVariant while the
+   *     product was still draft/in_review (latent — the product side of the join was false
+   *     until now), so approving the product is what makes them newly billable, not their
+   *     own creation. Existing variants still in draft contribute 0 — they don't become
+   *     billable until someone also flips their own status, which isn't reachable through
+   *     this transition.
+   *
+   * A delta of 0 (product already had variants, none of them sellable-status) means this
+   * approval creates no new billable SKU — no check needed, and none is made.
+   */
+  private async enforceSkuLimitForApproval(productId: string): Promise<void> {
+    const existingVariant = await this.prisma.tenant().variant.findFirst({
+      where: { productId },
+      select: { id: true },
+    });
+    const delta = existingVariant
+      ? await this.prisma.tenant().variant.count({
+          where: { productId, status: { in: SELLABLE_VARIANT_STATUSES } },
+        })
+      : 1;
+    if (delta === 0) {
+      return;
+    }
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const check = await this.planUsageService.checkLimit("skus", delta, tenantKey);
+    if (!check.allowed) {
+      const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() || null;
+      throw new HttpException(
+        {
+          error: "PLAN_LIMIT_EXCEEDED",
+          resource: check.resource,
+          limit: check.limit,
+          current: check.current,
+          upgrade_url: "/admin/plan",
+          contact_url: contactUrl,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+  }
+
   private async ensureCanonicalVariant(
     tx: Prisma.TransactionClient,
     productId: string,

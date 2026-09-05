@@ -1,8 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { PlanGuard } from "../billing/plan-guard.guard";
-import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { ApiClientPolicy, ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
@@ -133,15 +131,17 @@ export class CatalogController {
     return this.catalogService.getProductRevisions(id, this.resolveActor(request));
   }
 
+  // No plan-limit guard here: a new product starts as a draft with zero variants, and
+  // draft/parent-only records don't count toward SKU usage (see Plan & Usage's own copy).
+  // The SKU limit is enforced where a variant actually becomes sellable — see
+  // catalog.service.ts's enforceSkuLimitForApproval, called from decideProductReview and
+  // updateProduct's terminal-approval branch.
   @Post("products")
   @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
-  @UseGuards(PlanGuard)
-  @RequirePlanLimit("skus")
   @ApiOperation({ summary: "Create product" })
   @ApiResponse({ status: 201, description: "Product created" })
-  @ApiResponse({ status: 402, description: "Plan limit exceeded" })
   createProduct(
     @Body() dto: CreateProductDto,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },

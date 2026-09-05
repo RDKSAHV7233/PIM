@@ -14,7 +14,12 @@ function buildCsvStream(dataRowCount: number): Readable {
   return Readable.from(lines.join("\n"));
 }
 
-function makeService(options: { planRowLimit: number; csvRowCount: number }) {
+function makeService(options: {
+  planRowLimit: number;
+  csvRowCount: number;
+  skuCount?: number;
+  maxSkus?: number;
+}) {
   const updateMock = jest.fn().mockResolvedValue({});
   const variantFindMany = jest.fn().mockResolvedValue([]);
   const tenantClient = {
@@ -53,9 +58,17 @@ function makeService(options: { planRowLimit: number; csvRowCount: number }) {
     })),
   };
 
+  // Defaults keep existing row-ceiling-only tests unaffected: a huge maxSkus
+  // ceiling that the small fixture CSVs will never come close to.
+  const skuCount = options.skuCount ?? 0;
+  const maxSkus = options.maxSkus ?? 1_000_000;
   const planUsageService = {
     getImportRowLimit: jest.fn().mockResolvedValue(options.planRowLimit),
     getOrCreate: jest.fn(),
+    checkLimit: jest.fn().mockImplementation((_resource: string, delta: number) => {
+      const current = skuCount + delta;
+      return Promise.resolve({ allowed: current <= maxSkus, resource: "skus", limit: maxSkus, current });
+    }),
   };
 
   const accessPolicy = {
@@ -127,5 +140,55 @@ describe("BulkImportRunService.validateRun — plan row-ceiling enforcement", ()
     const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1][0];
     expect(lastCall.data.status).toBe(BulkImportRunStatus.preflight_blocked);
     expect((lastCall.data.preflightSummary as Record<string, unknown>).mvpCeilingExceeded).toBe(true);
+  });
+});
+
+// A Rev. 7 revision of this file added a checkLimit("skus", ...) preflight here, on the
+// theory that bulk import needed the same enforcement PlanGuard gives the single-product
+// endpoint. That was itself wrong: every row bulk import creates lands as RecordStatus.draft,
+// and draft/parent-only records never count toward SKU usage (Plan & Usage's own copy, and
+// PlanUsageService's SELLABLE_VARIANT_WHERE, both say so). This regression-guards the
+// correction — bulk import must never call checkLimit("skus", ...) or block on it, no
+// matter how large the batch, because it never creates anything billable.
+describe("BulkImportRunService.validateRun — does not enforce the SKU limit (drafts don't count)", () => {
+  it("a large import that would vastly exceed a Trial tenant's maxSkus=500 is still preflight_ready — draft creation is never blocked by the SKU limit", async () => {
+    const { service, updateMock, planUsageService } = makeService({
+      planRowLimit: 2000,
+      csvRowCount: 400, // well under Trial's maxImportRowsPerJob=2000, but 400 > 500-498=2 headroom
+      skuCount: 498,
+      maxSkus: 500,
+    });
+
+    await service.validateRun("run_1");
+
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+    const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1][0];
+    expect(lastCall.data.status).toBe(BulkImportRunStatus.preflight_ready);
+    expect(lastCall.data.totalRows).toBe(400);
+  });
+
+  it("importing when the tenant is already at its SKU limit is still allowed — the limit only applies at approval, not at draft creation", async () => {
+    const { service, updateMock, planUsageService } = makeService({
+      planRowLimit: 2000,
+      csvRowCount: 50,
+      skuCount: 500,
+      maxSkus: 500, // already at 100% of plan
+    });
+
+    await service.validateRun("run_1");
+
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+    const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1][0];
+    expect(lastCall.data.status).toBe(BulkImportRunStatus.preflight_ready);
+  });
+
+  it("preflightSummary no longer carries a planSkuLimitExceeded field", async () => {
+    const { service, updateMock } = makeService({ planRowLimit: 2000, csvRowCount: 10 });
+
+    await service.validateRun("run_1");
+
+    const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1][0];
+    const summary = lastCall.data.preflightSummary as Record<string, unknown>;
+    expect(summary.planSkuLimitExceeded).toBeUndefined();
   });
 });

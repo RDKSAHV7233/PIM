@@ -497,6 +497,20 @@ export class BulkImportRunService implements OnModuleInit {
         }
       }
 
+      // NOTE: bulk import deliberately does NOT check the cumulative plan SKU limit here.
+      // Every row this job creates lands as RecordStatus.draft (see bulk-import.service.ts's
+      // product.create/variant.create) — draft, parent-only, archived, and deleted records
+      // don't count toward SKU usage (Plan & Usage's own copy states this, and
+      // PlanUsageService's SELLABLE_VARIANT_WHERE enforces it on the read side). A SKU-limit
+      // check here would block a tenant from staging drafts for review even at zero approved
+      // usage. The limit is enforced instead where a variant actually becomes sellable — see
+      // catalog.service.ts's enforceSkuLimitForApproval — which a bulk-imported draft still
+      // has to pass through individually to be approved. (A prior revision of this file added
+      // a checkLimit("skus", ...) call at draft-creation time; removed — it contradicted the
+      // documented policy above.) If Vexa wants to bound draft catalog size independently of
+      // SKU entitlement, that's the existing maxImportRowsPerJob ceiling's job, or a new,
+      // separate limit — not a hidden reservation against SKU capacity.
+
       if (headers.length === 0 || totalRows === 0) {
         blockingIssueCount++;
         if (sampleIssues.length < 10) {

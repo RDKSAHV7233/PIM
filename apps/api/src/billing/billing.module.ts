@@ -25,6 +25,12 @@ import { StripeWebhookController } from "./stripe-webhook.controller";
     GracePeriodEscalationService,
     StripeService,
   ],
-  exports: [PlanUsageService, PlanGuard, StripeService],
+  // @Global() only makes a module's EXPORTS available everywhere without an explicit
+  // import — providers left out of this array stay private to this module even though
+  // it's global. CommercialRequestsService and CommercialNotificationsService are used
+  // outside billing/ now (OidcAuthService, in AuthModule, for the SSO user-limit overage
+  // flag) — omitting them here isn't a missing convenience, it's a boot failure:
+  // UnknownDependenciesException, the whole API refuses to start.
+  exports: [PlanUsageService, PlanGuard, StripeService, CommercialRequestsService, CommercialNotificationsService],
 })
 export class BillingModule {}

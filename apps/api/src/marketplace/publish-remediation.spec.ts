@@ -19,8 +19,12 @@ function makePublishService(overrides?: {
   activeInstallations?: Array<{ id: string; status?: string; accountAlias?: string | null }>;
 }) {
   const opts = overrides ?? {};
+  // validationIssues: createExportJob now fetches via getProductForSimulation (Bulk-Publish
+  // Goes Async, Story 4's dedup fix) even for the default !precomputed path, and
+  // buildSimulationFromProduct reads product.validationIssues directly — a bare product
+  // fixture without it crashes with "Cannot read properties of undefined (reading 'filter')".
   const product = opts.product === undefined
-    ? { id: "prod1", status: "approved", categoryId: "cat1", brand: "B", version: 1, updatedAt: new Date("2026-07-01T00:00:00Z") }
+    ? { id: "prod1", status: "approved", categoryId: "cat1", brand: "B", version: 1, updatedAt: new Date("2026-07-01T00:00:00Z"), attributes: {}, validationIssues: [] }
     : opts.product;
 
   const installation = opts.installation ?? {

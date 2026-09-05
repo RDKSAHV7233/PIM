@@ -28,12 +28,13 @@ function run() {
   assert(
     source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
       source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
-      source.includes("const [submissionsResult, deadLetterResult] = await Promise.all([") &&
+      source.includes("const [submissionsResult, deadLetterResult, bulkPublishRunsResult] = await Promise.all([") &&
       source.includes("loadSharedRead(getSubmissions(") &&
       source.includes("status: statusFilter || undefined,") &&
       source.includes("connectorSlug: connectorSlug || undefined,") &&
-      source.includes("loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader }))"),
-    "Operations jobs must fetch submissions and dead-letter records together through explicit shared-read wrappers.",
+      source.includes("loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getBulkPublishRuns(20, { role: actorRole, authHeader }))"),
+    "Operations jobs must fetch submissions, dead-letter records, and bulk-publish runs together through explicit shared-read wrappers.",
   );
   assert(
     source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&

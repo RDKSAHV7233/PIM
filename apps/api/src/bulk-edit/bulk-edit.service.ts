@@ -1,5 +1,13 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from "@nestjs/common";
 import { BulkEditOperationStatus, Prisma, RecordStatus } from "@prisma/client";
+import { PlanUsageService, SELLABLE_VARIANT_STATUSES } from "../billing/plan-usage.service";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import {
@@ -15,7 +23,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { BulkEditScopeDto } from "./dto/bulk-edit-scope.dto";
-import { isValidWorkflowTransition } from "../common/workflow/workflow-transitions";
+import { canonicalWorkflowStatus, isValidWorkflowTransition } from "../common/workflow/workflow-transitions";
 
 const RECORD_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 const EDITABLE_FIELDS = ["title", "description", "brand", "status", "hsnCode", "gstRate"] as const;
@@ -72,6 +80,7 @@ export class BulkEditService implements OnModuleInit {
     private readonly complianceService: ComplianceService,
     private readonly accessPolicy: AccessPolicyService,
     private readonly queueService: QueueService,
+    private readonly planUsageService: PlanUsageService,
   ) {}
 
   onModuleInit(): void {
@@ -283,6 +292,17 @@ export class BulkEditService implements OnModuleInit {
         throw new BadRequestException(
           `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
         );
+      }
+      // Same enforcement point as catalog.service.ts's decideProductReview/updateProduct:
+      // the SKU limit is checked on transition into the approved/active canonical bucket,
+      // not on creation. This path is a distinct write (product.updateMany direct, not a
+      // call into catalog.service.ts), so it needs its own call, not a shared one.
+      if (normalizedUpdates.status) {
+        const currentCanonical = canonicalWorkflowStatus(product.status);
+        const nextCanonical = canonicalWorkflowStatus(normalizedUpdates.status as RecordStatus);
+        if (nextCanonical === RecordStatus.approved && currentCanonical !== RecordStatus.approved) {
+          await this.enforceSkuLimitForApproval(product.id);
+        }
       }
       // Optimistic concurrency, matching catalog.service.ts's updateProduct(): bulk edit
       // batches load a snapshot of matching products, then process each one individually,
@@ -673,6 +693,37 @@ export class BulkEditService implements OnModuleInit {
       categoryId: product.categoryId,
       version: product.version,
     };
+  }
+
+  /**
+   * See catalog.service.ts's enforceSkuLimitForApproval for the full rationale — same
+   * invariant, adapted for one difference: this path never calls ensureCanonicalVariant
+   * (bulk edit writes product.updateMany directly and creates no variant), so a
+   * zero-variant product contributes delta=0 here, not 1 — approving it via bulk edit
+   * doesn't actually create anything billable, unlike the single-product review path.
+   */
+  private async enforceSkuLimitForApproval(productId: string): Promise<void> {
+    const existingVariant = await this.prisma.tenant().variant.findFirst({
+      where: { productId },
+      select: { id: true },
+    });
+    if (!existingVariant) {
+      return;
+    }
+    const delta = await this.prisma.tenant().variant.count({
+      where: { productId, status: { in: SELLABLE_VARIANT_STATUSES } },
+    });
+    if (delta === 0) {
+      return;
+    }
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const check = await this.planUsageService.checkLimit("skus", delta, tenantKey);
+    if (!check.allowed) {
+      throw new BadRequestException(
+        `Plan limit exceeded: this approval would bring SKU usage to ${check.current}, ` +
+          `above the plan's limit of ${check.limit}.`,
+      );
+    }
   }
 
   private extractErrorMessage(error: unknown) {

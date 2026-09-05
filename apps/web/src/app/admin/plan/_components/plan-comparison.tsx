@@ -13,7 +13,14 @@ import { requestPlanUpgradeAction } from "../actions";
 function formatLimit(value: number, unlimited = false): string {
   if (unlimited) return "Unlimited";
   if (value >= 1000 && value % 1000 === 0) return `${value / 1000}K`;
-  return value.toLocaleString();
+  // Explicit locale, not the runtime default: this is a client component, and
+  // calling toLocaleString with no locale argument resolves the default from
+  // whatever environment is running it — the SSR Node process's locale on
+  // first render, the browser's on hydration. Those can differ (they did,
+  // live, on this exact page — React error #418), so the server-rendered
+  // markup and the client's hydration pass compute different comma-grouping for
+  // the same number and React throws. Pin the locale so both always agree.
+  return value.toLocaleString("en-IN");
 }
 
 interface PlanComparisonProps {

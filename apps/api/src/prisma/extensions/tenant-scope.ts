@@ -19,6 +19,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   "BulkImportRow",
   "BulkEditOperation",
   "BulkEditOperationItem",
+  "MarketplaceBulkPublishRun",
+  "MarketplaceBulkPublishRunItem",
   "BulkImportTemplate",
   "AuditLog",
   "DashboardSnapshot",

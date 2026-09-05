@@ -488,6 +488,22 @@ function connectorDetailStatusMessage(
       message: "Bulk publish submitted. Native feed connectors create one batch; other publish connectors queue one export job per product. Track results in the Jobs workspace.",
     };
   }
+  if (normalized === "bulk-publish-run-queued") {
+    // Bulk-Publish Goes Async, Story 6/7: kept in sync with resolveBulkPublishStatusMessage's
+    // identical branch (apps/web/src/lib/bulk-publish-status.ts) — see that file's comment for
+    // why this exists separately (this function's literal source text is asserted by
+    // channel-connector-detail-route-contract.test.cjs).
+    const queuedCount = Number(counts?.queuedCount ?? "");
+    const excludedCount = Number(counts?.excludedCount ?? "");
+    const excludedSuffix =
+      Number.isFinite(excludedCount) && excludedCount > 0
+        ? ` ${excludedCount} product(s) were skipped up front (not approved or not found).`
+        : "";
+    return {
+      tone: "success",
+      message: `Bulk publish queued: ${Number.isFinite(queuedCount) ? queuedCount : ""} product(s) are being published in the background.${excludedSuffix} Track progress in the Jobs workspace.`,
+    };
+  }
   if (normalized === "bulk-publish-none-eligible") {
     const excludedCount = Number(counts?.excludedCount ?? "");
     const countLabel = Number.isFinite(excludedCount) && excludedCount > 0 ? `All ${excludedCount} product(s)` : "Every product";
@@ -2577,9 +2593,10 @@ export default async function ChannelConnectorDetailPage({
                       </>
                     ) : (
                       <>
-                        This connector publishes one product at a time — queues an export job per approved product in the current connector workspace
-                        through the standard export queue instead of a single batch feed. Track each product&apos;s
-                        progress individually in the Jobs workspace.
+                        This connector publishes one product at a time — queues a background run that submits an
+                        export job per approved product in the current connector workspace, instead of a single
+                        batch feed. Submitting returns immediately; track the run and each product&apos;s progress
+                        individually in the Jobs workspace.
                       </>
                     )}
                   </p>
@@ -2589,6 +2606,7 @@ export default async function ChannelConnectorDetailPage({
                     productIds={bulkPublishProductIds}
                     returnTo={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
                     action={triggerBulkPublishAction}
+                    bulkPublishMode={installation.capabilities.includes("BULK_PUBLISH") ? "native" : "async"}
                   />
                 </div>
               ) : null}

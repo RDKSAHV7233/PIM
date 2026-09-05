@@ -437,15 +437,27 @@ async function verifyNoEligiblePath(connector, draftProduct) {
   });
 }
 
-async function verifyBatchTooLargePath(connector, draftProduct) {
-  const productIds = Array.from({ length: 51 }, () => String(draftProduct.id));
+// Bulk-Publish Goes Async (Story 8) retired the old 50-product NON_BULK_PUBLISH_BATCH_CEILING
+// service-level rejection: connectors without native BULK_PUBLISH now queue an async run
+// (createBulkPublishRun) instead of running a synchronous per-product loop, so batch size alone
+// no longer triggers a rejection — only TriggerBulkPublishDto's shared @ArrayMaxSize(2000) does,
+// and it's the same for every connector. This proves the old size-based 400 is gone: a 51-item
+// batch of IDs that don't exist is evaluated on merits (each excluded as "not found"), not
+// rejected outright the way a pre-Story-8 server would reject it before any lookup ran.
+async function verifyOversizedBatchNotRejectedBySizeAlone(connector, draftProduct) {
+  const productIds = Array.from({ length: 51 }, (_, i) => `${draftProduct.id}-nonexistent-${i}`);
   const result = await triggerBulkPublish(connector, productIds);
-  assertStatus(result, 400, "POST /marketplace/connectors/:id/bulk-publish batch too large");
-  assert(getErrorCode(result.body) === "batch_too_large", `expected batch_too_large got ${getErrorCode(result.body)}`);
-  pass("bulk_publish.non_native_51_rejected", `ceiling=${result.body?.ceiling ?? "unknown"}`, {
+  assertStatus(result, 400, "POST /marketplace/connectors/:id/bulk-publish oversized-but-merit-evaluated batch");
+  assert(
+    getErrorCode(result.body) === "no_eligible_products",
+    `expected no_eligible_products (merit-based, not size-based) got ${getErrorCode(result.body)}`,
+  );
+  const excluded = Array.isArray(result.body?.excluded) ? result.body.excluded : [];
+  assert(excluded.length === productIds.length, `expected all ${productIds.length} excluded, got ${excluded.length}`);
+  pass("bulk_publish.non_native_51_evaluated_not_size_rejected", `excluded=${excluded.length}`, {
     connectorId: connector.id,
-    submittedCount: result.body?.submittedCount ?? productIds.length,
-    ceiling: result.body?.ceiling ?? null,
+    submittedCount: productIds.length,
+    excludedCount: excluded.length,
   });
 }
 
@@ -611,7 +623,7 @@ async function run() {
     }
 
     await verifyNoEligiblePath(connector, fixtures.draft);
-    await verifyBatchTooLargePath(connector, fixtures.draft);
+    await verifyOversizedBatchNotRejectedBySizeAlone(connector, fixtures.draft);
     const readiness = await evaluateReadiness(connector, fixtures.approved);
     const jobId = await verifySingleAndBulkHappyPaths(connector, fixtures.approved, readiness);
     await verifyJobHistoryAndRetry(jobId);

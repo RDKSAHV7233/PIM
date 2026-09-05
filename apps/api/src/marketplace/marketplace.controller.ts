@@ -7,6 +7,7 @@ import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
@@ -600,13 +601,34 @@ export class MarketplaceController {
   @Post("connectors/:installationId/bulk-publish")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin", "publisher", "channel_manager")
-  @HttpCode(200)
-  triggerBulkPublish(
+  async triggerBulkPublish(
     @Param("installationId") installationId: string,
     @Body() dto: TriggerBulkPublishDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.marketplaceService.triggerBulkPublish(installationId, dto.productIds, this.resolveActor(request));
+    const result = await this.marketplaceService.triggerBulkPublish(installationId, dto.productIds, this.resolveActor(request));
+    // Bulk-Publish Goes Async, Story 6: native connectors (Amazon) still complete
+    // synchronously within this request — 200 with the feed result, as before. The
+    // non-native path now only queues a run and returns immediately — 202 Accepted
+    // with a runId to poll (see getBulkPublishRun below), not 200, since nothing has
+    // actually been published yet when this response goes out.
+    res.status("async" in result && result.async ? 202 : 200);
+    return result;
+  }
+
+  @Get("bulk-publish-runs")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "publisher", "channel_manager")
+  listBulkPublishRuns(@Query() pagination?: CursorPaginationDto) {
+    return this.marketplaceService.listBulkPublishRuns(pagination);
+  }
+
+  @Get("bulk-publish-runs/:runId")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "publisher", "channel_manager")
+  getBulkPublishRun(@Param("runId") runId: string) {
+    return this.marketplaceService.getBulkPublishRun(runId);
   }
 
   // ─── Meesho Excel export ─────────────────────────────────────────────────

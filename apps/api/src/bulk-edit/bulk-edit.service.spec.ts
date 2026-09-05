@@ -106,6 +106,11 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
     return Array.from(counts.entries()).map(([status, count]) => ({ status, _count: { status: count } }));
   });
 
+  // Default: no existing variants, so enforceSkuLimitForApproval's zero-variant branch
+  // (delta=0, no checkLimit call) applies unless a test overrides this via `options.variants`.
+  const variantFindFirst = jest.fn().mockResolvedValue(null);
+  const variantCount = jest.fn().mockResolvedValue(0);
+
   const tenantClient = {
     product: {
       count: productCount,
@@ -123,6 +128,10 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
       create: bulkEditOperationItemCreate,
       findMany: bulkEditOperationItemFindMany,
       groupBy: bulkEditOperationItemGroupBy,
+    },
+    variant: {
+      findFirst: variantFindFirst,
+      count: variantCount,
     },
   };
 
@@ -143,7 +152,17 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
     }),
   };
 
-  const service = new BulkEditService(prisma as never, complianceService as never, accessPolicy as never, queueService as never);
+  const planUsageService = {
+    checkLimit: jest.fn().mockResolvedValue({ allowed: true, resource: "skus", limit: 999999, current: 0 }),
+  };
+
+  const service = new BulkEditService(
+    prisma as never,
+    complianceService as never,
+    accessPolicy as never,
+    queueService as never,
+    planUsageService as never,
+  );
   service.onModuleInit();
 
   return {
@@ -153,6 +172,9 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
     items,
     queueEnqueue,
     accessPolicy,
+    planUsageService,
+    variantFindFirst,
+    variantCount,
     async runQueueHandler(payload: unknown) {
       if (!capturedHandler) {
         throw new Error("Queue handler was not registered — onModuleInit() must run first.");
@@ -326,5 +348,87 @@ describe("BulkEditService queue handler — processApplyJob via onModuleInit reg
     const failedItem = items.find((item) => item.productId === "p1") as { errorMessage?: string };
     expect(failedItem?.errorMessage).toMatch(/version/i);
     expect(failedItem?.errorMessage).toMatch(/had version 5/);
+  });
+});
+
+// bulk-edit writes product.updateMany directly rather than going through
+// catalog.service.ts's updateProduct/decideProductReview — a distinct write path found
+// during the CTO's entitlement-defect trace to have the exact same bulk-bypass shape as
+// bulk-import (skus) and bulk-publish (submissions) earlier this session: a guarded
+// single-action endpoint with an unguarded bulk sibling. This covers its own
+// enforceSkuLimitForApproval call.
+describe("BulkEditService — SKU plan-limit enforcement on approval", () => {
+  it("does not call checkLimit for a non-approval transition (in_review -> draft)", async () => {
+    const products = [fakeProduct("p1", { status: "in_review" })];
+    const { service, planUsageService, runQueueHandler } = createService({ products });
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "draft" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+  });
+
+  it("zero-variant product approved via bulk edit: delta=0, no checkLimit call — bulk edit never creates a canonical variant", async () => {
+    const products = [fakeProduct("p1", { status: "in_review" })];
+    const { service, planUsageService, variantFindFirst, operations, runQueueHandler } = createService({ products });
+    // Default mock already returns null (no existing variant).
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "approved" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    expect(variantFindFirst).toHaveBeenCalled();
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
+    const finalOp = operations.get(operation.id) as { appliedCount: number; failedCount: number };
+    expect(finalOp.appliedCount).toBe(1);
+  });
+
+  it("product with 2 pre-existing active-status variants approved via bulk edit: delta=2, not 1 or 3 — the parent isn't counted as an extra SKU", async () => {
+    const products = [fakeProduct("p1", { status: "in_review" })];
+    const { service, planUsageService, variantFindFirst, variantCount, operations, runQueueHandler } = createService({ products });
+    variantFindFirst.mockResolvedValue({ id: "v1" });
+    variantCount.mockResolvedValue(2);
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "approved" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    expect(planUsageService.checkLimit).toHaveBeenCalledWith("skus", 2, expect.anything());
+    const finalOp = operations.get(operation.id) as { appliedCount: number; failedCount: number };
+    expect(finalOp.appliedCount).toBe(1);
+  });
+
+  it("blocks the item with a clear plan-limit message (not the version-conflict or workflow-transition error) when approval would exceed the SKU limit", async () => {
+    const products = [fakeProduct("p1", { status: "in_review" })];
+    const { service, variantFindFirst, variantCount, planUsageService, operations, items, runQueueHandler } = createService({ products });
+    variantFindFirst.mockResolvedValue({ id: "v1" });
+    variantCount.mockResolvedValue(1);
+    planUsageService.checkLimit.mockResolvedValue({ allowed: false, resource: "skus", limit: 500, current: 501 });
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "approved" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const finalOp = operations.get(operation.id) as { appliedCount: number; failedCount: number };
+    expect(finalOp.appliedCount).toBe(0);
+    expect(finalOp.failedCount).toBe(1);
+    const p1Item = items.find((item) => item.productId === "p1") as { errorMessage?: string };
+    expect(p1Item?.errorMessage).toMatch(/plan limit/i);
+    expect(p1Item?.errorMessage).toMatch(/501/);
+    // The write never happened — product.updateMany must not have been called for p1's approval.
+    expect(products.find((p) => p.id === "p1")?.version).toBe(1);
+  });
+
+  it("an in-limit approval is unaffected — item succeeds, product actually transitions to approved", async () => {
+    const products = [fakeProduct("p1", { status: "in_review" })];
+    const { service, variantFindFirst, variantCount, planUsageService, operations, runQueueHandler } = createService({ products });
+    variantFindFirst.mockResolvedValue({ id: "v1" });
+    variantCount.mockResolvedValue(1);
+    planUsageService.checkLimit.mockResolvedValue({ allowed: true, resource: "skus", limit: 500, current: 400 });
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "approved" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const finalOp = operations.get(operation.id) as { appliedCount: number; failedCount: number };
+    expect(finalOp.appliedCount).toBe(1);
+    expect(finalOp.failedCount).toBe(0);
+    expect(products.find((p) => p.id === "p1")?.status).toBe("approved");
   });
 });

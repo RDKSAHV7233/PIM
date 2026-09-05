@@ -1,8 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { PlanGuard } from "../billing/plan-guard.guard";
-import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
 import { AppRole } from "../common/rbac/roles";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -37,13 +35,13 @@ export class ProductsController {
     return this.catalogService.listProducts(query, { slim: query.slim === "true" }, this.resolveActor(request));
   }
 
+  // No plan-limit guard here — see catalog.controller.ts's createProduct for why: a new
+  // product is a draft with zero variants, and draft/parent-only records don't count
+  // toward SKU usage. Enforced instead where a variant becomes sellable (approval).
   @Post()
   @ApiClientScopes("catalog.write")
-  @UseGuards(PlanGuard)
-  @RequirePlanLimit("skus")
   @ApiOperation({ summary: "Create product" })
   @ApiResponse({ status: 201, description: "Product created" })
-  @ApiResponse({ status: 402, description: "Plan limit exceeded" })
   createProduct(
     @Body() dto: CreateProductDto,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
