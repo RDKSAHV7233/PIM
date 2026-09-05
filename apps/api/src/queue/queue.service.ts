@@ -5,7 +5,18 @@ import { ErrorCaptureService } from "../error-authority/error-capture.service";
 import { classifyWorkerError, extractSafePayloadRef, isTerminalBullFailure } from "../error-authority/worker-error-classifier";
 import { QueueName } from "./queue.constants";
 
-type QueueHandler<T = unknown> = (payload: T) => Promise<void> | void;
+// CTO review follow-up (PR #719, 2026-09-05): lets a handler tell whether this is the
+// last attempt BullMQ will make before giving up, so a handler that needs to record a
+// terminal failure (e.g. marking a parent run row `failed`) doesn't do so on the first
+// of several attempts — mirrors isTerminalBullFailure, which the worker's own "failed"
+// listener already uses for the same distinction. attemptsAllowed is always 1 for the
+// in-memory backend, which never retries.
+export interface QueueHandlerAttempt {
+  attemptsMade: number;
+  attemptsAllowed: number;
+}
+
+type QueueHandler<T = unknown> = (payload: T, attempt?: QueueHandlerAttempt) => Promise<void> | void;
 
 type QueueBackend = "memory" | "bullmq";
 
@@ -642,7 +653,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
       setImmediate(async () => {
         try {
-          await registration.handler(payload);
+          await registration.handler(payload, { attemptsMade: 1, attemptsAllowed: 1 });
           lane.consecutiveRateLimitFailures = 0;
         } catch (error: unknown) {
           this.handleHandlerError(registration, this.resolveQueueName(registration), laneKey, payload, error);
@@ -830,7 +841,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
         async (job: BullJob<unknown>) => {
           created.active += 1;
           try {
-            await registration.handler(job.data);
+            await registration.handler(job.data, {
+              attemptsMade: Number(job.attemptsMade ?? 0) + 1,
+              attemptsAllowed: Math.max(1, Number(job.opts?.attempts ?? 1)),
+            });
             created.consecutiveRateLimitFailures = 0;
           } catch (error: unknown) {
             this.handleHandlerError(registration, queueName, laneKey, job.data, error);

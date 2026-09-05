@@ -335,17 +335,33 @@ function makeBulkPublishRunStore() {
     }),
   };
 
+  // Matches a single Prisma-style clause: an exact `status` and/or a `claimedAt: { lt }`
+  // range — real enough for processBulkPublishRun's reclaim-query shape (a top-level
+  // `status` for the pre-fix query, or an `OR` of these clauses for the reclaim fix)
+  // without pulling in a real Prisma matcher.
+  function matchesClause(row: Record<string, unknown>, clause: Record<string, unknown>): boolean {
+    if ("status" in clause && row.status !== clause.status) return false;
+    if ("claimedAt" in clause) {
+      const cond = clause.claimedAt as { lt?: Date } | undefined;
+      const claimedAt = row.claimedAt ? new Date(row.claimedAt as string | Date) : null;
+      if (cond?.lt && (!claimedAt || !(claimedAt < cond.lt))) return false;
+    }
+    return true;
+  }
+  function matchesWhere(row: Record<string, unknown>, where: Record<string, unknown>): boolean {
+    if (Array.isArray(where.OR)) {
+      return (where.OR as Record<string, unknown>[]).some((clause) => matchesClause(row, clause));
+    }
+    return matchesClause(row, where);
+  }
+
   const item = {
-    findMany: jest.fn(({ where }: { where: { runId: string; status?: string } }) =>
-      Promise.resolve(
-        [...items.values()].filter(
-          (row) => row.runId === where.runId && (where.status === undefined || row.status === where.status),
-        ),
-      ),
+    findMany: jest.fn(({ where }: { where: { runId: string } & Record<string, unknown> }) =>
+      Promise.resolve([...items.values()].filter((row) => row.runId === where.runId && matchesWhere(row, where))),
     ),
-    updateMany: jest.fn(({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
+    updateMany: jest.fn(({ where, data }: { where: { id: string } & Record<string, unknown>; data: Record<string, unknown> }) => {
       const existing = items.get(where.id);
-      if (!existing || (where.status !== undefined && existing.status !== where.status)) {
+      if (!existing || !matchesWhere(existing, where)) {
         return Promise.resolve({ count: 0 });
       }
       items.set(where.id, { ...existing, ...data });
@@ -830,6 +846,67 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(runs[0]).toMatchObject({ status: "completed_with_errors", succeededCount: 1, failedCount: 1 });
   });
 
+  // ─── CTO review follow-up (PR #719, 2026-09-05): stuck-`queued`-item reclaim ──
+  // A worker that claims an item (pending -> queued) and then crashes before writing a
+  // terminal status used to strand that item forever: the resume query only ever looked
+  // for `pending` items, and nothing else ever moved a `queued` item back. These tests
+  // exercise the fix directly against the item store, without needing to actually
+  // simulate a process crash: they plant an item already in the exact state a crash
+  // would leave it in, then prove a later processBulkPublishRun call reclaims — or
+  // correctly does NOT reclaim — it.
+  it("reclaims an item stuck at queued past the reclaim threshold (simulated crashed-worker claim)", async () => {
+    const { svc, queueService, bulkPublishRunStore } = makeBulkPublishService(
+      { "a1": { status: "approved", categoryId: "cat1" } },
+      { connectorSlug: "shopify", capabilities: [] },
+    );
+    const createExportJobSpy = jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "createExportJob")
+      .mockResolvedValue({ id: "job_a1" });
+
+    await svc.triggerBulkPublish("inst_1", ["a1"]);
+    const payload = queueService.enqueue.mock.calls[0][1];
+
+    // Simulate a prior worker having claimed this item and then crashed before it ever
+    // reached a terminal status: status is `queued`, claimedAt is well past the reclaim
+    // threshold (10 minutes) rather than recent.
+    const [itemId, item] = [...bulkPublishRunStore.items.entries()][0];
+    bulkPublishRunStore.items.set(itemId, {
+      ...item,
+      status: "queued",
+      claimedAt: new Date(Date.now() - 20 * 60 * 1000),
+    });
+
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
+
+    expect(createExportJobSpy).toHaveBeenCalledTimes(1);
+    const items = [...bulkPublishRunStore.items.values()];
+    expect(items[0]).toMatchObject({ status: "succeeded", exportJobId: "job_a1" });
+  });
+
+  it("does not reclaim an item claimed recently — a genuinely in-flight item is left alone, not double-processed", async () => {
+    const { svc, queueService, bulkPublishRunStore } = makeBulkPublishService(
+      { "a1": { status: "approved", categoryId: "cat1" } },
+      { connectorSlug: "shopify", capabilities: [] },
+    );
+    const createExportJobSpy = jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "createExportJob")
+      .mockResolvedValue({ id: "job_a1" });
+
+    await svc.triggerBulkPublish("inst_1", ["a1"]);
+    const payload = queueService.enqueue.mock.calls[0][1];
+
+    // Same `queued` state as above, but claimed just now — indistinguishable from an
+    // item another lane is genuinely still processing right now.
+    const [itemId, item] = [...bulkPublishRunStore.items.entries()][0];
+    bulkPublishRunStore.items.set(itemId, { ...item, status: "queued", claimedAt: new Date() });
+
+    await (svc as unknown as { processBulkPublishRun: (p: unknown) => Promise<void> }).processBulkPublishRun(payload);
+
+    expect(createExportJobSpy).not.toHaveBeenCalled();
+    const items = [...bulkPublishRunStore.items.values()];
+    expect(items[0].status).toBe("queued");
+  });
+
   // ─── TC-06 / #545 / Story 8: non-BULK_PUBLISH batch size ──────────────────────
   // The synchronous per-product loop that timed out at 46 products (#545/TC-06) is gone
   // for this path — createBulkPublishRun only queues a run, so an oversized batch no
@@ -871,6 +948,62 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(result.excluded).toHaveLength(0);
     expect(result.submissionIds).toHaveLength(60);
     expect(connectorFramework.publishBulk).toHaveBeenCalled();
+  });
+
+  // ─── CTO review follow-up (PR #719, 2026-09-05): async-path kill switch ──────
+  describe("FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED kill switch", () => {
+    const ENV_KEY = "FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED";
+    const originalValue = process.env[ENV_KEY];
+
+    afterEach(() => {
+      if (originalValue === undefined) {
+        delete process.env[ENV_KEY];
+      } else {
+        process.env[ENV_KEY] = originalValue;
+      }
+    });
+
+    it("defaults to enabled when the env var is unset — no behavior change for existing deployments", async () => {
+      delete process.env[ENV_KEY];
+      const { svc, queueService } = makeBulkPublishService(
+        { a1: { status: "approved", categoryId: "cat1" } },
+        { connectorSlug: "shopify", capabilities: [] },
+      );
+
+      const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", ["a1"]));
+
+      expect(result.status).toBe("queued");
+      expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks the async (non-native) path with a clear, typed error when explicitly disabled", async () => {
+      process.env[ENV_KEY] = "false";
+      const { svc, queueService } = makeBulkPublishService(
+        { a1: { status: "approved", categoryId: "cat1" } },
+        { connectorSlug: "shopify", capabilities: [] },
+      );
+
+      await expect(svc.triggerBulkPublish("inst_1", ["a1"])).rejects.toMatchObject({
+        status: 503,
+        response: expect.objectContaining({ message: expect.stringContaining("temporarily disabled") }),
+      });
+      // No run should ever be created for a disabled path — a partially-created run
+      // with no worker ever picking it up would just be a different stuck-forever bug.
+      expect(queueService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it("does not affect the native BULK_PUBLISH (Amazon) path when disabled — the flag only gates the async fallback", async () => {
+      process.env[ENV_KEY] = "false";
+      const { svc, connectorFramework } = makeBulkPublishService(
+        { a1: { status: "approved", categoryId: "cat1" } },
+        { connectorSlug: "amazon", capabilities: ["BULK_PUBLISH"] },
+      );
+
+      const result = expectSyncResult(await svc.triggerBulkPublish("inst_1", ["a1"]));
+
+      expect(result.excluded).toHaveLength(0);
+      expect(connectorFramework.publishBulk).toHaveBeenCalled();
+    });
   });
 
   // Regression coverage for the second bypass found during the Rev. 7 report review: the
@@ -1766,6 +1899,107 @@ describe("CONNECTOR_SUBMISSION worker boundary — tenant context restoration", 
     const [, loggedContext] = logger.error.mock.calls[0] as [string, Record<string, unknown>];
     expect(loggedContext).toEqual({ event: "QUEUE_TENANT_CONTEXT_MISSING", mode: "submission-retry" });
     expect(JSON.stringify(loggedContext)).not.toContain("sub-secret-1");
+  });
+});
+
+// ─── MARKETPLACE_BULK_PUBLISH worker — retry-aware failure marking ────────────
+// CTO review follow-up (PR #719, 2026-09-05).
+//
+// Root cause: this worker used to mark the whole MarketplaceBulkPublishRun `failed` on
+// the *first* exception processBulkPublishRun threw, before the queue backend's own
+// retry (BullMQ default: 3 attempts) got a chance to redeliver the job. A redelivery
+// after that point saw a run already in a terminal `failed` state and silently no-opped
+// (processBulkPublishRun's own status guard), orphaning every item that hadn't reached a
+// terminal status yet — with nothing but a log line to show for it. The fix threads the
+// queue backend's attempt count/limit into the handler (QueueHandlerAttempt) and only
+// marks the run failed once this really was the last attempt.
+describe("MARKETPLACE_BULK_PUBLISH worker — retry-aware failure marking", () => {
+  function makeBulkPublishWorkerService() {
+    const marketplaceBulkPublishRun = { update: jest.fn().mockResolvedValue(undefined) };
+    const db = { marketplaceBulkPublishRun };
+    const prisma = { tenant: jest.fn().mockReturnValue(db) };
+    const connectorFramework = { getCurrentTenantKey: jest.fn().mockReturnValue("tenant1") };
+    const queueService = {
+      processScheduledSync: jest.fn(),
+      processWithBackpressure: jest.fn(),
+      enqueue: jest.fn(),
+      isJobPresent: jest.fn(),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      logger as never,
+      {} as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+    );
+    return { svc, marketplaceBulkPublishRun, queueService };
+  }
+
+  function captureBulkPublishHandler(svc: MarketplaceService, queueService: { processWithBackpressure: jest.Mock }) {
+    svc.onModuleInit();
+    const call = queueService.processWithBackpressure.mock.calls.find(
+      (c: unknown[]) => c[0] === QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH,
+    );
+    expect(call).toBeDefined();
+    // processWithBackpressure(queueName, options, handler)
+    return call![2] as (payload: unknown, attempt?: { attemptsMade: number; attemptsAllowed: number }) => Promise<void>;
+  }
+
+  it("does NOT mark the run failed on a non-final attempt — lets the queue backend's own retry happen", async () => {
+    const { svc, marketplaceBulkPublishRun, queueService } = makeBulkPublishWorkerService();
+    jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "processBulkPublishRun")
+      .mockRejectedValue(new Error("transient connector API blip"));
+    const handler = captureBulkPublishHandler(svc, queueService);
+
+    await expect(
+      handler({ runId: "run_1", tenantKey: "tenant1" }, { attemptsMade: 1, attemptsAllowed: 3 }),
+    ).rejects.toThrow("transient connector API blip");
+
+    // Rethrown so the queue backend's own retry/backoff still fires — but the run itself
+    // must be left alone: a redelivery needs to see it still `queued`/`processing` to
+    // resume, not skip it because it's already `failed`.
+    expect(marketplaceBulkPublishRun.update).not.toHaveBeenCalled();
+  });
+
+  it("marks the run failed once this was the last attempt", async () => {
+    const { svc, marketplaceBulkPublishRun, queueService } = makeBulkPublishWorkerService();
+    jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "processBulkPublishRun")
+      .mockRejectedValue(new Error("still failing"));
+    const handler = captureBulkPublishHandler(svc, queueService);
+
+    await expect(
+      handler({ runId: "run_1", tenantKey: "tenant1" }, { attemptsMade: 3, attemptsAllowed: 3 }),
+    ).rejects.toThrow("still failing");
+
+    expect(marketplaceBulkPublishRun.update).toHaveBeenCalledWith({
+      where: { id: "run_1" },
+      data: { status: "failed" },
+    });
+  });
+
+  it("defaults to treating a call with no attempt info as final (fail closed, not silently non-terminal forever)", async () => {
+    const { svc, marketplaceBulkPublishRun, queueService } = makeBulkPublishWorkerService();
+    jest
+      .spyOn(svc as unknown as Record<string, jest.Mock>, "processBulkPublishRun")
+      .mockRejectedValue(new Error("boom"));
+    const handler = captureBulkPublishHandler(svc, queueService);
+
+    await expect(handler({ runId: "run_1", tenantKey: "tenant1" })).rejects.toThrow("boom");
+
+    expect(marketplaceBulkPublishRun.update).toHaveBeenCalledWith({
+      where: { id: "run_1" },
+      data: { status: "failed" },
+    });
   });
 });
 

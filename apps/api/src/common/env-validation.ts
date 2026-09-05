@@ -64,6 +64,7 @@ export interface ValidatedEnv {
   FEATURE_PUBLIC_SIGNUP_ENABLED: BoolText;
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
   FEATURE_STRIPE_BILLING_ENABLED: BoolText;
+  FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED: BoolText;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_ID_STARTER?: string;
@@ -180,6 +181,11 @@ const EnvSchema = z.object({
   FEATURE_PUBLIC_SIGNUP_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
   FEATURE_STRIPE_BILLING_ENABLED: z.enum(["true", "false"] as const).default("false"),
+  // Kill switch for the async bulk-publish path (PR #719) — defaults to enabled since
+  // it's already the only path for non-native connectors (no sync fallback remains),
+  // mirroring QUEUE_WORKER_ENABLED's "on by default, opt out" polarity rather than the
+  // opt-in FEATURE_*_ENABLED flags above.
+  FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED: z.enum(["true", "false"] as const).default("true"),
   STRIPE_SECRET_KEY: OptionalTrimmedText,
   STRIPE_WEBHOOK_SECRET: OptionalTrimmedText,
   STRIPE_PRICE_ID_STARTER: OptionalTrimmedText,

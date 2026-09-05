@@ -10,6 +10,7 @@ import {
   NotFoundException,
   OnModuleInit,
   Optional,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import {
   ExportJobStatus,
@@ -45,6 +46,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoggerService } from "../common/logging/logger.service";
 import { ErrorCaptureService } from "../error-authority/error-capture.service";
+import { isTerminalBullFailure } from "../error-authority/worker-error-classifier";
 import { MetricsService } from "../metrics/metrics.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { runWithTenantContext } from "../common/tenant/tenant-context";
@@ -278,6 +280,12 @@ type ConnectorWorkerPayload =
 
 const AUTO_STATUS_SYNC_DELAY_MS = 800;
 const AUTO_STATUS_SYNC_MAX_ATTEMPTS = 3;
+
+// CTO review follow-up (PR #719, 2026-09-05): an item claimed (pending -> queued) by
+// processBulkPublishRun is reclaimable once its claim is older than this — otherwise a
+// worker that crashes between claiming an item and finishing it strands that item at
+// `queued` forever, since no other code path ever moves it back to `pending`.
+const BULK_PUBLISH_ITEM_RECLAIM_THRESHOLD_MS = 10 * 60 * 1000;
 
 const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
   amazon: {
@@ -2164,14 +2172,28 @@ export class MarketplaceService implements OnModuleInit {
     this.queueService.processWithBackpressure<MarketplaceBulkPublishJobPayload>(
       QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH,
       { laneResolver: (payload) => payload.tenantKey },
-      async (payload) => {
+      async (payload, attempt = { attemptsMade: 1, attemptsAllowed: 1 }) => {
         try {
           await runWithTenantContext(payload.tenantKey, () => this.processBulkPublishRun(payload));
         } catch (error) {
           this.logger.error("Bulk publish run failed unexpectedly", {
             runId: payload.runId,
+            attemptsMade: attempt.attemptsMade,
+            attemptsAllowed: attempt.attemptsAllowed,
             error: error instanceof Error ? error.message : String(error),
           });
+          // CTO review follow-up (PR #719, 2026-09-05): only mark the run `failed` once
+          // this was the last attempt the queue backend will make. Marking it failed on
+          // the *first* exception (as this used to) raced BullMQ's own retry: the retry
+          // would then redeliver a job whose run is already terminal, and
+          // processBulkPublishRun's own status guard silently no-ops on it — orphaning
+          // every item that hadn't reached a terminal status yet, with no DLQ signal
+          // beyond this log line. Letting retries exhaust first gives a transient error
+          // (a brief connector API blip, a dropped DB connection) a real chance to
+          // succeed on redelivery instead of dooming the whole run on the first try.
+          if (!isTerminalBullFailure(attempt.attemptsMade, attempt.attemptsAllowed)) {
+            throw error;
+          }
           await runWithTenantContext(payload.tenantKey, async () => {
             try {
               await this.prisma.tenant().marketplaceBulkPublishRun.update({
@@ -5128,6 +5150,20 @@ export class MarketplaceService implements OnModuleInit {
     // Native BULK_PUBLISH connectors (Amazon) are unaffected — their own 200-product DTO
     // ceiling already governs them, and their single real batch-feed call already scales.
     if (!hasNativeBulkPublish) {
+      // CTO review follow-up (PR #719, 2026-09-05): kill switch for the async path,
+      // consistent with this codebase's existing FEATURE_*_ENABLED / QUEUE_WORKER_ENABLED
+      // idiom. Defaults to enabled (this is already the only path for non-native
+      // connectors — there is no synchronous fallback left to revert to, see the comment
+      // above), but lets ops disable it without a code revert if a production issue
+      // surfaces, rather than leaving every non-native bulk-publish request with no way
+      // to be turned off short of a redeploy.
+      const asyncBulkPublishEnabled =
+        String(process.env.FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED ?? "true").trim().toLowerCase() !== "false";
+      if (!asyncBulkPublishEnabled) {
+        throw new ServiceUnavailableException(
+          "Bulk publish is temporarily disabled for this connector. Try again later or contact support.",
+        );
+      }
       const channel = this.mapConnectorSlugToChannel(installationRow.connectorSlug);
       return this.createBulkPublishRun(installationRow.connectorSlug, installationId, channel, productIds, tenantKey, actor);
     }
@@ -5460,20 +5496,44 @@ export class MarketplaceService implements OnModuleInit {
       });
     }
 
+    // Pick up never-claimed items (`pending`) as well as items claimed by a worker that
+    // never finished them — a crash between the claim below and the item reaching a
+    // terminal status would otherwise strand it at `queued` forever, since nothing else
+    // ever moves it back to `pending`.
+    const reclaimCutoff = new Date(Date.now() - BULK_PUBLISH_ITEM_RECLAIM_THRESHOLD_MS);
     const pendingItems = await db.marketplaceBulkPublishRunItem.findMany({
-      where: { runId: run.id, status: MarketplaceBulkPublishItemStatus.pending },
+      where: {
+        runId: run.id,
+        OR: [
+          { status: MarketplaceBulkPublishItemStatus.pending },
+          {
+            status: MarketplaceBulkPublishItemStatus.queued,
+            claimedAt: { lt: reclaimCutoff },
+          },
+        ],
+      },
       select: { id: true, productId: true },
     });
 
     await this.runWithConcurrency(
       pendingItems.map((item) => async () => {
-        // Claim the item first (queued, mirroring the row's own pending->queued
-        // transition) so a concurrent redelivery of this same job can't double-process
-        // it — same defensive intent as the run-level status guard above, one level
-        // down.
+        // Claim the item (queued + claimedAt = now) so a concurrent redelivery of this
+        // same job — or another lane still genuinely mid-flight on this item — can't
+        // double-process it: the WHERE clause below only matches the same two states
+        // the SELECT above did, so a freshly-claimed item (claimedAt within the
+        // threshold) won't match and this update is a no-op for it.
         const claimed = await db.marketplaceBulkPublishRunItem.updateMany({
-          where: { id: item.id, status: MarketplaceBulkPublishItemStatus.pending },
-          data: { status: MarketplaceBulkPublishItemStatus.queued },
+          where: {
+            id: item.id,
+            OR: [
+              { status: MarketplaceBulkPublishItemStatus.pending },
+              {
+                status: MarketplaceBulkPublishItemStatus.queued,
+                claimedAt: { lt: reclaimCutoff },
+              },
+            ],
+          },
+          data: { status: MarketplaceBulkPublishItemStatus.queued, claimedAt: new Date() },
         });
         if (claimed.count === 0) {
           return;

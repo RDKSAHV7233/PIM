@@ -643,6 +643,12 @@ model MarketplaceBulkPublishRunItem {
   attemptCount   Int                               @default(0)
   retryEligible  Boolean                           @default(true)
   reason         String?
+  // Set when an item is claimed (pending -> queued) so a crashed/killed worker can't
+  // strand it forever: the claim query below only matches `pending` items, so without
+  // this timestamp a `queued` item whose worker died mid-processing would never be
+  // picked up by any future redelivery. processBulkPublishRun's claim query also
+  // re-claims `queued` items whose claimedAt is older than the reclaim threshold.
+  claimedAt      DateTime?
   createdAt      DateTime                          @default(now())
   updatedAt      DateTime                          @updatedAt
 
