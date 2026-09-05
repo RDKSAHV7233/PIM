@@ -287,6 +287,14 @@ const AUTO_STATUS_SYNC_MAX_ATTEMPTS = 3;
 // `queued` forever, since no other code path ever moves it back to `pending`.
 const BULK_PUBLISH_ITEM_RECLAIM_THRESHOLD_MS = 10 * 60 * 1000;
 
+// CTO review follow-up (PR #719, 2026-09-05): the native (e.g. Amazon) BULK_PUBLISH path
+// in triggerBulkPublish is still fully synchronous in-request (one eligibility loop, one
+// batch-feed call, all before the response returns) — this was the original ceiling
+// before TriggerBulkPublishDto's shared @ArrayMaxSize was raised to 2000 for the
+// now-async non-native path. Kept independent of that DTO field so raising the async
+// ceiling further doesn't silently raise this one too.
+const NATIVE_BULK_PUBLISH_CEILING = 200;
+
 const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
   amazon: {
     channel: "amazon",
@@ -5147,8 +5155,11 @@ export class MarketplaceService implements OnModuleInit {
     // creation) is gone for this branch — createBulkPublishRun below does only cheap,
     // batch-cost-independent work (one status query, one plan-limit check using that
     // count, one run+items insert) before returning, and a worker does everything else.
-    // Native BULK_PUBLISH connectors (Amazon) are unaffected — their own 200-product DTO
-    // ceiling already governs them, and their single real batch-feed call already scales.
+    // Native BULK_PUBLISH connectors (Amazon) are NOT unaffected: the DTO's own
+    // @ArrayMaxSize is now 2000 (raised for this async path), and the native branch below
+    // is still fully synchronous in-request — see NATIVE_BULK_PUBLISH_CEILING below, which
+    // re-establishes the native path's own bound now that the shared DTO ceiling no longer
+    // does.
     if (!hasNativeBulkPublish) {
       // CTO review follow-up (PR #719, 2026-09-05): kill switch for the async path,
       // consistent with this codebase's existing FEATURE_*_ENABLED / QUEUE_WORKER_ENABLED
@@ -5168,11 +5179,23 @@ export class MarketplaceService implements OnModuleInit {
       return this.createBulkPublishRun(installationRow.connectorSlug, installationId, channel, productIds, tenantKey, actor);
     }
 
+    // CTO review follow-up (PR #719, 2026-09-05): the DTO's shared @ArrayMaxSize was raised
+    // 200->2000 for the async (non-native) path above, but this native branch is still
+    // fully synchronous in-request — a request with 2000 productIds now reaches here and
+    // reintroduces the original BUG-BULK-PUBLISH-TIMEOUT-001 timeout, just at a higher
+    // threshold. Re-establish the native path's own bound here, independent of the async
+    // ceiling, rather than relying on the shared DTO field.
+    if (productIds.length > NATIVE_BULK_PUBLISH_CEILING) {
+      throw new BadRequestException(
+        `This connector publishes as a single synchronous batch feed and accepts at most ${NATIVE_BULK_PUBLISH_CEILING} products per request (received ${productIds.length}). Split into smaller batches and retry.`,
+      );
+    }
+
     // TC-06: this loop was previously sequential (one await chain per product), which made
     // the whole request scale linearly with batch size against a DB path that isn't privately
     // networked (see #531 item 4). Evaluate concurrently instead, same runWithConcurrency
     // pattern already used for the per-product export-job queuing a few lines below. Amazon's
-    // batch is small enough (its own 200-product DTO ceiling) that this stays synchronous.
+    // batch is bounded by NATIVE_BULK_PUBLISH_CEILING just above, so this stays synchronous.
     type EligibleProduct = {
       productId: string;
       product: { id: string; status: string; categoryId: string; brand: string | null; version: number; updatedAt: Date };

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -341,6 +343,7 @@ export class BulkEditService implements OnModuleInit {
         },
       });
     } catch (error: unknown) {
+      const structuredError = this.extractStructuredError(error);
       await this.prisma.tenant().bulkEditOperationItem.create({
         data: {
           operationId,
@@ -348,9 +351,43 @@ export class BulkEditService implements OnModuleInit {
           status: "failed",
           before: before as Prisma.JsonObject,
           errorMessage: this.extractErrorMessage(error),
+          errorCode: structuredError?.error ?? null,
+          errorDetails: structuredError ? (structuredError as unknown as Prisma.JsonObject) : undefined,
         },
       });
     }
+  }
+
+  /**
+   * CTO review follow-up (PR #719, 2026-09-05): pulls the structured PLAN_LIMIT_EXCEEDED
+   * (or any future coded) error body out of an HttpException, the same shape catalog.ts
+   * and marketplace.ts already return directly over HTTP. `error.message` alone loses
+   * this — NestJS's HttpException only sets `.message` from a response object's own
+   * `.message` field, which this shape never has, so extractErrorMessage's fallback text
+   * is used for the human-readable string while this carries the machine-readable one.
+   *
+   * Only matches a known, explicit allow-list of codes — NestJS's own built-in
+   * exceptions (BadRequestException, NotFoundException, ...) also stamp a generic
+   * `error` field on their default JSON body (e.g. `{statusCode: 400, message: "...",
+   * error: "Bad Request"}`), which is an HTTP reason phrase, not a code this app defines.
+   * Matching any string here would misclassify every plain BadRequestException thrown
+   * elsewhere in this method (e.g. the workflow-transition check above) as a coded error.
+   */
+  private static readonly KNOWN_STRUCTURED_ERROR_CODES = new Set(["PLAN_LIMIT_EXCEEDED"]);
+
+  private extractStructuredError(error: unknown): { error: string; [key: string]: unknown } | null {
+    if (!(error instanceof HttpException)) {
+      return null;
+    }
+    const response = error.getResponse();
+    if (!response || typeof response !== "object") {
+      return null;
+    }
+    const body = response as Record<string, unknown>;
+    if (typeof body.error !== "string" || !BulkEditService.KNOWN_STRUCTURED_ERROR_CODES.has(body.error)) {
+      return null;
+    }
+    return body as { error: string; [key: string]: unknown };
   }
 
   /**
@@ -701,6 +738,14 @@ export class BulkEditService implements OnModuleInit {
    * (bulk edit writes product.updateMany directly and creates no variant), so a
    * zero-variant product contributes delta=0 here, not 1 — approving it via bulk edit
    * doesn't actually create anything billable, unlike the single-product review path.
+   *
+   * CTO review follow-up (PR #719, 2026-09-05): throws the same structured
+   * PLAN_LIMIT_EXCEEDED/402 shape as catalog.service.ts's enforceSkuLimitForApproval
+   * (and marketplace.service.ts's submission-limit checks), rather than a plain
+   * BadRequestException string — this used to be the only plan-limit check in the
+   * codebase with its own bespoke error contract, so a tenant hitting the cap via bulk
+   * edit never saw the same upgrade CTA every other flow shows. applyToProduct's catch
+   * block below persists this structured shape onto the failed item, not just a message.
    */
   private async enforceSkuLimitForApproval(productId: string): Promise<void> {
     const existingVariant = await this.prisma.tenant().variant.findFirst({
@@ -719,14 +764,33 @@ export class BulkEditService implements OnModuleInit {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const check = await this.planUsageService.checkLimit("skus", delta, tenantKey);
     if (!check.allowed) {
-      throw new BadRequestException(
-        `Plan limit exceeded: this approval would bring SKU usage to ${check.current}, ` +
-          `above the plan's limit of ${check.limit}.`,
+      const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() || null;
+      throw new HttpException(
+        {
+          error: "PLAN_LIMIT_EXCEEDED",
+          resource: check.resource,
+          limit: check.limit,
+          current: check.current,
+          upgrade_url: "/admin/plan",
+          contact_url: contactUrl,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
       );
     }
   }
 
   private extractErrorMessage(error: unknown) {
+    // CTO review follow-up (PR #719, 2026-09-05): HttpException's own `.message` is not
+    // useful here — NestJS only populates it from a response object's `.message` field,
+    // which this structured shape never has, so it falls back to generic status text
+    // ("Payment Required") instead of anything a bulk-edit operator can act on.
+    const structuredError = this.extractStructuredError(error);
+    if (structuredError?.error === "PLAN_LIMIT_EXCEEDED") {
+      const resource = String(structuredError.resource ?? "this resource");
+      const current = structuredError.current;
+      const limit = structuredError.limit;
+      return `Plan limit reached: you have ${current} of ${limit} allowed ${resource}. Upgrade your plan to continue.`;
+    }
     if (error instanceof Error) {
       return error.message;
     }

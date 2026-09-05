@@ -950,6 +950,67 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     expect(connectorFramework.publishBulk).toHaveBeenCalled();
   });
 
+  // ─── CTO review follow-up (PR #719, 2026-09-05): native-path ceiling ──────────
+  // TriggerBulkPublishDto's @ArrayMaxSize was raised 200->2000 for the now-async
+  // non-native path, but the native (Amazon) branch is still fully synchronous
+  // in-request — without its own bound it would reintroduce
+  // BUG-BULK-PUBLISH-TIMEOUT-001 at a higher threshold. NATIVE_BULK_PUBLISH_CEILING
+  // re-establishes it independent of the DTO field.
+  describe("native BULK_PUBLISH ceiling (independent of the async path's DTO max)", () => {
+    it("rejects a native-connector batch over 200 products with a clear, actionable error", async () => {
+      const productIds = Array.from({ length: 201 }, (_, i) => `p${i}`);
+      const productsById: Record<string, { status: string; categoryId: string }> = {};
+      for (const id of productIds) {
+        productsById[id] = { status: "approved", categoryId: "cat1" };
+      }
+      const { svc, connectorFramework } = makeBulkPublishService(productsById, {
+        connectorSlug: "amazon",
+        capabilities: ["BULK_PUBLISH"],
+      });
+
+      await expect(svc.triggerBulkPublish("inst_1", productIds)).rejects.toMatchObject({
+        status: 400,
+        response: expect.objectContaining({ message: expect.stringMatching(/at most 200/i) }),
+      });
+      // Rejected before doing any of the synchronous per-product work.
+      expect(connectorFramework.publishBulk).not.toHaveBeenCalled();
+    });
+
+    it("accepts exactly 200 products on the native path — the boundary itself is not rejected", async () => {
+      const productIds = Array.from({ length: 200 }, (_, i) => `p${i}`);
+      const productsById: Record<string, { status: string; categoryId: string }> = {};
+      for (const id of productIds) {
+        productsById[id] = { status: "approved", categoryId: "cat1" };
+      }
+      const { svc, connectorFramework } = makeBulkPublishService(productsById, {
+        connectorSlug: "amazon",
+        capabilities: ["BULK_PUBLISH"],
+      });
+
+      const result = expectSyncResult(await svc.triggerBulkPublish("inst_1", productIds));
+
+      expect(result.submissionIds).toHaveLength(200);
+      expect(connectorFramework.publishBulk).toHaveBeenCalled();
+    });
+
+    it("a non-native (async) connector is unaffected by the native ceiling — 500 products still just queues a run", async () => {
+      const productIds = Array.from({ length: 500 }, (_, i) => `p${i}`);
+      const productsById: Record<string, { status: string; categoryId: string }> = {};
+      for (const id of productIds) {
+        productsById[id] = { status: "approved", categoryId: "cat1" };
+      }
+      const { svc, queueService } = makeBulkPublishService(productsById, {
+        connectorSlug: "shopify",
+        capabilities: ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"],
+      });
+
+      const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", productIds));
+
+      expect(result.requestedCount).toBe(500);
+      expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // ─── CTO review follow-up (PR #719, 2026-09-05): async-path kill switch ──────
   describe("FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED kill switch", () => {
     const ENV_KEY = "FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED";

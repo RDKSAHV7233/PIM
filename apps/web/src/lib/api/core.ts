@@ -1337,6 +1337,11 @@ export interface BulkEditOperationItem {
   before: Record<string, unknown>;
   after: Record<string, unknown> | null;
   errorMessage: string | null;
+  // CTO review follow-up (PR #719, 2026-09-05): present when errorMessage is a
+  // machine-classifiable failure (e.g. "PLAN_LIMIT_EXCEEDED") rather than a fallback
+  // string — see getBulkEditItemPlanLimitPayload for the plan-limit case specifically.
+  errorCode: string | null;
+  errorDetails: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1586,6 +1591,37 @@ export function getPlanLimitExceededPayload(error: unknown): PlanLimitExceededPa
   if (payload.error !== "PLAN_LIMIT_EXCEEDED") {
     return null;
   }
+  const resource = String(payload.resource ?? "").trim();
+  const upgradeUrl = String(payload.upgrade_url ?? "").trim();
+  const limit = Number(payload.limit);
+  const current = Number(payload.current);
+  if (!resource || !upgradeUrl || !Number.isFinite(limit) || !Number.isFinite(current)) {
+    return null;
+  }
+  const rawContactUrl = String(payload.contact_url ?? "").trim();
+  return {
+    error: "PLAN_LIMIT_EXCEEDED",
+    resource,
+    limit,
+    current,
+    upgrade_url: upgradeUrl,
+    contact_url: rawContactUrl || null,
+  };
+}
+
+/**
+ * CTO review follow-up (PR #719, 2026-09-05): the bulk-edit equivalent of
+ * getPlanLimitExceededPayload above — same validated shape, sourced from a persisted
+ * BulkEditOperationItem's errorCode/errorDetails (a background job's per-item failure)
+ * instead of a live ApiHttpError, since bulk edit failures are never a direct HTTP
+ * response the caller can catch. Lets the bulk-edit results page show the same upgrade
+ * CTA every other plan-limit flow shows for the identical condition.
+ */
+export function getBulkEditItemPlanLimitPayload(item: BulkEditOperationItem): PlanLimitExceededPayload | null {
+  if (item.errorCode !== "PLAN_LIMIT_EXCEEDED" || !item.errorDetails) {
+    return null;
+  }
+  const payload = item.errorDetails;
   const resource = String(payload.resource ?? "").trim();
   const upgradeUrl = String(payload.upgrade_url ?? "").trim();
   const limit = Number(payload.limit);

@@ -416,6 +416,53 @@ describe("BulkEditService — SKU plan-limit enforcement on approval", () => {
     expect(products.find((p) => p.id === "p1")?.version).toBe(1);
   });
 
+  // CTO review follow-up (PR #719, 2026-09-05): the plan-limit failure used to collapse
+  // into a plain errorMessage string indistinguishable from any other failure — a tenant
+  // hitting their SKU cap via bulk edit never saw the same upgrade CTA every other flow
+  // (single-product approval, export, media upload) shows for the identical condition.
+  // These assert the structured shape the frontend needs to render that CTA is actually
+  // persisted on the failed item, not just a human-readable string.
+  it("persists a structured PLAN_LIMIT_EXCEEDED errorCode/errorDetails on the failed item, matching catalog.service.ts's HTTP contract", async () => {
+    const products = [fakeProduct("p1", { status: "in_review" })];
+    const { service, variantFindFirst, variantCount, planUsageService, items, runQueueHandler } = createService({ products });
+    variantFindFirst.mockResolvedValue({ id: "v1" });
+    variantCount.mockResolvedValue(1);
+    planUsageService.checkLimit.mockResolvedValue({ allowed: false, resource: "skus", limit: 500, current: 501 });
+
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "approved" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const p1Item = items.find((item) => item.productId === "p1") as unknown as {
+      errorCode?: string;
+      errorDetails?: Record<string, unknown>;
+    };
+    expect(p1Item?.errorCode).toBe("PLAN_LIMIT_EXCEEDED");
+    expect(p1Item?.errorDetails).toMatchObject({
+      error: "PLAN_LIMIT_EXCEEDED",
+      resource: "skus",
+      limit: 500,
+      current: 501,
+      upgrade_url: "/admin/plan",
+    });
+  });
+
+  it("a non-plan-limit failure (workflow transition) leaves errorCode/errorDetails null — the structured shape is specific to coded errors", async () => {
+    const products = [fakeProduct("p1", { status: "draft" })];
+    const { service, items, runQueueHandler } = createService({ products });
+
+    // draft -> approved is not a valid direct workflow transition.
+    const operation = await service.apply({ categoryId: "cat_1" }, { status: "approved" });
+    await runQueueHandler({ operationId: operation.id, tenantKey: "default", actor: {} });
+
+    const p1Item = items.find((item) => item.productId === "p1") as unknown as {
+      status: string;
+      errorCode?: string | null;
+      errorDetails?: unknown;
+    };
+    expect(p1Item?.status).toBe("failed");
+    expect(p1Item?.errorCode ?? null).toBeNull();
+  });
+
   it("an in-limit approval is unaffected — item succeeds, product actually transitions to approved", async () => {
     const products = [fakeProduct("p1", { status: "in_review" })];
     const { service, variantFindFirst, variantCount, planUsageService, operations, runQueueHandler } = createService({ products });

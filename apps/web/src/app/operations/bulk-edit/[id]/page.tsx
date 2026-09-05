@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ApiHttpError, getBulkEditOperation } from "@/lib/api";
+import { ApiHttpError, getBulkEditItemPlanLimitPayload, getBulkEditOperation } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { translateBulkEditStatus } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
@@ -79,7 +79,24 @@ export default async function BulkEditOperationPage({ params }: BulkEditOperatio
     {
       key: "reason",
       header: "Why it failed",
-      render: (item) => <span className="text-sm text-red-900">{item.errorMessage ?? "No error message recorded."}</span>,
+      // CTO review follow-up (PR #719, 2026-09-05): a plan-limit failure gets the same
+      // "you're at your plan limit, upgrade here" treatment every other flow (single-
+      // product approval, export, media upload) already shows for the identical
+      // condition, instead of a bare error string with no path forward.
+      render: (item) => {
+        const planLimit = getBulkEditItemPlanLimitPayload(item);
+        if (planLimit) {
+          return (
+            <span className="text-sm text-red-900">
+              Plan limit reached: {planLimit.current} of {planLimit.limit} allowed {planLimit.resource}.{" "}
+              <Link href={planLimit.upgrade_url} className="font-medium text-blue-700 underline hover:text-blue-900">
+                Upgrade plan
+              </Link>
+            </span>
+          );
+        }
+        return <span className="text-sm text-red-900">{item.errorMessage ?? "No error message recorded."}</span>;
+      },
     },
   ];
 

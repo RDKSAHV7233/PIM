@@ -598,6 +598,16 @@ model BulkEditOperationItem {
   before      Json
   after       Json?
   errorMessage String?
+  // CTO review follow-up (PR #719, 2026-09-05): a plan-limit failure (e.g.
+  // enforceSkuLimitForApproval) used to collapse into errorMessage as a plain string,
+  // so the client had no way to distinguish it from any other failure and never showed
+  // the same upgrade CTA the single-product/export/media flows show for the identical
+  // condition. errorCode carries a machine-readable discriminator ("PLAN_LIMIT_EXCEEDED",
+  // etc.); errorDetails carries the same structured shape those other flows already
+  // return over HTTP (resource, limit, current, upgrade_url, contact_url) so the client
+  // can render one shared component instead of parsing errorMessage text.
+  errorCode    String?
+  errorDetails Json?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
