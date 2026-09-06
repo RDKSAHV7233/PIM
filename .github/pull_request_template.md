@@ -50,3 +50,4 @@ _Skip items that are not applicable to this PR. Every unchecked item needs a rea
 - [ ] New behavior has tests or a documented reason why it does not.
 - [ ] Locked-story or increment edits include regression evidence when required.
 - [ ] Large PRs have explicit CTO approval and the `cto-large-pr-approved` label.
+- [ ] Security, tenant-boundary, auth/session, workflow, migration, or WooCommerce connector changes have required-team approval and the `cto-required-team-approved` label.

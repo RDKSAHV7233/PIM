@@ -7,9 +7,15 @@ const assert = require("node:assert/strict");
 
 const {
   LARGE_PR_APPROVAL_LABEL,
+  REQUIRED_TEAM_APPROVAL_LABEL,
   classifyDomains,
+  evaluateGovernance,
   evaluateScope,
   hasLargePrApproval,
+  hasRequiredTeamApproval,
+  isAuthOrSessionBoundaryPath,
+  isRequiredTeamReviewPath,
+  isWooCommerceConnectorPath,
   parseNumstat,
   summarizeScope,
 } = require("./check-pr-scope.cjs");
@@ -74,6 +80,46 @@ function main() {
   assert.equal(hasLargePrApproval([LARGE_PR_APPROVAL_LABEL], {}), true);
   assert.equal(hasLargePrApproval([], { PR_SCOPE_ALLOW_LARGE: "true" }), true);
   assert.equal(hasLargePrApproval([], {}), false);
+
+  assert.equal(isAuthOrSessionBoundaryPath("apps/api/src/auth/jwt-auth.guard.ts"), true);
+  assert.equal(isAuthOrSessionBoundaryPath("apps/api/test/integration/auth-revocation.test.cjs"), true);
+  assert.equal(isWooCommerceConnectorPath("apps/api/src/connectors/woocommerce/woocommerce.service.ts"), true);
+  assert.equal(isRequiredTeamReviewPath("packages/db/prisma/migrations/20260906000000_change/migration.sql"), true);
+  assert.equal(isRequiredTeamReviewPath("apps/api/src/catalog/catalog.service.ts"), false);
+
+  const authOnlyEntries = [
+    { additions: 20, deletions: 5, file: "apps/api/src/auth/jwt-auth.guard.ts" },
+  ];
+  const authMissingApproval = evaluateGovernance(authOnlyEntries, [], {});
+  assert.equal(authMissingApproval.ok, false);
+  assert.match(authMissingApproval.reasons.join("\n"), /required-team file/);
+  assert.equal(
+    evaluateGovernance(authOnlyEntries, [REQUIRED_TEAM_APPROVAL_LABEL], {}).ok,
+    true,
+    "required-team label approves focused high-risk paths",
+  );
+  assert.equal(
+    hasRequiredTeamApproval([], { PR_SCOPE_ALLOW_REQUIRED_TEAM: "true" }),
+    true,
+    "explicit env override is available for protected emergency workflows",
+  );
+
+  const mixedConnectorAndAuth = evaluateGovernance(
+    [
+      { additions: 12, deletions: 4, file: "apps/api/src/connectors/woocommerce/woocommerce-publisher.service.ts" },
+      { additions: 8, deletions: 2, file: "apps/api/src/auth/token-blocklist.service.ts" },
+    ],
+    [LARGE_PR_APPROVAL_LABEL, REQUIRED_TEAM_APPROVAL_LABEL],
+    {},
+  );
+  assert.equal(mixedConnectorAndAuth.ok, false, "large and required-team labels do not bypass split rule");
+  assert.match(mixedConnectorAndAuth.reasons.join("\n"), /must be split/);
+
+  assert.equal(
+    evaluateGovernance([{ additions: 5, deletions: 1, file: "apps/web/src/app/dashboard/page.tsx" }], [], {}).ok,
+    true,
+    "ordinary focused product work is unaffected",
+  );
 
   console.log("check-pr-scope.test.cjs: PASS");
 }
