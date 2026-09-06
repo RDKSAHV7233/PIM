@@ -129,11 +129,31 @@ function isWooCommerceConnectorPath(rawFile) {
   );
 }
 
+// Shopify connector credential/tenant-boundary writes carry the same risk
+// profile as WooCommerce's (see PIM#738/#739/#743/#744/#748 — both connectors
+// needed DB-level tenant-ownership guards on credential upserts, then
+// transaction-wrapping to close partial-write risk on a rejected write).
+// Mirrors isWooCommerceConnectorPath's pattern exactly so the two connectors
+// stay on equal governance footing.
+function isShopifyConnectorPath(rawFile) {
+  const file = normalizePath(rawFile);
+  return (
+    file.startsWith("apps/api/src/connectors/shopify/") ||
+    file.startsWith("apps/api/test/integration/shopify") ||
+    file.startsWith("apps/web/src/app/channels/shopify") ||
+    file.includes("/shopify/")
+  );
+}
+
+function isConnectorCredentialPath(rawFile) {
+  return isWooCommerceConnectorPath(rawFile) || isShopifyConnectorPath(rawFile);
+}
+
 function isRequiredTeamReviewPath(rawFile) {
   const file = normalizePath(rawFile);
   return (
     isAuthOrSessionBoundaryPath(file) ||
-    isWooCommerceConnectorPath(file) ||
+    isConnectorCredentialPath(file) ||
     file.startsWith("apps/api/src/common/rbac/") ||
     file.startsWith("apps/api/src/common/access-policy/") ||
     file.startsWith("apps/api/src/common/tenant/") ||
@@ -145,14 +165,14 @@ function isRequiredTeamReviewPath(rawFile) {
 function evaluateGovernance(entries, labels = [], env = process.env) {
   const files = entries.map((entry) => normalizePath(entry.file)).filter(Boolean);
   const touchesAuthOrSession = files.some(isAuthOrSessionBoundaryPath);
-  const touchesWooCommerce = files.some(isWooCommerceConnectorPath);
+  const touchesConnector = files.some(isConnectorCredentialPath);
   const requiredTeamFiles = files.filter(isRequiredTeamReviewPath);
   const requiredTeamApproved = hasRequiredTeamApproval(labels, env);
   const reasons = [];
 
-  if (touchesAuthOrSession && touchesWooCommerce) {
+  if (touchesAuthOrSession && touchesConnector) {
     reasons.push(
-      "WooCommerce connector changes and auth/session/revocation changes must be split into separate PRs",
+      "Connector (WooCommerce/Shopify) changes and auth/session/revocation changes must be split into separate PRs",
     );
   }
 
@@ -247,7 +267,7 @@ function main(env = process.env) {
     `[pr-scope] Split the PR by risk domain, or add the '${LARGE_PR_APPROVAL_LABEL}' label after explicit CTO review.`,
   );
   console.error(
-    `[pr-scope] Security, tenant-boundary, auth/session, workflow, migration, or WooCommerce connector changes also require '${REQUIRED_TEAM_APPROVAL_LABEL}' approval.`,
+    `[pr-scope] Security, tenant-boundary, auth/session, workflow, migration, or WooCommerce/Shopify connector changes also require '${REQUIRED_TEAM_APPROVAL_LABEL}' approval.`,
   );
   process.exitCode = 1;
 }
@@ -265,7 +285,9 @@ module.exports = {
   hasLargePrApproval,
   hasRequiredTeamApproval,
   isAuthOrSessionBoundaryPath,
+  isConnectorCredentialPath,
   isRequiredTeamReviewPath,
+  isShopifyConnectorPath,
   isWooCommerceConnectorPath,
   parseNumstat,
   summarizeScope,

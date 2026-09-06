@@ -14,7 +14,9 @@ const {
   hasLargePrApproval,
   hasRequiredTeamApproval,
   isAuthOrSessionBoundaryPath,
+  isConnectorCredentialPath,
   isRequiredTeamReviewPath,
+  isShopifyConnectorPath,
   isWooCommerceConnectorPath,
   parseNumstat,
   summarizeScope,
@@ -84,6 +86,12 @@ function main() {
   assert.equal(isAuthOrSessionBoundaryPath("apps/api/src/auth/jwt-auth.guard.ts"), true);
   assert.equal(isAuthOrSessionBoundaryPath("apps/api/test/integration/auth-revocation.test.cjs"), true);
   assert.equal(isWooCommerceConnectorPath("apps/api/src/connectors/woocommerce/woocommerce.service.ts"), true);
+  assert.equal(isShopifyConnectorPath("apps/api/src/connectors/shopify/shopify.connector.ts"), true);
+  assert.equal(isShopifyConnectorPath("apps/api/test/integration/shopify-runtime-foundation.test.cjs"), true);
+  assert.equal(isConnectorCredentialPath("apps/api/src/connectors/shopify/shopify.connector.ts"), true);
+  assert.equal(isConnectorCredentialPath("apps/api/src/connectors/woocommerce/woocommerce.connector.ts"), true);
+  assert.equal(isConnectorCredentialPath("apps/api/src/catalog/catalog.service.ts"), false);
+  assert.equal(isRequiredTeamReviewPath("apps/api/src/connectors/shopify/shopify.connector.ts"), true);
   assert.equal(isRequiredTeamReviewPath("packages/db/prisma/migrations/20260906000000_change/migration.sql"), true);
   assert.equal(isRequiredTeamReviewPath("apps/api/src/catalog/catalog.service.ts"), false);
 
@@ -114,6 +122,29 @@ function main() {
   );
   assert.equal(mixedConnectorAndAuth.ok, false, "large and required-team labels do not bypass split rule");
   assert.match(mixedConnectorAndAuth.reasons.join("\n"), /must be split/);
+
+  const mixedShopifyAndAuth = evaluateGovernance(
+    [
+      { additions: 12, deletions: 4, file: "apps/api/src/connectors/shopify/shopify.connector.ts" },
+      { additions: 8, deletions: 2, file: "apps/api/src/auth/token-blocklist.service.ts" },
+    ],
+    [LARGE_PR_APPROVAL_LABEL, REQUIRED_TEAM_APPROVAL_LABEL],
+    {},
+  );
+  assert.equal(mixedShopifyAndAuth.ok, false, "split rule also covers Shopify, not just WooCommerce");
+  assert.match(mixedShopifyAndAuth.reasons.join("\n"), /must be split/);
+
+  const shopifyOnlyEntries = [
+    { additions: 20, deletions: 5, file: "apps/api/src/connectors/shopify/shopify.connector.ts" },
+  ];
+  const shopifyMissingApproval = evaluateGovernance(shopifyOnlyEntries, [], {});
+  assert.equal(shopifyMissingApproval.ok, false, "Shopify connector changes require the label, same as WooCommerce");
+  assert.match(shopifyMissingApproval.reasons.join("\n"), /required-team file/);
+  assert.equal(
+    evaluateGovernance(shopifyOnlyEntries, [REQUIRED_TEAM_APPROVAL_LABEL], {}).ok,
+    true,
+    "required-team label approves focused Shopify connector changes",
+  );
 
   assert.equal(
     evaluateGovernance([{ additions: 5, deletions: 1, file: "apps/web/src/app/dashboard/page.tsx" }], [], {}).ok,
