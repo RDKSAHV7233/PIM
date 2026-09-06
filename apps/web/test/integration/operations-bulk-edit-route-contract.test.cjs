@@ -6,6 +6,19 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "bulk-edit", "page.tsx");
 const ROLE_CAPABILITIES = path.join(REPO_ROOT, "apps", "web", "src", "lib", "role-capabilities.ts");
+// The structured builder was extracted out of page.tsx into its own client component
+// (commit 9dfd6b10, "make structured change builder reactive") so changing Field/
+// Operation could update the New Value input without a full page reload. The markup
+// this test's structured-builder assertion checks for lives here now, not in page.tsx.
+const STRUCTURED_CHANGE_BUILDER = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "components",
+  "bulk-edit",
+  "structured-change-builder.tsx",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -16,6 +29,7 @@ function assert(condition, message) {
 function run() {
   const source = fs.readFileSync(PAGE, "utf8");
   const roleSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
+  const builderSource = fs.readFileSync(STRUCTURED_CHANGE_BUILDER, "utf8");
 
   assert(
     source.includes('const normalized = String(value ?? "").trim().toLowerCase();') &&
@@ -73,14 +87,19 @@ function run() {
     "Operations bulk edit must surface preview results and validation failures through the shared preview/error flow.",
   );
   assert(
-    source.includes('Structured change builder') &&
-      source.includes('name="bulkEditField"') &&
-      source.includes('name="bulkEditOperation"') &&
-      source.includes('Generated update payload') &&
+    // Structured builder markup lives in its own client component now (see
+    // STRUCTURED_CHANGE_BUILDER above) — page.tsx renders it via <StructuredChangeBuilder>
+    // and still owns the advanced-JSON and apply-wiring markup directly.
+    source.includes("import { StructuredChangeBuilder } from \"@/components/bulk-edit/structured-change-builder\";") &&
+      source.includes("<StructuredChangeBuilder") &&
+      builderSource.includes('Structured change builder') &&
+      builderSource.includes('name="bulkEditField"') &&
+      builderSource.includes('name="bulkEditOperation"') &&
+      builderSource.includes('Generated update payload') &&
       source.includes('Advanced JSON mode') &&
       source.includes('Preview advanced JSON changes') &&
       source.includes("applyAction={applyBulkEditAction}") &&
-      source.includes('Preview affected products'),
+      builderSource.includes('Preview affected products'),
     "Operations bulk edit must default to a structured builder, keep advanced JSON secondary, and only wire apply through the diff preview component.",
   );
   assert(
