@@ -32,13 +32,20 @@ const DEFAULT_MAPPING = JSON.stringify({
   title: "title",
   description: "description",
   brand: "brand",
-  skuCode: "sku",
+  skuCode: "skuCode",
   sellingPrice: "sellingPrice",
   hsnCode: "hsnCode",
   gstRate: "gstRate",
   status: "status",
   attributes: "attributes",
 });
+
+function serializeMapping(mapping: unknown): string {
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
+    return DEFAULT_MAPPING;
+  }
+  return JSON.stringify(mapping);
+}
 
 export function ImportPreflightForm({ categories, canWrite, submitAction }: ImportPreflightFormProps) {
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -218,10 +225,11 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
   const unmappedFields = stagedRun?.preflightSummary?.unmappedFields ?? [];
   const unusedHeaders = stagedRun?.preflightSummary?.unusedHeaders ?? [];
   const sampleIssues = stagedRun?.preflightSummary?.sampleIssues ?? [];
+  const effectiveMapping = serializeMapping(stagedRun?.preflightSummary?.mapping);
 
   return canWrite ? (
     <form ref={formRef} action={submitAction} className="space-y-4" suppressHydrationWarning>
-      <input type="hidden" name="mapping" value={DEFAULT_MAPPING} />
+      <input type="hidden" name="mapping" value={effectiveMapping} />
       <input type="hidden" name="stagedRunId" value={stagedRun ? stagedRun.id : ""} />
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm text-slate-700">
@@ -316,7 +324,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
         <p className="font-medium text-slate-800">Accepted columns</p>
         <p>
-          Use the canonical fields <code>title</code>, <code>description</code>, <code>brand</code>, <code>sku</code>, <code>sellingPrice</code>, <code>hsnCode</code>, <code>gstRate</code>, <code>status</code>, and <code>attributes</code>.
+          Use the canonical fields <code>title</code>, <code>description</code>, <code>brand</code>, <code>skuCode</code>, <code>sellingPrice</code>, <code>hsnCode</code>, <code>gstRate</code>, <code>status</code>, and <code>attributes</code>.
         </p>
         <p>
           The <code>attributes</code> column should contain a JSON object for category-specific fields, for example <code>{'{"material":"cotton","color":"black"}'}</code>.

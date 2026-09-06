@@ -195,6 +195,16 @@ function run() {
       componentSource.includes("stagedRun.id"),
     "Component must pass stagedRunId as a hidden form field so Start import reuses the validated run.",
   );
+  assert(
+    componentSource.includes('skuCode: "skuCode"') &&
+      componentSource.includes("<code>skuCode</code>"),
+    "Import preflight form must document and default to canonical skuCode, not the legacy sku alias.",
+  );
+  assert(
+    componentSource.includes("serializeMapping(stagedRun?.preflightSummary?.mapping)") &&
+      componentSource.includes('name="mapping" value={effectiveMapping}'),
+    "Start import must submit the mapping returned by staged preflight so validation and job creation use the same inferred headers.",
+  );
 
   // ── Upload route regression tests ─────────────────────────────────────────
 
@@ -276,6 +286,8 @@ function run() {
           "multipart_formdata_fields_match_backend_dto",
           "validate_after_upload_flow",
           "staged_run_id_passed_to_start_import",
+          "canonical_skuCode_mapping_and_guidance",
+          "start_import_reuses_preflight_mapping",
           "upload_route_csrf_auth_multipart",
           "run_validate_route_csrf_auth",
           "backend_multipart_file_interceptor_32mb",
