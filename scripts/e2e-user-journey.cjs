@@ -54,6 +54,7 @@ const SMOKE_CHECK_KEYS = new Set([
   "mappings:list_channels",
   "mappings:get_channel_mapping",
   "mappings:create_mapping_template",
+  "operations:jobs_workspace_page_renders",
   "dashboard:dashboard_health",
   "dashboard:billing_usage",
   "users:list_workspace_users",
@@ -1867,6 +1868,20 @@ function buildChecks() {
     assertStatus(result, 200, "GET /bulk-edit/operations");
     const items = normalizeItems(result.body);
     return `count=${items.length}`;
+  });
+
+  add("operations", "jobs_workspace_page_renders", async () => {
+    await ensureAdminLogin();
+    const result = await web("GET", "/operations/jobs", {
+      cookie: toCookie(ctx.adminToken),
+    });
+    assertStatus(result, 200, "GET web /operations/jobs");
+    const html = String(result.text ?? "");
+    assert(!html.includes("Sign in to Vexa PIM"), "jobs workspace returned the login page");
+    assert(html.includes("Submission jobs, recovery decisions, and retries across all channels."), "jobs page header missing");
+    assert(html.includes("Visible Submissions"), "jobs page KPI content missing");
+    assert(!/Something went wrong|Application error|server-side exception|Server Components render/i.test(html), "jobs page rendered an error boundary");
+    return "jobs page rendered";
   });
 
   add("submissions", "create_export_job", async () => {

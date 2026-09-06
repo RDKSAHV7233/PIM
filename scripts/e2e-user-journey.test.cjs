@@ -80,6 +80,16 @@ try {
       script.includes('assertStatus(result, 401, "POST /auth/login invalid password");'),
     "invalid-password smoke must accept a staging IP-rate-limit rejection without weakening the normal 401 INVALID_CREDENTIALS proof",
   );
+  assert(
+    script.includes('"operations:jobs_workspace_page_renders"') &&
+      script.includes('add("operations", "jobs_workspace_page_renders"') &&
+      script.includes('web("GET", "/operations/jobs"') &&
+      script.includes('cookie: toCookie(ctx.adminToken)') &&
+      script.includes('assert(!html.includes("Sign in to Vexa PIM"), "jobs workspace returned the login page")') &&
+      script.includes('assert(html.includes("Submission jobs, recovery decisions, and retries across all channels."), "jobs page header missing")') &&
+      script.includes('Something went wrong|Application error|server-side exception|Server Components render'),
+    "staging E2E smoke must authenticate and render-check /operations/jobs without accepting login, blank, or error-boundary HTML",
+  );
 
   console.log(
     JSON.stringify(
@@ -98,6 +108,7 @@ try {
           "category_cleanup_purges_journey_products",
           "workflow_approval_smoke_tolerates_already_approved_postcondition",
           "invalid_password_smoke_tolerates_staging_ip_rate_limit",
+          "operations_jobs_workspace_authenticated_render_check",
         ],
       },
       null,
