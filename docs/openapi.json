@@ -3462,6 +3462,29 @@
         ]
       }
     },
+    "/api/v1/marketplace/bulk-publish-runs/{runId}/retry-failed": {
+      "post": {
+        "operationId": "MarketplaceController_retryFailedBulkPublishRun",
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
     "/api/v1/marketplace/connectors/{installationId}/export": {
       "post": {
         "operationId": "MarketplaceController_triggerConnectorExport",

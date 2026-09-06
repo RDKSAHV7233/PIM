@@ -5738,6 +5738,70 @@ export class MarketplaceService implements OnModuleInit {
     return run;
   }
 
+  /**
+   * CTO review follow-up (PR #719, 2026-09-05): the review flagged that a failed item's
+   * `retryEligible: true` flag was set but nothing ever read it — there was no operator
+   * action to actually retry a failed run. Mirrors requeueExportJob's shape (atomic
+   * updateMany claim, re-enqueue) rather than inventing new item/run states: retried
+   * items go back to `pending` — the exact state processBulkPublishRun's own claim query
+   * already knows how to pick up — instead of a bespoke "retrying" status.
+   */
+  async retryFailedBulkPublishRun(runId: string, actor?: PolicyActor) {
+    const db = this.prisma.tenant();
+    const run = await db.marketplaceBulkPublishRun.findUnique({ where: { id: runId } });
+    if (!run) {
+      throw new NotFoundException("Bulk publish run not found.");
+    }
+
+    // Only failed, retry-eligible items — never touches succeeded items or items
+    // excluded for being ineligible (those are never retryable, by construction: see
+    // processBulkPublishRun's isIneligible branch, which sets retryEligible: false).
+    const failedItems = await db.marketplaceBulkPublishRunItem.findMany({
+      where: { runId, status: MarketplaceBulkPublishItemStatus.failed, retryEligible: true },
+      select: { id: true },
+    });
+    if (failedItems.length === 0) {
+      return { runId, retriedCount: 0, status: run.status };
+    }
+
+    const itemIds = failedItems.map((item) => item.id);
+    await db.marketplaceBulkPublishRunItem.updateMany({
+      where: { id: { in: itemIds }, status: MarketplaceBulkPublishItemStatus.failed, retryEligible: true },
+      data: { status: MarketplaceBulkPublishItemStatus.pending, reason: null, claimedAt: null },
+    });
+
+    // Only force the run itself back to `queued` from a terminal state (failed /
+    // completed_with_errors). If it's still `queued`/`processing` (some items already
+    // failed while others are still mid-flight), leave the run's own status alone —
+    // processBulkPublishRun's claim mechanism picks up the newly-pending items on its
+    // own next pass regardless, and forcing a still-active run's status here would race
+    // whatever is currently processing it.
+    const RETRYABLE_RUN_STATUSES: MarketplaceBulkPublishRunStatus[] = [
+      MarketplaceBulkPublishRunStatus.failed,
+      MarketplaceBulkPublishRunStatus.completed_with_errors,
+    ];
+    if (RETRYABLE_RUN_STATUSES.includes(run.status)) {
+      await db.marketplaceBulkPublishRun.update({
+        where: { id: runId },
+        data: { status: MarketplaceBulkPublishRunStatus.queued },
+      });
+    }
+
+    await this.queueService.enqueue<MarketplaceBulkPublishJobPayload>(QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH, {
+      runId,
+      tenantKey: run.tenantKey,
+      actor: actor ?? {},
+    });
+
+    this.logger.info("Bulk publish run retry queued", {
+      runId,
+      retriedCount: itemIds.length,
+      actorId: actor?.actorId ?? null,
+    });
+
+    return { runId, retriedCount: itemIds.length, status: MarketplaceBulkPublishRunStatus.queued };
+  }
+
   // ─── Meesho Excel export ─────────────────────────────────────────────────
 
   async triggerConnectorExport(

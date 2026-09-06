@@ -1261,6 +1261,136 @@ describe("MarketplaceService.getBulkPublishRun / listBulkPublishRuns", () => {
   });
 });
 
+// ─── MarketplaceService.retryFailedBulkPublishRun ──────────────────────────────
+// CTO review follow-up (PR #719, 2026-09-05): the review flagged retryEligible: true
+// as write-only — nothing ever consumed it, so a failed bulk-publish item had no
+// operator recovery path short of re-running the entire original request. These tests
+// exercise the actual retry mechanics: which items get reclaimed, which don't, and how
+// the run's own status is (or isn't) touched.
+describe("MarketplaceService.retryFailedBulkPublishRun", () => {
+  function makeRetryService(run: Record<string, unknown> | null, items: Array<Record<string, unknown>>) {
+    const runRow = run ? { tenantKey: "tenant1", ...run } : null;
+    const itemRows = items.map((item) => ({ ...item }));
+
+    const marketplaceBulkPublishRun = {
+      findUnique: jest.fn().mockResolvedValue(runRow),
+      update: jest.fn(({ data }: { data: Record<string, unknown> }) => {
+        if (runRow) Object.assign(runRow, data);
+        return Promise.resolve(runRow);
+      }),
+    };
+    const marketplaceBulkPublishRunItem = {
+      findMany: jest.fn(({ where }: { where: { status: string; retryEligible: boolean } }) =>
+        Promise.resolve(itemRows.filter((item) => item.status === where.status && item.retryEligible === where.retryEligible)),
+      ),
+      updateMany: jest.fn(({ where, data }: { where: { id: { in: string[] } }; data: Record<string, unknown> }) => {
+        let count = 0;
+        for (const item of itemRows) {
+          if (where.id.in.includes(item.id as string) && item.status === "failed" && item.retryEligible === true) {
+            Object.assign(item, data);
+            count += 1;
+          }
+        }
+        return Promise.resolve({ count });
+      }),
+    };
+    const db = { marketplaceBulkPublishRun, marketplaceBulkPublishRunItem };
+    const prisma = { tenant: jest.fn().mockReturnValue(db) };
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined) };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const svc = new MarketplaceService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      queueService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      logger as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { svc, marketplaceBulkPublishRun, marketplaceBulkPublishRunItem, queueService, itemRows, runRow };
+  }
+
+  it("throws NotFoundException for an unknown run", async () => {
+    const { svc } = makeRetryService(null, []);
+    await expect(svc.retryFailedBulkPublishRun("missing")).rejects.toThrow(NotFoundException);
+  });
+
+  it("returns retriedCount: 0 and does not touch the run or enqueue anything when there's nothing to retry", async () => {
+    const { svc, marketplaceBulkPublishRun, queueService } = makeRetryService(
+      { id: "run_1", status: "completed" },
+      [{ id: "item_1", status: "succeeded", retryEligible: true }],
+    );
+
+    const result = await svc.retryFailedBulkPublishRun("run_1");
+
+    expect(result).toEqual({ runId: "run_1", retriedCount: 0, status: "completed" });
+    expect(marketplaceBulkPublishRun.update).not.toHaveBeenCalled();
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("resets failed retry-eligible items to pending, clears their claim/reason, and re-enqueues the run", async () => {
+    const { svc, itemRows, queueService } = makeRetryService(
+      { id: "run_1", status: "completed_with_errors" },
+      [
+        { id: "item_1", status: "failed", retryEligible: true, reason: "boom", claimedAt: new Date() },
+        { id: "item_2", status: "succeeded", retryEligible: true },
+      ],
+    );
+
+    const result = await svc.retryFailedBulkPublishRun("run_1", { actorId: "user_1", actorRole: "publisher", tenantId: "tenant1" });
+
+    expect(result).toEqual({ runId: "run_1", retriedCount: 1, status: "queued" });
+    expect(itemRows.find((i) => i.id === "item_1")).toMatchObject({ status: "pending", reason: null, claimedAt: null });
+    // The already-succeeded item must never be touched by a retry action.
+    expect(itemRows.find((i) => i.id === "item_2")).toMatchObject({ status: "succeeded" });
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH,
+      expect.objectContaining({ runId: "run_1", tenantKey: "tenant1" }),
+    );
+  });
+
+  it("resets a terminal (failed) run's status to queued so processBulkPublishRun's guard lets a fresh job through", async () => {
+    const { svc, runRow } = makeRetryService(
+      { id: "run_1", status: "failed" },
+      [{ id: "item_1", status: "failed", retryEligible: true }],
+    );
+
+    await svc.retryFailedBulkPublishRun("run_1");
+
+    expect(runRow).toMatchObject({ status: "queued" });
+  });
+
+  it("leaves a still-active run's status alone (queued/processing) rather than clobbering a concurrently in-flight run", async () => {
+    const { svc, marketplaceBulkPublishRun } = makeRetryService(
+      { id: "run_1", status: "processing" },
+      [{ id: "item_1", status: "failed", retryEligible: true }],
+    );
+
+    const result = await svc.retryFailedBulkPublishRun("run_1");
+
+    expect(result.retriedCount).toBe(1);
+    expect(marketplaceBulkPublishRun.update).not.toHaveBeenCalled();
+  });
+
+  it("never retries an excluded (ineligible-product) item, even though it's also terminal", async () => {
+    const { svc, itemRows, queueService } = makeRetryService(
+      { id: "run_1", status: "completed_with_errors" },
+      [{ id: "item_1", status: "excluded", retryEligible: false, reason: "must be approved" }],
+    );
+
+    const result = await svc.retryFailedBulkPublishRun("run_1");
+
+    expect(result).toEqual({ runId: "run_1", retriedCount: 0, status: "completed_with_errors" });
+    expect(itemRows.find((i) => i.id === "item_1")).toMatchObject({ status: "excluded" });
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+});
+
 describe("MarketplaceService.getBatchReadiness", () => {
   function mockResolvedMapping() {
     return {

@@ -631,6 +631,21 @@ export class MarketplaceController {
     return this.marketplaceService.getBulkPublishRun(runId);
   }
 
+  // CTO review follow-up (PR #719, 2026-09-05): the requeue action itself is idempotent
+  // (a second call with nothing left to retry just returns retriedCount: 0), but
+  // triggering it is a state-changing side effect, not a read — POST, 202 like the
+  // original trigger endpoint uses for "queued, not done yet".
+  @Post("bulk-publish-runs/:runId/retry-failed")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "publisher", "channel_manager")
+  @HttpCode(202)
+  retryFailedBulkPublishRun(
+    @Param("runId") runId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.retryFailedBulkPublishRun(runId, this.resolveActor(request));
+  }
+
   // ─── Meesho Excel export ─────────────────────────────────────────────────
   // POST because we accept productIds in the body; GET would require URL-encoding
   // potentially large product ID lists. Returns the .xlsx file as a binary stream.
