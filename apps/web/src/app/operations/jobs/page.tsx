@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { retrySubmissionAction } from "@/app/actions";
+import { retryFailedBulkPublishRunAction, retrySubmissionAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -215,6 +215,15 @@ function bulkPublishRunProgressLabel(run: {
   requestedCount?: unknown;
 }): string {
   return `${safeCount(run.succeededCount)} succeeded, ${safeCount(run.failedCount)} failed, ${safeCount(run.excludedCount)} excluded of ${safeCount(run.requestedCount)}`;
+}
+
+// CTO review follow-up (PR #719, 2026-09-05): only offer retry once the run has actually
+// stopped moving (failed / completed_with_errors) and has at least one failed item —
+// mirrors the retryFailedBulkPublishRun service method's own no-op-when-nothing-to-retry
+// behavior, but avoids showing a button that would just come back with retriedCount: 0.
+function bulkPublishRunHasRetryableFailures(run: { status?: unknown; failedCount?: unknown }): boolean {
+  const status = safeText(run.status, "").toLowerCase();
+  return (status === "failed" || status === "completed_with_errors") && safeCount(run.failedCount) > 0;
 }
 
 function isOperationsJobsApiUnavailable(error: unknown): boolean {
@@ -535,6 +544,22 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         header: "Updated",
         mobileHide: true,
         render: (run) => <span className="text-xs text-slate-600">{formatDateTime(run.updatedAt)}</span>,
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        render: (run) =>
+          canPublishToChannels(actorRole) && bulkPublishRunHasRetryableFailures(run) ? (
+            <form action={retryFailedBulkPublishRunAction}>
+              <input type="hidden" name="runId" value={run.id} />
+              <PendingSubmitButton
+                type="submit"
+                variant="secondary"
+                idleLabel="Retry failed"
+                pendingLabel="Retrying..."
+              />
+            </form>
+          ) : null,
       },
     ];
 

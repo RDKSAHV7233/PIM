@@ -1911,6 +1911,34 @@ export async function retrySubmissionAction(formData: FormData) {
 }
 
 /**
+ * CTO review follow-up (PR #719, 2026-09-05): UI for the retry-failed bulk-publish
+ * endpoint added in PR #731 — same shape as retrySubmissionAction above (redirect back
+ * to /operations/jobs, reuse the page's existing retryError/retryErrorMessage banner
+ * rather than inventing a second error-display mechanism).
+ */
+export async function retryFailedBulkPublishRunAction(formData: FormData) {
+  const runId = String(formData.get("runId") ?? "").trim();
+  if (!runId) {
+    throw new Error("Bulk publish run id is required.");
+  }
+
+  try {
+    await postJsonForAction(formData, `/marketplace/bulk-publish-runs/${runId}/retry-failed`, {});
+    revalidatePath("/operations/jobs");
+  } catch (error: unknown) {
+    handleSessionExpired(error, "/operations/jobs");
+    const rawMessage = error instanceof ApiHttpError
+      ? extractApiErrorMessage(error)
+      : error instanceof Error ? error.message : "Retry request failed.";
+    const jobsParams = new URLSearchParams();
+    jobsParams.set("retryError", extractErrorCode(rawMessage));
+    jobsParams.set("retryErrorMessage", rawMessage);
+    redirect(`/operations/jobs?${jobsParams.toString()}`);
+  }
+  redirect("/operations/jobs");
+}
+
+/**
  * Same retry as retrySubmissionAction, but for the Submission Log drawer
  * (submissions-grid.tsx), which stays on /channels/submissions and refreshes
  * in place rather than navigating to /operations/jobs. Callable directly from
