@@ -1,6 +1,6 @@
 # Team Signoff Matrix
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-05
 
 Status: active working matrix
 
@@ -129,6 +129,24 @@ Acting as CTO, PO, and required team to advance gates with sufficient evidence.
 | Explicit exclusions | Public GA claims, public pricing, self-serve checkout, Shopify managed OAuth/webhooks, Amazon India production publish, Meesho/Nykaa direct API, ONDC, enterprise SLA/HA/PITR guarantees, multi-tenant scale claims |
 | Accepted risks | Sole-operator on-call (no secondary), no external VAPT, no restore drill evidence, 3 env-blocked web tests, no multi-variant/metafield Shopify test data, legal placeholders not filled |
 | Next review | 2026-09-10 or after first controlled evaluation tenant onboarding |
+
+## Required-Team Continuation - 2026-09-05 PR #719 Async Bulk-Publish Review
+
+Static code review only (no live staging verification in this pass). Full findings in `docs/readiness/PR719_ASYNC_BULK_PUBLISH_CTO_REVIEW_2026-09-05.md`.
+
+| Team lens | Decision | Evidence | Signoff |
+| --- | --- | --- | --- |
+| CTO / Engineering | DO NOT MERGE AS-IS. New `MARKETPLACE_BULK_PUBLISH` queue consumer can permanently strand a work item at `queued` after a worker crash with no recovery path, and marks a run `failed` before BullMQ's own retry exhausts, orphaning remaining items — both confirmed against the actual code, neither exercised by the PR's own test suite (5 tests, each a single non-crashing invocation). Shared DTO array-size increase (200→2000) also reintroduces a request-timeout risk on the still-synchronous native (Amazon) path. | 8-angle multi-agent diff review + independent verification pass; test-coverage grep of `marketplace.service.spec.ts`. | CTO: DO NOT MERGE AS-IS |
+| Product Owner / Commercial | BLOCK. Bulk-edit's SKU-limit failure (this PR's own plan-limit-bypass fix) throws a plain 400 that's swallowed inside an async job and never reaches the client — tenants hitting their SKU cap via bulk-edit never see the upgrade CTA that every other flow shows for the same condition. | `apps/api/src/bulk-edit/bulk-edit.service.ts:705` vs. `apps/api/src/lib/api/core.ts`'s `PLAN_LIMIT_EXCEEDED` contract. | PO: BLOCK |
+| SRE / Ops | BLOCK. New queue consumer has no feature flag / kill switch and no DLQ/retry-count fields, unlike the existing `MarketplaceExportJob` pattern already in this codebase. Cannot be disabled without a code revert if it misbehaves in production. | `apps/api/src/marketplace/marketplace.service.ts:5130`, `:5528`; `packages/db/prisma/schema.prisma`. | SRE: BLOCK |
+| QA Lead | INSUFFICIENT EVIDENCE. PR's own tests pass but do not cover crash-mid-item or redelivery/double-finalize scenarios; green CI here is not evidence against the CTO findings. | `apps/api/src/marketplace/marketplace.service.spec.ts` (5 `processBulkPublishRun` tests, all single-invocation). | QA: INSUFFICIENT EVIDENCE |
+| Security / Privacy | NOT ASSESSED this pass — review was scoped to billing/queue correctness, not RBAC/tenant-isolation/credential handling. | — | Security: NOT ASSESSED |
+
+Two findings raised during review were investigated and refuted: an alleged SKU-limit bypass via `createVariant`/`updateVariant` (blocked by `assertWorkflowStateAllowsContentMutation`), and an alleged data-normalization drift in `createOrReuseOverageFlag` (the null field is intentional — overage flags don't carry a plan tier).
+
+Six bounded conditions for a revised merge decision are listed in the full review doc; none require re-architecting the PR.
+
+**Update, same day:** PR #719 was merged (04:10:17Z) before 3 of the 6 conditions (stuck-item recovery, DLQ/retry semantics, kill switch) could be applied to its branch — `main` briefly shipped the unfixed version reviewed above. Those fixes were resubmitted as [PR #723](https://github.com/bhoivishal216-ai/PIM/pull/723) against current `main` and merged 2026-09-05T16:24:34Z. The remaining 2 conditions (native bulk-publish ceiling, unified plan-limit error contract) were resubmitted as [PR #725](https://github.com/bhoivishal216-ai/PIM/pull/725) and merged 2026-09-05T23:59:08Z. **All 6 original conditions are now closed on `main`.** **Merging to `main` is not the same as live production promotion here** — a separate named-approval + staging-proof gate exists (per PR #722) and has not been invoked. Full detail in the CTO review doc's Correction and Decision Log sections.
 
 ## Decision Log Template
 

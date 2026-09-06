@@ -1,6 +1,6 @@
 # Vexa PIM Readiness Pack
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-06
 
 Status: active working pack
 
@@ -61,6 +61,8 @@ Current launch authority starts with:
   - Customer-specific controlled-evaluation closeout template.
 - `CONNECTOR_CLAIM_AUDIT_2026-09-03.md`
   - Connector claim audit refreshed against its reviewed HEAD and 3 browser verification passes; WooCommerce onboarding authority is now superseded by the 2026-09-03 P1 blocker-closure hold.
+- `PR719_ASYNC_BULK_PUBLISH_CTO_REVIEW_2026-09-05.md`
+  - CTO/required-team review of PR #719 (async bulk-publish + plan-limit fixes). All 6 review conditions closed on `main` via follow-up PRs (#723, #725, #730, #731, #737) — see the doc for the full timeline, including a corrected finding that this project has no separate production environment (merges go live to real pilot tenants immediately).
 
 ## Team Review Rule
 
