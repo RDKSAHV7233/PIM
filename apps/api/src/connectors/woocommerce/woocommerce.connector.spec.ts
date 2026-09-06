@@ -7,6 +7,7 @@ const TEST_KEY = "c".repeat(64);
 function makeConnectorWithDb(mockDbClient: any) {
   process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = TEST_KEY;
   process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+  mockDbClient.$transaction ??= jest.fn(async (callback: (tx: unknown) => unknown) => callback(mockDbClient));
 
   return new WooCommerceConnector(
     { getClient: () => mockDbClient } as never,
@@ -84,6 +85,7 @@ describe("WooCommerceConnector.handleOAuthCallback app-auth credential persisten
       key_permissions: "read_write",
     })).resolves.toBeUndefined();
 
+    expect((db as any).$transaction).toHaveBeenCalledTimes(1);
     expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(2); // RLS-BYPASS: manual tenant filter — test mock
     for (const call of db.$executeRawUnsafe.mock.calls) { // RLS-BYPASS: manual tenant filter — test mock
       expect(String(call[0]).toLowerCase()).toContain("tenant_key");
@@ -111,8 +113,9 @@ describe("WooCommerceConnector.handleOAuthCallback app-auth credential persisten
     } as any, {
       consumer_key: "ck_live",
       consumer_secret: "cs_live",
-    })).rejects.toThrow("tenant");
+    })).rejects.toThrow(MissingTenantContextError);
 
+    expect((db as any).$transaction).not.toHaveBeenCalled();
     expect(db.$executeRawUnsafe).not.toHaveBeenCalled(); // RLS-BYPASS: manual tenant filter — test mock
   });
 
@@ -137,7 +140,30 @@ describe("WooCommerceConnector.handleOAuthCallback app-auth credential persisten
 
     // Must stop after the first blocked write — never attempt the second
     // (consumer_secret) write once ownership is known to be violated.
+    expect((db as any).$transaction).toHaveBeenCalledTimes(1);
     expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(1); // RLS-BYPASS: manual tenant filter — test mock
+  });
+
+  it("rejects the whole transaction when the second credential write is ownership-blocked", async () => {
+    const db = {
+      $executeRawUnsafe: jest.fn() // RLS-BYPASS: manual tenant filter — test mock
+        .mockResolvedValueOnce(1) // RLS-BYPASS: manual tenant filter — test mock
+        .mockResolvedValueOnce(0), // RLS-BYPASS: manual tenant filter — test mock
+    };
+    const connector = makeConnectorWithDb(db);
+    const ctx = {
+      tenantId: "tenant-a",
+      installationId: "woo-install-a",
+      connectorId: "woocommerce",
+    };
+
+    await expect(connector.handleOAuthCallback(ctx as any, {
+      consumer_key: "ck_live",
+      consumer_secret: "cs_live",
+    })).rejects.toThrow("consumer_secret credential id already owned by a different tenant");
+
+    expect((db as any).$transaction).toHaveBeenCalledTimes(1);
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(2); // RLS-BYPASS: manual tenant filter — test mock
   });
 });
 

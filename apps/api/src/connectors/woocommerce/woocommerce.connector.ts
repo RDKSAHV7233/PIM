@@ -1168,7 +1168,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       throw new Error('WooCommerce app-auth callback missing consumer_key or consumer_secret.');
     }
     if (!tenantKey) {
-      throw new Error('WooCommerce app-auth callback missing tenant context.');
+      throw new MissingTenantContextError('WooCommerce app-auth callback missing tenant context.');
     }
 
     const db = this.prismaDirect.getClient();
@@ -1193,57 +1193,59 @@ export class WooCommerceConnector implements ConnectorInterface {
     // either way, failing loudly beats silently succeeding into someone else's
     // tenant. affectedRows === 0 is checked below and turned into an explicit
     // error rather than treated as a successful write.
-    const keyRowsAffected = await tenantExecRaw(db, `
-      INSERT INTO connector_credentials (
-        id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
-        status, metadata, last_refresh_at, updated_at
-      ) VALUES (
-        $1, $2, $3, 'consumer_key', $4, $5, 'ACTIVE',
-        '{"source":"app_auth_callback"}'::jsonb, NOW(), NOW()
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        tenant_key       = EXCLUDED.tenant_key,
-        installation_id  = EXCLUDED.installation_id,
-        encrypted_value = EXCLUDED.encrypted_value,
-        key_version     = EXCLUDED.key_version,
-        status          = 'ACTIVE',
-        metadata        = EXCLUDED.metadata,
-        last_refresh_at = NOW(),
-        updated_at      = NOW()
-      WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
-    `, [`${ctx.installationId}:consumer_key`, tenantKey, ctx.installationId, encKey.cipher, versionLabel]);
+    await db.$transaction(async (tx) => {
+      const keyRowsAffected = await tenantExecRaw(tx, `
+        INSERT INTO connector_credentials (
+          id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
+          status, metadata, last_refresh_at, updated_at
+        ) VALUES (
+          $1, $2, $3, 'consumer_key', $4, $5, 'ACTIVE',
+          '{"source":"app_auth_callback"}'::jsonb, NOW(), NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          tenant_key       = EXCLUDED.tenant_key,
+          installation_id  = EXCLUDED.installation_id,
+          encrypted_value = EXCLUDED.encrypted_value,
+          key_version     = EXCLUDED.key_version,
+          status          = 'ACTIVE',
+          metadata        = EXCLUDED.metadata,
+          last_refresh_at = NOW(),
+          updated_at      = NOW()
+        WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
+      `, [`${ctx.installationId}:consumer_key`, tenantKey, ctx.installationId, encKey.cipher, versionLabel]);
 
-    if (keyRowsAffected === 0) {
-      throw new Error(
-        `WooCommerce app-auth callback: consumer_key credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
-      );
-    }
+      if (keyRowsAffected === 0) {
+        throw new Error(
+          `WooCommerce app-auth callback: consumer_key credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
+        );
+      }
 
-    const secretRowsAffected = await tenantExecRaw(db, `
-      INSERT INTO connector_credentials (
-        id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
-        status, metadata, last_refresh_at, updated_at
-      ) VALUES (
-        $1, $2, $3, 'consumer_secret', $4, $5, 'ACTIVE',
-        '{"source":"app_auth_callback"}'::jsonb, NOW(), NOW()
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        tenant_key       = EXCLUDED.tenant_key,
-        installation_id  = EXCLUDED.installation_id,
-        encrypted_value = EXCLUDED.encrypted_value,
-        key_version     = EXCLUDED.key_version,
-        status          = 'ACTIVE',
-        metadata        = EXCLUDED.metadata,
-        last_refresh_at = NOW(),
-        updated_at      = NOW()
-      WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
-    `, [`${ctx.installationId}:consumer_secret`, tenantKey, ctx.installationId, encSecret.cipher, versionLabel]);
+      const secretRowsAffected = await tenantExecRaw(tx, `
+        INSERT INTO connector_credentials (
+          id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
+          status, metadata, last_refresh_at, updated_at
+        ) VALUES (
+          $1, $2, $3, 'consumer_secret', $4, $5, 'ACTIVE',
+          '{"source":"app_auth_callback"}'::jsonb, NOW(), NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          tenant_key       = EXCLUDED.tenant_key,
+          installation_id  = EXCLUDED.installation_id,
+          encrypted_value = EXCLUDED.encrypted_value,
+          key_version     = EXCLUDED.key_version,
+          status          = 'ACTIVE',
+          metadata        = EXCLUDED.metadata,
+          last_refresh_at = NOW(),
+          updated_at      = NOW()
+        WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
+      `, [`${ctx.installationId}:consumer_secret`, tenantKey, ctx.installationId, encSecret.cipher, versionLabel]);
 
-    if (secretRowsAffected === 0) {
-      throw new Error(
-        `WooCommerce app-auth callback: consumer_secret credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
-      );
-    }
+      if (secretRowsAffected === 0) {
+        throw new Error(
+          `WooCommerce app-auth callback: consumer_secret credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
+        );
+      }
+    });
 
     this.logger.info('WooCommerce app-auth callback credentials stored', {
       installationId: ctx.installationId,
