@@ -53,6 +53,21 @@ import { tenantExecRaw } from '../../common/tenant/tenant-raw';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 
+// A `ConnectorContext` built without a tenantId is an internal caller bug, not
+// evidence about the customer's actual WooCommerce credentials. Kept distinct
+// from ConnectorNetworkError so validateCredentials() can tell "our own
+// context-construction is broken" apart from "the stored creds are actually
+// invalid" — conflating the two previously risked misdiagnosing an internal
+// bug as CREDENTIAL_EXPIRED (the exact class of defect BUG-WOO-HEALTH-001/#472
+// was created to prevent, just triggered by a missing tenant context instead
+// of a network blip).
+export class MissingTenantContextError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MissingTenantContextError';
+  }
+}
+
 // ─── WooCommerce REST API shapes ───────────────────────────────────────────────
 
 type WcProductPayload = {
@@ -229,7 +244,7 @@ export class WooCommerceConnector implements ConnectorInterface {
   private requireTenantKey(ctx: Pick<ConnectorContext, 'tenantId'>, action: string): string {
     const tenantKey = String(ctx.tenantId ?? '').trim();
     if (!tenantKey) {
-      throw new Error(`WooCommerce ${action} missing tenant context.`);
+      throw new MissingTenantContextError(`WooCommerce ${action} missing tenant context.`);
     }
     return tenantKey;
   }
@@ -743,6 +758,19 @@ export class WooCommerceConnector implements ConnectorInterface {
         });
         return true;
       }
+      if (err instanceof MissingTenantContextError) {
+        // Same #472 rationale as above, different trigger: a ConnectorContext
+        // missing tenantId means our own caller built a bad context, not that
+        // the customer's stored credentials are wrong. Reporting this as
+        // "invalid" would send the operator toward reconnecting a store whose
+        // real credentials are fine — log it loudly (this is an internal bug,
+        // not a customer-facing signal) and treat as inconclusive, not expired.
+        this.logger.error('WooCommerce credential validation inconclusive: caller built context without tenantId', {
+          installationId: ctx.installationId,
+          reason: err.message,
+        });
+        return true;
+      }
       this.logger.warn('WooCommerce credential validation error', {
         installationId: ctx.installationId,
         reason: err instanceof Error ? err.message : String(err),
@@ -1154,7 +1182,18 @@ export class WooCommerceConnector implements ConnectorInterface {
     const encSecret = buildEncryptedCredential(consumerSecret, keyVersion, this.keys);
     const versionLabel = formatCredentialKeyVersion(keyVersion);
 
-    await tenantExecRaw(db, `
+    // The WHERE clause on ON CONFLICT is the actual tenant-ownership guard, not
+    // just the tenant_key column being present in the INSERT list: if `id`
+    // (installationId + credential type) ever collides with a row already
+    // owned by a DIFFERENT tenant, the WHERE condition is false, so Postgres
+    // treats it as no-op (0 rows affected) instead of silently overwriting
+    // that other tenant's credential row. installationId is a crypto.randomUUID()
+    // (see connector-installer.service.ts), so a genuine cross-tenant `id`
+    // collision here would mean a UUID collision or a caller bug upstream —
+    // either way, failing loudly beats silently succeeding into someone else's
+    // tenant. affectedRows === 0 is checked below and turned into an explicit
+    // error rather than treated as a successful write.
+    const keyRowsAffected = await tenantExecRaw(db, `
       INSERT INTO connector_credentials (
         id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
         status, metadata, last_refresh_at, updated_at
@@ -1171,9 +1210,16 @@ export class WooCommerceConnector implements ConnectorInterface {
         metadata        = EXCLUDED.metadata,
         last_refresh_at = NOW(),
         updated_at      = NOW()
+      WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
     `, [`${ctx.installationId}:consumer_key`, tenantKey, ctx.installationId, encKey.cipher, versionLabel]);
 
-    await tenantExecRaw(db, `
+    if (keyRowsAffected === 0) {
+      throw new Error(
+        `WooCommerce app-auth callback: consumer_key credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
+      );
+    }
+
+    const secretRowsAffected = await tenantExecRaw(db, `
       INSERT INTO connector_credentials (
         id, tenant_key, installation_id, credential_type, encrypted_value, key_version,
         status, metadata, last_refresh_at, updated_at
@@ -1190,7 +1236,14 @@ export class WooCommerceConnector implements ConnectorInterface {
         metadata        = EXCLUDED.metadata,
         last_refresh_at = NOW(),
         updated_at      = NOW()
+      WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
     `, [`${ctx.installationId}:consumer_secret`, tenantKey, ctx.installationId, encSecret.cipher, versionLabel]);
+
+    if (secretRowsAffected === 0) {
+      throw new Error(
+        `WooCommerce app-auth callback: consumer_secret credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
+      );
+    }
 
     this.logger.info('WooCommerce app-auth callback credentials stored', {
       installationId: ctx.installationId,

@@ -1,6 +1,6 @@
 import type { ProductPayload } from "../../connector-framework/connector.interface";
 import { ConnectorNetworkError } from "../../connector-framework/connector.errors";
-import { WooCommerceConnector } from "./woocommerce.connector";
+import { MissingTenantContextError, WooCommerceConnector } from "./woocommerce.connector";
 
 const TEST_KEY = "c".repeat(64);
 
@@ -87,6 +87,10 @@ describe("WooCommerceConnector.handleOAuthCallback app-auth credential persisten
     expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(2); // RLS-BYPASS: manual tenant filter — test mock
     for (const call of db.$executeRawUnsafe.mock.calls) { // RLS-BYPASS: manual tenant filter — test mock
       expect(String(call[0]).toLowerCase()).toContain("tenant_key");
+      // The WHERE clause (not just the tenant_key column in the INSERT list)
+      // is the actual ownership guard on ON CONFLICT — assert it's present,
+      // not just claimed.
+      expect(String(call[0])).toContain("WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key");
       expect(call[2]).toBe(ctx.tenantId);
       expect(call[3]).toBe(ctx.installationId);
     }
@@ -110,6 +114,30 @@ describe("WooCommerceConnector.handleOAuthCallback app-auth credential persisten
     })).rejects.toThrow("tenant");
 
     expect(db.$executeRawUnsafe).not.toHaveBeenCalled(); // RLS-BYPASS: manual tenant filter — test mock
+  });
+
+  it("rejects the write instead of silently overwriting a credential id already owned by a different tenant", async () => {
+    // ON CONFLICT ... WHERE tenant_key = EXCLUDED.tenant_key returns 0 affected
+    // rows when `id` collides with a row owned by a different tenant — this
+    // must surface as a thrown error, not a silent successful resolve.
+    const db = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0), // RLS-BYPASS: manual tenant filter — test mock
+    };
+    const connector = makeConnectorWithDb(db);
+    const ctx = {
+      tenantId: "tenant-a",
+      installationId: "woo-install-a",
+      connectorId: "woocommerce",
+    };
+
+    await expect(connector.handleOAuthCallback(ctx as any, {
+      consumer_key: "ck_live",
+      consumer_secret: "cs_live",
+    })).rejects.toThrow("already owned by a different tenant");
+
+    // Must stop after the first blocked write — never attempt the second
+    // (consumer_secret) write once ownership is known to be violated.
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(1); // RLS-BYPASS: manual tenant filter — test mock
   });
 });
 
@@ -252,6 +280,21 @@ describe("WooCommerceConnector.validateCredentials (BUG-WOO-HEALTH-001 / #472)",
     mockResolvedCredentials(connector);
     jest.spyOn(connector as any, "callApi").mockRejectedValue(
       new ConnectorNetworkError("woocommerce", "NETWORK", true, "connection failed (ECONNRESET)"),
+    );
+
+    await expect(connector.validateCredentials(ctx as any)).resolves.toBe(true);
+  });
+
+  it("returns true (inconclusive) and does not treat a missing tenant context as invalid credentials", async () => {
+    // A ConnectorContext missing tenantId is an internal caller bug (see
+    // MissingTenantContextError's own doc comment) — not evidence the
+    // customer's stored WooCommerce credentials are wrong. Misreporting this
+    // as `false` would send the operator toward reconnecting a store whose
+    // real credentials are fine, the same misdiagnosis class #472 was
+    // created to prevent, just via a different trigger.
+    const connector = makeConnector();
+    jest.spyOn(connector as any, "resolveCredentials").mockRejectedValue(
+      new MissingTenantContextError("WooCommerce credential lookup missing tenant context."),
     );
 
     await expect(connector.validateCredentials(ctx as any)).resolves.toBe(true);
