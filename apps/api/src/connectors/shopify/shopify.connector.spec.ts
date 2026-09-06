@@ -431,6 +431,37 @@ describe("ShopifyConnector.refreshAccessToken", () => {
   });
 });
 
+describe("ShopifyConnector.storeCredential tenant ownership (issue #738)", () => {
+  it("includes the WHERE ownership guard on the ON CONFLICT upsert, scoped by tenant", async () => {
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    const ctx = makeCtx({ tenantId: "tenant-a", installationId: "install-a" });
+
+    await (connector as any).storeCredential(ctx, "access_token", "shpat_live_token");
+
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(1); // RLS-BYPASS: manual tenant filter — test mock
+    const [sql, id, tenantKey, installationId] = db.$executeRawUnsafe.mock.calls[0]; // RLS-BYPASS: manual tenant filter — test mock
+    expect(String(sql)).toContain("WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key");
+    expect(id).toBe("install-a:access_token");
+    expect(tenantKey).toBe("tenant-a");
+    expect(installationId).toBe("install-a");
+  });
+
+  it("rejects the write instead of silently overwriting a credential id already owned by a different tenant", async () => {
+    // ON CONFLICT ... WHERE tenant_key = EXCLUDED.tenant_key returns 0 affected
+    // rows when `id` collides with a row owned by a different tenant — this
+    // must surface as a thrown error, not a silent successful resolve.
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    db.$executeRawUnsafe.mockResolvedValue(0); // RLS-BYPASS: manual tenant filter — test mock
+    const ctx = makeCtx({ tenantId: "tenant-a", installationId: "install-a" });
+
+    await expect(
+      (connector as any).storeCredential(ctx, "access_token", "shpat_live_token"),
+    ).rejects.toThrow("already owned by a different tenant");
+  });
+});
+
 // ─── previewChanges ─────────────────────────────────────────────────────────
 
 describe("ShopifyConnector.previewChanges", () => {

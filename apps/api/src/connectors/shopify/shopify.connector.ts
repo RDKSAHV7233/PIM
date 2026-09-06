@@ -1160,7 +1160,19 @@ export class ShopifyConnector implements ConnectorInterface {
     const id = `${ctx.installationId}:${credentialType}`;
     const metadata = options.metadata ? JSON.stringify(options.metadata) : null;
 
-    await tenantExecRaw(db, `
+    // The WHERE clause on ON CONFLICT is the actual tenant-ownership guard,
+    // not just tenant_key being present in the INSERT list: if `id`
+    // (installationId + credentialType) ever collides with a row already
+    // owned by a DIFFERENT tenant, the WHERE condition is false, so Postgres
+    // treats it as a no-op (0 rows affected) instead of silently overwriting
+    // that other tenant's credential row. installationId is a
+    // crypto.randomUUID() (see connector-installer.service.ts), so a genuine
+    // cross-tenant `id` collision here would mean a UUID collision or a
+    // caller bug upstream — either way, failing loudly beats silently
+    // succeeding into someone else's tenant. Mirrors the same guard added to
+    // WooCommerce's credential upsert (woocommerce.connector.ts) — see
+    // https://github.com/Vexasaas/PIM/issues/738.
+    const rowsAffected = await tenantExecRaw(db, `
       INSERT INTO connector_credentials (
         id,
         tenant_key,
@@ -1194,10 +1206,17 @@ export class ShopifyConnector implements ConnectorInterface {
         failure_reason = NULL,
         last_refresh_at = NOW(),
         updated_at = NOW()
+      WHERE connector_credentials.tenant_key = EXCLUDED.tenant_key
       `,
       [id, ctx.tenantId, ctx.installationId, credentialType,
        encrypted.cipher, keyVersion, options.scope ?? null,
        options.expiresAt ?? null, metadata]);
+
+    if (rowsAffected === 0) {
+      throw new Error(
+        `Shopify credential storage: ${credentialType} credential id already owned by a different tenant (installationId=${ctx.installationId}).`,
+      );
+    }
   }
 
   private async fetchShopIdentity(
