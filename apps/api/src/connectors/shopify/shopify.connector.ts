@@ -958,60 +958,72 @@ export class ShopifyConnector implements ConnectorInterface {
       ? await this.fetchShopMarket(ctx, canonicalShopDomain, token.access_token)
       : {};
 
-    // Collect all credential stores and run them in parallel — each is an independent UPSERT
-    // on a distinct credential_type row, so there is no write conflict between them.
-    const credentialStores: Array<Promise<void>> = [
-      this.storeCredential(ctx, "shop_domain", canonicalShopDomain, {
-        scope,
-        metadata: { authMode: input.authMode },
-      }),
+    // Collect all credential stores as descriptors and run them sequentially
+    // inside one transaction (issue #744). Previously these ran concurrently
+    // via Promise.all — each is an independent UPSERT on a distinct
+    // credential_type row, so there's no write *conflict* between them, but
+    // running them outside a shared transaction meant a tenant-ownership
+    // rejection (added in #743) on any one write couldn't stop the others
+    // already in flight, leaving no rollback path for whichever had already
+    // landed. They're now sequential rather than concurrent because Prisma's
+    // interactive transactions share a single connection — issuing concurrent
+    // queries against the same transaction client is not a supported pattern.
+    // 5 small point-writes in sequence adds negligible latency.
+    const credentialStores: Array<{
+      credentialType: string;
+      value: string;
+      options: { expiresAt?: Date | null; scope?: string | null; metadata?: Record<string, unknown> | null };
+    }> = [
+      {
+        credentialType: "shop_domain",
+        value: canonicalShopDomain,
+        options: { scope, metadata: { authMode: input.authMode } },
+      },
     ];
 
     if (shopId) {
-      credentialStores.push(
-        this.storeCredential(ctx, "shop_id", shopId, {
-          scope,
-          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain },
-        }),
-      );
+      credentialStores.push({
+        credentialType: "shop_id",
+        value: shopId,
+        options: { scope, metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain } },
+      });
     }
 
     if (shopName) {
-      credentialStores.push(
-        this.storeCredential(ctx, "shop_name", shopName, {
-          scope,
-          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain },
-        }),
-      );
+      credentialStores.push({
+        credentialType: "shop_name",
+        value: shopName,
+        options: { scope, metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain } },
+      });
     }
 
     if (token.access_token) {
       const expiresAt = Number.isFinite(token.expires_in)
         ? new Date(now + Math.max(1, Number(token.expires_in)) * 1000)
         : null;
-      credentialStores.push(
-        this.storeCredential(ctx, "access_token", token.access_token, {
-          expiresAt,
-          scope,
-          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain, shopId },
-        }),
-      );
+      credentialStores.push({
+        credentialType: "access_token",
+        value: token.access_token,
+        options: { expiresAt, scope, metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain, shopId } },
+      });
     }
 
     if (token.refresh_token) {
       const refreshExpiresAt = Number.isFinite(token.refresh_token_expires_in)
         ? new Date(now + Math.max(1, Number(token.refresh_token_expires_in)) * 1000)
         : null;
-      credentialStores.push(
-        this.storeCredential(ctx, "refresh_token", token.refresh_token, {
-          expiresAt: refreshExpiresAt,
-          scope,
-          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain, shopId },
-        }),
-      );
+      credentialStores.push({
+        credentialType: "refresh_token",
+        value: token.refresh_token,
+        options: { expiresAt: refreshExpiresAt, scope, metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain, shopId } },
+      });
     }
 
-    await Promise.all(credentialStores);
+    await this.prismaDirect.getClient().$transaction(async (tx) => {
+      for (const store of credentialStores) {
+        await this.storeCredential(tx, ctx, store.credentialType, store.value, store.options);
+      }
+    });
 
     await this.persistInstallationMetadata(ctx, {
       shopDomain: canonicalShopDomain,
@@ -1145,6 +1157,7 @@ export class ShopifyConnector implements ConnectorInterface {
   }
 
   private async storeCredential(
+    client: Parameters<typeof tenantExecRaw>[0],
     ctx: ConnectorContext,
     credentialType: string,
     plainValue: string,
@@ -1156,7 +1169,6 @@ export class ShopifyConnector implements ConnectorInterface {
   ): Promise<void> {
     const encrypted = buildEncryptedCredential(plainValue, this.currentKeyVersion, this.keys);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
-    const db = this.prismaDirect.getClient();
     const id = `${ctx.installationId}:${credentialType}`;
     const metadata = options.metadata ? JSON.stringify(options.metadata) : null;
 
@@ -1172,7 +1184,7 @@ export class ShopifyConnector implements ConnectorInterface {
     // succeeding into someone else's tenant. Mirrors the same guard added to
     // WooCommerce's credential upsert (woocommerce.connector.ts) — see
     // https://github.com/Vexasaas/PIM/issues/738.
-    const rowsAffected = await tenantExecRaw(db, `
+    const rowsAffected = await tenantExecRaw(client, `
       INSERT INTO connector_credentials (
         id,
         tenant_key,

@@ -21,7 +21,7 @@ function makeConnector(): ShopifyConnector {
 
   // getClient must return the same object on every call — otherwise
   // tests that do db = getClient() then mock db.fn won't affect the connector
-  const mockDbClient = {
+  const mockDbClient: any = {
     connectorCredential: {
       findFirst: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
@@ -32,6 +32,10 @@ function makeConnector(): ShopifyConnector {
     },
     $queryRawUnsafe: jest.fn().mockResolvedValue([]), // RLS-BYPASS: manual tenant filter — test mock
     $executeRawUnsafe: jest.fn().mockResolvedValue(1), // RLS-BYPASS: manual tenant filter — test mock
+    // persistTokenSet (issue #744) wraps credential writes in a real
+    // transaction — the default mock just invokes the callback with itself,
+    // so existing tests that indirectly call persistTokenSet keep working.
+    $transaction: jest.fn((cb: any) => cb(mockDbClient)),
   };
   const prismaDirect = {
     getClient: () => mockDbClient,
@@ -437,7 +441,10 @@ describe("ShopifyConnector.storeCredential tenant ownership (issue #738)", () =>
     const db = (connector as any).prismaDirect.getClient();
     const ctx = makeCtx({ tenantId: "tenant-a", installationId: "install-a" });
 
-    await (connector as any).storeCredential(ctx, "access_token", "shpat_live_token");
+    // storeCredential now takes an explicit client (issue #744) so callers
+    // can run it inside a shared transaction — pass db directly here since
+    // this test targets storeCredential in isolation, not persistTokenSet.
+    await (connector as any).storeCredential(db, ctx, "access_token", "shpat_live_token");
 
     expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(1); // RLS-BYPASS: manual tenant filter — test mock
     const [sql, id, tenantKey, installationId] = db.$executeRawUnsafe.mock.calls[0]; // RLS-BYPASS: manual tenant filter — test mock
@@ -457,8 +464,79 @@ describe("ShopifyConnector.storeCredential tenant ownership (issue #738)", () =>
     const ctx = makeCtx({ tenantId: "tenant-a", installationId: "install-a" });
 
     await expect(
-      (connector as any).storeCredential(ctx, "access_token", "shpat_live_token"),
+      (connector as any).storeCredential(db, ctx, "access_token", "shpat_live_token"),
     ).rejects.toThrow("already owned by a different tenant");
+  });
+});
+
+describe("ShopifyConnector.persistTokenSet transaction wrapping (issue #744)", () => {
+  it("runs all credential writes inside one transaction, sequentially, not via Promise.all", async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error("network unavailable")); // fetchShopMarket is best-effort/non-fatal
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    db.$transaction = jest.fn((cb: any) => cb(db)); // RLS-BYPASS: manual tenant filter — test mock
+    const ctx = makeCtx({ tenantId: "tenant-a", installationId: "install-a" });
+
+    await (connector as any).persistTokenSet(ctx, {
+      access_token: "shpat_live",
+      refresh_token: "shprt_live",
+      scope: "read_products",
+      expires_in: 3600,
+      refresh_token_expires_in: 7200,
+    }, { shopDomain: "test-store.myshopify.com", authMode: "custom_app" });
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    // shop_domain, access_token, refresh_token — no shopIdentity, so no shop_id/shop_name.
+    // (persistInstallationMetadata also issues its own UPDATE afterward, outside
+    // this transaction, so scope the count to the credential-store INSERTs only.)
+    const credentialWrites = db.$executeRawUnsafe.mock.calls // RLS-BYPASS: manual tenant filter — test mock
+      .filter((call: unknown[]) => String(call[0]).includes("INSERT INTO connector_credentials"));
+    expect(credentialWrites).toHaveLength(3);
+  });
+
+  it("stops after the first blocked write instead of leaving a partial credential set uncommitted", async () => {
+    // If any one write is rejected (foreign-tenant id collision), the whole
+    // $transaction callback rejects — no later writes in the sequence run,
+    // and the real Postgres transaction rolls back whichever had already
+    // landed (not exercisable by this mock, but the sequencing is).
+    //
+    // Deliberately includes refresh_token (positioned AFTER access_token in
+    // the descriptor sequence) and blocks access_token specifically: this is
+    // what distinguishes true sequential execution from a Promise.all placed
+    // inside the same transaction. Under Promise.all, every write's raw exec
+    // call fires synchronously (up to its own first await) regardless of
+    // another write's eventual rejection — refresh_token's write would still
+    // have been issued (3 calls total) even though the overall promise still
+    // rejects. Under real sequential execution (this fix), refresh_token's
+    // write is never even attempted (2 calls).
+    global.fetch = jest.fn().mockRejectedValue(new Error("network unavailable")); // fetchShopMarket is best-effort/non-fatal
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    db.$transaction = jest.fn((cb: any) => cb(db)); // RLS-BYPASS: manual tenant filter — test mock
+    db.$executeRawUnsafe = jest.fn() // RLS-BYPASS: manual tenant filter — test mock
+      .mockResolvedValueOnce(1) // shop_domain succeeds
+      .mockResolvedValueOnce(0); // access_token blocked
+    const ctx = makeCtx({ tenantId: "tenant-a", installationId: "install-a" });
+
+    await expect((connector as any).persistTokenSet(ctx, {
+      access_token: "shpat_live",
+      refresh_token: "shprt_live",
+      scope: "read_products",
+      expires_in: 3600,
+      refresh_token_expires_in: 7200,
+    }, { shopDomain: "test-store.myshopify.com", authMode: "custom_app" }))
+      .rejects.toThrow("access_token credential id already owned by a different tenant");
+
+    // shop_domain, then access_token (blocked) — refresh_token's write must
+    // never fire. A Promise.all-based implementation would have issued all 3
+    // (this exact scenario is why test 1 alone couldn't prove sequential
+    // execution — see PR #747 review).
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(2); // RLS-BYPASS: manual tenant filter — test mock
+    // credentialType is a bound parameter ($4 → call[4]), not inlined into
+    // the SQL text (identical across all 5 credential types) — check the
+    // actual composite id (call[1]) rather than the SQL string.
+    const writtenIds = db.$executeRawUnsafe.mock.calls.map((call: unknown[]) => call[1]); // RLS-BYPASS: manual tenant filter — test mock
+    expect(writtenIds).not.toContain("install-a:refresh_token");
   });
 });
 
