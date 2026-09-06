@@ -469,7 +469,7 @@ describe("ShopifyConnector.storeCredential tenant ownership (issue #738)", () =>
   });
 });
 
-describe("ShopifyConnector.persistTokenSet transaction wrapping (issue #744)", () => {
+describe("ShopifyConnector.persistTokenSet transaction wrapping (issues #744, #748)", () => {
   it("runs all credential writes inside one transaction, sequentially, not via Promise.all", async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error("network unavailable")); // fetchShopMarket is best-effort/non-fatal
     const connector = makeConnector();
@@ -487,11 +487,24 @@ describe("ShopifyConnector.persistTokenSet transaction wrapping (issue #744)", (
 
     expect(db.$transaction).toHaveBeenCalledTimes(1);
     // shop_domain, access_token, refresh_token — no shopIdentity, so no shop_id/shop_name.
-    // (persistInstallationMetadata also issues its own UPDATE afterward, outside
-    // this transaction, so scope the count to the credential-store INSERTs only.)
+    // (persistInstallationMetadata also runs inside this same transaction —
+    // issue #748 — as an UPDATE, not an INSERT, so scope this count to the
+    // credential-store INSERTs only; its own atomicity is covered below.)
     const credentialWrites = db.$executeRawUnsafe.mock.calls // RLS-BYPASS: manual tenant filter — test mock
       .filter((call: unknown[]) => String(call[0]).includes("INSERT INTO connector_credentials"));
     expect(credentialWrites).toHaveLength(3);
+
+    // Proves the metadata UPDATE lands inside the same $transaction call as
+    // the credential writes (issue #748) — same disclosure as #747's own
+    // tests: this mock (`$transaction: jest.fn((cb) => cb(db))`) proves
+    // sequencing and that every write shares one client handle, but cannot
+    // itself exercise real Postgres commit/rollback semantics. The
+    // "metadata + credentials as one rollback unit" guarantee ultimately
+    // rests on Prisma's/Postgres's actual transaction machinery, not on
+    // anything this synchronous stand-in can verify.
+    const installationUpdates = db.$executeRawUnsafe.mock.calls // RLS-BYPASS: manual tenant filter — test mock
+      .filter((call: unknown[]) => String(call[0]).includes("UPDATE connector_installations"));
+    expect(installationUpdates).toHaveLength(1);
   });
 
   it("stops after the first blocked write instead of leaving a partial credential set uncommitted", async () => {
@@ -537,6 +550,16 @@ describe("ShopifyConnector.persistTokenSet transaction wrapping (issue #744)", (
     // actual composite id (call[1]) rather than the SQL string.
     const writtenIds = db.$executeRawUnsafe.mock.calls.map((call: unknown[]) => call[1]); // RLS-BYPASS: manual tenant filter — test mock
     expect(writtenIds).not.toContain("install-a:refresh_token");
+
+    // Directly proves the #748 claim: persistInstallationMetadata's UPDATE
+    // must never fire when a credential write is blocked, since it's
+    // positioned after the write loop inside the same transaction callback.
+    // (The toHaveBeenCalledTimes(2)/writtenIds checks above bound the
+    // credential writes specifically; this checks the metadata UPDATE
+    // independently, by SQL shape rather than by an incidental total count.)
+    const installationUpdates = db.$executeRawUnsafe.mock.calls // RLS-BYPASS: manual tenant filter — test mock
+      .filter((call: unknown[]) => String(call[0]).includes("UPDATE connector_installations"));
+    expect(installationUpdates).toHaveLength(0);
   });
 });
 

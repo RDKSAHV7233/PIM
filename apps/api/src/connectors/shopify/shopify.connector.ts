@@ -1019,25 +1019,31 @@ export class ShopifyConnector implements ConnectorInterface {
       });
     }
 
+    // persistInstallationMetadata runs inside the same transaction as the
+    // credential writes (issue #748): without this, all 5 credentials could
+    // commit successfully while the installation's connectionStage update
+    // failed or was skipped independently, leaving a partial-completion
+    // state (valid credentials, never marked 'connected').
     await this.prismaDirect.getClient().$transaction(async (tx) => {
       for (const store of credentialStores) {
         await this.storeCredential(tx, ctx, store.credentialType, store.value, store.options);
       }
-    });
 
-    await this.persistInstallationMetadata(ctx, {
-      shopDomain: canonicalShopDomain,
-      shopId,
-      shopName,
-      tokenMode: token.refresh_token ? "expiring_offline" : "offline",
-      authMode: input.authMode,
-      scope,
-      currencyCode: this.normalizeOptionalString(shopMarket.currencyCode),
-      marketCode: this.normalizeOptionalString(shopMarket.countryCode),
+      await this.persistInstallationMetadata(tx, ctx, {
+        shopDomain: canonicalShopDomain,
+        shopId,
+        shopName,
+        tokenMode: token.refresh_token ? "expiring_offline" : "offline",
+        authMode: input.authMode,
+        scope,
+        currencyCode: this.normalizeOptionalString(shopMarket.currencyCode),
+        marketCode: this.normalizeOptionalString(shopMarket.countryCode),
+      });
     });
   }
 
   private async persistInstallationMetadata(
+    client: Parameters<typeof tenantExecRaw>[0],
     ctx: ConnectorContext,
     metadata: {
       shopDomain: string;
@@ -1052,7 +1058,6 @@ export class ShopifyConnector implements ConnectorInterface {
       marketCode?: string | null;
     },
   ): Promise<void> {
-    const db = this.prismaDirect.getClient();
     // Only include currencyCode / marketCode in the JSONB merge when they are non-null,
     // to avoid overwriting previously set values with null on token refresh paths.
     const marketFields = [
@@ -1062,7 +1067,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const marketJsonb = marketFields
       ? ` || jsonb_build_object(${marketFields})`
       : "";
-    await tenantExecRaw(db, `
+    await tenantExecRaw(client, `
       UPDATE connector_installations
       SET
         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
