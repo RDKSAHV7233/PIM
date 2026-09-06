@@ -173,6 +173,7 @@ async function run() {
   const env = {
     ...process.env,
     PORT: String(apiPort),
+    QUEUE_WORKER_ENABLED: "false",
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
@@ -263,9 +264,9 @@ async function run() {
     assertStatus(createJob, 201, "create export job");
     const jobId = String(createJob.payload.id);
 
-    // Force deterministic processing failure:
-    // 1) reset job state in case async worker already completed it
-    // 2) soft-delete the product so simulateProduct() fails with "Product not found"
+    // Force deterministic processing failure. This process disables background
+    // queue workers so the explicit /process call below is the only worker path.
+    // Soft-delete the product so tenant-scoped simulation treats it as not found.
     // RLS-BYPASS: manual tenant filter
     await prisma.$executeRawUnsafe(
       `
