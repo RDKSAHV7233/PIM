@@ -38,7 +38,32 @@ function buildCsvBuffer(categoryHint) {
   return Buffer.from(rows.join("\n"), "utf8");
 }
 
+async function listImportedProducts(adminToken, categoryId) {
+  const productsRaw = await apiRequest(
+    "GET",
+    `/catalog/products/advanced-search?categoryId=${encodeURIComponent(categoryId)}&limit=50`,
+    adminToken,
+    undefined,
+    DEFAULT_API_URL,
+  );
+  return Array.isArray(productsRaw) ? productsRaw : (productsRaw?.items ?? []);
+}
+
+async function waitForImportedProducts(adminToken, categoryId, minimumCount = 1) {
+  let products = [];
+  for (let attempt = 0; attempt < 30; attempt++) {
+    products = await listImportedProducts(adminToken, categoryId);
+    if (products.length >= minimumCount) {
+      return products;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  return products;
+}
+
 test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Channel Mapping", () => {
+  test.describe.configure({ mode: "serial" });
+
   // 3 minutes: async import job (≤60 s) + page interactions
   test.setTimeout(180_000);
 
@@ -126,28 +151,34 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
     const bulkJobId = new URL(redirectedUrl).searchParams.get("bulkJobId") ?? "";
     const bulkRunId = new URL(redirectedUrl).searchParams.get("bulkRunId") ?? "";
 
-    let jobDone = false;
-    const TERMINAL = new Set(["completed", "dead_letter", "failed", "preflight_ready", "processing"]);
-    for (let attempt = 0; attempt < 15 && !jobDone; attempt++) {
+    let finalStatus = "";
+    const TERMINAL = new Set(["completed", "dead_letter", "failed"]);
+    for (let attempt = 0; attempt < 30 && !finalStatus; attempt++) {
       try {
         if (bulkJobId) {
           const job = await apiRequest("GET", `/bulk-import/jobs/${encodeURIComponent(bulkJobId)}`, adminToken, undefined, DEFAULT_API_URL);
-          if (job && TERMINAL.has(String(job.status ?? "").toLowerCase())) {
-            jobDone = true;
+          const status = String(job?.status ?? "").toLowerCase();
+          if (TERMINAL.has(status)) {
+            finalStatus = status;
           }
         } else if (bulkRunId) {
           const run = await apiRequest("GET", `/bulk-import/runs/${encodeURIComponent(bulkRunId)}`, adminToken, undefined, DEFAULT_API_URL);
-          if (run && TERMINAL.has(String(run.status ?? "").toLowerCase())) {
-            jobDone = true;
+          const status = String(run?.status ?? "").toLowerCase();
+          if (TERMINAL.has(status)) {
+            finalStatus = status;
           }
         }
       } catch { /* retry */ }
-      if (!jobDone) {
-        await page.waitForTimeout(4_000);
+      if (!finalStatus) {
+        await page.waitForTimeout(3_000);
       }
     }
 
-    expect(jobDone, "Import job/run did not reach a terminal status within ~60 s").toBe(true);
+    expect(finalStatus, "Import job/run did not reach a terminal status within ~90 s").toBeTruthy();
+    expect(finalStatus, "Import job/run did not complete successfully").toBe("completed");
+
+    const importedProducts = await waitForImportedProducts(adminToken, category.id);
+    expect(importedProducts.length, "Imported products were not visible through category search after completion").toBeGreaterThan(0);
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -155,6 +186,9 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
   // ═══════════════════════════════════════════════════════════════
 
   test("step 2: imported products appear in catalog filtered by category", async ({ page }) => {
+    const importedProducts = await waitForImportedProducts(adminToken, category.id);
+    expect(importedProducts.length, "Imported products were not visible through category search before catalog verification").toBeGreaterThan(0);
+
     await loginViaUi(page, "editor");
     await page.goto(
       `/catalog/products?categoryId=${encodeURIComponent(category.id)}`,
@@ -168,6 +202,9 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
   });
 
   test("step 3: editor opens an imported product and sees its status badge", async ({ page }) => {
+    const importedProducts = await waitForImportedProducts(adminToken, category.id);
+    expect(importedProducts.length, "Imported products were not visible through category search before product-detail verification").toBeGreaterThan(0);
+
     await loginViaUi(page, "editor");
     await page.goto(
       `/catalog/products?categoryId=${encodeURIComponent(category.id)}`,
@@ -193,6 +230,9 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
   // ═══════════════════════════════════════════════════════════════
 
   test("step 4: quality tab renders completeness or validation content for an imported product", async ({ page }) => {
+    const importedProducts = await waitForImportedProducts(adminToken, category.id);
+    expect(importedProducts.length, "Imported products were not visible through category search before quality verification").toBeGreaterThan(0);
+
     await loginViaUi(page, "editor");
 
     // Discover a product ID via the catalog page
@@ -218,6 +258,9 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
   });
 
   test("step 5: quality tab shows a substantive content element — not a blank panel", async ({ page }) => {
+    const importedProducts = await waitForImportedProducts(adminToken, category.id);
+    expect(importedProducts.length, "Imported products were not visible through category search before quality blank-panel verification").toBeGreaterThan(0);
+
     await loginViaUi(page, "editor");
 
     await page.goto(
