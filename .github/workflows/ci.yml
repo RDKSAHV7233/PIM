@@ -394,7 +394,6 @@ jobs:
       - name: E2E - Full UX journey (import → catalog → quality → bulk edit → mapping)
         run: npx playwright test journey-bulk-import-to-mapping --project=chromium
         timeout-minutes: 12
-        continue-on-error: true
 
       - name: E2E - Shopify connector journey
         run: |
