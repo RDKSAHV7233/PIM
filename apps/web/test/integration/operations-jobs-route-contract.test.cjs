@@ -60,6 +60,14 @@ function run() {
     "Operations jobs must defensively normalize live operational row fields before rendering Server Components.",
   );
   assert(
+    source.includes("function operatorRecoveryReason(value: unknown): string") &&
+      source.includes("Retry attempt did not resume automatically. Review connector health, then requeue from the Repair Center.") &&
+      source.includes("internalRetryLeakPatterns.some((pattern) => pattern.test(reason))") &&
+      source.includes("operatorRecoveryReason(job.dlqReason || job.failureReason)") &&
+      !source.includes('safeText(job.dlqReason || job.failureReason, "Needs recovery.")'),
+    "Operations jobs must translate internal retry diagnostics before rendering dead-letter recovery reasons.",
+  );
+  assert(
     source.includes("const statusCounts = submissions.reduce<Record<string, number>>(") &&
       source.includes('label="Visible Submissions"') &&
       source.includes("Latest ${visibleSubmissionLimit} matching jobs") &&
@@ -113,6 +121,7 @@ function run() {
           "operations_jobs_route_fetches_submissions_and_dead_letter_in_parallel",
           "operations_jobs_route_normalizes_payload_shapes_and_selected_submission",
           "operations_jobs_route_defensively_normalizes_live_operational_fields",
+          "operations_jobs_route_translates_internal_retry_diagnostics",
           "operations_jobs_route_derives_kpis_from_live_status_counts",
           "operations_jobs_route_exposes_refresh_and_filter_controls",
           "operations_jobs_route_surfaces_empty_state_with_repair_escalation",

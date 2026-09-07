@@ -133,6 +133,27 @@ function recoveryActionLabel(submission: {
   return "Review the latest outcome and decide the next step.";
 }
 
+function operatorRecoveryReason(value: unknown): string {
+  const reason = safeText(value, "");
+  if (!reason) {
+    return "Needs recovery.";
+  }
+
+  const internalRetryLeakPatterns = [
+    /\bS\d+\s+bug\b/i,
+    /\bBullMQ\b/i,
+    /\bapp-level retry\b/i,
+    /\bre-enqueue\b/i,
+    /\bretry wrote\b/i,
+  ];
+
+  if (internalRetryLeakPatterns.some((pattern) => pattern.test(reason))) {
+    return "Retry attempt did not resume automatically. Review connector health, then requeue from the Repair Center.";
+  }
+
+  return reason;
+}
+
 function submissionTimelineItems(submission: {
   id: string;
   status: string;
@@ -504,7 +525,11 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       {
         key: "reason",
         header: "Reason",
-        render: (job) => <span className="text-sm text-slate-700">{safeText(job.dlqReason || job.failureReason, "Needs recovery.")}</span>,
+        render: (job) => (
+          <span className="text-sm text-slate-700">
+            {operatorRecoveryReason(job.dlqReason || job.failureReason)}
+          </span>
+        ),
       },
       {
         key: "submitted",
