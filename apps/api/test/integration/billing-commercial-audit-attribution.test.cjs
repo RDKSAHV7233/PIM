@@ -211,6 +211,7 @@ async function run() {
         workspaceSlug: opsWorkspaceSlug,
         displayName: "Ops Audit Workspace",
         initialAdminUserId: opsAdminUser,
+        initialAdminPassword: process.env.PIM_AUTH_PASSWORD,
       },
       platformHeaders(platformToken),
     );
@@ -225,6 +226,7 @@ async function run() {
         workspaceSlug: targetWorkspaceSlug,
         displayName: "Target Audit Workspace",
         initialAdminUserId: targetAdminUser,
+        initialAdminPassword: process.env.PIM_AUTH_PASSWORD,
       },
       platformHeaders(platformToken),
     );

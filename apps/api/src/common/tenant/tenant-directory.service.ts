@@ -1,5 +1,4 @@
 import { Injectable, Logger } from "@nestjs/common";
-import * as bcrypt from "bcryptjs";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -107,7 +106,7 @@ export class TenantDirectoryService {
   async provisionWorkspace(input: ProvisionWorkspaceInput): Promise<ResolvedWorkspaceDirectoryEntry> {
     return this.provisionWorkspaceInternal({
       ...input,
-      initialAdminPasswordHash: await this.resolveInitialPasswordHash(),
+      initialAdminPasswordHash: null,
       overrideExistingPasswordHash: false,
     });
   }
@@ -274,17 +273,6 @@ export class TenantDirectoryService {
         },
       });
     });
-  }
-
-  private async resolveInitialPasswordHash(): Promise<string | null> {
-    const configuredPassword = String(process.env.PIM_AUTH_PASSWORD ?? "").trim();
-    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
-    const allowLocalDefault = appEnv === "development" || appEnv === "local" || appEnv === "test";
-    const sharedPassword = configuredPassword || (allowLocalDefault ? "vexa-pim-demo-password" : "");
-    if (!sharedPassword) {
-      return null;
-    }
-    return bcrypt.hash(sharedPassword, 12);
   }
 
   private isDbAuthMode(): boolean {

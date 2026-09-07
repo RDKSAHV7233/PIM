@@ -215,6 +215,7 @@ async function run() {
         workspaceSlug,
         displayName,
         initialAdminUserId: adminUser,
+        initialAdminPassword: process.env.PIM_AUTH_PASSWORD,
       },
       { "x-pim-platform-admin-token": platformToken },
     );

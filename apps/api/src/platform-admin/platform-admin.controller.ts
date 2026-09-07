@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Headers, HttpCode, Logger, Post, Req, UnauthorizedException } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
 import type { Request } from "express";
 import { AuditService } from "../audit/audit.service";
 import { Public } from "../auth/public.decorator";
@@ -54,11 +55,13 @@ export class PlatformAdminController {
     }
 
     try {
-      const result = await this.tenantDirectoryService.provisionWorkspace({
+      const initialAdminPasswordHash = await bcrypt.hash(String(dto.initialAdminPassword), 12);
+      const result = await this.tenantDirectoryService.provisionWorkspaceWithPasswordHash({
         tenantKey: dto.tenantKey,
         workspaceSlug: dto.workspaceSlug,
         displayName: dto.displayName,
         initialAdminUserId: dto.initialAdminUserId,
+        initialAdminPasswordHash,
       });
       await this.auditService.record({
         actorId: "platform-admin-token",

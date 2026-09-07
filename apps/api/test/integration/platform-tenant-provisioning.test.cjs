@@ -151,7 +151,7 @@ async function run() {
       baseUrl,
       "POST",
       "/platform/tenants",
-      { tenantKey, workspaceSlug, displayName, initialAdminUserId },
+      { tenantKey, workspaceSlug, displayName, initialAdminUserId, initialAdminPassword: process.env.PIM_AUTH_PASSWORD },
       { "x-pim-platform-admin-token": platformToken },
     );
     if (provision.status !== 201) {

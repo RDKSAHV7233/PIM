@@ -54,6 +54,8 @@ module.exports = {
     "**/connectors/shopify/shopify-oauth-hmac.spec.ts",
     "**/compliance/compliance.service.spec.ts",
     "**/workspace-users/workspace-users.service.spec.ts",
+    "**/common/tenant/tenant-directory.service.spec.ts",
+    "**/platform-admin/platform-admin.controller.spec.ts",
     "**/pricing/pricing.service.spec.ts",
     "**/prisma/extensions/tenant-scope.spec.ts",
     "**/common/tenant/tenant-raw-usage.spec.ts",

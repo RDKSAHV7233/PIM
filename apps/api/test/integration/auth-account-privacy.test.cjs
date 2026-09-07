@@ -304,6 +304,7 @@ async function run() {
         workspaceSlug,
         displayName: `Auth Privacy ${runId}`,
         initialAdminUserId: userId,
+        initialAdminPassword: process.env.PIM_AUTH_PASSWORD,
       },
       { "x-pim-platform-admin-token": platformToken },
     );

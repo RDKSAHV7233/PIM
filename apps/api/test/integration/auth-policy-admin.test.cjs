@@ -225,7 +225,7 @@ async function run() {
       "POST",
       "/platform/tenants",
       null,
-      { tenantKey, workspaceSlug, displayName, initialAdminUserId: adminUserId },
+      { tenantKey, workspaceSlug, displayName, initialAdminUserId: adminUserId, initialAdminPassword: process.env.PIM_AUTH_PASSWORD },
       { "x-pim-platform-admin-token": platformToken },
     );
     assertStatus(provision, 201, "platform tenant provisioning");

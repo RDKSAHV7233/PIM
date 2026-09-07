@@ -1,3 +1,4 @@
+import { Transform } from "class-transformer";
 import { IsString, Matches, MaxLength, MinLength } from "class-validator";
 
 export class CreatePlatformTenantDto {
@@ -20,4 +21,10 @@ export class CreatePlatformTenantDto {
   @MinLength(1)
   @MaxLength(255)
   initialAdminUserId!: string;
+
+  @Transform(({ value }) => String(value ?? ""))
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  initialAdminPassword!: string;
 }
