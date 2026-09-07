@@ -498,6 +498,14 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
    * ErrorIssueTenantImpact children, via schema onDelete: Cascade) whose
    * lastSeenAt is older than retentionDays. Bounds indefinite growth of
    * captured error data — nothing previously purged these rows at all.
+   *
+   * PIM#756: only issues in state "resolved" are eligible for purge. "open"
+   * and "muted" issues are exempt even past the retention cutoff, so their
+   * occurrence/tenant-impact history isn't cascade-deleted out from under
+   * them. "muted" is exempt too, not just "open": this schema has no
+   * mutedUntil/expiry field, so muting here means "stop paging me," not
+   * "this is closed and disposable" — a muted issue is not resolved and
+   * must not be silently purged.
    */
   async purgeExpiredIssues(retentionDays: number): Promise<{ deletedCount: number; storageAvailable: boolean }> {
     if (!this.client) {
@@ -507,6 +515,7 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
     try {
       const result = await this.client.errorIssue.deleteMany({
         where: {
+          state: "resolved",
           lastSeenAt: { lt: cutoff },
         },
       });

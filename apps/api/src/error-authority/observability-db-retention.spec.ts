@@ -32,6 +32,16 @@ describe("ObservabilityDbService.purgeExpiredIssues", () => {
     expect(Math.abs(cutoff.getTime() - expectedCutoff)).toBeLessThan(5000);
   });
 
+  it("PIM#756: only purges issues in state 'resolved', exempting 'open' and 'muted' regardless of age", async () => {
+    const { service, deleteMany } = makeServiceWithClient();
+
+    await service.purgeExpiredIssues(90);
+
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    const callArg = deleteMany.mock.calls[0][0] as { where: { state: string } };
+    expect(callArg.where.state).toBe("resolved");
+  });
+
   it("reports storageAvailable: false without deleting anything when no client is connected", async () => {
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
     const service = new ObservabilityDbService(logger as never);
