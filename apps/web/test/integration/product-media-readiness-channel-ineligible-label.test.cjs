@@ -1,41 +1,28 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * PIM#644 regression test: per-product "Media readiness" pill says "Blocked" for an
- * image not marked eligible for the selected channel, even though export succeeds
- * anyway.
+ * PIM#755 regression test: per-product "Media readiness" pill says "Blocked" for an
+ * image not marked eligible for the selected channel, and the backend publish
+ * readiness gate now enforces the same condition before export.
  *
- * Root cause (traced, not assumed): the per-image channel-eligibility check lives in
- * apps/api/src/media/media.service.ts's validateAsset() (pushes to `issues`,
- * informational only). The real export-gating logic in
- * apps/api/src/marketplace/connector-mapping.service.ts's evaluatePublishReadiness()
- * builds its `blockers` array from a fixed set of checks (mapping compatibility,
- * connector install/credential status, required-attribute mapping, product
- * approval/archived status, required product data) that does not include media/image
- * eligibility at all. Separately, marketplace.service.ts's pre-flight
- * connectorFramework.validate() call only logs a warning and explicitly lets the job
- * "proceed to async processing" regardless of the result. So nothing between the
- * "Blocked" pill and the real export path enforces this check as a hard gate.
- *
- * Live-verified twice against a real WooCommerce store during a production-readiness
- * pass (22-23 Aug 2026): both a single-product republish and a 2-variant product
- * publish showed this exact "Blocked" pill and both exported successfully anyway.
- *
- * This is the same class of defect PIM#585 fixed for the sibling `imageAssetCount === 0`
- * branch of the same `mediaReadiness` IIFE in page.tsx (that branch downgrades to
- * "Warnings" when a usable Main Image URL covers the gap) — this test covers the
- * `channelIneligibleCount > 0` branch a few lines below it, which #585's fix did not
- * touch.
- *
- * This test structurally verifies the fix by extracting the exact `channelIneligibleCount
- * > 0` branch of page.tsx's mediaReadiness IIFE and asserting it now returns a
- * "Warnings"/"warning" result, not "Blocked"/"danger".
+ * This test structurally verifies the UI and API contract together. The Product
+ * Detail branch must show a real Blocked/danger state, and
+ * connector-mapping.service.ts must include the matching
+ * media_channel_eligibility_blocked export-readiness blocker.
  */
 const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PRODUCT_PAGE_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
+const CONNECTOR_MAPPING_SERVICE_FILE = path.join(
+  REPO_ROOT,
+  "apps",
+  "api",
+  "src",
+  "marketplace",
+  "connector-mapping.service.ts",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -71,22 +58,32 @@ function extractChannelIneligibleBranch(source) {
 
 function run() {
   const pageSource = fs.readFileSync(PRODUCT_PAGE_FILE, "utf8");
+  const connectorMappingSource = fs.readFileSync(CONNECTOR_MAPPING_SERVICE_FILE, "utf8");
   const branch = extractChannelIneligibleBranch(pageSource);
 
   assert(
-    /label:\s*"Warnings"/.test(branch),
-    "The channelIneligibleCount > 0 branch must return label: \"Warnings\", not \"Blocked\" — export succeeds " +
-      "regardless of this check (live-verified against a real WooCommerce store), so \"Blocked\" misrepresents " +
-      "what will actually happen.",
+    /label:\s*"Blocked"/.test(branch),
+    "The channelIneligibleCount > 0 branch must return label: \"Blocked\" because export readiness now enforces media channel eligibility.",
   );
   assert(
-    /tone:\s*"warning"\s*as const/.test(branch),
-    "The channelIneligibleCount > 0 branch must use tone: \"warning\", not \"danger\", to match its downgraded " +
-      "label.",
+    /tone:\s*"danger"\s*as const/.test(branch),
+    "The channelIneligibleCount > 0 branch must use tone: \"danger\" to match the enforced export blocker.",
   );
   assert(
-    !/label:\s*"Blocked"/.test(branch) && !/tone:\s*"danger"\s*as const/.test(branch),
-    "The channelIneligibleCount > 0 branch must not still return a Blocked/danger result.",
+    branch.includes("Update media channel eligibility before export."),
+    "The channelIneligibleCount > 0 branch must tell the operator how to clear the blocker.",
+  );
+  assert(
+    !branch.includes("won't stop export"),
+    "The channelIneligibleCount > 0 branch must not claim export will continue after this blocker.",
+  );
+  assert(
+    connectorMappingSource.includes("media_channel_eligibility_blocked"),
+    "The backend publish-readiness service must include the matching media_channel_eligibility_blocked blocker.",
+  );
+  assert(
+    connectorMappingSource.includes("evaluateMediaExportReadiness"),
+    "The backend publish-readiness service must evaluate export media readiness before export.",
   );
 
   // Regression guard: the sibling `imageAssetCount === 0` "no images at all" branch
@@ -106,8 +103,10 @@ function run() {
       {
         status: "ok",
         validated: [
-          "channel_ineligible_count_branch_downgraded_to_warnings_not_blocked",
-          "channel_ineligible_count_branch_uses_warning_tone_not_danger",
+          "channel_ineligible_count_branch_returns_blocked",
+          "channel_ineligible_count_branch_uses_danger_tone",
+          "channel_ineligible_count_branch_has_actionable_copy",
+          "backend_publish_readiness_includes_media_channel_eligibility_blocker",
           "sibling_zero_images_branch_left_untouched_out_of_scope",
         ],
         checkedAt: new Date().toISOString(),

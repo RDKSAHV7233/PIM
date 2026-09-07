@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MetricsService } from "../metrics/metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { mapConnectorSlugToMarketplaceChannel } from "./marketplace-channels";
 
 export type MappingLevel =
   | "connector_default_template"
@@ -228,6 +229,20 @@ function isEmptyValue(value: unknown): boolean {
   if (typeof value === "string") return value.trim().length === 0;
   if (Array.isArray(value)) return value.length === 0;
   return false;
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function readGovernance(metadata: unknown): Record<string, unknown> {
+  const root = parseObject(metadata);
+  return parseObject(root.governance);
 }
 
 function normalizeIso(value: unknown): string | null {
@@ -1374,6 +1389,7 @@ export class ConnectorMappingService {
 
     let productCheck: Record<string, unknown> = {};
     let missingRequiredProductValues: string[] = [];
+    let mediaExportCheck: Record<string, unknown> = {};
     let openErrors = 0;
     let productData: {
       title?: string | null;
@@ -1443,12 +1459,25 @@ export class ConnectorMappingService {
         if (missingRequiredProductValues.length > 0) {
           blockers.push("required_product_data_missing");
         }
+        const mediaResult = await this.evaluateMediaExportReadiness({
+          connectorSlug: input.connectorSlug,
+          productId: product.id,
+          attributes: product.attributes,
+        });
+        if (mediaResult.blockers.length > 0) {
+          blockers.push(...mediaResult.blockers);
+        }
+        if (mediaResult.warnings.length > 0) {
+          warnings.push(...mediaResult.warnings);
+        }
+        mediaExportCheck = mediaResult.check;
         productCheck = {
           productId: product.id,
           categoryId: product.categoryId,
           status: product.status,
           openErrorIssues: openErrors,
           missingRequiredProductValues,
+          mediaExportReadiness: mediaExportCheck,
         };
       }
     }
@@ -1551,6 +1580,87 @@ export class ConnectorMappingService {
         warnings: readiness.warnings,
       });
     }
+  }
+
+  private async evaluateMediaExportReadiness(input: {
+    connectorSlug: string;
+    productId: string;
+    attributes: unknown;
+  }): Promise<{
+    blockers: string[];
+    warnings: string[];
+    check: Record<string, unknown>;
+  }> {
+    const channel = mapConnectorSlugToMarketplaceChannel(input.connectorSlug);
+    if (!channel) {
+      return { blockers: [], warnings: [], check: { evaluated: false, reason: "unsupported_connector_slug" } };
+    }
+
+    const attrs = parseObject(input.attributes);
+    const attributeUrl = firstNonEmptyString(
+      attrs.mainImageUrl,
+      attrs.primaryImageUrl,
+      attrs.imageUrl,
+      attrs.image_url,
+    );
+    if (attributeUrl.startsWith("https://")) {
+      return {
+        blockers: [],
+        warnings: [],
+        check: { evaluated: true, channel, source: "attribute_https_url", blocked: false },
+      };
+    }
+
+    const db = this.prisma.tenant(this.getTenantKey());
+    const select = { id: true, mimeType: true, metadata: true } as const;
+    const mainAsset = await db.mediaAsset.findFirst({
+      where: { productId: input.productId, metadata: { path: ["governance", "isMain"], equals: true } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select,
+    });
+    const asset =
+      mainAsset ??
+      (await db.mediaAsset.findFirst({
+        where: { productId: input.productId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select,
+      }));
+
+    if (!asset) {
+      return {
+        blockers: [],
+        warnings: [],
+        check: { evaluated: true, channel, source: "none", blocked: false },
+      };
+    }
+
+    const blockers: string[] = [];
+    const warnings: string[] = [];
+    const governance = readGovernance(asset.metadata);
+    const channelEligibility = asStringArray(governance.channelEligibility);
+    const mimeType = String(asset.mimeType ?? "").trim();
+    if (!mimeType.startsWith("image/")) {
+      blockers.push("media_asset_not_image");
+    }
+    if (channelEligibility.length > 0 && !channelEligibility.includes(channel)) {
+      blockers.push("media_channel_eligibility_blocked");
+    }
+    if (channelEligibility.length === 0) {
+      warnings.push("media_channel_eligibility_unconfirmed");
+    }
+
+    return {
+      blockers,
+      warnings,
+      check: {
+        evaluated: true,
+        channel,
+        source: mainAsset ? "main_media_asset" : "latest_media_asset",
+        selectedAssetId: String(asset.id),
+        channelEligibility,
+        blocked: blockers.length > 0,
+      },
+    };
   }
 
   private async resolveReadinessInstallation(input: {

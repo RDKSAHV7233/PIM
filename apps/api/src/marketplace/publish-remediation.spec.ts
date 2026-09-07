@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { MarketplaceService } from "./marketplace.service";
+import { runWithTenantContext } from "../common/tenant/tenant-context";
 import { CredentialExpiredError, InstallationNotFoundError } from "../connector-framework/connector.errors";
+import { ConnectorMappingService } from "./connector-mapping.service";
 
 // ---------------------------------------------------------------------------
 // Shared factory
@@ -1160,6 +1162,75 @@ describe("mapping field transforms", () => {
 });
 
 describe("unified readiness evidence contract", () => {
+  function makeConnectorMappingService(options?: {
+    mediaAsset?: Record<string, unknown> | null;
+    attributes?: Record<string, unknown>;
+  }) {
+    const mediaAsset = options?.mediaAsset === undefined
+      ? {
+          id: "asset-woo-ineligible",
+          mimeType: "image/png",
+          metadata: { governance: { isMain: true, channelEligibility: ["shopify"] } },
+        }
+      : options.mediaAsset;
+    const tenantDb = {
+      connectorDefinition: {
+        findUnique: jest.fn().mockResolvedValue({ id: "def-woo" }),
+      },
+      connectorInstallation: {
+        findFirst: jest.fn().mockResolvedValue({ id: "inst-woo-1", status: "ACTIVE", accountAlias: "Woo Store" }),
+      },
+      attributeDefinition: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      product: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "prod-media-1",
+          categoryId: "cat1",
+          status: "approved",
+          title: "Media Test",
+          description: "Media test product",
+          brand: "Vexa",
+          hsnCode: null,
+          gstRate: null,
+          attributes: options?.attributes ?? { sku: "SKU-MEDIA-1" },
+          variants: [{ skuCode: "SKU-MEDIA-1", sellingPrice: 100, mrp: 120, attributes: {} }],
+        }),
+      },
+      validationIssue: {
+        count: jest.fn().mockResolvedValue(0),
+      },
+      mediaAsset: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(mediaAsset)
+          .mockResolvedValueOnce(mediaAsset),
+      },
+    };
+    const svc = new ConnectorMappingService(
+      { tenant: jest.fn().mockReturnValue(tenantDb) } as never,
+      { recordMappingResolution: jest.fn() } as never,
+    );
+    jest.spyOn(svc, "evaluateMappingPreflight").mockResolvedValue({
+      ok: true,
+      blockers: [],
+      warnings: [],
+      compatibilityState: "compatible",
+      fallbackApplied: false,
+      fallbackAckRequired: false,
+      matchedVersionIds: ["map-1"],
+      resolvedMapping: {
+        field_mappings: {
+          title: "name",
+          description: "description",
+          "attributes.sku": "sku",
+        },
+        required_fields: [],
+        taxonomy_required_attributes: [],
+      },
+    });
+    return { svc, tenantDb };
+  }
+
   it("evaluatePublishReadiness returns separate mapping and product readiness evidence", () => {
     const fs = require("fs");
     const path = require("path");
@@ -1177,6 +1248,75 @@ describe("unified readiness evidence contract", () => {
     expect(readinessSection).toContain("productDataReadiness");
     expect(readinessSection).toContain("missingRequiredProductValues");
     expect(readinessSection).toContain("required_product_data_missing");
+  });
+
+  it("blocks WooCommerce export readiness when the selected media asset excludes WooCommerce", async () => {
+    const { svc, tenantDb } = makeConnectorMappingService();
+
+    await expect(
+      runWithTenantContext("tenant1", () =>
+        svc.assertPublishReadyForExport({
+          connectorSlug: "woocommerce",
+          categoryScope: "cat1",
+          installationId: "inst-woo-1",
+          productId: "prod-media-1",
+        }),
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        error: "publish_readiness_blocked",
+        blockers: expect.arrayContaining(["media_channel_eligibility_blocked"]),
+      }),
+    });
+    expect(tenantDb.mediaAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { productId: "prod-media-1", metadata: { path: ["governance", "isMain"], equals: true } },
+    }));
+  });
+
+  it("does not block WooCommerce media readiness when a usable HTTPS main image URL will be exported", async () => {
+    const { svc, tenantDb } = makeConnectorMappingService({
+      attributes: {
+        sku: "SKU-MEDIA-2",
+        mainImageUrl: "https://cdn.example.com/products/media-2.jpg",
+      },
+    });
+
+    const result = await runWithTenantContext("tenant1", () =>
+      svc.evaluatePublishReadiness({
+        connectorSlug: "woocommerce",
+        categoryScope: "cat1",
+        installationId: "inst-woo-1",
+        productId: "prod-media-1",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.blockers).not.toContain("media_channel_eligibility_blocked");
+    expect(tenantDb.mediaAsset.findFirst).not.toHaveBeenCalled();
+    expect(result.checks.product).toMatchObject({
+      mediaExportReadiness: {
+        source: "attribute_https_url",
+        blocked: false,
+      },
+    });
+  });
+
+  it("keeps Product Detail media copy aligned with the server-side export blocker", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../../..", "apps/web/src/app/products/[id]/page.tsx"),
+      "utf8",
+    );
+    const mediaSection = source.substring(
+      source.indexOf("if (channelIneligibleCount > 0)"),
+      source.indexOf("if (missingAltTextCount > 0 || channelUnconfirmedCount > 0)"),
+    );
+
+    expect(mediaSection).toContain('label: "Blocked"');
+    expect(mediaSection).toContain('tone: "danger"');
+    expect(mediaSection).toContain("Update media channel eligibility before export.");
+    expect(mediaSection).not.toContain("won't stop export");
   });
 });
 
@@ -3335,4 +3475,3 @@ describe("BUG-MKT-EXPORT-003: submission-outcome/completion invariant", () => {
     expect(updateCall.data.status).toBe("completed");
   });
 });
-
