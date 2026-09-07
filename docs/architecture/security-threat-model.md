@@ -2,7 +2,7 @@
 title: Vexa PIM Security Threat Model
 audience: internal-engineering
 status: active
-last_updated: 2026-03-19
+last_updated: 2026-09-07
 owner: CTO + Backend Lead
 ---
 
@@ -51,10 +51,11 @@ Vexa PIM runs as a browser-facing Next.js application backed by a NestJS API, Po
 - Evidence: `apps/api/src/auth/auth.service.ts`, `packages/db/prisma/schema.prisma`.
 
 ### Password hashing and legacy fallback
-- What it does: supports per-user password hashes while preserving a temporary compatibility path for identities that do not yet have a stored hash.
-- Implementation: `passwordHash` on `AuthIdentity`; `bcrypt.compare()` is used for hashed users with cost factor 12 when passwords are set; identities with `passwordHash = null` fall back to the shared `PIM_AUTH_PASSWORD` path using `timingSafeEqual()`.
-- Failure behavior: invalid credentials return `401 INVALID_CREDENTIALS` with remaining attempts.
-- Evidence: `apps/api/src/auth/auth.service.ts`, `apps/api/src/workspace-users/workspace-users.service.ts`, `packages/db/prisma/schema.prisma`.
+- What it does: supports per-user password hashes while preserving a narrow, mode-gated compatibility path for identities that do not yet have a stored hash.
+- Implementation: `passwordHash` on `AuthIdentity`; `bcrypt.compare()` is used for hashed users with cost factor 12 when a hash is set (`verifyPasswordForIdentity()`). When `passwordHash` is `null` and `AUTH_MODE=db`, the identity is rejected outright with `401 AUTH_CREDENTIAL_MIGRATION_INCOMPLETE` — there is no shared-secret fallback in this mode. The shared `PIM_AUTH_PASSWORD` path (`timingSafeEqual()`) only runs for `passwordHash = null` identities when `AUTH_MODE` is *not* `"db"` (local/dev/test convenience only); outside local/dev/test it additionally requires `PIM_AUTH_PASSWORD` to be configured and refuses to fall back to a hardcoded default.
+- Tenant provisioning (`TenantDirectoryService.provisionWorkspaceWithPasswordHash()`, used by both `POST /platform/tenants` and self-service signup) never derives an initial admin's password from `PIM_AUTH_PASSWORD` or a hardcoded default — callers must supply an explicit password (`initialAdminPassword`, min 8 chars) that is hashed once at the boundary and stored. See PR #763 / issue #757.
+- Failure behavior: invalid credentials return `401 INVALID_CREDENTIALS` with remaining attempts; a `passwordHash = null` identity under `AUTH_MODE=db` returns `401 AUTH_CREDENTIAL_MIGRATION_INCOMPLETE`.
+- Evidence: `apps/api/src/auth/auth.service.ts` (`verifyPasswordForIdentity`, `verifySharedPassword`), `apps/api/src/common/tenant/tenant-directory.service.ts`, `apps/api/src/workspace-users/workspace-users.service.ts`, `packages/db/prisma/schema.prisma`.
 
 ### JWT session tokens and logout blocklist
 - What it does: issues bearer JWTs for logged-in users and revokes them on logout.
@@ -70,9 +71,9 @@ Vexa PIM runs as a browser-facing Next.js application backed by a NestJS API, Po
 
 ### Platform admin bootstrap
 - What it does: provisions a tenant, workspace, and initial admin outside normal workspace RBAC.
-- Implementation: `POST /platform/tenants` is a `@Public()` route guarded by `x-pim-platform-admin-token`.
-- Failure behavior: missing or incorrect token returns `401 PLATFORM_ADMIN_TOKEN_REQUIRED`.
-- Evidence: `apps/api/src/platform-admin/platform-admin.controller.ts`.
+- Implementation: `POST /platform/tenants` is a `@Public()` route guarded by `x-pim-platform-admin-token`. The request body requires an explicit `initialAdminPassword` (min 8 chars, validated by `CreatePlatformTenantDto`); the controller hashes it (bcrypt, cost 12) and passes only the hash to `TenantDirectoryService.provisionWorkspaceWithPasswordHash()` — no shared or default password is ever assigned, and the plaintext password is never written to the audit log.
+- Failure behavior: missing or incorrect token returns `401 PLATFORM_ADMIN_TOKEN_REQUIRED`; a missing/too-short `initialAdminPassword` fails DTO validation before provisioning runs.
+- Evidence: `apps/api/src/platform-admin/platform-admin.controller.ts`, `apps/api/src/platform-admin/dto/create-platform-tenant.dto.ts`, `apps/api/src/common/tenant/tenant-directory.service.ts`.
 
 ## 3. Authorization controls
 
@@ -109,7 +110,7 @@ Vexa PIM runs as a browser-facing Next.js application backed by a NestJS API, Po
 
 These are current limitations in the reviewed repo. They are real and should be treated as open security or operational constraints.
 
-- Legacy identities with `passwordHash = null` still authenticate through the shared `PIM_AUTH_PASSWORD` env var. That path now uses `timingSafeEqual()`, but it is still shared-secret auth and should be phased out. Evidence: `apps/api/src/auth/auth.service.ts`, `packages/db/prisma/schema.prisma`.
+- Legacy identities with `passwordHash = null` can still authenticate through the shared `PIM_AUTH_PASSWORD` env var, but only when `AUTH_MODE` is not `"db"` (i.e. local/dev/test convenience mode). Under `AUTH_MODE=db` — the mode staging and production run — a `passwordHash = null` identity is rejected outright (`401 AUTH_CREDENTIAL_MIGRATION_INCOMPLETE`); there is no shared-secret fallback in that mode. The path that still exists uses `timingSafeEqual()` and is shared-secret auth, so it should stay confined to local/dev/test. Tenant provisioning (`TenantDirectoryService`) no longer has its own copy of this fallback — see #757/PR #763. Evidence: `apps/api/src/auth/auth.service.ts`, `apps/api/src/common/tenant/tenant-directory.service.ts`, `packages/db/prisma/schema.prisma`.
 - Password reset does not send an email. The route is intentionally honest and returns `requested: false`; the current recovery path is admin password set through `POST /admin/workspace/users/:userId/password`. Evidence: `apps/api/src/auth/auth.service.ts`, `apps/api/src/workspace-users/workspace-users.controller.ts`.
 - Account unlock does not send an email. The resend route is intentionally honest and returns `resent: false`; the current recovery path is workspace-admin unlock. Evidence: `apps/api/src/auth/auth.service.ts`, `apps/api/src/workspace-users/workspace-users.controller.ts`.
 - Meesho still uses stub `validateCredentials()` behavior. Flipkart and Amazon India now prove external credentials against their upstream marketplace flows, but Meesho does not yet validate external credentials upstream. Evidence: `apps/api/src/connectors/amazon/amazon.connector.ts`, `apps/api/src/connectors/meesho/meesho.connector.ts`, `apps/api/src/connectors/flipkart/flipkart.connector.ts`.
@@ -131,7 +132,7 @@ These are current limitations in the reviewed repo. They are real and should be 
 | Step-up routes | Reuse of an expired or stolen step-up token | Short expiry, scoped token, linked `parentJti`, credential re-verification on issue | Step-up remains bearer-token based after issuance; a stolen unexpired token is still usable within its scope |
 | Workspace user admin APIs | Editor or reviewer attempts to escalate to admin | `@Roles("admin")` on workspace user controller, service checks prevent invalid self-role changes and enforce admin-only password set | Admin compromise still gives broad control; there is no second-approver workflow |
 | Next.js Server Actions and SSR admin forms | CSRF against authenticated browser sessions | Same-origin deployment model, SSR-held token, server-side auth header construction | No explicit CSRF token or double-submit mechanism is present in reviewed web code |
-| Legacy shared-password fallback | Interception or reuse of one tenant-wide password | `timingSafeEqual()` replaces raw string equality, hashed path exists for migrated users | Identities without `passwordHash` still share one environment secret until migration is complete |
+| Legacy shared-password fallback | Interception or reuse of one tenant-wide password | `timingSafeEqual()` replaces raw string equality; the fallback only runs when `AUTH_MODE` is not `"db"` (local/dev/test), and `AUTH_MODE=db` (staging/production) rejects `passwordHash = null` identities instead of falling back; tenant provisioning requires an explicit per-tenant admin password (no shared/default hash) | Identities without `passwordHash` in local/dev/test still share one environment secret until migrated to a per-user hash |
 
 ## 6. What is explicitly out of scope
 
