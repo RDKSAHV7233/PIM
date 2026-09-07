@@ -94,6 +94,23 @@ assert(
 );
 
 assert(
+  storageService.includes('select: { id: true, severity: true, state: true }') &&
+    storageService.includes('...(existingIssue?.state === "resolved" ? { state: "open" } : {})') &&
+    !storageService.includes('...(existingIssue?.state !== "open" ? { state: "open" } : {})'),
+  "Error authority must reopen resolved issues on recurrence without silently unmuting muted issues.",
+);
+
+assert(
+  storageService.includes("resolveInactiveOpenIssues") &&
+    storageService.includes('state: "open"') &&
+    storageService.includes('state: "resolved"') &&
+    storageService.includes('updatedAt: { lt: cutoff }') &&
+    storageService.includes("muted issue is not resolved and") &&
+    storageService.includes("remains visible as resolved for one retention window"),
+  "Error authority retention must resolve stale open issues, exempt muted issues, and purge only resolved issues after a retention window.",
+);
+
+assert(
   moduleSource.includes("NextServerErrorIngestController") &&
     nextServerIngest.includes('@Controller("error-authority")') &&
     nextServerIngest.includes("ApiExcludeEndpoint") &&

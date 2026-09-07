@@ -11,6 +11,11 @@ import { ObservabilityDbService } from "./observability-db.service";
  * tenant-impact children, via schema cascade) once they've been inactive
  * longer than ERROR_AUTHORITY_RETENTION_DAYS.
  *
+ * PIM#766: before purging, stale open issues are automatically moved to
+ * resolved after ERROR_AUTHORITY_AUTO_RESOLVE_DAYS so retention has an
+ * explicit closed-state path without adding mutable operator controls to the
+ * read-only Internal Ops Errors MVP.
+ *
  * Follows the same lifecycle pattern as GracePeriodEscalationService:
  * - Gated by QUEUE_WORKER_ENABLED (runs on the worker process only)
  * - Initial delay to let the app boot cleanly before hitting the DB
@@ -57,6 +62,14 @@ export class ErrorAuthorityRetentionService implements OnModuleInit, OnModuleDes
 
   async runPurge(): Promise<void> {
     try {
+      const { resolvedCount, storageAvailable: resolutionStorageAvailable } =
+        await this.observabilityDb.resolveInactiveOpenIssues(this.autoResolveDays());
+      if (!resolutionStorageAvailable) {
+        return;
+      }
+      if (resolvedCount > 0) {
+        this.logger.log(`Error Authority retention resolved ${resolvedCount} inactive open issue(s).`);
+      }
       const { deletedCount, storageAvailable } = await this.observabilityDb.purgeExpiredIssues(this.retentionDays());
       if (!storageAvailable) {
         return;
@@ -87,6 +100,12 @@ export class ErrorAuthorityRetentionService implements OnModuleInit, OnModuleDes
   private retentionDays(): number {
     const raw = Number(process.env.ERROR_AUTHORITY_RETENTION_DAYS ?? DEFAULT_RETENTION_DAYS);
     return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_RETENTION_DAYS;
+  }
+
+  private autoResolveDays(): number {
+    const fallback = this.retentionDays();
+    const raw = Number(process.env.ERROR_AUTHORITY_AUTO_RESOLVE_DAYS ?? fallback);
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
   }
 
   private isEnabled(): boolean {

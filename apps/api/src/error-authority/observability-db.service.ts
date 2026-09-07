@@ -100,10 +100,11 @@ type ObservabilityPrismaClient = {
   };
   errorIssue: {
     count(args: unknown): Promise<number>;
-    findUnique(args: unknown): Promise<{ id: string; severity: string } | null>;
+    findUnique(args: unknown): Promise<{ id: string; severity: string; state: string } | null>;
     findMany(args: unknown): Promise<ErrorIssueRow[]>;
     upsert(args: unknown): Promise<{ id: string }>;
     update(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<{ count: number }>;
     deleteMany(args: unknown): Promise<{ count: number }>;
   };
   errorIssueTenantImpact: {
@@ -186,7 +187,7 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
           where: {
             environment_runtime_service_fingerprintVersion_fingerprint: issueKey,
           },
-          select: { id: true, severity: true },
+          select: { id: true, severity: true, state: true },
         });
 
         const issue = await tx.errorIssue.upsert({
@@ -213,6 +214,7 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
             lastSeenAt: event.occurredAt,
             lastSeenRelease: event.release,
             occurrenceCount: { increment: 1 },
+            ...(existingIssue?.state === "resolved" ? { state: "open" } : {}),
           },
           select: { id: true },
         });
@@ -494,6 +496,35 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
   }
 
   /**
+   * PIM#766: automatically resolves open issues that have not recurred within
+   * the configured inactivity window. Muted issues remain muted; they are an
+   * operator-owned paging decision, not a disposable closed state.
+   */
+  async resolveInactiveOpenIssues(inactiveDays: number): Promise<{ resolvedCount: number; storageAvailable: boolean }> {
+    if (!this.client) {
+      return { resolvedCount: 0, storageAvailable: false };
+    }
+    const cutoff = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000);
+    try {
+      const result = await this.client.errorIssue.updateMany({
+        where: {
+          state: "open",
+          lastSeenAt: { lt: cutoff },
+        },
+        data: {
+          state: "resolved",
+        },
+      });
+      return { resolvedCount: result.count, storageAvailable: true };
+    } catch (error: unknown) {
+      this.logger.warn("Error authority inactive issue resolution failed.", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return { resolvedCount: 0, storageAvailable: false };
+    }
+  }
+
+  /**
    * PIM#649: deletes ErrorIssue rows (and their ErrorOccurrence/
    * ErrorIssueTenantImpact children, via schema onDelete: Cascade) whose
    * lastSeenAt is older than retentionDays. Bounds indefinite growth of
@@ -506,6 +537,11 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
    * mutedUntil/expiry field, so muting here means "stop paging me," not
    * "this is closed and disposable" — a muted issue is not resolved and
    * must not be silently purged.
+   *
+   * PIM#766: also require updatedAt to be past the cutoff. The automatic
+   * resolver updates updatedAt when it marks a stale open issue resolved, so
+   * the issue remains visible as resolved for one retention window before
+   * cascade deletion.
    */
   async purgeExpiredIssues(retentionDays: number): Promise<{ deletedCount: number; storageAvailable: boolean }> {
     if (!this.client) {
@@ -517,6 +553,7 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
         where: {
           state: "resolved",
           lastSeenAt: { lt: cutoff },
+          updatedAt: { lt: cutoff },
         },
       });
       return { deletedCount: result.count, storageAvailable: true };
