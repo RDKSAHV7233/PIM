@@ -92,6 +92,18 @@ type ConnectorProductPayloadOptions = {
   templateId?: string;
 };
 
+const FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED = "FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED";
+const BULK_PUBLISH_ASYNC_DISABLED_MESSAGE =
+  "Bulk publish is temporarily disabled for this connector. Try again later or contact support.";
+
+function isAsyncBulkPublishEnabled(): boolean {
+  return (
+    String(process.env[FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED] ?? "true")
+      .trim()
+      .toLowerCase() !== "false"
+  );
+}
+
 // BUG-MKT-EXPORT-003: locked status contract (dashboard.service.ts's readiness
 // buckets and marketplace.service.ts's own emitConnectorOutcomeMetrics already
 // agree on this classification independently):
@@ -5168,12 +5180,8 @@ export class MarketplaceService implements OnModuleInit {
       // above), but lets ops disable it without a code revert if a production issue
       // surfaces, rather than leaving every non-native bulk-publish request with no way
       // to be turned off short of a redeploy.
-      const asyncBulkPublishEnabled =
-        String(process.env.FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED ?? "true").trim().toLowerCase() !== "false";
-      if (!asyncBulkPublishEnabled) {
-        throw new ServiceUnavailableException(
-          "Bulk publish is temporarily disabled for this connector. Try again later or contact support.",
-        );
+      if (!isAsyncBulkPublishEnabled()) {
+        throw new ServiceUnavailableException(BULK_PUBLISH_ASYNC_DISABLED_MESSAGE);
       }
       const channel = this.mapConnectorSlugToChannel(installationRow.connectorSlug);
       return this.createBulkPublishRun(installationRow.connectorSlug, installationId, channel, productIds, tenantKey, actor);
@@ -5512,6 +5520,15 @@ export class MarketplaceService implements OnModuleInit {
       // Already terminal — redelivery no-op.
       return;
     }
+
+    if (!isAsyncBulkPublishEnabled()) {
+      this.logger.warn("Bulk publish run paused by feature flag.", {
+        runId: run.id,
+        tenantKey: payload.tenantKey,
+      });
+      return;
+    }
+
     if (run.status === MarketplaceBulkPublishRunStatus.queued) {
       await db.marketplaceBulkPublishRun.update({
         where: { id: run.id },
@@ -5751,6 +5768,10 @@ export class MarketplaceService implements OnModuleInit {
     const run = await db.marketplaceBulkPublishRun.findUnique({ where: { id: runId } });
     if (!run) {
       throw new NotFoundException("Bulk publish run not found.");
+    }
+
+    if (!isAsyncBulkPublishEnabled()) {
+      throw new ServiceUnavailableException(BULK_PUBLISH_ASYNC_DISABLED_MESSAGE);
     }
 
     // Only failed, retry-eligible items — never touches succeeded items or items

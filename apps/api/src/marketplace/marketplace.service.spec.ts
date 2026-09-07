@@ -4,6 +4,8 @@ import { UnrecoverableError } from "bullmq";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { MarketplaceService } from "./marketplace.service";
 
+const ASYNC_BULK_PUBLISH_ENV_KEY = "FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED";
+
 function makeService(productOverride?: Record<string, unknown>) {
   const product = productOverride ?? {
     id: "prod1",
@@ -1013,19 +1015,18 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
 
   // ─── CTO review follow-up (PR #719, 2026-09-05): async-path kill switch ──────
   describe("FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED kill switch", () => {
-    const ENV_KEY = "FEATURE_MARKETPLACE_BULK_PUBLISH_ASYNC_ENABLED";
-    const originalValue = process.env[ENV_KEY];
+    const originalValue = process.env[ASYNC_BULK_PUBLISH_ENV_KEY];
 
     afterEach(() => {
       if (originalValue === undefined) {
-        delete process.env[ENV_KEY];
+        delete process.env[ASYNC_BULK_PUBLISH_ENV_KEY];
       } else {
-        process.env[ENV_KEY] = originalValue;
+        process.env[ASYNC_BULK_PUBLISH_ENV_KEY] = originalValue;
       }
     });
 
     it("defaults to enabled when the env var is unset — no behavior change for existing deployments", async () => {
-      delete process.env[ENV_KEY];
+      delete process.env[ASYNC_BULK_PUBLISH_ENV_KEY];
       const { svc, queueService } = makeBulkPublishService(
         { a1: { status: "approved", categoryId: "cat1" } },
         { connectorSlug: "shopify", capabilities: [] },
@@ -1038,7 +1039,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     });
 
     it("blocks the async (non-native) path with a clear, typed error when explicitly disabled", async () => {
-      process.env[ENV_KEY] = "false";
+      process.env[ASYNC_BULK_PUBLISH_ENV_KEY] = "false";
       const { svc, queueService } = makeBulkPublishService(
         { a1: { status: "approved", categoryId: "cat1" } },
         { connectorSlug: "shopify", capabilities: [] },
@@ -1054,7 +1055,7 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
     });
 
     it("does not affect the native BULK_PUBLISH (Amazon) path when disabled — the flag only gates the async fallback", async () => {
-      process.env[ENV_KEY] = "false";
+      process.env[ASYNC_BULK_PUBLISH_ENV_KEY] = "false";
       const { svc, connectorFramework } = makeBulkPublishService(
         { a1: { status: "approved", categoryId: "cat1" } },
         { connectorSlug: "amazon", capabilities: ["BULK_PUBLISH"] },
@@ -1064,6 +1065,27 @@ describe("MarketplaceService.triggerBulkPublish — approval/readiness gate", ()
 
       expect(result.excluded).toHaveLength(0);
       expect(connectorFramework.publishBulk).toHaveBeenCalled();
+    });
+
+    it("pauses an already-queued async run before claiming items or creating export jobs when disabled", async () => {
+      delete process.env[ASYNC_BULK_PUBLISH_ENV_KEY];
+      const { svc, queueService, bulkPublishRunStore, connectorMappingService } = makeBulkPublishService(
+        { a1: { status: "approved", categoryId: "cat1" } },
+        { connectorSlug: "shopify", capabilities: [] },
+      );
+      const result = expectAsyncResult(await svc.triggerBulkPublish("inst_1", ["a1"]));
+      const payload = queueService.enqueue.mock.calls[0]?.[1];
+      expect(payload).toMatchObject({ runId: result.runId, tenantKey: "tenant1" });
+
+      process.env[ASYNC_BULK_PUBLISH_ENV_KEY] = "false";
+      await (svc as unknown as { processBulkPublishRun(payload: unknown): Promise<void> }).processBulkPublishRun(payload);
+
+      expect(bulkPublishRunStore.runs.get(result.runId)).toMatchObject({ status: "queued" });
+      const item = [...bulkPublishRunStore.items.values()][0];
+      expect(item).toMatchObject({ productId: "a1", status: "pending" });
+      expect(item).not.toHaveProperty("claimedAt");
+      expect(item).not.toHaveProperty("exportJobId");
+      expect(connectorMappingService.evaluatePublishReadiness).not.toHaveBeenCalled();
     });
   });
 
@@ -1268,6 +1290,16 @@ describe("MarketplaceService.getBulkPublishRun / listBulkPublishRuns", () => {
 // exercise the actual retry mechanics: which items get reclaimed, which don't, and how
 // the run's own status is (or isn't) touched.
 describe("MarketplaceService.retryFailedBulkPublishRun", () => {
+  const originalAsyncBulkPublishFlag = process.env[ASYNC_BULK_PUBLISH_ENV_KEY];
+
+  afterEach(() => {
+    if (originalAsyncBulkPublishFlag === undefined) {
+      delete process.env[ASYNC_BULK_PUBLISH_ENV_KEY];
+    } else {
+      process.env[ASYNC_BULK_PUBLISH_ENV_KEY] = originalAsyncBulkPublishFlag;
+    }
+  });
+
   function makeRetryService(run: Record<string, unknown> | null, items: Array<Record<string, unknown>>) {
     const runRow = run ? { tenantKey: "tenant1", ...run } : null;
     const itemRows = items.map((item) => ({ ...item }));
@@ -1318,6 +1350,27 @@ describe("MarketplaceService.retryFailedBulkPublishRun", () => {
   it("throws NotFoundException for an unknown run", async () => {
     const { svc } = makeRetryService(null, []);
     await expect(svc.retryFailedBulkPublishRun("missing")).rejects.toThrow(NotFoundException);
+  });
+
+  it("blocks retry while the async kill switch is disabled without resetting items or enqueueing work", async () => {
+    process.env[ASYNC_BULK_PUBLISH_ENV_KEY] = "false";
+    const claimedAt = new Date();
+    const { svc, marketplaceBulkPublishRun, marketplaceBulkPublishRunItem, itemRows, queueService } = makeRetryService(
+      { id: "run_1", status: "completed_with_errors" },
+      [{ id: "item_1", status: "failed", retryEligible: true, reason: "provider unavailable", claimedAt }],
+    );
+
+    await expect(
+      svc.retryFailedBulkPublishRun("run_1", { actorId: "user_1", actorRole: "publisher", tenantId: "tenant1" }),
+    ).rejects.toMatchObject({
+      status: 503,
+      response: expect.objectContaining({ message: expect.stringContaining("temporarily disabled") }),
+    });
+
+    expect(marketplaceBulkPublishRunItem.findMany).not.toHaveBeenCalled();
+    expect(marketplaceBulkPublishRun.update).not.toHaveBeenCalled();
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+    expect(itemRows[0]).toMatchObject({ status: "failed", retryEligible: true, reason: "provider unavailable", claimedAt });
   });
 
   it("returns retriedCount: 0 and does not touch the run or enqueue anything when there's nothing to retry", async () => {
