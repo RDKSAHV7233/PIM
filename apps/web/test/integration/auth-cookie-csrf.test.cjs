@@ -172,8 +172,42 @@ function resolveCookie(cookieJar, name) {
   return cookieJar.get(name) ?? "";
 }
 
+function hasDatabaseAccess() {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    // Placeholder hostnames are all-uppercase single words (e.g. "HOST")
+    if (/^[A-Z][A-Z0-9_]*$/.test(parsed.hostname)) return false;
+    // This test spawns a real API + Web process pair and waits on their HTTP
+    // health checks, so a plausible-looking-but-fake DATABASE_URL (e.g. this
+    // repo's own CI "build" job, which sets
+    // postgresql://unused:unused@localhost:5432/unused precisely because that
+    // job has no Postgres service) must not be treated as real access - the
+    // hostname there is ordinary lowercase "localhost", so it would otherwise
+    // slip past the placeholder-hostname check above and spend the full
+    // waitForHttp timeout hanging on a database that was never there.
+    if (parsed.username === "unused" || parsed.password === "unused") return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function run() {
   prepareEnv();
+
+  if (!hasDatabaseAccess()) {
+    console.log(
+      JSON.stringify({
+        status: "skipped",
+        reason: "DATABASE_URL is not configured or is a placeholder; test requires a live Postgres database.",
+        checkedAt: new Date().toISOString(),
+      }, null, 2),
+    );
+    return;
+  }
+
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build`);
   }
