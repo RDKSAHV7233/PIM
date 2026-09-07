@@ -1328,13 +1328,16 @@ describe("MarketplaceService.retryFailedBulkPublishRun", () => {
     };
     const db = { marketplaceBulkPublishRun, marketplaceBulkPublishRunItem };
     const prisma = { tenant: jest.fn().mockReturnValue(db) };
+    const planUsageService = {
+      checkLimit: jest.fn().mockResolvedValue({ allowed: true, resource: "submissions", limit: 999999, current: 0 }),
+    };
     const queueService = { enqueue: jest.fn().mockResolvedValue(undefined) };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
     const svc = new MarketplaceService(
       prisma as never,
       {} as never,
       {} as never,
-      {} as never,
+      planUsageService as never,
       queueService as never,
       {} as never,
       {} as never,
@@ -1344,7 +1347,7 @@ describe("MarketplaceService.retryFailedBulkPublishRun", () => {
       {} as never,
       {} as never,
     );
-    return { svc, marketplaceBulkPublishRun, marketplaceBulkPublishRunItem, queueService, itemRows, runRow };
+    return { svc, marketplaceBulkPublishRun, marketplaceBulkPublishRunItem, planUsageService, queueService, itemRows, runRow };
   }
 
   it("throws NotFoundException for an unknown run", async () => {
@@ -1374,7 +1377,7 @@ describe("MarketplaceService.retryFailedBulkPublishRun", () => {
   });
 
   it("returns retriedCount: 0 and does not touch the run or enqueue anything when there's nothing to retry", async () => {
-    const { svc, marketplaceBulkPublishRun, queueService } = makeRetryService(
+    const { svc, marketplaceBulkPublishRun, planUsageService, queueService } = makeRetryService(
       { id: "run_1", status: "completed" },
       [{ id: "item_1", status: "succeeded", retryEligible: true }],
     );
@@ -1382,8 +1385,69 @@ describe("MarketplaceService.retryFailedBulkPublishRun", () => {
     const result = await svc.retryFailedBulkPublishRun("run_1");
 
     expect(result).toEqual({ runId: "run_1", retriedCount: 0, status: "completed" });
+    expect(planUsageService.checkLimit).not.toHaveBeenCalled();
     expect(marketplaceBulkPublishRun.update).not.toHaveBeenCalled();
     expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("checks the submissions plan limit with the retryable failed item count before re-enqueueing", async () => {
+    const { svc, planUsageService, queueService } = makeRetryService(
+      { id: "run_1", status: "completed_with_errors" },
+      [
+        { id: "item_1", status: "failed", retryEligible: true },
+        { id: "item_2", status: "failed", retryEligible: true },
+        { id: "item_3", status: "failed", retryEligible: false },
+        { id: "item_4", status: "succeeded", retryEligible: true },
+      ],
+    );
+
+    const result = await svc.retryFailedBulkPublishRun("run_1");
+
+    expect(result).toEqual({ runId: "run_1", retriedCount: 2, status: "queued" });
+    expect(planUsageService.checkLimit).toHaveBeenCalledWith("submissions", 2, "tenant1");
+    expect(queueService.enqueue).toHaveBeenCalledWith(
+      QUEUE_NAMES.MARKETPLACE_BULK_PUBLISH,
+      expect.objectContaining({ runId: "run_1", tenantKey: "tenant1" }),
+    );
+  });
+
+  it("blocks retry when the submissions plan limit is exceeded before resetting items or enqueueing work", async () => {
+    const claimedAt = new Date();
+    const {
+      svc,
+      marketplaceBulkPublishRun,
+      marketplaceBulkPublishRunItem,
+      planUsageService,
+      queueService,
+      itemRows,
+      runRow,
+    } = makeRetryService(
+      { id: "run_1", status: "completed_with_errors" },
+      [
+        { id: "item_1", status: "failed", retryEligible: true, reason: "provider unavailable", claimedAt },
+        { id: "item_2", status: "failed", retryEligible: true, reason: "timeout", claimedAt },
+      ],
+    );
+    planUsageService.checkLimit.mockResolvedValueOnce({ allowed: false, resource: "submissions", limit: 10, current: 10 });
+
+    await expect(svc.retryFailedBulkPublishRun("run_1")).rejects.toMatchObject({
+      status: 402,
+      response: expect.objectContaining({
+        error: "PLAN_LIMIT_EXCEEDED",
+        resource: "submissions",
+        limit: 10,
+        current: 10,
+        upgrade_url: "/admin/plan",
+      }),
+    });
+
+    expect(planUsageService.checkLimit).toHaveBeenCalledWith("submissions", 2, "tenant1");
+    expect(marketplaceBulkPublishRunItem.updateMany).not.toHaveBeenCalled();
+    expect(marketplaceBulkPublishRun.update).not.toHaveBeenCalled();
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+    expect(runRow).toMatchObject({ status: "completed_with_errors" });
+    expect(itemRows[0]).toMatchObject({ status: "failed", retryEligible: true, reason: "provider unavailable", claimedAt });
+    expect(itemRows[1]).toMatchObject({ status: "failed", retryEligible: true, reason: "timeout", claimedAt });
   });
 
   it("resets failed retry-eligible items to pending, clears their claim/reason, and re-enqueues the run", async () => {

@@ -5785,6 +5785,26 @@ export class MarketplaceService implements OnModuleInit {
       return { runId, retriedCount: 0, status: run.status };
     }
 
+    const submissionLimitCheck = await this.planUsageService.checkLimit(
+      "submissions",
+      failedItems.length,
+      run.tenantKey,
+    );
+    if (!submissionLimitCheck.allowed) {
+      const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() || null;
+      throw new HttpException(
+        {
+          error: "PLAN_LIMIT_EXCEEDED",
+          resource: submissionLimitCheck.resource,
+          limit: submissionLimitCheck.limit,
+          current: submissionLimitCheck.current,
+          upgrade_url: "/admin/plan",
+          contact_url: contactUrl,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+
     const itemIds = failedItems.map((item) => item.id);
     await db.marketplaceBulkPublishRunItem.updateMany({
       where: { id: { in: itemIds }, status: MarketplaceBulkPublishItemStatus.failed, retryEligible: true },
