@@ -372,12 +372,14 @@ export async function uploadBulkImportRun(
   categoryId: string,
   file: File,
   sourceName?: string,
+  sourceFormat?: "csv" | "json",
   options?: ApiRequestOptions,
 ) {
   const form = new FormData();
   form.append("categoryId", categoryId);
   form.append("sourceFile", file, file.name);
   if (sourceName) form.append("sourceName", sourceName);
+  if (sourceFormat) form.append("sourceFormat", sourceFormat);
   return postFormData<BulkImportRun>("/bulk-import/runs/upload", form, options);
 }
 

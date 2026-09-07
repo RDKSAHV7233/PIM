@@ -67,6 +67,13 @@ type CanonicalRowPayload = {
   inventoryQty?: number;
 };
 
+type StagedSourceFormat = "csv" | "json";
+
+type StagedSourceRows = {
+  headers: string[];
+  rows: Record<string, unknown>[];
+};
+
 @Injectable()
 export class BulkImportRunService implements OnModuleInit {
   private readonly logger = new Logger(BulkImportRunService.name);
@@ -164,13 +171,15 @@ export class BulkImportRunService implements OnModuleInit {
 
     const tenantKey = this.resolveTenantKey();
     const runId = randomUUID();
+    const sourceFormat = this.resolveSourceFormat(dto.sourceFormat ?? originalName);
 
     let storageKey: string;
     try {
-      ({ storageKey } = await this.storageService.storeStagedCsv({
+      ({ storageKey } = await this.storageService.storeStagedSource({
         tenantKey,
         runId,
         content: fileBuffer,
+        sourceFormat,
       }));
     } catch (error) {
       this.logger.error(
@@ -191,7 +200,7 @@ export class BulkImportRunService implements OnModuleInit {
         status: BulkImportRunStatus.uploaded,
         sourceFileKey: storageKey,
         sourceName: dto.sourceName?.trim() || originalName || null,
-        sourceFormat: "csv",
+        sourceFormat,
         sourceFileSizeBytes: fileSizeBytes,
         sourceExpiresAt,
         maxRetries: dto.maxRetries ?? 3,
@@ -344,71 +353,55 @@ export class BulkImportRunService implements OnModuleInit {
     });
 
     try {
-      const stream = await this.storageService.readStagedCsvStream(run.sourceFileKey ?? "");
-
-      const rl = createInterface({
-        input: stream as unknown as NodeJS.ReadableStream,
-        crlfDelay: Infinity,
-      });
-
-      let lineNumber = 0;
-      let headers: string[] = [];
-      let totalRows = 0;
+      const sourceFormat = this.resolveSourceFormat(run.sourceFormat);
+      const sourceRows = await this.readStagedSourceRows(run.sourceFileKey ?? "", sourceFormat);
+      const mappingSuggestion =
+        sourceRows.headers.length > 0
+          ? this.bulkImportService.suggestMapping(sourceRows.headers)
+          : { mapping: {}, unmappedFields: [], unusedHeaders: [] };
+      const totalRows = sourceRows.rows.length;
       let blockingIssueCount = 0;
       let warningCount = 0;
-      const sampleIssues: Array<{ rowNumber: number; issues: string[]; severity: string }> = [];
+      const sampleIssues: Array<{
+        rowNumber: number;
+        severity: "blocking" | "warning";
+        code: string;
+        message: string;
+        fieldPath?: string | null;
+      }> = [];
       const blockedRowNumbers = new Set<number>();
       const skuCodesSeen = new Map<string, number[]>();
       const brandsSeen = new Set<string>();
       let containsWorkflowStatus = false;
-      let mappingSuggestion:
-        | {
-            mapping: Record<string, string>;
-            unmappedFields: string[];
-            unusedHeaders: string[];
+
+      for (const [index, row] of sourceRows.rows.entries()) {
+        const rowNumber = index + 1;
+        const normalizedRow = this.bulkImportService.normalizeCanonicalPayloadForImport(row, mappingSuggestion.mapping);
+
+        const rowIssues = this.bulkImportService.validateCanonicalRowForImport(normalizedRow);
+        const hasBlockingIssue = rowIssues.some((issue) => issue.severity === "blocking");
+        if (hasBlockingIssue) blockedRowNumbers.add(rowNumber);
+        for (const issue of rowIssues) {
+          if (issue.severity === "blocking") {
+            blockingIssueCount++;
+          } else {
+            warningCount++;
           }
-        | null = null;
-
-      for await (const line of rl) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          continue;
+          if (sampleIssues.length < 10) {
+            sampleIssues.push({
+              rowNumber,
+              severity: issue.severity,
+              code: issue.code,
+              message: issue.message,
+              fieldPath: issue.fieldPath ?? null,
+            });
+          }
         }
 
-        if (lineNumber === 0) {
-          headers = this.bulkImportService.parseCsvLineForImport(trimmed);
-          mappingSuggestion =
-            headers.length > 0
-              ? this.bulkImportService.suggestMapping(headers)
-              : { mapping: {}, unmappedFields: [], unusedHeaders: [] };
-          lineNumber++;
-          continue;
-        }
-
-        totalRows++;
-        const values = this.bulkImportService.parseCsvLineForImport(trimmed);
-        const row: Record<string, unknown> = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] ?? "";
-        });
-
-        const normalizedRow = this.bulkImportService.normalizeCanonicalPayloadForImport(
-          row,
-          mappingSuggestion?.mapping ?? {},
-        );
-
-        const rowIssues: string[] = [];
-        const title = typeof normalizedRow.title === "string" ? normalizedRow.title.trim() : "";
-        if (!title) {
-          rowIssues.push("Missing required field: title");
-          blockingIssueCount++;
-          blockedRowNumbers.add(totalRows);
-        }
-
-        const skuCode = typeof row.skuCode === "string" ? row.skuCode.trim() : "";
+        const skuCode = typeof normalizedRow.skuCode === "string" ? normalizedRow.skuCode.trim() : "";
         if (skuCode) {
           const existing = skuCodesSeen.get(skuCode) ?? [];
-          existing.push(totalRows);
+          existing.push(rowNumber);
           skuCodesSeen.set(skuCode, existing);
         }
 
@@ -419,12 +412,6 @@ export class BulkImportRunService implements OnModuleInit {
         if (typeof normalizedRow.status === "string" && normalizedRow.status.trim()) {
           containsWorkflowStatus = true;
         }
-
-        if (rowIssues.length > 0 && sampleIssues.length < 10) {
-          sampleIssues.push({ rowNumber: totalRows, issues: rowIssues, severity: "blocking" });
-        }
-
-        lineNumber++;
       }
 
       // Detect duplicate skuCodes
@@ -437,8 +424,10 @@ export class BulkImportRunService implements OnModuleInit {
           if (sampleIssues.length < 10) {
             sampleIssues.push({
               rowNumber: rowNumbers[0],
-              issues: [`Duplicate skuCode across ${rowNumbers.length} rows`],
+              code: "SKU_DUPLICATE_IN_JOB",
+              message: `Duplicate skuCode across ${rowNumbers.length} rows`,
               severity: "blocking",
+              fieldPath: "skuCode",
             });
           }
         }
@@ -474,8 +463,10 @@ export class BulkImportRunService implements OnModuleInit {
           if (sampleIssues.length < 10) {
             sampleIssues.push({
               rowNumber: rowNumbers[0],
-              issues: [`skuCode already exists in catalog: ${variant.skuCode}`],
+              code: "SKU_ALREADY_EXISTS",
+              message: `skuCode already exists in catalog: ${variant.skuCode}`,
               severity: "blocking",
+              fieldPath: "skuCode",
             });
           }
         }
@@ -491,8 +482,10 @@ export class BulkImportRunService implements OnModuleInit {
         if (sampleIssues.length < 10) {
           sampleIssues.push({
             rowNumber: effectiveRowLimit + 1,
-            issues: [`Your plan supports at most ${effectiveRowLimit} rows per import job.`],
+            code: "ROW_LIMIT_EXCEEDED",
+            message: `Your plan supports at most ${effectiveRowLimit} rows per import job.`,
             severity: "blocking",
+            fieldPath: null,
           });
         }
       }
@@ -511,13 +504,17 @@ export class BulkImportRunService implements OnModuleInit {
       // SKU entitlement, that's the existing maxImportRowsPerJob ceiling's job, or a new,
       // separate limit — not a hidden reservation against SKU capacity.
 
-      if (headers.length === 0 || totalRows === 0) {
+      if (sourceRows.headers.length === 0 || totalRows === 0) {
         blockingIssueCount++;
         if (sampleIssues.length < 10) {
           sampleIssues.push({
             rowNumber: 0,
-            issues: ["CSV must include a header row and at least one data row."],
+            code: sourceFormat === "json" ? "NO_ROWS" : "INVALID_CSV_SOURCE",
+            message: sourceFormat === "json"
+              ? "JSON import file must contain at least one row object."
+              : "CSV must include a header row and at least one data row.",
             severity: "blocking",
+            fieldPath: null,
           });
         }
       }
@@ -561,9 +558,9 @@ export class BulkImportRunService implements OnModuleInit {
       const failedRows = blockedRowNumbers.size;
 
       const preflightSummary = {
-        mapping: mappingSuggestion?.mapping ?? {},
-        unmappedFields: mappingSuggestion?.unmappedFields ?? [],
-        unusedHeaders: mappingSuggestion?.unusedHeaders ?? [],
+        mapping: mappingSuggestion.mapping,
+        unmappedFields: mappingSuggestion.unmappedFields,
+        unusedHeaders: mappingSuggestion.unusedHeaders,
         sampleIssues,
         canImport: blockingIssueCount === 0 && totalRows > 0,
         skuCodeSummary: duplicateCount > 0 || collisionCount > 0 ? { duplicateCount, collisionCount } : null,
@@ -863,42 +860,22 @@ export class BulkImportRunService implements OnModuleInit {
         : {};
 
     try {
-      const stream = await this.storageService.readStagedCsvStream(run.sourceFileKey);
+      const sourceRows = await this.readStagedSourceRows(
+        run.sourceFileKey,
+        this.resolveSourceFormat(run.sourceFormat),
+      );
 
-      const rl = createInterface({
-        input: stream as unknown as NodeJS.ReadableStream,
-        crlfDelay: Infinity,
-      });
-
-      let lineNumber = 0;
-      let dataRowNumber = 0;
-      let headers: string[] = [];
-
-      for await (const line of rl) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        if (lineNumber === 0) {
-          headers = this.bulkImportService.parseCsvLineForImport(trimmed);
-          lineNumber++;
-          continue;
-        }
-
-        dataRowNumber++;
+      for (let index = 0; index < sourceRows.rows.length; index += 1) {
+        const dataRowNumber = index + 1;
 
         if (dataRowNumber < rowStart) {
-          lineNumber++;
           continue;
         }
         if (dataRowNumber > rowEnd) {
           break;
         }
 
-        const values = this.bulkImportService.parseCsvLineForImport(trimmed);
-        const rawRow: Record<string, unknown> = {};
-        headers.forEach((header, idx) => {
-          rawRow[header] = values[idx] ?? "";
-        });
+        const rawRow = sourceRows.rows[index];
         const normalizedRow = this.bulkImportService.normalizeCanonicalPayloadForImport(rawRow, runMapping);
 
         const rowNumberInBatch = dataRowNumber - rowStart + 1;
@@ -918,7 +895,6 @@ export class BulkImportRunService implements OnModuleInit {
         });
 
         await this.bulkImportService.processSystemManagedRow(jobId, rowId);
-        lineNumber++;
       }
 
       await this.refreshLargeJobCounters(jobId);
@@ -1106,6 +1082,90 @@ export class BulkImportRunService implements OnModuleInit {
     }
     values.push(current);
     return values.map((value) => value.trim());
+  }
+
+  private resolveSourceFormat(value: string | null | undefined): StagedSourceFormat {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (normalized === "json" || normalized.endsWith(".json")) {
+      return "json";
+    }
+    return "csv";
+  }
+
+  private async readStagedSourceRows(storageKey: string, sourceFormat: StagedSourceFormat): Promise<StagedSourceRows> {
+    const stream = await this.storageService.readStagedSourceStream(storageKey);
+    const raw = await this.readStreamToString(stream);
+    if (sourceFormat === "json") {
+      return this.parseJsonSourceRows(raw);
+    }
+    const rl = createInterface({
+      input: Readable.from(raw),
+      crlfDelay: Infinity,
+    });
+    let headers: string[] = [];
+    const rows: Record<string, unknown>[] = [];
+    let isHeader = true;
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (isHeader) {
+        headers = this.bulkImportService.parseCsvLineForImport(trimmed);
+        isHeader = false;
+        continue;
+      }
+      const values = this.bulkImportService.parseCsvLineForImport(trimmed);
+      const row: Record<string, unknown> = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] ?? "";
+      });
+      rows.push(row);
+    }
+    return { headers, rows };
+  }
+
+  private parseJsonSourceRows(content: string): StagedSourceRows {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new BadRequestException({
+        code: "INVALID_JSON_SOURCE",
+        message: "JSON import file must contain a valid array of row objects.",
+        issues: [{
+          rowNumber: 0,
+          severity: "blocking",
+          code: "INVALID_JSON_SOURCE",
+          message: "JSON import file must contain a valid array of row objects.",
+          fieldPath: null,
+        }],
+      });
+    }
+    if (!Array.isArray(parsed) || parsed.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
+      throw new BadRequestException({
+        code: "INVALID_JSON_SOURCE",
+        message: "JSON import file must contain an array of row objects.",
+        issues: [{
+          rowNumber: 0,
+          severity: "blocking",
+          code: "INVALID_JSON_SOURCE",
+          message: "JSON import file must contain an array of row objects.",
+          fieldPath: null,
+        }],
+      });
+    }
+    const rows = parsed as Record<string, unknown>[];
+    return {
+      headers: this.bulkImportService.inferHeadersForImportRows(rows),
+      rows,
+    };
+  }
+
+  private async readStreamToString(stream: NodeJS.ReadableStream): Promise<string> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream as AsyncIterable<Buffer | string>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    }
+    return Buffer.concat(chunks).toString("utf8");
   }
 
   private asRowPayload(value: Prisma.JsonValue): Record<string, unknown> {

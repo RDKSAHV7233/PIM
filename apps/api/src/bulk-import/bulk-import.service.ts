@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { createInterface } from "node:readline";
+import { Readable } from "node:stream";
 import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus, TaxCodeKey } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { getCorrelationContext } from "../common/logging/correlation-context";
@@ -263,6 +264,8 @@ export function resolveBulkImportIssueRemediation(code: string, fieldPath?: stri
       return "Rename the source columns to the canonical field names or update the mapping before import.";
     case "TITLE_REQUIRED":
       return "Populate the title field for every affected row before importing.";
+    case "SKU_REQUIRED":
+      return "Populate the skuCode field for every affected row before importing.";
     case "BRAND_RECOMMENDED":
       return "Add a brand value to improve marketplace readiness for the affected rows.";
     case "GST_RATE_INVALID":
@@ -783,7 +786,7 @@ export class BulkImportService {
     if (linkedRunId && !this.hasInlineSourceData(dto)) {
       const run = await this.prisma.tenant().bulkImportRun.findUniqueOrThrow({
         where: { id: linkedRunId },
-        select: { sourceFileKey: true, sourceExpiresAt: true },
+        select: { sourceFileKey: true, sourceExpiresAt: true, sourceFormat: true },
       });
       if (!run.sourceFileKey) {
         throw new BadRequestException("Staged run has no stored file. Re-upload the import file.");
@@ -791,7 +794,10 @@ export class BulkImportService {
       if (run.sourceExpiresAt && run.sourceExpiresAt < new Date()) {
         throw new BadRequestException("Staged import file has expired. Please re-upload the file.");
       }
-      sourceRows = await this.readRowsFromStagedCsv(run.sourceFileKey);
+      sourceRows = await this.readRowsFromStagedSource(
+        run.sourceFileKey,
+        run.sourceFormat === "json" ? "json" : "csv",
+      );
     } else {
       sourceRows = this.resolveImportSourceRows(dto);
     }
@@ -1863,9 +1869,29 @@ export class BulkImportService {
     return Boolean(dto.rows && dto.rows.length > 0);
   }
 
-  private async readRowsFromStagedCsv(sourceFileKey: string): Promise<BulkImportPreparedSourceRows> {
-    const stream = await this.storageService.readStagedCsvStream(sourceFileKey);
-    const rl = createInterface({ input: stream as unknown as NodeJS.ReadableStream, crlfDelay: Infinity });
+  private async readRowsFromStagedSource(
+    sourceFileKey: string,
+    sourceFormat: "csv" | "json",
+  ): Promise<BulkImportPreparedSourceRows> {
+    const stream = await this.storageService.readStagedSourceStream(sourceFileKey);
+    const raw = await this.readStreamToString(stream);
+    if (sourceFormat === "json") {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new BadRequestException("JSON import file must contain a valid array of row objects.");
+      }
+      if (!Array.isArray(parsed) || parsed.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
+        throw new BadRequestException("JSON import file must contain an array of row objects.");
+      }
+      const rows = parsed as Record<string, unknown>[];
+      return { headers: this.inferHeadersFromRows(rows), rows };
+    }
+    const rl = createInterface({
+      input: Readable.from(raw),
+      crlfDelay: Infinity,
+    });
     let headers: string[] = [];
     const rows: Record<string, unknown>[] = [];
     let isHeader = true;
@@ -1883,6 +1909,14 @@ export class BulkImportService {
       rows.push(row);
     }
     return { headers, rows };
+  }
+
+  private async readStreamToString(stream: NodeJS.ReadableStream): Promise<string> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream as AsyncIterable<Buffer | string>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    }
+    return Buffer.concat(chunks).toString("utf8");
   }
 
   private parseCsvLine(line: string) {

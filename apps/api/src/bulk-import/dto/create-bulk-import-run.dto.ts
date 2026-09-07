@@ -1,11 +1,17 @@
 import { Type } from "class-transformer";
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+
+const SOURCE_FORMATS = ["csv", "json"] as const;
 
 export class CreateBulkImportRunDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   categoryId!: string;
+
+  @IsOptional()
+  @IsIn(SOURCE_FORMATS)
+  sourceFormat?: (typeof SOURCE_FORMATS)[number];
 
   @IsOptional()
   @IsString()

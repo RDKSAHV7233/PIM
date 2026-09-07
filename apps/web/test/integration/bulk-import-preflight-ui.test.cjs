@@ -182,9 +182,10 @@ function run() {
   assert(
     componentSource.includes('uploadForm.append("sourceFile"') &&
       componentSource.includes('uploadForm.append("categoryId"') &&
+      componentSource.includes('uploadForm.append("sourceFormat"') &&
       componentSource.includes('uploadForm.append("sourceName"') &&
       componentSource.includes('uploadForm.append("maxRetries"'),
-    "Multipart upload FormData must include sourceFile, categoryId, sourceName, and maxRetries fields.",
+    "Multipart upload FormData must include sourceFile, categoryId, sourceFormat, sourceName, and maxRetries fields.",
   );
   assert(
     componentSource.includes('/api/bulk-import/runs/${encodeURIComponent(runId)}/validate'),
@@ -192,8 +193,17 @@ function run() {
   );
   assert(
     componentSource.includes('name="stagedRunId"') &&
-      componentSource.includes("stagedRun.id"),
-    "Component must pass stagedRunId as a hidden form field so Start import reuses the validated run.",
+      componentSource.includes("stagedRun.id") &&
+      componentSource.includes('name="sourceFormat"') &&
+      componentSource.includes("stagedRun?.sourceFormat"),
+    "Component must pass stagedRunId and validated sourceFormat as hidden form fields so Start import reuses the validated run contract.",
+  );
+  assert(
+    componentSource.includes("formatSampleIssue") &&
+      componentSource.includes("Array.isArray(record.issues)") &&
+      componentSource.includes("Validation issue found.") &&
+      componentSource.includes("formatSampleIssue(issue)"),
+    "Representative issue rows must render message/code text and legacy issue arrays without producing blank Row N output.",
   );
   assert(
     componentSource.includes('skuCode: "skuCode"') &&
@@ -241,12 +251,20 @@ function run() {
     "Backend must return user-safe errors for oversized and empty files.",
   );
 
+  assert(
+    runServiceSource.includes("readStagedSourceRows") &&
+      runServiceSource.includes("parseJsonSourceRows") &&
+      runServiceSource.includes("validateCanonicalRowForImport") &&
+      runServiceSource.includes("JSON import file must contain an array of row objects."),
+    "Backend staged validation must honor CSV/JSON sourceFormat and return canonical user-readable issue messages.",
+  );
+
   // ── Backend: malformed CSV and bad attributes handled at row level ────────
 
   assert(
     runServiceSource.includes("CSV must include a header row and at least one data row") &&
-      runServiceSource.includes("Missing required field: title"),
-    "Backend must detect malformed CSV (no headers/rows) and missing required fields at validation time.",
+      runServiceSource.includes("validateCanonicalRowForImport"),
+    "Backend must detect malformed CSV (no headers/rows) and delegate missing required field checks to canonical row validation.",
   );
 
   // ── Backend: tenant isolation via prisma.tenant() ─────────────────────────

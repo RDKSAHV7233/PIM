@@ -36,28 +36,30 @@ export class BulkImportStorageService {
         },
       });
 
-  async storeStagedCsv(input: {
+  async storeStagedSource(input: {
     tenantKey: string;
     runId: string;
     content: Buffer;
+    sourceFormat?: "csv" | "json";
   }): Promise<{ storageKey: string }> {
     const safeTenantKey = this.sanitizeSegment(input.tenantKey);
     const safeRunId = this.sanitizeSegment(input.runId);
+    const sourceFormat = input.sourceFormat === "json" ? "json" : "csv";
 
     if (this.useLocalFallback) {
       const storageDir = path.join(process.cwd(), "storage", "imports", safeTenantKey, safeRunId);
       await fs.mkdir(storageDir, { recursive: true });
-      const storagePath = path.join(storageDir, "source.csv");
+      const storagePath = path.join(storageDir, `source.${sourceFormat}`);
       await fs.writeFile(storagePath, input.content);
       return { storageKey: storagePath };
     }
 
-    const key = `imports/${safeTenantKey}/${safeRunId}/source.csv`;
+    const key = `imports/${safeTenantKey}/${safeRunId}/source.${sourceFormat}`;
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: key,
       Body: input.content,
-      ContentType: "text/csv; charset=utf-8",
+      ContentType: sourceFormat === "json" ? "application/json; charset=utf-8" : "text/csv; charset=utf-8",
     });
     if (!this.s3Client) {
       throw new Error("S3/R2 client is not initialized");
@@ -66,7 +68,15 @@ export class BulkImportStorageService {
     return { storageKey: key };
   }
 
-  async readStagedCsvStream(storageKey: string): Promise<NodeJS.ReadableStream> {
+  async storeStagedCsv(input: {
+    tenantKey: string;
+    runId: string;
+    content: Buffer;
+  }): Promise<{ storageKey: string }> {
+    return this.storeStagedSource({ ...input, sourceFormat: "csv" });
+  }
+
+  async readStagedSourceStream(storageKey: string): Promise<NodeJS.ReadableStream> {
     this.assertSafeStorageKey(storageKey);
 
     if (path.isAbsolute(storageKey)) {
@@ -91,6 +101,10 @@ export class BulkImportStorageService {
       throw new Error(`Failed to read staged CSV from storage: ${storageKey}`);
     }
     return response.Body as NodeJS.ReadableStream;
+  }
+
+  async readStagedCsvStream(storageKey: string): Promise<NodeJS.ReadableStream> {
+    return this.readStagedSourceStream(storageKey);
   }
 
   stagingKeyToLocalPath(storageKey: string): string | null {

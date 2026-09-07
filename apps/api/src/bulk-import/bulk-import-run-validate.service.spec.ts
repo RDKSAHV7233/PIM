@@ -17,20 +17,23 @@ function buildCsvStream(dataRowCount: number): Readable {
 function makeService(options: {
   planRowLimit: number;
   csvRowCount: number;
+  sourceFormat?: "csv" | "json";
+  sourceContent?: string;
   skuCount?: number;
   maxSkus?: number;
 }) {
+  const sourceFormat = options.sourceFormat ?? "csv";
   const updateMock = jest.fn().mockResolvedValue({});
   const variantFindMany = jest.fn().mockResolvedValue([]);
   const tenantClient = {
     bulkImportRun: {
       findUnique: jest.fn().mockResolvedValue({
         id: "run_1",
-        sourceFileKey: "staged/test.csv",
+        sourceFileKey: sourceFormat === "json" ? "staged/test.json" : "staged/test.csv",
         status: "uploaded",
         category: null,
-        sourceFormat: "csv",
-        sourceName: "test.csv",
+        sourceFormat,
+        sourceName: sourceFormat === "json" ? "test.json" : "test.csv",
         maxRetries: 3,
         totalRows: null,
         preflightSummary: null,
@@ -42,11 +45,16 @@ function makeService(options: {
   const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) };
 
   const storageService = {
-    readStagedCsvStream: jest.fn().mockResolvedValue(buildCsvStream(options.csvRowCount)),
+    readStagedSourceStream: jest.fn().mockResolvedValue(
+      Readable.from(options.sourceContent ?? buildCsvStream(options.csvRowCount)),
+    ),
   };
 
   const bulkImportService = {
     parseCsvLineForImport: jest.fn().mockImplementation((line: string) => line.split(",")),
+    inferHeadersForImportRows: jest.fn().mockImplementation((rows: Record<string, unknown>[]) =>
+      Array.from(new Set(rows.flatMap((row) => Object.keys(row)))),
+    ),
     suggestMapping: jest.fn().mockReturnValue({
       mapping: { title: "title", skuCode: "skuCode" },
       unmappedFields: [],
@@ -56,6 +64,34 @@ function makeService(options: {
       title: row.title,
       skuCode: row.skuCode,
     })),
+    validateCanonicalRowForImport: jest.fn().mockImplementation((row: Record<string, unknown>) => {
+      const issues: Array<{
+        rowNumber: number;
+        severity: "blocking";
+        code: string;
+        message: string;
+        fieldPath: string;
+      }> = [];
+      if (typeof row.title !== "string" || !row.title.trim()) {
+        issues.push({
+          rowNumber: 0,
+          severity: "blocking",
+          code: "TITLE_REQUIRED",
+          message: "Title is required.",
+          fieldPath: "title",
+        });
+      }
+      if (typeof row.skuCode !== "string" || !row.skuCode.trim()) {
+        issues.push({
+          rowNumber: 0,
+          severity: "blocking",
+          code: "SKU_REQUIRED",
+          message: "SKU code is required.",
+          fieldPath: "skuCode",
+        });
+      }
+      return issues;
+    }),
   };
 
   // Defaults keep existing row-ceiling-only tests unaffected: a huge maxSkus
@@ -128,6 +164,34 @@ describe("BulkImportRunService.validateRun — plan row-ceiling enforcement", ()
     await service.validateRun("run_1");
 
     expect(planUsageService.getImportRowLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates JSON staged uploads and stores user-readable issue messages", async () => {
+    const { service, updateMock, storageService } = makeService({
+      planRowLimit: 2000,
+      csvRowCount: 0,
+      sourceFormat: "json",
+      sourceContent: JSON.stringify([{ skuCode: "SKU-1" }]),
+    });
+
+    await service.validateRun("run_1");
+
+    expect(storageService.readStagedSourceStream).toHaveBeenCalledWith("staged/test.json");
+    const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1][0];
+    expect(lastCall.data.status).toBe(BulkImportRunStatus.preflight_blocked);
+    const summary = lastCall.data.preflightSummary as Record<string, unknown>;
+    const sampleIssues = summary.sampleIssues as Array<Record<string, unknown>>;
+    expect(sampleIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rowNumber: 1,
+          code: "TITLE_REQUIRED",
+          message: "Title is required.",
+          fieldPath: "title",
+        }),
+      ]),
+    );
+    expect(sampleIssues[0]).not.toHaveProperty("issues");
   });
 
   it("system ceiling (30000) caps the effective limit even if planRowLimit is higher", async () => {

@@ -885,8 +885,8 @@ describe("BulkImportService.createJob — staged CSV read path", () => {
   const CSV_CONTENT = "title,description,brand\nWidget A,A desc,Vexa\nWidget B,B desc,Vexa\n";
 
   function makeCreateJobService(options: {
-    runRecord?: { sourceFileKey: string | null; sourceExpiresAt: Date | null } | null;
-    csvContent?: string;
+    runRecord?: { sourceFileKey: string | null; sourceExpiresAt: Date | null; sourceFormat?: "csv" | "json" } | null;
+    sourceContent?: string;
   }) {
     const runFindUnique = jest.fn().mockResolvedValue(options.runRecord ?? null);
     const jobCreateMock = jest.fn().mockImplementation((args: { data: Record<string, unknown> }) =>
@@ -927,8 +927,8 @@ describe("BulkImportService.createJob — staged CSV read path", () => {
       applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
     };
     const storageService = {
-      readStagedCsvStream: jest.fn().mockReturnValue(
-        Readable.from(options.csvContent ?? CSV_CONTENT),
+      readStagedSourceStream: jest.fn().mockReturnValue(
+        Readable.from(options.sourceContent ?? CSV_CONTENT),
       ),
     };
     const svc = new BulkImportService(
@@ -954,12 +954,37 @@ describe("BulkImportService.createJob — staged CSV read path", () => {
       { categoryId: "cat1", runId: "run-1", sourceFormat: "csv", mapping: {} } as never,
       { actorId: "u1", actorRole: "admin" as never },
     );
-    expect(storageService.readStagedCsvStream).toHaveBeenCalledWith("staged/run-1.csv");
+    expect(storageService.readStagedSourceStream).toHaveBeenCalledWith("staged/run-1.csv");
     expect(rowCreateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
           expect.objectContaining({ rowNumber: 1 }),
           expect.objectContaining({ rowNumber: 2 }),
+        ]),
+      }),
+    );
+  });
+
+  it("reads rows from staged JSON when the validated run was uploaded as JSON", async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const { svc, storageService, rowCreateManyMock } = makeCreateJobService({
+      runRecord: { sourceFileKey: "staged/run-1.json", sourceExpiresAt: futureDate, sourceFormat: "json" },
+      sourceContent: JSON.stringify([
+        { title: "Widget A", skuCode: "SKU-A", description: "A desc", brand: "Vexa" },
+        { title: "Widget B", skuCode: "SKU-B", description: "B desc", brand: "Vexa" },
+      ]),
+    });
+    await svc.createJob(
+      { categoryId: "cat1", runId: "run-1", sourceFormat: "json", mapping: {} } as never,
+      { actorId: "u1", actorRole: "admin" as never },
+    );
+    expect(storageService.readStagedSourceStream).toHaveBeenCalledWith("staged/run-1.json");
+    expect(rowCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ rowNumber: 1, payload: expect.objectContaining({ title: "Widget A", skuCode: "SKU-A" }) }),
+          expect.objectContaining({ rowNumber: 2, payload: expect.objectContaining({ title: "Widget B", skuCode: "SKU-B" }) }),
         ]),
       }),
     );
@@ -1075,7 +1100,7 @@ describe("BulkImportService.createJob — duplicate prevention (idempotent)", ()
       applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, j: unknown) => j),
     };
     const storageService = {
-      readStagedCsvStream: jest.fn().mockReturnValue(Readable.from(CSV_CONTENT)),
+      readStagedSourceStream: jest.fn().mockReturnValue(Readable.from(CSV_CONTENT)),
     };
     const svc = new BulkImportService(
       prisma as never,

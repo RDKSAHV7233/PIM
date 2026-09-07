@@ -179,6 +179,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       const uploadForm = new FormData();
       uploadForm.append("sourceFile", file);
       uploadForm.append("categoryId", categoryId);
+      uploadForm.append("sourceFormat", sourceFormat);
       uploadForm.append("sourceName", file.name);
       uploadForm.append("maxRetries", String(maxRetries));
 
@@ -225,12 +226,33 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
   const unmappedFields = stagedRun?.preflightSummary?.unmappedFields ?? [];
   const unusedHeaders = stagedRun?.preflightSummary?.unusedHeaders ?? [];
   const sampleIssues = stagedRun?.preflightSummary?.sampleIssues ?? [];
+  const formatSampleIssue = (issue: unknown) => {
+    if (!issue || typeof issue !== "object") {
+      return "";
+    }
+    const record = issue as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      return record.message.trim();
+    }
+    if (Array.isArray(record.issues)) {
+      return record.issues
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+        .join("; ");
+    }
+    if (typeof record.code === "string" && record.code.trim()) {
+      return record.code.trim();
+    }
+    return "Validation issue found.";
+  };
   const effectiveMapping = serializeMapping(stagedRun?.preflightSummary?.mapping);
 
   return canWrite ? (
     <form ref={formRef} action={submitAction} className="space-y-4" suppressHydrationWarning>
       <input type="hidden" name="mapping" value={effectiveMapping} />
       <input type="hidden" name="stagedRunId" value={stagedRun ? stagedRun.id : ""} />
+      <input type="hidden" name="sourceFormat" value={stagedRun?.sourceFormat ?? ""} />
+      <input type="hidden" name="sourceName" value={stagedRun?.sourceName ?? ""} />
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm text-slate-700">
           <span className="font-medium">Category</span>
@@ -478,7 +500,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
                 <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
                   {sampleIssues.map((issue, index) => (
                     <li key={`issue-${issue.rowNumber}-${index}`}>
-                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{issue.message ?? issue.code ?? ""}
+                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{formatSampleIssue(issue)}
                     </li>
                   ))}
                 </ul>

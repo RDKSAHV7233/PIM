@@ -55,6 +55,21 @@ describe("BulkImportStorageService", () => {
     await expect(fs.readFile(storageKey, "utf8")).resolves.toContain("sku-1,Shirt");
   });
 
+  it("stores staged JSON sources with a JSON extension in filesystem fallback", async () => {
+    await createTempWorkspace();
+    const service = createService({ R2_ACCOUNT_ID: "replace-me" });
+
+    const { storageKey } = await service.storeStagedSource({
+      tenantKey: "tenant-a",
+      runId: "run-1",
+      sourceFormat: "json",
+      content: Buffer.from('[{"skuCode":"sku-1","title":"Shirt"}]', "utf8"),
+    });
+
+    expect(storageKey.endsWith(path.join("tenant-a", "run-1", "source.json"))).toBe(true);
+    await expect(fs.readFile(storageKey, "utf8")).resolves.toContain('"skuCode":"sku-1"');
+  });
+
   it("does not enable filesystem fallback in staging for placeholder account ids", () => {
     const service = createService({ APP_ENV: "staging", R2_ACCOUNT_ID: "replace-me" });
 
