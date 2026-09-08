@@ -162,11 +162,27 @@ function isRequiredTeamReviewPath(rawFile) {
   );
 }
 
+function hasAddedControllerMutationDecorator(entry) {
+  const file = normalizePath(entry?.file);
+  if (!file.startsWith("apps/api/src/") || !file.endsWith(".controller.ts")) {
+    return false;
+  }
+  return String(entry?.patch ?? "")
+    .split(/\r?\n/)
+    .some((line) => /^\+\s*@(Post|Put|Patch|Delete)\s*\(/.test(line));
+}
+
 function evaluateGovernance(entries, labels = [], env = process.env) {
   const files = entries.map((entry) => normalizePath(entry.file)).filter(Boolean);
   const touchesAuthOrSession = files.some(isAuthOrSessionBoundaryPath);
   const touchesConnector = files.some(isConnectorCredentialPath);
-  const requiredTeamFiles = files.filter(isRequiredTeamReviewPath);
+  const mutationEndpointFiles = entries
+    .filter(hasAddedControllerMutationDecorator)
+    .map((entry) => normalizePath(entry.file));
+  const requiredTeamFiles = Array.from(new Set([
+    ...files.filter(isRequiredTeamReviewPath),
+    ...mutationEndpointFiles,
+  ])).sort();
   const requiredTeamApproved = hasRequiredTeamApproval(labels, env);
   const reasons = [];
 
@@ -225,13 +241,58 @@ function gitNumstat(baseRef) {
   return result.stdout;
 }
 
+function parseDiffFiles(text) {
+  const patches = new Map();
+  let currentFile = null;
+  let currentLines = [];
+
+  for (const line of String(text ?? "").split(/\r?\n/)) {
+    const header = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (header) {
+      if (currentFile) {
+        patches.set(normalizePath(currentFile), currentLines.join("\n"));
+      }
+      currentFile = header[2];
+      currentLines = [line];
+      continue;
+    }
+    if (currentFile) {
+      currentLines.push(line);
+    }
+  }
+
+  if (currentFile) {
+    patches.set(normalizePath(currentFile), currentLines.join("\n"));
+  }
+
+  return patches;
+}
+
+function gitDiffPatches(baseRef) {
+  const result = childProcess.spawnSync("git", ["diff", "--unified=0", `${baseRef}...HEAD`], {
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`git diff --unified=0 ${baseRef}...HEAD failed with exit code ${result.status}`);
+  }
+  return parseDiffFiles(result.stdout);
+}
+
 function main(env = process.env) {
   const baseRef = String(env.GIT_BASE_REF ?? "").trim();
   if (!baseRef) {
     throw new Error("Missing GIT_BASE_REF for PR scope comparison.");
   }
 
-  const entries = parseNumstat(gitNumstat(baseRef));
+  const patchesByFile = gitDiffPatches(baseRef);
+  const entries = parseNumstat(gitNumstat(baseRef)).map((entry) => ({
+    ...entry,
+    patch: patchesByFile.get(normalizePath(entry.file)) ?? "",
+  }));
   const summary = summarizeScope(entries);
   const labels = readApprovalLabels(env.GITHUB_EVENT_PATH);
   const evaluation = evaluateScope(summary, hasLargePrApproval(labels, env));
@@ -284,6 +345,7 @@ module.exports = {
   evaluateScope,
   hasLargePrApproval,
   hasRequiredTeamApproval,
+  hasAddedControllerMutationDecorator,
   isAuthOrSessionBoundaryPath,
   isConnectorCredentialPath,
   isRequiredTeamReviewPath,

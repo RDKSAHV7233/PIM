@@ -11,6 +11,7 @@ const {
   classifyDomains,
   evaluateGovernance,
   evaluateScope,
+  hasAddedControllerMutationDecorator,
   hasLargePrApproval,
   hasRequiredTeamApproval,
   isAuthOrSessionBoundaryPath,
@@ -94,6 +95,30 @@ function main() {
   assert.equal(isRequiredTeamReviewPath("apps/api/src/connectors/shopify/shopify.connector.ts"), true);
   assert.equal(isRequiredTeamReviewPath("packages/db/prisma/migrations/20260906000000_change/migration.sql"), true);
   assert.equal(isRequiredTeamReviewPath("apps/api/src/catalog/catalog.service.ts"), false);
+  assert.equal(
+    hasAddedControllerMutationDecorator({
+      file: "apps/api/src/error-authority/error-authority-ops.controller.ts",
+      patch: '+  @Post(":issueId/resolve")\n+  resolveIssue() {}',
+    }),
+    true,
+    "new API controller mutation decorators are required-team governance surfaces",
+  );
+  assert.equal(
+    hasAddedControllerMutationDecorator({
+      file: "apps/api/src/error-authority/error-authority-ops.controller.ts",
+      patch: '+  @Get(":issueId")\n+  getIssue() {}',
+    }),
+    false,
+    "read-only controller routes do not trigger mutation-surface governance",
+  );
+  assert.equal(
+    hasAddedControllerMutationDecorator({
+      file: "apps/api/test/integration/error-authority-ops.test.cjs",
+      patch: '+  @Post(":issueId/resolve")',
+    }),
+    false,
+    "test files containing decorator text do not trigger source-controller governance",
+  );
 
   const authOnlyEntries = [
     { additions: 20, deletions: 5, file: "apps/api/src/auth/jwt-auth.guard.ts" },
@@ -144,6 +169,26 @@ function main() {
     evaluateGovernance(shopifyOnlyEntries, [REQUIRED_TEAM_APPROVAL_LABEL], {}).ok,
     true,
     "required-team label approves focused Shopify connector changes",
+  );
+
+  const mutationEndpointEntries = [
+    {
+      additions: 12,
+      deletions: 0,
+      file: "apps/api/src/error-authority/error-authority-ops.controller.ts",
+      patch: '+  @Post(":issueId/resolve")\n+  async resolveIssue() {}',
+    },
+  ];
+  const mutationMissingApproval = evaluateGovernance(mutationEndpointEntries, [], {});
+  assert.equal(mutationMissingApproval.ok, false, "new API mutation endpoints require required-team approval");
+  assert.deepEqual(mutationMissingApproval.requiredTeamFiles, [
+    "apps/api/src/error-authority/error-authority-ops.controller.ts",
+  ]);
+  assert.match(mutationMissingApproval.reasons.join("\n"), /required-team file/);
+  assert.equal(
+    evaluateGovernance(mutationEndpointEntries, [REQUIRED_TEAM_APPROVAL_LABEL], {}).ok,
+    true,
+    "required-team label approves focused new API mutation endpoints",
   );
 
   assert.equal(
