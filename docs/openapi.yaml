@@ -910,6 +910,19 @@ paths:
         "200":
           description: ""
       tags: *a13
+  /api/v1/error-authority/ops/issues/{issueId}/resolve:
+    post:
+      operationId: ErrorAuthorityOpsController_resolveIssue
+      parameters:
+        - name: issueId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a13
   /api/v1/internal/ops/summary:
     get:
       operationId: InternalOpsController_getSummary

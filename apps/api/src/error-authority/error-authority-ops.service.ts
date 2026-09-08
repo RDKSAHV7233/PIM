@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import type { ListErrorIssuesDto } from "./dto/list-error-issues.dto";
 import type { ListErrorOccurrencesDto } from "./dto/list-error-occurrences.dto";
 import { ObservabilityDbService } from "./observability-db.service";
@@ -71,6 +71,19 @@ const MAX_WINDOW_DAYS = 31;
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
 
+/** Shape resolveIssue() returns to the controller: response fields plus the
+ *  audit metadata (fingerprint/service/runtime/severity/previousState) the
+ *  controller needs for its explicit ERROR_ISSUE_RESOLVED audit call. */
+export type ResolveErrorIssueResult = {
+  id: string;
+  state: string;
+  previousState: string;
+  fingerprint: string;
+  service: string;
+  runtime: string;
+  severity: string;
+};
+
 @Injectable()
 export class ErrorAuthorityOpsService {
   constructor(private readonly observabilityDb: ObservabilityDbService) {}
@@ -108,6 +121,31 @@ export class ErrorAuthorityOpsService {
       limit,
       encodeCursor,
     });
+  }
+
+  /**
+   * PIM#766 Part 1: manual resolve. Idempotent — resolving an already-
+   * "resolved" issue succeeds (200) rather than erroring, so a double-click
+   * or a retried request from the UI is harmless.
+   */
+  async resolveIssue(issueId: string): Promise<ResolveErrorIssueResult> {
+    const result = await this.observabilityDb.resolveIssue(issueId);
+    if (result.outcome === "not_found") {
+      throw new NotFoundException({ error: "ERROR_ISSUE_NOT_FOUND", resourceId: issueId });
+    }
+    if (result.outcome === "storage_unavailable") {
+      throw new ServiceUnavailableException({ error: "ERROR_AUTHORITY_STORAGE_UNAVAILABLE" });
+    }
+    const { issue } = result;
+    return {
+      id: issue.id,
+      state: issue.state,
+      previousState: result.outcome === "resolved" ? result.previousState : issue.state,
+      fingerprint: issue.fingerprint,
+      service: issue.service,
+      runtime: issue.runtime,
+      severity: issue.severity,
+    };
   }
 }
 

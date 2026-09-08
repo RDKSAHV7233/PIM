@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
+import { ResolveIssueButton } from "@/components/error-authority/resolve-issue-button";
 import { ApiHttpError } from "@/lib/api";
 import {
   listErrorAuthorityIssues,
@@ -100,6 +101,7 @@ export default async function InternalOpsErrorsPage({ searchParams }: InternalOp
   const issueId = clean(query.issueId);
   const cursor = clean(query.cursor);
   const occurrenceCursor = clean(query.occurrenceCursor);
+  const resolveStatus = clean(query.resolveStatus);
 
   if (!authHeader) {
     redirect(buildLoginRedirect(buildHref({ ...baseParams, issueId })));
@@ -233,6 +235,20 @@ export default async function InternalOpsErrorsPage({ searchParams }: InternalOp
           </Card>
         ) : null}
 
+        {resolveStatus === "resolved" ? (
+          <Card className="border-emerald-200 bg-emerald-50">
+            <p className="text-sm text-emerald-900">Issue resolved.</p>
+          </Card>
+        ) : resolveStatus === "forbidden" ? (
+          <Card className="border-amber-200 bg-amber-50">
+            <p className="text-sm text-amber-900">You do not have permission to resolve issues.</p>
+          </Card>
+        ) : resolveStatus === "error" ? (
+          <Card className="border-red-200 bg-red-50">
+            <p className="text-sm text-red-900">Resolving the issue failed. Please try again.</p>
+          </Card>
+        ) : null}
+
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
           <Card className="overflow-hidden p-0">
             <div className="border-b border-slate-200 p-4">
@@ -300,7 +316,17 @@ export default async function InternalOpsErrorsPage({ searchParams }: InternalOp
             <div className="border-b border-slate-200 p-4">
               <CardTitle>Occurrences</CardTitle>
               {selectedIssue ? (
-                <p className="truncate text-sm text-slate-500">{selectedIssue.safeTitle}</p>
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                  <p className="truncate text-sm text-slate-500">{selectedIssue.safeTitle}</p>
+                  <div className="flex items-center gap-2">
+                    <StatusChip label={selectedIssue.state} tone={stateTone(selectedIssue.state)} />
+                    <ResolveIssueButton
+                      issueId={selectedIssue.id}
+                      state={selectedIssue.state}
+                      returnParams={{ ...baseParams, cursor: cursor || undefined, issueId: selectedIssue.id }}
+                    />
+                  </div>
+                </div>
               ) : (
                 <p className="text-sm text-slate-500">Select an issue.</p>
               )}

@@ -1,5 +1,5 @@
 import type { ApiRequestOptions } from "./core";
-import { fetchJson } from "./core";
+import { fetchJson, postJson } from "./core";
 
 export type ErrorAuthorityRuntime = "api" | "worker" | "next_server" | "browser";
 export type ErrorAuthoritySeverity = "p0" | "p1" | "p2" | "p3";
@@ -119,6 +119,23 @@ export async function listErrorAuthorityOccurrences(
   return fetchJson<ErrorAuthorityListResponse<ErrorAuthorityOccurrenceListItem>>(
     `/error-authority/ops/issues/${encodeURIComponent(issueId)}/occurrences${params}`,
     undefined,
+    options,
+  );
+}
+
+export interface ErrorAuthorityResolveIssueResponse {
+  id: string;
+  state: ErrorAuthorityState | string;
+}
+
+/**
+ * PIM#766 Part 1: manual resolve. Idempotent on the API side — calling this
+ * again on an already-resolved issue still returns 200 with state "resolved".
+ */
+export async function resolveErrorAuthorityIssue(issueId: string, options?: ApiRequestOptions) {
+  return postJson<ErrorAuthorityResolveIssueResponse>(
+    `/error-authority/ops/issues/${encodeURIComponent(issueId)}/resolve`,
+    {},
     options,
   );
 }

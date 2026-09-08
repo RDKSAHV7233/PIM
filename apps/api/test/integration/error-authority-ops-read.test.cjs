@@ -39,10 +39,25 @@ async function main() {
   assert(
     controller.includes('@Get("issues")') &&
       controller.includes('@Get("issues/:issueId/occurrences")') &&
-      !controller.includes("@Post(") &&
       !controller.includes("@Patch(") &&
       !controller.includes("@Delete("),
-    "Error Authority ops API must be read-only in the MVP.",
+    "Error Authority ops API's read routes must remain GET-only; no PATCH/DELETE mutation surface.",
+  );
+
+  // PIM#766 Part 1 (PO-approved Option C: manual resolve + auto-resolve sweep):
+  // the ops API is no longer read-only in the strict MVP sense — it gains exactly
+  // one bounded mutation (resolve), decorated identically to the read routes above
+  // (class-level @DisallowApiClient/@AuthenticatedReadRoute/@AdminBoundaryAccess
+  // already asserted above, plus its own @Roles("admin") + the same
+  // assertAdminAppRole request-role check) and @HttpCode(200) since it's an
+  // idempotent state transition, not a resource-creation POST.
+  assert(
+    controller.includes('@Post("issues/:issueId/resolve")') &&
+      controller.includes("@HttpCode(200)") &&
+      controller.includes("resolveIssue(") &&
+      controller.includes("ERROR_ISSUE_RESOLVED"),
+    "Error Authority ops API must expose exactly the PIM#766 manual-resolve mutation, decorated like the " +
+      "read routes and recording an explicit ERROR_ISSUE_RESOLVED audit entry.",
   );
 
   assert(
@@ -99,7 +114,8 @@ async function main() {
         validated: [
           "ops_controller_registered",
           "api_authorization_admin_and_boundary",
-          "api_read_only",
+          "api_read_routes_get_only",
+          "api_resolve_mutation_present",
           "bounded_query_limits",
           "cursor_ordering_stable",
           "observability_filter_indexes",

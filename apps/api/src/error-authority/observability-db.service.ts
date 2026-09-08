@@ -42,6 +42,22 @@ type CountOpenP0P1IssuesInput = {
   timeoutMs: number;
 };
 
+/** Fields the manual-resolve path needs for the response body and audit metadata. */
+type ResolvedIssueSummary = {
+  id: string;
+  state: string;
+  fingerprint: string;
+  service: string;
+  runtime: string;
+  severity: string;
+};
+
+export type ResolveIssueOutcome =
+  | { outcome: "not_found" }
+  | { outcome: "storage_unavailable" }
+  | { outcome: "already_resolved"; issue: ResolvedIssueSummary }
+  | { outcome: "resolved"; issue: ResolvedIssueSummary; previousState: string };
+
 type ErrorIssueRow = {
   id: string;
   fingerprint: string;
@@ -100,7 +116,7 @@ type ObservabilityPrismaClient = {
   };
   errorIssue: {
     count(args: unknown): Promise<number>;
-    findUnique(args: unknown): Promise<{ id: string; severity: string; state: string } | null>;
+    findUnique(args: unknown): Promise<ErrorIssueRow | null>;
     findMany(args: unknown): Promise<ErrorIssueRow[]>;
     upsert(args: unknown): Promise<{ id: string }>;
     update(args: unknown): Promise<unknown>;
@@ -565,6 +581,43 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
     }
   }
 
+  /**
+   * PIM#766 Part 1 (manual resolve): flips a single ErrorIssue to "resolved"
+   * on admin request. Returns a discriminated outcome rather than throwing so
+   * the caller (ErrorAuthorityOpsService) can map "not found" to 404 and
+   * "already resolved" to an idempotent 200, both without a try/catch at the
+   * call site.
+   */
+  async resolveIssue(issueId: string): Promise<ResolveIssueOutcome> {
+    if (!this.client) {
+      return { outcome: "storage_unavailable" };
+    }
+    try {
+      const existing = await this.client.errorIssue.findUnique({
+        where: { id: issueId },
+        select: { id: true, state: true, fingerprint: true, service: true, runtime: true, severity: true },
+      });
+      if (!existing) {
+        return { outcome: "not_found" };
+      }
+      if (existing.state === "resolved") {
+        return { outcome: "already_resolved", issue: toResolveSummary(existing) };
+      }
+      const updated = (await this.client.errorIssue.update({
+        where: { id: issueId },
+        data: { state: "resolved" },
+        select: { id: true, state: true, fingerprint: true, service: true, runtime: true, severity: true },
+      })) as ResolvedIssueSummary;
+      return { outcome: "resolved", issue: toResolveSummary(updated), previousState: existing.state };
+    } catch (error: unknown) {
+      this.logger.error("Error authority manual resolve failed.", {
+        issueId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return { outcome: "storage_unavailable" };
+    }
+  }
+
   private withApplicationName(databaseUrl: string): string {
     const appName =
       encodeURIComponent(String(process.env.OBSERVABILITY_DB_POOL_APP_NAME ?? "vexa-error-authority").trim()) ||
@@ -574,6 +627,17 @@ export class ObservabilityDbService implements ErrorEventStore, OnModuleInit, On
     }
     return databaseUrl.includes("?") ? `${databaseUrl}&application_name=${appName}` : `${databaseUrl}?application_name=${appName}`;
   }
+}
+
+function toResolveSummary(row: ResolvedIssueSummary): ResolvedIssueSummary {
+  return {
+    id: row.id,
+    state: row.state,
+    fingerprint: row.fingerprint,
+    service: row.service,
+    runtime: row.runtime,
+    severity: row.severity,
+  };
 }
 
 function emptyResponse<T>(input: { limit: number; dateFrom: Date; dateTo: Date }): ErrorAuthorityListResponse<T> {

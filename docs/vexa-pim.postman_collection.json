@@ -9423,6 +9423,41 @@
             },
             "description": ""
           }
+        },
+        {
+          "name": "ErrorAuthorityOpsController_resolveIssue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/error-authority/ops/issues/:issueId/resolve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "error-authority",
+                "ops",
+                "issues",
+                ":issueId",
+                "resolve"
+              ],
+              "variable": [
+                {
+                  "key": "issueId",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
+          }
         }
       ]
     },

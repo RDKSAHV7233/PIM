@@ -13,6 +13,8 @@ function read(relativePath) {
 async function main() {
   const page = read("apps/web/src/app/internal/ops/errors/page.tsx");
   const apiClient = read("apps/web/src/lib/api/error-authority-ops.ts");
+  const resolveButton = read("apps/web/src/components/error-authority/resolve-issue-button.tsx");
+  const actions = read("apps/web/src/app/internal/ops/errors/actions.ts");
 
   assert(
     page.includes("await getServerSession()") &&
@@ -42,9 +44,38 @@ async function main() {
     "Internal ops errors page must render issue and occurrence reads with core filters.",
   );
 
-  for (const mutation of ["@Post(", "postJson", "patchJson", "deleteJson", 'method: "POST"', 'method: "PATCH"', 'method: "DELETE"']) {
-    assert(!apiClient.includes(mutation), `Internal ops errors MVP must not expose mutation capability: ${mutation}`);
-  }
+  // PIM#766 Part 1 (PO-approved Option C): the API client gains exactly one bounded
+  // mutation — resolve — built on the shared postJson helper. Anything beyond that
+  // (PATCH/DELETE, or a second POST) would be scope creep on this specific fix.
+  assert(
+    apiClient.includes("resolveErrorAuthorityIssue") &&
+      apiClient.includes("postJson") &&
+      apiClient.includes("/resolve") &&
+      !apiClient.includes("patchJson") &&
+      !apiClient.includes("deleteJson") &&
+      !apiClient.includes('method: "PATCH"') &&
+      !apiClient.includes('method: "DELETE"'),
+    "Internal ops errors API client must expose only the PIM#766 resolve mutation, no other write capability.",
+  );
+
+  assert(
+    resolveButton.includes("ConfirmDialog") &&
+      resolveButton.includes("resolveErrorIssueAction") &&
+      /eligible for permanent deletion/i.test(resolveButton) &&
+      resolveButton.includes("alreadyResolved"),
+    "Internal ops errors UI must gate the resolve mutation behind a confirmation dialog that warns about " +
+      "retention impact, and must disable the control once an issue is already resolved.",
+  );
+
+  assert(
+    actions.includes('"use server"') &&
+      actions.includes("getServerSession()") &&
+      actions.includes("isSystemAdminBoundary(adminBoundaryRoles)") &&
+      actions.includes('actorRole !== "admin"') &&
+      actions.includes("resolveErrorAuthorityIssue("),
+    "The resolve server action must re-check the same admin + system/super boundary gate the page renders " +
+      "behind — a server action is directly callable and is not protected by the page's own gating alone.",
+  );
 
   const prohibitedUiFields = [
     "headers",
@@ -77,7 +108,9 @@ async function main() {
           "ui_server_session_gate",
           "ui_server_authenticated_api_client",
           "ui_core_filters",
-          "ui_read_only",
+          "ui_bounded_resolve_mutation_only",
+          "ui_resolve_confirmation_dialog",
+          "ui_resolve_action_reauthorizes",
           "ui_no_prohibited_fields",
           "ui_safe_tenant_exposure",
         ],
