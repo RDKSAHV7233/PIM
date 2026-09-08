@@ -22,12 +22,15 @@
  *     individually (see the `backend-tests` job in ci.yml). Kept short and
  *     explicit on purpose — anything DB-dependent must be a conscious,
  *     named decision, never something that falls through by default.
- *   - GLOB_COVERED_TESTS: every other currently-known file. These are
- *     DB-free and either already wired into CI as an explicit `node <path>`
- *     step, or awaiting the broader CI-wiring sweep (PIM#754 story 4).
- *     Declaring them here (rather than trusting a runtime glob) is what
- *     gives this check teeth: a new file that isn't added to either bucket
- *     fails the build instead of disappearing quietly.
+ *   - CI_QUARANTINED_TESTS: DB-free files that currently fail when executed
+ *     in the CI-style DB-free runner. They are explicit debt, not silent
+ *     exclusions.
+ *   - GLOB_COVERED_TESTS: DB-free files run by
+ *     scripts/run-web-integration-db-free.cjs in CI.
+ *
+ * Declaring every file here (rather than trusting a runtime glob) is what
+ * gives this check teeth: a new file that isn't added to one bucket fails
+ * the build instead of disappearing quietly.
  *
  * Pure filesystem check — no database, no build step, runs in the `build`
  * job. Fails if:
@@ -53,23 +56,47 @@ const DB_DEPENDENT_TESTS = [
   "public-signup-web-flow.test.cjs",
 ];
 
-// Every other apps/web/test/integration/*.test.cjs file. DB-free. Whether
-// or not it is currently wired into a CI step, it belongs in this bucket —
-// not the DB-dependent one — because it does not require a live database
-// to run standalone.
+// DB-free tests that are deliberately NOT part of the runnable CI batch yet
+// because the first full PIM#754 execution exposed existing dormant failures.
+// Keep this list small, visible, and issue-backed; moving a file out requires
+// making it pass under scripts/run-web-integration-db-free.cjs.
+const CI_QUARANTINED_TESTS = [
+  "admin-commercial-route-contract.test.cjs",
+  "admin-oidc-config-route-contract.test.cjs",
+  "admin-plan-signup-conversion-ui.test.cjs",
+  "auth-login-upstream-unavailable.test.cjs",
+  "auth-suspension-ui.test.cjs",
+  "bulk-import-process-action-ui.test.cjs",
+  "bulk-import-start-button-ui.test.cjs",
+  "catalog-delete-ui.test.cjs",
+  "catalog-products-route-contract.test.cjs",
+  "connector-install-form.test.cjs",
+  "connector-launch-honesty-ui.test.cjs",
+  "connectors-hub-route-contract.test.cjs",
+  "dashboard-signup-funnel-ui.test.cjs",
+  "env-gate.test.cjs",
+  "error-authority-env-contract.test.cjs",
+  "internal-ops-summary-ui.test.cjs",
+  "mapping-editor-component.test.cjs",
+  "mfa-web-pages-contract.test.cjs",
+  "middleware-server-action-session-expired.test.cjs",
+  "myntra-nykaa-install-form.test.cjs",
+  "pending-feedback-rollout-ui.test.cjs",
+  "product-detail-fetch-orchestration.test.cjs",
+  "public-signup-ui.test.cjs",
+];
+
+// DB-free tests that are runnable in the CI batch today.
 const GLOB_COVERED_TESTS = [
   "account-suspended-route-contract.test.cjs",
   "admin-api-keys-route-contract.test.cjs",
   "admin-audit-route-contract.test.cjs",
   "admin-auth-policy-route-contract.test.cjs",
-  "admin-commercial-route-contract.test.cjs",
   "admin-connectors-route-contract.test.cjs",
   "admin-entry-route-contract.test.cjs",
   "admin-form-accessibility.test.cjs",
   "admin-form-errors-a11y.test.cjs",
-  "admin-oidc-config-route-contract.test.cjs",
   "admin-plan-route-contract.test.cjs",
-  "admin-plan-signup-conversion-ui.test.cjs",
   "admin-plan-signup-export-ui.test.cjs",
   "admin-privacy-ui.test.cjs",
   "admin-users-route-contract.test.cjs",
@@ -85,12 +112,10 @@ const GLOB_COVERED_TESTS = [
   "approval-diff-workspace.test.cjs",
   "approval-evidence-workspace-ui.test.cjs",
   "audit-explorer-ui.test.cjs",
-  "auth-login-upstream-unavailable.test.cjs",
   "auth-recovery-ui.test.cjs",
   "auth-redirect-sanitizer-runtime.test.cjs",
   "auth-redirect-sanitizer.test.cjs",
   "auth-shell-ui.test.cjs",
-  "auth-suspension-ui.test.cjs",
   "backup-restore-evidence.test.cjs",
   "brand-logo-ui.test.cjs",
   "browser-error-capture.test.cjs",
@@ -101,19 +126,15 @@ const GLOB_COVERED_TESTS = [
   "bulk-import-error-resilience.test.cjs",
   "bulk-import-pending-button-ui.test.cjs",
   "bulk-import-preflight-ui.test.cjs",
-  "bulk-import-process-action-ui.test.cjs",
   "bulk-import-row-verification-ui.test.cjs",
   "bulk-import-staged-workflow-ui.test.cjs",
-  "bulk-import-start-button-ui.test.cjs",
   "bulk-media-association-timeout-ambiguous-outcome.test.cjs",
   "bulk-publish-timeout-ambiguous-outcome.test.cjs",
   "catalog-attribute-actions-cache.test.cjs",
   "catalog-attributes-route-contract.test.cjs",
   "catalog-categories-hydration.test.cjs",
   "catalog-categories-route-contract.test.cjs",
-  "catalog-delete-ui.test.cjs",
   "catalog-first-shell.test.cjs",
-  "catalog-products-route-contract.test.cjs",
   "channel-connector-detail-route-contract.test.cjs",
   "channel-connector-detail-shopify-ui.test.cjs",
   "channels-connector-catalog-link-route-contract.test.cjs",
@@ -129,19 +150,13 @@ const GLOB_COVERED_TESTS = [
   "connector-action-matrix-ui-gating.test.cjs",
   "connector-capability-matrix-ui.test.cjs",
   "connector-claim-consistency.test.cjs",
-  "connector-install-form.test.cjs",
   "connector-issue-snapshot-dedupe.test.cjs",
-  "connector-launch-honesty-ui.test.cjs",
   "connector-legacy-route-redirects.test.cjs",
   "connector-oauth-initiation-contract.test.cjs",
-  "connectors-hub-route-contract.test.cjs",
   "connectors-setup-route-contract.test.cjs",
   "dashboard-api-fallback-ui.test.cjs",
   "dashboard-approval-truth.test.cjs",
   "dashboard-route-contract.test.cjs",
-  "dashboard-signup-funnel-ui.test.cjs",
-  "env-gate.test.cjs",
-  "error-authority-env-contract.test.cjs",
   "error-authority-negative-runtime-proof-route.test.cjs",
   "error-authority-render-runtime-proof-page.test.cjs",
   "error-authority-runtime-proof-route.test.cjs",
@@ -152,7 +167,6 @@ const GLOB_COVERED_TESTS = [
   "import-preflight-wizard.test.cjs",
   "internal-commercial-ops-ui.test.cjs",
   "internal-ops-errors-ui.test.cjs",
-  "internal-ops-summary-ui.test.cjs",
   "internal-surface-gating.test.cjs",
   "issue-inbox-ui.test.cjs",
   "legacy-alias-routes.test.cjs",
@@ -160,7 +174,6 @@ const GLOB_COVERED_TESTS = [
   "mapping-account-scope-contract.test.cjs",
   "mapping-canonical-ui.test.cjs",
   "mapping-dirty-state-ui.test.cjs",
-  "mapping-editor-component.test.cjs",
   "mapping-editor-prop-contract.test.cjs",
   "mapping-lazy-panels.test.cjs",
   "mapping-readiness-version-context-ui.test.cjs",
@@ -171,9 +184,6 @@ const GLOB_COVERED_TESTS = [
   "media-governance-ui.test.cjs",
   "media-route-contract.test.cjs",
   "media-thumbnail-ui.test.cjs",
-  "mfa-web-pages-contract.test.cjs",
-  "middleware-server-action-session-expired.test.cjs",
-  "myntra-nykaa-install-form.test.cjs",
   "next-server-error-capture.test.cjs",
   "no-public-pricing-policy.test.cjs",
   "notification-center-severity-ui.test.cjs",
@@ -186,12 +196,10 @@ const GLOB_COVERED_TESTS = [
   "operations-overview-route-contract.test.cjs",
   "operations-repair-route-contract.test.cjs",
   "ops-cockpit-ui.test.cjs",
-  "pending-feedback-rollout-ui.test.cjs",
   "pilot-go-conditions-remediation-ui.test.cjs",
   "plan-comparison-limit-formatting.test.cjs",
   "plan-usage-sku-meter-copy.test.cjs",
   "product-content-taxcodes-approval-guard.test.cjs",
-  "product-detail-fetch-orchestration.test.cjs",
   "product-detail-readiness-batch.test.cjs",
   "product-detail-route-contract.test.cjs",
   "product-detail-workflow-ui.test.cjs",
@@ -207,7 +215,6 @@ const GLOB_COVERED_TESTS = [
   "products-index-route-contract.test.cjs",
   "products-workbench-bulk-publish-selection.test.cjs",
   "public-signup-web-flow-readiness-timeout.test.cjs",
-  "public-signup-ui.test.cjs",
   "publish-export-pilot-proof-ui.test.cjs",
   "quality-approvals-route-contract.test.cjs",
   "quality-completeness-route-contract.test.cjs",
@@ -264,18 +271,20 @@ function findDuplicates(list) {
  * @param {string[]} actualFiles  files that currently exist on disk
  * @param {string[]} dbDependent  declared DB_DEPENDENT_TESTS
  * @param {string[]} globCovered  declared GLOB_COVERED_TESTS
+ * @param {string[]} quarantined  declared CI_QUARANTINED_TESTS
  */
-function evaluateCoverage(actualFiles, dbDependent, globCovered) {
-  const declared = [...dbDependent, ...globCovered];
+function evaluateCoverage(actualFiles, dbDependent, globCovered, quarantined = []) {
+  const declared = [...dbDependent, ...globCovered, ...quarantined];
   const declaredSet = new Set(declared);
   const actualSet = new Set(actualFiles);
 
   const uncovered = actualFiles.filter((f) => !declaredSet.has(f)).sort();
   const stale = declared.filter((f) => !actualSet.has(f)).sort();
-  const crossBucketDuplicates = dbDependent.filter((f) => globCovered.includes(f)).sort();
+  const crossBucketDuplicates = findDuplicates(declared).sort();
   const duplicatesWithinBucket = [
     ...findDuplicates(dbDependent),
     ...findDuplicates(globCovered),
+    ...findDuplicates(quarantined),
   ].sort();
 
   const ok =
@@ -289,10 +298,10 @@ function evaluateCoverage(actualFiles, dbDependent, globCovered) {
 
 function main() {
   const actualFiles = listActualTestFiles();
-  const result = evaluateCoverage(actualFiles, DB_DEPENDENT_TESTS, GLOB_COVERED_TESTS);
+  const result = evaluateCoverage(actualFiles, DB_DEPENDENT_TESTS, GLOB_COVERED_TESTS, CI_QUARANTINED_TESTS);
 
   console.log(
-    `[integration-test-coverage] apps/web/test/integration: ${actualFiles.length} file(s) on disk, ${result.declaredCount} declared (${DB_DEPENDENT_TESTS.length} DB-dependent + ${GLOB_COVERED_TESTS.length} glob-covered).`,
+    `[integration-test-coverage] apps/web/test/integration: ${actualFiles.length} file(s) on disk, ${result.declaredCount} declared (${DB_DEPENDENT_TESTS.length} DB-dependent + ${GLOB_COVERED_TESTS.length} CI-runnable DB-free + ${CI_QUARANTINED_TESTS.length} quarantined DB-free).`,
   );
 
   if (result.ok) {
@@ -304,13 +313,13 @@ function main() {
 
   if (result.uncovered.length > 0) {
     console.error(
-      `\n- ${result.uncovered.length} file(s) exist on disk but are declared in neither DB_DEPENDENT_TESTS nor GLOB_COVERED_TESTS:`,
+      `\n- ${result.uncovered.length} file(s) exist on disk but are declared in none of DB_DEPENDENT_TESTS, GLOB_COVERED_TESTS, or CI_QUARANTINED_TESTS:`,
     );
     for (const file of result.uncovered) {
       console.error(`    ${file}`);
     }
     console.error(
-      "  Add each to scripts/check-integration-test-coverage.cjs — GLOB_COVERED_TESTS if it runs without a database, DB_DEPENDENT_TESTS if it needs a real Postgres.",
+      "  Add each to scripts/check-integration-test-coverage.cjs — GLOB_COVERED_TESTS if it runs in the DB-free CI batch, DB_DEPENDENT_TESTS if it needs a real Postgres, or CI_QUARANTINED_TESTS only with issue-backed failing evidence.",
     );
   }
 
@@ -323,11 +332,11 @@ function main() {
   }
 
   if (result.crossBucketDuplicates.length > 0) {
-    console.error(`\n- ${result.crossBucketDuplicates.length} file(s) declared in BOTH buckets:`);
+    console.error(`\n- ${result.crossBucketDuplicates.length} file(s) declared in multiple buckets:`);
     for (const file of result.crossBucketDuplicates) {
       console.error(`    ${file}`);
     }
-    console.error("  A file cannot be both DB-dependent and glob-covered — pick one.");
+    console.error("  A file must have exactly one owner bucket.");
   }
 
   if (result.duplicatesWithinBucket.length > 0) {
@@ -346,6 +355,7 @@ if (require.main === module) {
 
 module.exports = {
   DB_DEPENDENT_TESTS,
+  CI_QUARANTINED_TESTS,
   GLOB_COVERED_TESTS,
   evaluateCoverage,
   findDuplicates,

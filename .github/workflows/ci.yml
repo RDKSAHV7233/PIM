@@ -159,6 +159,9 @@ jobs:
       - name: Public signup web flow readiness-timeout guard (PIM#777)
         run: node apps/web/test/integration/public-signup-web-flow-readiness-timeout.test.cjs
 
+      - name: Web integration DB-free suite (PIM#754)
+        run: node scripts/run-web-integration-db-free.cjs --timeout=30
+
   # ── Backend tests (DB + Redis required) ───────────────────────────────
   # Skipped when only frontend files change on a PR.
   backend-tests:
