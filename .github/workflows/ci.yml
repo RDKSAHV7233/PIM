@@ -106,6 +106,9 @@ jobs:
           GIT_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: node scripts/check-pr-scope.cjs
 
+      - name: Integration test coverage drift guard (PIM#754)
+        run: node scripts/check-integration-test-coverage.cjs
+
       - name: Lint API
         run: npm run lint --workspace @pim1/api
 
@@ -121,6 +124,7 @@ jobs:
       - name: DevOps contract tests
         run: |
           node scripts/check-pr-scope.test.cjs
+          node scripts/check-integration-test-coverage.test.cjs
           node scripts/railway-deploy.test.cjs
           node scripts/resolve-observability-database-url.test.cjs
           node apps/api/test/integration/internal-ops-alerting-contract.test.cjs
@@ -301,6 +305,24 @@ jobs:
           node apps/api/test/integration/marketplace-readiness-summary-contract.test.cjs
           node apps/web/test/integration/product-workbench-readiness-batch.test.cjs
           node apps/web/test/integration/product-detail-readiness-batch.test.cjs
+
+      - name: MFA login DB-backed proof test (PIM#754)
+        run: node apps/web/test/integration/mfa-login-db-proof.test.cjs
+
+      # public-signup-web-flow.test.cjs is intentionally NOT wired here yet.
+      # First real CI run against a live Postgres (this job, 2026-09-07) hung
+      # for ~4 hours after its own `npm run build --workspace @pim1/web` step
+      # completed cleanly — the API+web process pair it spawns never became
+      # ready, and neither of its two bounded 60s waitForHttp() calls fired
+      # to fail the run. Every prior run of this file only ever hit its
+      # DATABASE_URL-placeholder skip path, so this hang was never exercised
+      # in CI until now. Root cause not yet found — do not wire this back in
+      # until it's fixed; the file's own DB-absence guard is real and correct,
+      # this is a separate bug in the process-spawn path. Tracked as its own
+      # follow-up (see PR #772's discussion) rather than blocking the rest of
+      # PIM#754 Sprint 2. It stays declared in DB_DEPENDENT_TESTS in
+      # scripts/check-integration-test-coverage.cjs, which already treats
+      # "declared DB-dependent" and "wired into a CI step" as separate facts.
 
       - name: Integration tests (parallel)
         run: npm run test:integration:parallel
