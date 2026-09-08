@@ -44,11 +44,10 @@ export type ProductDetailPageData = {
   mediaAssetCount: number;
   imageAssetCount: number;
   /**
-   * Whether attrs.mainImageUrl is a usable (permanent HTTPS) image URL — see
-   * hasUsableMainImageUrl in product-detail-shared.tsx. Distinct from
-   * imageAssetCount: this reflects the Content tab's Main Image URL field, which
-   * the connector export pipeline uses as a real (ungoverned) fallback image
-   * source, independent of Media Library assets. See PIM#585.
+   * Whether product attributes include a usable permanent HTTPS primary image URL
+   * using the same four-field precedence as the connector export pipeline. Distinct
+   * from imageAssetCount: this reflects an ungoverned fallback image source,
+   * independent of Media Library assets. See PIM#585/PIM#778.
    */
   hasMainImageUrl: boolean;
   actorRole: AppRole;

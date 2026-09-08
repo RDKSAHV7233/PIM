@@ -122,8 +122,16 @@ function run() {
   const hasUsableMainImageUrl = loadRealHasUsableMainImageUrl();
 
   const cases = [
-    { attrs: { mainImageUrl: "https://cdn.example.com/shoe.jpg" }, expected: true, label: "valid https URL" },
+    { attrs: { mainImageUrl: "https://cdn.example.com/shoe.jpg" }, expected: true, label: "valid mainImageUrl https URL" },
     { attrs: { mainImageUrl: "  https://cdn.example.com/shoe.jpg  " }, expected: true, label: "https URL with whitespace" },
+    { attrs: { mainImageUrl: "", primaryImageUrl: "https://cdn.example.com/primary.jpg" }, expected: true, label: "valid primaryImageUrl fallback" },
+    { attrs: { mainImageUrl: "", primaryImageUrl: "", imageUrl: "https://cdn.example.com/image-url.jpg" }, expected: true, label: "valid imageUrl fallback" },
+    { attrs: { mainImageUrl: "", primaryImageUrl: "", imageUrl: "", image_url: "https://cdn.example.com/image_url.jpg" }, expected: true, label: "valid image_url fallback" },
+    {
+      attrs: { mainImageUrl: "http://cdn.example.com/not-https.jpg", primaryImageUrl: "https://cdn.example.com/primary.jpg" },
+      expected: false,
+      label: "first non-empty field must be https and cannot be rescued by a later field",
+    },
     { attrs: { mainImageUrl: "http://cdn.example.com/shoe.jpg" }, expected: false, label: "insecure http URL (Shopify requires https)" },
     { attrs: { mainImageUrl: "" }, expected: false, label: "empty string" },
     { attrs: { mainImageUrl: "   " }, expected: false, label: "whitespace-only string" },
@@ -149,12 +157,20 @@ function run() {
     hasUsableMainImageUrl({ mainImageUrl: "https://cdn.example.com/reported-bug-repro.jpg" }) === true,
     "Regression: the exact reported scenario (mainImageUrl set, no Media Library assets) must be recognized as usable.",
   );
+  assert(
+    hasUsableMainImageUrl({ mainImageUrl: "", primaryImageUrl: "https://cdn.example.com/pim-778.jpg" }) === true,
+    "Regression PIM#778: primaryImageUrl must be recognized as usable when mainImageUrl is empty.",
+  );
 
   // ── Part 2: verify every previously-blind consumer is now wired to it ─────
   const sharedSource = fs.readFileSync(SHARED_FILE, "utf8");
   assert(
-    sharedSource.includes("export function hasUsableMainImageUrl"),
-    "product-detail-shared.tsx must export hasUsableMainImageUrl.",
+    sharedSource.includes("export function hasUsableMainImageUrl") &&
+      sharedSource.includes("productAttributes?.mainImageUrl") &&
+      sharedSource.includes("productAttributes?.primaryImageUrl") &&
+      sharedSource.includes("productAttributes?.imageUrl") &&
+      sharedSource.includes("productAttributes?.image_url"),
+    "product-detail-shared.tsx must export hasUsableMainImageUrl and mirror the backend's four image-attribute fallbacks.",
   );
 
   const typesSource = fs.readFileSync(TYPES_FILE, "utf8");
@@ -218,7 +234,8 @@ function run() {
       {
         status: "ok",
         validated: [
-          "hasUsableMainImageUrl_executed_against_9_real_inputs_via_real_typescript_transpile",
+          "hasUsableMainImageUrl_executed_against_backend_field_precedence_cases_via_real_typescript_transpile",
+          "hasUsableMainImageUrl_recognizes_primaryImageUrl_imageUrl_and_image_url_fallbacks_PIM778",
           "reported_bug_scenario_mainImageUrl_set_zero_media_assets_now_recognized_usable",
           "side_rail_channel_readiness_chip_no_longer_ignores_mainImageUrl",
           "overview_tab_media_blocker_count_no_longer_ignores_mainImageUrl",

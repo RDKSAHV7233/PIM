@@ -146,12 +146,12 @@ export function asRecord(value: unknown): Record<string, unknown> {
 }
 
 /**
- * Whether the Content tab's "Main Image URL" attribute is a value the export
- * pipeline will actually use as the product's primary image. Mirrors
- * resolveConnectorImageUrl's own bar (apps/api/src/marketplace/marketplace.service.ts)
- * and the Shopify requirement that product images be served over a permanent HTTPS
- * URL — anything else would silently fail export, so it must not read as "media
- * satisfied" here either.
+ * Whether the product attributes include a primary image URL the export pipeline
+ * will actually use. Mirrors resolveConnectorImageUrl's own field precedence
+ * (apps/api/src/marketplace/marketplace.service.ts): mainImageUrl,
+ * primaryImageUrl, imageUrl, then image_url. The first non-empty value must be a
+ * permanent HTTPS URL — anything else would silently fail export, so it must not
+ * read as "media satisfied" here either.
  *
  * mainImageUrl is the connector default field-mapping SOURCE for Shopify and
  * WooCommerce's image field (connector-mapping.service.ts:
@@ -162,7 +162,12 @@ export function asRecord(value: unknown): Record<string, unknown> {
  * See PIM#585.
  */
 export function hasUsableMainImageUrl(productAttributes: Record<string, unknown>): boolean {
-  const value = String(productAttributes?.mainImageUrl ?? "").trim();
+  const value = [
+    productAttributes?.mainImageUrl,
+    productAttributes?.primaryImageUrl,
+    productAttributes?.imageUrl,
+    productAttributes?.image_url,
+  ].map((candidate) => String(candidate ?? "").trim()).find((candidate) => candidate.length > 0) ?? "";
   return value.startsWith("https://");
 }
 
