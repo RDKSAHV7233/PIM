@@ -2091,6 +2091,7 @@ export async function processBulkImportJobAction(formData: FormData) {
     // processing in the background. The job moves to processing/done on its own;
     // redirect so the user can poll the status rather than seeing an error boundary.
   }
+  revalidatePath("/operations/imports");
   revalidatePath("/dashboard");
   redirect(returnTo);
 }

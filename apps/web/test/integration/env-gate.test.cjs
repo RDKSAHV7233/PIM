@@ -17,8 +17,8 @@ function run() {
 
   assert(
     source.includes("export async function register()") &&
-      source.includes('process.env.NEXT_RUNTIME !== "nodejs"'),
-    "Instrumentation must export register() and guard against non-Node runtimes.",
+      source.includes('process.env.NEXT_RUNTIME === "edge"'),
+    "Instrumentation must export register() and skip Edge runtime.",
   );
   assert(
     source.includes('JWT_SECRET') &&
@@ -49,7 +49,7 @@ function run() {
       {
         status: "ok",
         validated: [
-          "env_gate_guards_non_node_runtimes",
+          "env_gate_skips_edge_runtime",
           "env_gate_blocks_on_missing_jwt_secret",
           "env_gate_warns_on_missing_api_base_url",
           "env_gate_enforces_db_auth_mode_in_strict_env",

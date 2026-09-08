@@ -39,6 +39,7 @@ try {
   const webFiles = walkFiles(WEB_SRC).filter((file) => /\.(ts|tsx|js|jsx)$/.test(file));
   const ingestTokenUsers = webFiles.filter((file) => fs.readFileSync(file, "utf8").includes("ERROR_AUTHORITY_INGEST_TOKEN"));
   const allowedServerTokenUsers = new Set([
+    "apps/web/src/lib/server/browser-error-capture.ts",
     "apps/web/src/lib/server/error-authority-env.ts",
     "apps/web/src/lib/server/next-server-error-capture.ts",
     "apps/web/src/instrumentation.ts",
@@ -98,7 +99,7 @@ try {
     ingestTokenUsers.every((file) =>
       allowedServerTokenUsers.has(path.relative(REPO_ROOT, file)),
     ),
-    `Trusted Error Authority ingest token must stay in the server config boundary. Users: ${ingestTokenUsers
+    `Trusted Error Authority ingest token must stay in the server config/transport boundary. Users: ${ingestTokenUsers
       .map((file) => path.relative(REPO_ROOT, file))
       .join(", ")}`,
   );

@@ -38,9 +38,9 @@ function run() {
     "Login client must show the suspended-workspace message for redirects and direct login responses.",
   );
   assert(
-    logoutRouteSource.includes('parsed?.error === "TENANT_SUSPENDED"') &&
-      logoutRouteSource.includes("clearAuthCookies"),
-    "Logout web route must clear auth cookies when the backend rejects a suspended tenant token.",
+    logoutRouteSource.includes("Logout is idempotent at the web edge") &&
+      logoutRouteSource.includes("clearAuthCookies(new NextResponse(null, { status: 204 }))"),
+    "Logout web route must always clear local auth cookies, including when backend logout fails or rejects the token.",
   );
 
   console.log(
@@ -51,7 +51,7 @@ function run() {
           "auth_redirect_preserves_tenant_suspended_reason",
           "auth_copy_exposes_suspended_workspace_message",
           "login_client_handles_tenant_suspended_redirect_and_response",
-          "logout_route_clears_cookies_for_suspended_tenant",
+          "logout_route_always_clears_local_auth_cookies",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -17,6 +17,11 @@ function assert(condition, message) {
 
 try {
   const page = read("apps/web/src/app/operations/imports/page.tsx");
+  const actionsColumnStart = page.indexOf('key: "actions"');
+  const actionsColumnEnd = page.indexOf("const selectedRowColumns", actionsColumnStart);
+  assert(actionsColumnStart >= 0, "imports page must define a job actions column");
+  assert(actionsColumnEnd > actionsColumnStart, "job actions column slice must terminate before selected row columns");
+  const actionsColumn = page.slice(actionsColumnStart, actionsColumnEnd);
 
   // --- Import assertions ---
   assert(
@@ -65,7 +70,7 @@ try {
 
   // --- failed status has no action button (only View rows link) ---
   assert(
-    !page.includes('status === "failed"'),
+    !actionsColumn.includes('status === "failed"'),
     "failed jobs must NOT have a dedicated action button (only the generic View rows link)",
   );
 

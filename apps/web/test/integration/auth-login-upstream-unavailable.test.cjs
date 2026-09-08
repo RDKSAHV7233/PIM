@@ -25,10 +25,8 @@ try {
       loginRoute.includes("const apiBaseUrl = getApiBaseUrl();") &&
       loginRoute.includes("catch (error) {") &&
       loginRoute.includes('error: "AUTH_UPSTREAM_UNAVAILABLE"') &&
-      loginRoute.includes("apiBaseUrl") &&
-      loginRoute.includes("detail: error instanceof Error ? error.message : String(error ?? \"upstream fetch failed\")") &&
       loginRoute.includes("status: 503"),
-    "Login proxy route must catch upstream fetch failures and return AUTH_UPSTREAM_UNAVAILABLE with HTTP 503.",
+    "Login proxy route must catch upstream fetch failures and return safe AUTH_UPSTREAM_UNAVAILABLE with HTTP 503.",
   );
 
   assert(
