@@ -34,22 +34,22 @@ function run() {
   );
   assert(
       source.includes("await getServerSession();") &&
-      source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
-      source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
+      source.includes('import { loadSharedRead } from "@/lib/catalog-shared-read";') &&
       source.includes("Promise.all([") &&
       source.includes("loadSharedRead(getStats({ role: actorRole, authHeader }))") &&
       source.includes("loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }))") &&
       source.includes("loadSharedRead(") &&
-      source.includes("loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader })") &&
-      source.includes("getProductListPage(") &&
+      source.includes("getAdvancedSearchProducts(") &&
+      source.includes("{ q: initialSearch || undefined, categoryId, brand, status: facetStatus, offset, limit }") &&
       source.includes("loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader }))"),
     "Catalog products route must fetch stats, categories, paginated products, and connectors in parallel using shared-read wrappers and the shared server auth context.",
   );
   assert(
-    source.includes("const requestedOffset = (page - 1) * limit;") &&
-      source.includes("visibleProducts.push(...filteredBatch.slice(startIndex, startIndex + remaining));") &&
+    source.includes("const offset = (currentPage - 1) * limit;") &&
+      source.includes("getAdvancedSearchProducts(") &&
+      source.includes("totalCount: res.totalCount") &&
       !source.includes("filteredProducts.slice((page - 1) * limit, page * limit)"),
-    "Catalog products route must page through the slim product API instead of fetching the full catalog and slicing locally.",
+    "Catalog products route must page through the advanced-search product API instead of fetching the full catalog and slicing locally.",
   );
   assert(
     source.includes("productFeedState={productWindowResult.state}") &&
@@ -73,8 +73,11 @@ function run() {
     "Catalog products route must preserve restricted and unavailable truth in-page instead of redirecting read-only users or implying empty catalog/channel state.",
   );
   assert(
-    source.includes('import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";') &&
-      source.includes("item.status === \"ACTIVE\" && mapConnectorSlugToMarketplaceChannel(item.slug)") &&
+    source.includes('from "@/lib/marketplace-channels";') &&
+      source.includes("mapConnectorSlugToMarketplaceChannel") &&
+      source.includes("const firstActiveConnector = installedConnectors.find(") &&
+      source.includes('item.status === "ACTIVE"') &&
+      source.includes("mapConnectorSlugToMarketplaceChannel(item.slug)") &&
       source.includes("mapConnectorSlugToMarketplaceChannel(firstActiveConnector.slug)"),
     "Catalog products route must normalize installed connector slugs to supported channel filters before deep-linking mappings.",
   );
@@ -85,9 +88,10 @@ function run() {
   assert(
     source.includes("categories:") &&
       source.includes("filteredCategories.length") &&
-      source.includes("products: productWindow.totals?.products ?? statsResult.value.products,") &&
-      source.includes("variants: productWindow.totals?.variants ?? statsResult.value.variants,"),
-    "Catalog products route must recompute top-line catalog stats from the filtered product/category set when test data is hidden.",
+      source.includes("...statsResult.value") &&
+      source.includes("categories:") &&
+      !source.includes("products: productWindow.totals?.products ?? statsResult.value.products,"),
+    "Catalog products route must recompute filtered category totals when test data is hidden while leaving server product/variant totals authoritative.",
   );
   assert(
     source.includes("hideTestData={hideTestData}") &&

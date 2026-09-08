@@ -38,15 +38,19 @@ function run() {
     "Actions must include delete product, purge product, and delete category handlers.",
   );
   assert(
-    productsTabSource.includes("deleteProductAction") &&
+    actionsSource.includes("updateProductStatusAction") &&
+      productsTabSource.includes("pendingArchive") &&
+      productsTabSource.includes("handleConfirmedArchive") &&
+      productsTabSource.includes("updateProductStatusAction") &&
+      productsTabSource.includes('formData.set("status", "archived")') &&
       productsTabSource.includes("Archive product") &&
-      productsTabSource.includes("confirmDelete"),
-    "Products table must expose a soft-delete action with confirmation intent.",
+      productsTabSource.includes("<ConfirmDialog"),
+    "Products table must expose an archive action with confirmation intent and submit the status change through the current server action.",
   );
   assert(
       productOverviewSource.includes("ArchiveProductButton") &&
       productOverviewSource.includes("purgeProductAction") &&
-      productOverviewSource.includes("Archive (soft delete)") &&
+      productOverviewSource.includes("Archive product") &&
       productOverviewSource.includes("Confirm permanent delete") &&
       productOverviewSource.includes("Permanently delete"),
     "Product detail must expose soft delete and admin hard delete controls.",

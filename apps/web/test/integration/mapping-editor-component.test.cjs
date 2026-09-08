@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "mapping-editor.tsx");
+const ROW_FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "mapping-field-row.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,6 +15,7 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(FILE, "utf8");
+  const rowSource = fs.readFileSync(ROW_FILE, "utf8");
   assert(source.includes("export function ResolvedMappingSnapshotCard"), "Mapping editor module must export the resolved mapping snapshot card.");
   assert(source.includes("export function MappingEditorCard"), "Mapping editor module must export the structured mapping editor card.");
   assert(source.includes("export function PublishReadinessCard"), "Mapping editor module must export the publish readiness card.");
@@ -21,7 +23,7 @@ function run() {
   assert(source.includes("createConnectorMappingVersionAction"), "Mapping editor module must own the mapping draft action wiring.");
   assert(
     source.includes("Sample product value") &&
-      source.includes("Select a PIM field to preview sample value.") &&
+      rowSource.includes("Select a PIM field to preview sample value.") &&
       source.includes("Sample source values come from the selected product:") &&
       source.includes("Sample source values use a category example product:"),
     "Mapping editor must surface sample source values so operators can verify PIM field choices semantically.",

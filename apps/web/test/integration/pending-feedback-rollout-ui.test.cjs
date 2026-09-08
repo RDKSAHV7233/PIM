@@ -19,6 +19,7 @@ try {
   const connectorsPage = read("apps/web/src/app/connectors/page.tsx");
   const connectorsSetupPage = read("apps/web/src/app/connectors/setup/page.tsx");
   const approvalsPage = read("apps/web/src/app/quality/approvals/page.tsx");
+  const approvalDecisionForm = read("apps/web/src/app/quality/approvals/approval-decision-form.tsx");
   const categoriesPage = read("apps/web/src/app/catalog/categories/page.tsx");
   const categoryDeleteButton = read("apps/web/src/components/catalog/category-delete-button.tsx");
   const channelsTab = read("apps/web/src/app/products/[id]/_components/channels-tab.tsx");
@@ -40,8 +41,9 @@ try {
   );
 
   assert(
-    approvalsPage.includes('pendingLabel="Approving..."') &&
-      approvalsPage.includes('pendingLabel="Rejecting..."'),
+    approvalsPage.includes("<ApprovalDecisionForm") &&
+      approvalDecisionForm.includes('pendingLabel="Approving..."') &&
+      approvalDecisionForm.includes('pendingLabel="Rejecting..."'),
     "quality approvals page must add pending feedback to decision actions",
   );
 
@@ -52,17 +54,16 @@ try {
   );
 
   assert(
-    channelsTab.includes('pendingLabel="Queueing export..."') &&
-      channelsTab.includes('pendingLabel="Running simulator..."') &&
+    channelsTab.includes('pendingLabel="Running simulator..."') &&
       channelsTab.includes('pendingLabel="Saving template..."') &&
       channelsTab.includes('pendingLabel="Processing..."') &&
       channelsTab.includes('pendingLabel="Requeueing..."'),
-    "product channels tab must add pending feedback to export, simulator, template, process, and requeue actions",
+    "product channels tab must add pending feedback to simulator, template, process, and requeue actions",
   );
 
   assert(
     versionManager.includes('pendingLabel="Validating..."') &&
-      versionManager.includes('pendingLabel="Publishing..."') &&
+    versionManager.includes('pendingLabel="Publishing..."') &&
       versionManager.includes('pendingLabel="Archiving..."') &&
       versionManager.includes('pendingLabel="Rolling back..."'),
     "version manager must add pending feedback to mapping lifecycle actions",

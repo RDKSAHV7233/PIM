@@ -19,8 +19,9 @@ function run() {
     source.includes("const variantsPromise = getProductVariants(") &&
       source.includes("const channelsPromise = getMarketplaceChannels(") &&
       source.includes("const installedConnectorsPromise = getInstalledConnectors(") &&
-      source.includes("const exportJobsPromise = getMarketplaceExportJobs("),
-    "Product detail must start independent product, channel, connector, and export job fetches before loading the product record.",
+      source.includes("const exportJobsPromise =") &&
+      source.includes("getMarketplaceExportJobs("),
+    "Product detail must start independent variant, channel, connector, and export job fetches before loading the product record.",
   );
   assert(
     source.includes("product = await getProduct("),
@@ -28,10 +29,12 @@ function run() {
   );
   assert(
     source.includes("variantsPromise") &&
+      source.includes("const [channels, installedConnectors] = await Promise.all([") &&
       source.includes("channelsPromise") &&
       source.includes("installedConnectorsPromise") &&
+      source.includes("const [variants, exportJobs, readiness, mediaAssets] = await Promise.all([") &&
       source.includes("exportJobsPromise"),
-    "Independent fetch promises must be consumed in the post-product Promise.all block.",
+    "Independent fetch promises must be consumed after product resolution without serializing the slow reads unnecessarily.",
   );
 
   console.log(
