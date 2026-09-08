@@ -1379,6 +1379,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     {actorRole === "admin" && installation.status === "DISABLED" ? (
                       <form action={deleteConnectorInstallationAction} className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-3">
                         <input type="hidden" name="installationId" value={installation.id} />
+                        <input type="hidden" name="connectorSlug" value={installation.slug} />
                         <label className="flex items-center gap-2 text-xs text-slate-600">
                           <input
                             type="checkbox"

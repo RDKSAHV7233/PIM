@@ -6,6 +6,7 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const CONNECTORS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "page.tsx");
 const SETUP_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "setup", "page.tsx");
+const CREDENTIAL_FIELDS = path.join(REPO_ROOT, "apps", "web", "src", "components", "connectors", "connector-credential-fields.tsx");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
@@ -17,31 +18,33 @@ function assert(condition, message) {
 function run() {
   const pageSource = fs.readFileSync(CONNECTORS_PAGE, "utf8");
   const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
+  const credentialFieldsSource = fs.readFileSync(CREDENTIAL_FIELDS, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
-    setupSource.includes('if (slug === "flipkart")') &&
-      setupSource.includes("Client ID") &&
-      setupSource.includes("Client Secret") &&
-      setupSource.includes("Refresh Token"),
+    setupSource.includes("<ConnectorCredentialFields") &&
+      credentialFieldsSource.includes('if (slug === "flipkart")') &&
+      credentialFieldsSource.includes("Client ID") &&
+      credentialFieldsSource.includes("Client Secret") &&
+      credentialFieldsSource.includes("Refresh Token"),
     "Connector setup page must render Flipkart-specific credential fields inside the dedicated setup workspace.",
   );
   assert(
-    setupSource.includes('if (slug === "amazon-in")') &&
-      setupSource.includes("Amazon India live install needs seller ID plus validated LWA") &&
-      setupSource.includes("Enter Amazon seller ID") &&
-      setupSource.includes("Enter Amazon SP-API refresh token"),
+    setupSource.includes("connectorAccountReferencePlaceholder(definition.slug)") &&
+      credentialFieldsSource.includes('if (slug === "amazon-in")') &&
+      credentialFieldsSource.includes("Amazon India live install needs seller ID plus validated LWA") &&
+      credentialFieldsSource.includes("Enter Amazon SP-API refresh token"),
     "Connector setup page must render Amazon-specific seller ID and credential guidance inside the dedicated setup workspace.",
   );
   assert(
-    setupSource.includes('if (slug === "shopify")') &&
-      setupSource.includes("Shopify uses managed install.") &&
-      setupSource.includes("demo-store.myshopify.com") &&
-      setupSource.includes("managed-install lanes continue in the provider callback"),
+    credentialFieldsSource.includes('if (slug === "shopify")') &&
+      credentialFieldsSource.includes("Shopify uses managed install.") &&
+      credentialFieldsSource.includes("demo-store.myshopify.com") &&
+      credentialFieldsSource.includes("managed-install lanes continue in the provider callback"),
     "Connector setup page must explain the Shopify managed-install domain handoff inside the dedicated setup workspace.",
   );
   assert(
-    setupSource.includes("encrypted on save and never shown again"),
+    credentialFieldsSource.includes("encrypted on save and never shown again"),
     "Connector setup forms must explain secret handling truthfully.",
   );
   assert(

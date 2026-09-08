@@ -6,6 +6,7 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const CONNECTORS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "page.tsx");
 const SETUP_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "setup", "page.tsx");
+const CREDENTIAL_FIELDS = path.join(REPO_ROOT, "apps", "web", "src", "components", "connectors", "connector-credential-fields.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -16,14 +17,15 @@ function assert(condition, message) {
 function run() {
   const source = fs.readFileSync(CONNECTORS_PAGE, "utf8");
   const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
+  const credentialFieldsSource = fs.readFileSync(CREDENTIAL_FIELDS, "utf8");
   const staleShopifyCatalogCopy = [
     "Visible in the channel catalog as a guided",
     "Shopify connector.",
   ].join(" ");
   assert(
-    setupSource.includes('item.definition.launchStage === "live"') &&
-      setupSource.includes("Shopify uses managed install. Create the Vexa connector account with store-domain context here;") &&
-      setupSource.includes('name="shopDomain"') &&
+    setupSource.includes("isSetupLaneStage(definition.launchStage)") &&
+      credentialFieldsSource.includes("Shopify uses managed install. Create the Vexa connector account with store-domain context here;") &&
+      credentialFieldsSource.includes('name="shopDomain"') &&
       setupSource.includes("Create Shopify connector"),
     "Connector setup page must surface Shopify as a live Vexa setup lane with a store-domain install contract.",
   );
@@ -70,9 +72,9 @@ function run() {
     "Installed stub connectors must show CONNECTED (limited) instead of ACTIVE.",
   );
   assert(
-    setupSource.includes("This setup workspace only exposes Live publish connectors.") &&
+    setupSource.includes("This setup workspace exposes live and early-access setup lanes.") &&
       setupSource.includes("Supported operations"),
-    "Connector setup page must describe the live-publish setup boundary and show supported operations in plain language.",
+    "Connector setup page must describe the setup-lane boundary and show supported operations in plain language.",
   );
 
   console.log(

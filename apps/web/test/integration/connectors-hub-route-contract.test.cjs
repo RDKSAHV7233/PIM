@@ -28,25 +28,32 @@ function run() {
   // NOTE: this previously checked page.includes("installConnectorAction"), which
   // isn't a real exported action anywhere in the codebase — it only ever passed
   // because that string is a substring of "uninstallConnectorAction". The real
-  // install flow is initiateOAuthAction (see the import list above). Corrected
-  // here rather than left silently green.
+  // install flow is the dedicated /channels/connectors/setup workspace; Shopify
+  // managed authorization is initiateOAuthAction. Corrected here rather than
+  // left silently green.
   assert(
-    page.includes("initiateOAuthAction") &&
-      page.includes("reconnectConnectorAction") &&
+    page.includes('href="/channels/connectors/setup"') &&
+      page.includes("initiateOAuthAction") &&
       page.includes("deleteConnectorInstallationAction"),
-    "Connectors hub must wire the canonical install, reconnect, and delete server actions.",
+    "Connectors hub must wire the canonical setup, Shopify OAuth, and permanent-delete actions.",
   );
 
-  // Disable pilot: native URL-form + POST/303 containment path, not a Server
-  // Action — see apps/web/src/app/connector-operations/[installationId]/disable/route.ts
-  // and the PR416 hydration-race investigation for why this one action differs
-  // from the others above.
+  // Reconnect and Disable: native URL-form + POST/303 containment paths, not
+  // Server Actions — see apps/web/src/app/connector-operations/[installationId]/*
+  // and the PR416/#564 investigations for why these actions differ from the
+  // server actions above.
   assert(
     page.includes('method="post"') &&
+      page.includes("/reconnect") &&
       page.includes("/connector-operations/") &&
       page.includes('name="csrfToken"') &&
       !page.includes("uninstallConnectorAction"),
-    "Connectors hub's Disable action must use the native-form POST/303 containment path, not a Server Action.",
+    "Connectors hub's reconnect/disable actions must use native-form POST/303 containment paths, not Server Actions.",
+  );
+
+  assert(
+    page.includes('name="connectorSlug" value={installation.slug}'),
+    "Connectors hub permanent-delete form must include connectorSlug for the delete action contract.",
   );
 
   assert(
@@ -95,8 +102,9 @@ function run() {
         status: "ok",
         validated: [
           "connectors_hub_uses_shared_server_auth_context",
-          "connectors_hub_wires_canonical_install_reconnect_delete_actions",
-          "connectors_hub_disable_uses_native_post_303_containment_path",
+          "connectors_hub_wires_canonical_setup_oauth_delete_actions",
+          "connectors_hub_reconnect_disable_use_native_post_303_containment_path",
+          "connectors_hub_delete_form_posts_connector_slug",
           "connectors_hub_renders_unavailable_state_on_backend_failure",
           "connectors_hub_detects_plan_limit_violations",
           "connectors_hub_tone_codes_installation_health",
