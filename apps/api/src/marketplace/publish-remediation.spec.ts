@@ -1165,6 +1165,13 @@ describe("unified readiness evidence contract", () => {
   function makeConnectorMappingService(options?: {
     mediaAsset?: Record<string, unknown> | null;
     attributes?: Record<string, unknown>;
+    // PIM#774: lets a test give the "main-flagged asset" findFirst call and the
+    // "fallback to latest asset" findFirst call DIFFERENT results, so a genuine
+    // multi-asset product (one main/latest asset actually queried and returned,
+    // a different non-selected asset that never is) can be modeled — PR #770's own
+    // tests only ever mocked a single asset shape for both calls, which is exactly
+    // how the #774 gap escaped review.
+    mediaAssetSequence?: [Record<string, unknown> | null, Record<string, unknown> | null];
   }) {
     const mediaAsset = options?.mediaAsset === undefined
       ? {
@@ -1173,6 +1180,7 @@ describe("unified readiness evidence contract", () => {
           metadata: { governance: { isMain: true, channelEligibility: ["shopify"] } },
         }
       : options.mediaAsset;
+    const [firstCallResult, secondCallResult] = options?.mediaAssetSequence ?? [mediaAsset, mediaAsset];
     const tenantDb = {
       connectorDefinition: {
         findUnique: jest.fn().mockResolvedValue({ id: "def-woo" }),
@@ -1202,8 +1210,8 @@ describe("unified readiness evidence contract", () => {
       },
       mediaAsset: {
         findFirst: jest.fn()
-          .mockResolvedValueOnce(mediaAsset)
-          .mockResolvedValueOnce(mediaAsset),
+          .mockResolvedValueOnce(firstCallResult)
+          .mockResolvedValueOnce(secondCallResult),
       },
     };
     const svc = new ConnectorMappingService(
@@ -1299,6 +1307,93 @@ describe("unified readiness evidence contract", () => {
         blocked: false,
       },
     });
+  });
+
+  // PIM#774: genuine multi-asset fixtures — one asset is queried/evaluated (mirroring
+  // what resolveConnectorImageUrl will actually export), a DIFFERENT, non-selected
+  // asset is only ever referenced in comments/assertions, never fed into the mock
+  // that the service call under test consumes. This is deliberate: it proves the
+  // export gate structurally never fetches a non-selected asset at all (Prisma's
+  // `where: { metadata: { path: ["governance", "isMain"], equals: true } }` filter
+  // would exclude it in production), so its eligibility can never leak into the result
+  // — which is exactly the gap #774 found in the *web UI's* superset-counting logic.
+  it("does not block export when the main-flagged asset is eligible, even though a different, non-exported asset would be ineligible", async () => {
+    const { svc, tenantDb } = makeConnectorMappingService({
+      // The main-flagged asset (what resolveConnectorImageUrl will actually export)
+      // is eligible for woocommerce. A second, non-main asset — e.g. "asset-old-ineligible"
+      // with channelEligibility: ["shopify"] only — exists on the product in spirit but
+      // is never modeled in the mock, because the real Prisma query's isMain filter
+      // would never surface it to evaluateMediaExportReadiness in the first place.
+      mediaAssetSequence: [
+        {
+          id: "asset-main-eligible",
+          mimeType: "image/png",
+          metadata: { governance: { isMain: true, channelEligibility: ["woocommerce"] } },
+        },
+        null,
+      ],
+    });
+
+    const result = await runWithTenantContext("tenant1", () =>
+      svc.evaluatePublishReadiness({
+        connectorSlug: "woocommerce",
+        categoryScope: "cat1",
+        installationId: "inst-woo-1",
+        productId: "prod-media-1",
+      }),
+    );
+
+    expect(result.blockers).not.toContain("media_channel_eligibility_blocked");
+    expect(result.checks.product).toMatchObject({
+      mediaExportReadiness: {
+        source: "main_media_asset",
+        selectedAssetId: "asset-main-eligible",
+        blocked: false,
+      },
+    });
+    // The main-flagged findFirst resolved a result, so the fallback "latest asset"
+    // findFirst must never even be called — confirming only one asset is evaluated.
+    expect(tenantDb.mediaAsset.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the most-recently-created asset when none is main-flagged, ignoring an older ineligible asset", async () => {
+    const { svc, tenantDb } = makeConnectorMappingService({
+      mediaAssetSequence: [
+        // No asset is flagged main -> the isMain-filtered findFirst resolves null.
+        null,
+        // Fallback findFirst (orderBy createdAt desc) returns the latest asset, which
+        // is eligible. An older, ineligible asset is presumed to exist on the product
+        // but — like above — is structurally excluded by the orderBy+take-1 query and
+        // so is never modeled in this mock either.
+        {
+          id: "asset-latest-eligible",
+          mimeType: "image/png",
+          metadata: { governance: { channelEligibility: ["woocommerce"] } },
+        },
+      ],
+    });
+
+    const result = await runWithTenantContext("tenant1", () =>
+      svc.evaluatePublishReadiness({
+        connectorSlug: "woocommerce",
+        categoryScope: "cat1",
+        installationId: "inst-woo-1",
+        productId: "prod-media-1",
+      }),
+    );
+
+    expect(result.blockers).not.toContain("media_channel_eligibility_blocked");
+    expect(result.checks.product).toMatchObject({
+      mediaExportReadiness: {
+        source: "latest_media_asset",
+        selectedAssetId: "asset-latest-eligible",
+        blocked: false,
+      },
+    });
+    expect(tenantDb.mediaAsset.findFirst).toHaveBeenCalledTimes(2);
+    expect(tenantDb.mediaAsset.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { productId: "prod-media-1" },
+    }));
   });
 
   it("keeps Product Detail media copy aligned with the server-side export blocker", () => {

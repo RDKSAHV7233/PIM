@@ -166,6 +166,49 @@ export function hasUsableMainImageUrl(productAttributes: Record<string, unknown>
   return value.startsWith("https://");
 }
 
+/**
+ * Selects the single image asset the export pipeline will actually send to a
+ * connector. Mirrors the backend's own precedence exactly:
+ * evaluateMediaExportReadiness (apps/api/src/marketplace/connector-mapping.service.ts)
+ * and resolveConnectorImageUrl (apps/api/src/marketplace/marketplace.service.ts) both
+ * pick the asset flagged metadata.governance.isMain (surfaced to the web app as
+ * `isMain`) ordered by createdAt/id desc, falling back to the single
+ * most-recently-created image asset when no asset is flagged main. Only THIS one
+ * asset's channel eligibility can ever cause a real export to fail — see PIM#774.
+ */
+export function selectExportedImageAsset<T extends { isMain: boolean; createdAt: string; id: string }>(
+  imageAssets: T[],
+): T | null {
+  if (imageAssets.length === 0) return null;
+  const mainAssets = imageAssets.filter((asset) => asset.isMain);
+  const pool = mainAssets.length > 0 ? mainAssets : imageAssets;
+  return [...pool].sort((left, right) => {
+    const byCreatedAt = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+    if (byCreatedAt !== 0) return byCreatedAt;
+    return right.id.localeCompare(left.id);
+  })[0];
+}
+
+/**
+ * Counts how many of a product's image assets will actually block export for
+ * channel-eligibility reasons. The backend export gate (evaluateMediaExportReadiness)
+ * evaluates only ONE asset (see selectExportedImageAsset above), and skips the Media
+ * Library entirely — no blockers at all — whenever a usable https:// Main Image URL
+ * attribute is set, since that URL is what actually gets exported instead. Counting
+ * every image asset's eligibility (as this UI used to) produces a false "Blocked" for
+ * a product whose exported asset is fine but some other, non-exported asset isn't.
+ * See PIM#774.
+ */
+export function countChannelIneligibleExportBlockers<
+  T extends { isMain: boolean; createdAt: string; id: string; channelEligibility: string[] },
+>(imageAssets: T[], hasMainImageUrl: boolean, selectedChannel: string): number {
+  if (hasMainImageUrl) return 0;
+  const exportedAsset = selectExportedImageAsset(imageAssets);
+  if (!exportedAsset) return 0;
+  if (exportedAsset.channelEligibility.length === 0) return 0;
+  return exportedAsset.channelEligibility.includes(selectedChannel) ? 0 : 1;
+}
+
 export function getAllowedValues(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((item) => String(item ?? "").trim()).filter((item) => item.length > 0);

@@ -28,6 +28,7 @@ import { ProductDetailDeferredSection } from "./_components/product-detail-defer
 import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigation-guard";
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
 import {
+  countChannelIneligibleExportBlockers,
   DETAIL_TABS,
   hasUsableMainImageUrl,
   isConnectorReadyToPublish,
@@ -222,9 +223,16 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   // mirrored here so this summary card doesn't say "Ready" for images the media
   // library itself would flag as not actually eligible or accessible.
   const missingAltTextCount = imageAssets.filter((asset) => !asset.altText).length;
-  const channelIneligibleCount = imageAssets.filter(
-    (asset) => asset.channelEligibility.length > 0 && !asset.channelEligibility.includes(effectiveSelectedChannel),
-  ).length;
+  // Scoped to the single asset the export pipeline actually sends (and short-circuited
+  // to 0 when a usable Main Image URL bypasses the Media Library entirely) — NOT every
+  // image asset on the product. Counting the full imageAssets list here showed
+  // "Blocked" for products that would export successfully because the ineligible
+  // asset was never the one actually exported. See PIM#774.
+  const channelIneligibleCount = countChannelIneligibleExportBlockers(
+    imageAssets,
+    hasMainImageUrl,
+    effectiveSelectedChannel,
+  );
   const channelUnconfirmedCount = imageAssets.filter((asset) => asset.channelEligibility.length === 0).length;
   const mediaIssueCount =
     product.validationIssues?.filter((issue) => {
