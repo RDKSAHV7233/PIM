@@ -69,7 +69,6 @@ const CI_QUARANTINED_TESTS = [
   "dashboard-signup-funnel-ui.test.cjs",
   "internal-ops-summary-ui.test.cjs",
   "mapping-editor-component.test.cjs",
-  "middleware-server-action-session-expired.test.cjs",
   "pending-feedback-rollout-ui.test.cjs",
   "product-detail-fetch-orchestration.test.cjs",
 ];
@@ -183,6 +182,7 @@ const GLOB_COVERED_TESTS = [
   "media-thumbnail-ui.test.cjs",
   "mfa-web-pages-contract.test.cjs",
   "myntra-nykaa-install-form.test.cjs",
+  "middleware-server-action-session-expired.test.cjs",
   "next-server-error-capture.test.cjs",
   "no-public-pricing-policy.test.cjs",
   "notification-center-severity-ui.test.cjs",

@@ -63,8 +63,10 @@ async function run() {
   const { middleware } = loadMiddleware();
   assert.equal(typeof middleware, "function", "middleware.ts must export a `middleware` function.");
 
-  // next/server is resolved via the same node_modules chain as middleware.ts itself.
-  const { NextRequest } = require(path.join(REPO_ROOT, "node_modules", "next", "server.js"));
+  // next/server is resolved through Node's normal module lookup so isolated
+  // worktrees can use the parent checkout's NODE_PATH without a local
+  // node_modules symlink.
+  const { NextRequest } = require("next/server");
 
   const PROTECTED_PATH = "/products/cmst5qs0a009brq01eq2wljwi";
   const BASE_URL = "https://app.vexapim.test";
