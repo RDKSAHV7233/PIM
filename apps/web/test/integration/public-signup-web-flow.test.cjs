@@ -82,7 +82,11 @@ async function waitForHttp(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, { method: "GET" });
+      const attemptTimeoutMs = Math.min(5_000, Math.max(500, deadline - Date.now()));
+      const response = await fetch(url, {
+        method: "GET",
+        signal: AbortSignal.timeout(attemptTimeoutMs),
+      });
       if (response.status < 500) {
         return;
       }
@@ -222,6 +226,7 @@ function startProcess(command, args, cwd, env, stdoutBuffer, stderrBuffer) {
     env,
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
+    detached: process.platform !== "win32",
   });
   child.stdout.on("data", (chunk) => {
     stdoutBuffer.push(String(chunk));
@@ -234,7 +239,7 @@ function startProcess(command, args, cwd, env, stdoutBuffer, stderrBuffer) {
   return child;
 }
 
-function stopProcess(proc) {
+async function stopProcess(proc) {
   if (!proc || proc.killed || !proc.pid) {
     return;
   }
@@ -246,7 +251,41 @@ function stopProcess(proc) {
     }
     return;
   }
-  proc.kill("SIGTERM");
+  const exited = new Promise((resolve) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      resolve();
+      return;
+    }
+    proc.once("exit", resolve);
+  });
+
+  try {
+    process.kill(-proc.pid, "SIGTERM");
+  } catch {
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      return;
+    }
+  }
+
+  const stopped = await Promise.race([
+    exited.then(() => true),
+    sleep(2_000).then(() => false),
+  ]);
+  if (stopped) {
+    return;
+  }
+
+  try {
+    process.kill(-proc.pid, "SIGKILL");
+  } catch {
+    try {
+      proc.kill("SIGKILL");
+    } catch {
+      // ignore cleanup failures
+    }
+  }
 }
 
 function hasDatabaseAccess() {
@@ -472,8 +511,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     fs.rmSync(outboxDir, { recursive: true, force: true });
-    stopProcess(webProcess);
-    stopProcess(apiProcess);
+    await Promise.allSettled([stopProcess(webProcess), stopProcess(apiProcess)]);
   }
 }
 

@@ -206,6 +206,7 @@ const GLOB_COVERED_TESTS = [
   "products-empty-search-state.test.cjs",
   "products-index-route-contract.test.cjs",
   "products-workbench-bulk-publish-selection.test.cjs",
+  "public-signup-web-flow-readiness-timeout.test.cjs",
   "public-signup-ui.test.cjs",
   "publish-export-pilot-proof-ui.test.cjs",
   "quality-approvals-route-contract.test.cjs",
