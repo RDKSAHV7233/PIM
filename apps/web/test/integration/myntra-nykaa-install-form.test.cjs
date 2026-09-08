@@ -6,6 +6,15 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const CONNECTORS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "page.tsx");
 const SETUP_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "setup", "page.tsx");
+const CREDENTIAL_FIELDS = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "components",
+  "connectors",
+  "connector-credential-fields.tsx",
+);
 const INSTALLER_SERVICE = path.join(
   REPO_ROOT,
   "apps",
@@ -31,38 +40,41 @@ function assert(condition, message) {
 function run() {
   const pageSource = fs.readFileSync(CONNECTORS_PAGE, "utf8");
   const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
+  const credentialFieldsSource = fs.readFileSync(CREDENTIAL_FIELDS, "utf8");
   const installerSource = fs.readFileSync(INSTALLER_SERVICE, "utf8");
   const wooDefinitionMigration = fs.readFileSync(WOO_DEFINITION_MIGRATION, "utf8");
 
   // ── Myntra credential form (setup/page.tsx) ────────────────────────────────
 
   assert(
-    setupSource.includes('if (slug === "myntra")') &&
-      setupSource.includes("Secret Key") &&
-      setupSource.includes("Warehouse ID"),
-    "Setup page must render Myntra credential fields (Secret Key, Warehouse ID) in the ConnectorCredentialFields section.",
+    setupSource.includes("<ConnectorCredentialFields") &&
+      setupSource.includes('mode="install"') &&
+      credentialFieldsSource.includes('if (slug === "myntra")') &&
+      credentialFieldsSource.includes("Secret Key") &&
+      credentialFieldsSource.includes("Warehouse ID"),
+    "Setup page must render the shared ConnectorCredentialFields section, which owns Myntra Secret Key and Warehouse ID fields.",
   );
   assert(
-    setupSource.includes("clientSecret") &&
-      setupSource.includes("refreshToken") &&
-      setupSource.includes('name="clientSecret"') &&
-      setupSource.includes('name="refreshToken"'),
+    credentialFieldsSource.includes("clientSecret") &&
+      credentialFieldsSource.includes("refreshToken") &&
+      credentialFieldsSource.includes('name="clientSecret"') &&
+      credentialFieldsSource.includes('name="refreshToken"'),
     "Myntra form fields must be wired to the correct DTO field names (clientSecret, refreshToken).",
   );
   assert(
-    setupSource.includes('type="password"'),
+    credentialFieldsSource.includes('type="password"'),
     "Myntra Secret Key must be an input with type=password so the value is masked.",
   );
   assert(
-    setupSource.includes("encrypted on save and never shown again"),
+    credentialFieldsSource.includes("encrypted on save and never shown again"),
     "Myntra credential form must include the encryption-at-rest notice.",
   );
   assert(
-    setupSource.includes('if (slug === "myntra") return "Merchant ID"'),
+    credentialFieldsSource.includes('if (slug === "myntra") return "Merchant ID"'),
     "connectorAccountReferenceLabel must return 'Merchant ID' for the Myntra slug.",
   );
   assert(
-    setupSource.includes('if (slug === "myntra") return "Enter Myntra merchant ID"'),
+    credentialFieldsSource.includes('if (slug === "myntra") return "Enter Myntra merchant ID"'),
     "connectorAccountReferencePlaceholder must return the Myntra merchant ID placeholder.",
   );
 
@@ -77,21 +89,22 @@ function run() {
   // ── WooCommerce credential form (setup/page.tsx) ──────────────────────────
 
   assert(
-    setupSource.includes('if (slug === "woocommerce")') &&
-      setupSource.includes("Consumer Key") &&
-      setupSource.includes("Consumer Secret") &&
-      setupSource.includes("WooCommerce Settings"),
-    "Setup page must render WooCommerce credential fields and point operators to WooCommerce REST API settings.",
+    setupSource.includes("<ConnectorCredentialFields") &&
+      credentialFieldsSource.includes('if (slug === "woocommerce")') &&
+      credentialFieldsSource.includes("Consumer Key") &&
+      credentialFieldsSource.includes("Consumer Secret") &&
+      credentialFieldsSource.includes("WooCommerce Settings"),
+    "Setup page must render the shared ConnectorCredentialFields section, which owns WooCommerce credential fields and points operators to WooCommerce REST API settings.",
   );
   assert(
-    setupSource.includes('if (slug === "woocommerce") return "Site URL"') &&
-      setupSource.includes('if (slug === "woocommerce") return "https://store.example.com"'),
+    credentialFieldsSource.includes('if (slug === "woocommerce") return "Site URL"') &&
+      credentialFieldsSource.includes('if (slug === "woocommerce") return "https://store.example.com"'),
     "WooCommerce setup must label the external account reference as the HTTPS Site URL.",
   );
   assert(
-    setupSource.includes('name="clientId"') &&
-      setupSource.includes('name="clientSecret"') &&
-      setupSource.includes('type="password"'),
+    credentialFieldsSource.includes('name="clientId"') &&
+      credentialFieldsSource.includes('name="clientSecret"') &&
+      credentialFieldsSource.includes('type="password"'),
     "WooCommerce form fields must be wired to clientId/clientSecret and mask the Consumer Secret.",
   );
   assert(

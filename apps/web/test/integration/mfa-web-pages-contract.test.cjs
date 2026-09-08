@@ -25,6 +25,7 @@ function run() {
   const verifyEnrollRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/verify-enrollment/route.ts"));
   const backupRegenRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/backup-codes/regenerate/route.ts"));
   const requestEnrollTokenRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/request-enrollment-token/route.ts"));
+  const authProxyHelper = read(path.join(REPO_ROOT, "apps/web/src/app/api/_auth.ts"));
   const loginPageClient = read(path.join(REPO_ROOT, "apps/web/src/components/auth/login-page-client.tsx"));
   const authCopy = read(path.join(REPO_ROOT, "apps/web/src/components/auth/auth-copy.ts"));
   const securityPage = read(path.join(REPO_ROOT, "apps/web/src/app/settings/security/page.tsx"));
@@ -96,17 +97,19 @@ function run() {
   );
 
   assert(
-    backupRegenRoute.includes("pim_access_token") &&
+    authProxyHelper.includes('request.cookies.get("pim_access_token")') &&
+      backupRegenRoute.includes("resolveBearerToken") &&
       backupRegenRoute.includes("/auth/mfa/backup-codes/regenerate") &&
       backupRegenRoute.includes("UNAUTHENTICATED"),
-    "backup-codes regenerate route must read pim_access_token cookie and reject unauthenticated requests.",
+    "backup-codes regenerate route must use the shared pim_access_token cookie resolver and reject unauthenticated requests.",
   );
 
   assert(
-    requestEnrollTokenRoute.includes("pim_access_token") &&
+    authProxyHelper.includes('request.cookies.get("pim_access_token")') &&
+      requestEnrollTokenRoute.includes("resolveBearerToken") &&
       requestEnrollTokenRoute.includes("/auth/mfa/request-enrollment-token") &&
       requestEnrollTokenRoute.includes("UNAUTHENTICATED"),
-    "request-enrollment-token proxy must read pim_access_token cookie and forward to backend endpoint.",
+    "request-enrollment-token proxy must use the shared pim_access_token cookie resolver and forward to backend endpoint.",
   );
 
   assert(

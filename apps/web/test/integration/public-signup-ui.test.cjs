@@ -45,11 +45,11 @@ try {
     "Login flow must expose a signup CTA when public signup is enabled.",
   );
   assert(
-    signupPage.includes("notFound();") &&
+    signupPage.includes("redirect(process.env.PIM_COMMERCIAL_CONTACT_URL ?? \"/contact\")") &&
       signupPage.includes("isPublicSignupEnabled()") &&
       signupVerifyPage.includes("notFound();") &&
       signupVerifyPage.includes("isPublicSignupEnabled()"),
-    "Signup pages must be gated behind the public signup feature flag.",
+    "Signup pages must be gated behind the public signup feature flag: the entry form redirects to commercial contact when disabled, while verification remains hidden.",
   );
   assert(
     signupClient.includes("/api/signup/workspace/availability") &&
