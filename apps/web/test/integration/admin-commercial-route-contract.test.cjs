@@ -19,7 +19,8 @@ function run() {
 
   assert(
     page.includes("await getServerSession()") &&
-      page.includes("hasCommercialOpsAccess") &&
+      page.includes("canAccessCommercialOperations") &&
+      page.includes("SystemAdminRequiredCard") &&
       page.includes('redirect("/admin")'),
     "Commercial ops page must derive shared server auth context and gate access to system_admin/super_admin roles.",
   );

@@ -34,9 +34,8 @@ function run() {
   );
 
   assert(
-    commercialSource.includes("hasCommercialOpsAccess") &&
-      commercialSource.includes('adminBoundaryRoles.includes("system_admin")') &&
-      commercialSource.includes('adminBoundaryRoles.includes("super_admin")') &&
+    commercialSource.includes("canAccessCommercialOperations") &&
+      commercialSource.includes("SystemAdminRequiredCard") &&
       commercialSource.includes("<SignupConversionSection") &&
       commercialSource.includes("getKpiTrends({ days: signupTrendDays }") &&
       commercialSource.includes("signupExportHref"),

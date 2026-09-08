@@ -61,11 +61,6 @@ const DB_DEPENDENT_TESTS = [
 // Keep this list small, visible, and issue-backed; moving a file out requires
 // making it pass under scripts/run-web-integration-db-free.cjs.
 const CI_QUARANTINED_TESTS = [
-  "admin-commercial-route-contract.test.cjs",
-  "admin-oidc-config-route-contract.test.cjs",
-  "admin-plan-signup-conversion-ui.test.cjs",
-  "dashboard-signup-funnel-ui.test.cjs",
-  "internal-ops-summary-ui.test.cjs",
 ];
 
 // DB-free tests that are runnable in the CI batch today.
@@ -74,8 +69,11 @@ const GLOB_COVERED_TESTS = [
   "admin-api-keys-route-contract.test.cjs",
   "admin-audit-route-contract.test.cjs",
   "admin-auth-policy-route-contract.test.cjs",
+  "admin-commercial-route-contract.test.cjs",
   "admin-connectors-route-contract.test.cjs",
   "admin-entry-route-contract.test.cjs",
+  "admin-oidc-config-route-contract.test.cjs",
+  "admin-plan-signup-conversion-ui.test.cjs",
   "admin-form-accessibility.test.cjs",
   "admin-form-errors-a11y.test.cjs",
   "admin-plan-route-contract.test.cjs",
@@ -148,6 +146,7 @@ const GLOB_COVERED_TESTS = [
   "dashboard-api-fallback-ui.test.cjs",
   "dashboard-approval-truth.test.cjs",
   "dashboard-route-contract.test.cjs",
+  "dashboard-signup-funnel-ui.test.cjs",
   "env-gate.test.cjs",
   "error-authority-env-contract.test.cjs",
   "error-authority-negative-runtime-proof-route.test.cjs",
@@ -160,6 +159,7 @@ const GLOB_COVERED_TESTS = [
   "import-preflight-wizard.test.cjs",
   "internal-commercial-ops-ui.test.cjs",
   "internal-ops-errors-ui.test.cjs",
+  "internal-ops-summary-ui.test.cjs",
   "internal-surface-gating.test.cjs",
   "issue-inbox-ui.test.cjs",
   "legacy-alias-routes.test.cjs",

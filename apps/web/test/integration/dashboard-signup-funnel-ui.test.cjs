@@ -26,7 +26,7 @@ function run() {
       dashboardPageSource.includes('adminBoundaryRoles.includes("system_admin")') &&
       dashboardPageSource.includes('adminBoundaryRoles.includes("super_admin")') &&
       dashboardPageSource.includes("canViewSignupAnalytics") &&
-      dashboardPageSource.includes('getKpiTrends({ days: 30 }, { role: actorRole, authHeader })'),
+      dashboardPageSource.includes("getKpiTrends({ days: 30 }, { role: actorRole, authHeader"),
     "Dashboard must load signup KPIs only for system/super admin boundary roles.",
   );
   assert(

@@ -41,7 +41,7 @@ async function main() {
       page.includes("summary.connectors.availability") &&
       page.includes("summary.readiness.availability") &&
       page.includes("summary.errors.availability") &&
-      page.includes("summary.mediaIntegrity.availability") &&
+      page.includes("mediaIntegrity.availability") &&
       page.includes("Unavailable"),
     "Internal ops page must render dependency failure state without crashing the whole page.",
   );
@@ -118,7 +118,6 @@ async function main() {
     "payloadSnapshot",
     "channelErrors",
     "sourceFileKey",
-    "sourceName",
     "storagePath",
     "checksum",
     "externalAccountRef",
@@ -127,6 +126,13 @@ async function main() {
   ];
   for (const field of prohibitedUiFields) {
     assert(!page.includes(field), `Internal ops summary UI must not render prohibited field ${field}.`);
+  }
+
+  for (const backendOnlyField of ["affectedTenants", "topRuleFamilies", "readiness.message"]) {
+    assert(
+      apiClient.includes(backendOnlyField.replace("readiness.", "")) && !page.includes(backendOnlyField),
+      `Internal ops summary UI must not render backend-only field ${backendOnlyField}.`,
+    );
   }
 
   console.log(JSON.stringify({

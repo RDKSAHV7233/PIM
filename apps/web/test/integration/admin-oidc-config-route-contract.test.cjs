@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "oidc", "page.tsx");
-const ALIAS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "oidc", "page.tsx");
+const SYSTEM_ADMIN_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "oidc", "page.tsx");
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "oidc", "actions.ts");
 const PARENT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "page.tsx");
 const ADMIN_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "page.tsx");
@@ -26,7 +26,7 @@ function read(filePath) {
 
 function run() {
   const page = read(PAGE);
-  const aliasPage = read(ALIAS_PAGE);
+  const systemAdminPage = read(SYSTEM_ADMIN_PAGE);
   const actions = read(ACTIONS);
   const parentPage = read(PARENT_PAGE);
   const adminPage = read(ADMIN_PAGE);
@@ -139,7 +139,9 @@ function run() {
   // ── Backend: step-up DTO accepts the new scope ─────────────────────────────
   assert(
     stepUpDto.includes("STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK") &&
-      stepUpDto.includes("@IsIn([STEP_UP_SCOPE_MAPPING_HIGH_RISK, STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK])"),
+      stepUpDto.includes("STEP_UP_SCOPE_MAPPING_HIGH_RISK") &&
+      stepUpDto.includes("STEP_UP_SCOPE_CONNECTOR_CREDENTIALS_HIGH_RISK") &&
+      stepUpDto.includes("@IsIn(["),
     "apps/api/src/auth/dto/step-up.dto.ts must accept the auth_config_high_risk scope so /auth/step-up will mint tokens with the new scope.",
   );
 
@@ -180,8 +182,10 @@ function run() {
   );
 
   assert(
-    aliasPage.includes('redirect(params.size > 0 ? `/admin/auth-policy/oidc?${params.toString()}` : "/admin/auth-policy/oidc")'),
-    "/admin/oidc must be a redirect-only alias to the canonical /admin/auth-policy/oidc surface.",
+    systemAdminPage.includes("isSystemAdminBoundary(adminBoundaryRoles)") &&
+      systemAdminPage.includes("SystemAdminRequiredCard") &&
+      systemAdminPage.includes('redirect(buildLoginRedirect("/admin/oidc", 401));'),
+    "/admin/oidc must remain a system-admin-gated OIDC operational surface, separate from the tenant auth-policy OIDC configuration route.",
   );
 
   console.log(
@@ -205,7 +209,7 @@ function run() {
           "oidc_admin_server_action_redirects_with_canonical_status_keys",
           "oidc_admin_api_client_exposes_required_functions",
           "oidc_admin_navigation_links_are_present",
-          "oidc_admin_alias_redirects_to_canonical_surface",
+          "oidc_system_admin_surface_is_boundary_gated",
         ],
         checkedAt: new Date().toISOString(),
       },
