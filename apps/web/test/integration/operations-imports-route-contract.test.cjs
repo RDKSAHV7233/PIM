@@ -7,6 +7,8 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const IMPORTS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "imports", "page.tsx");
 const PREFLIGHT_FORM = path.join(REPO_ROOT, "apps", "web", "src", "components", "operations", "import-preflight-form.tsx");
 const ROLE_CAPABILITIES = path.join(REPO_ROOT, "apps", "web", "src", "lib", "role-capabilities.ts");
+const SAMPLE_CSV_ROUTE = path.join(REPO_ROOT, "apps", "web", "src", "app", "api", "imports", "templates", "sample.csv", "route.ts");
+const SAMPLE_JSON_ROUTE = path.join(REPO_ROOT, "apps", "web", "src", "app", "api", "imports", "templates", "sample.json", "route.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -18,6 +20,8 @@ function run() {
   const source = fs.readFileSync(IMPORTS_PAGE, "utf8");
   const preflightSource = fs.readFileSync(PREFLIGHT_FORM, "utf8");
   const roleSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
+  const sampleCsvSource = fs.readFileSync(SAMPLE_CSV_ROUTE, "utf8");
+  const sampleJsonSource = fs.readFileSync(SAMPLE_JSON_ROUTE, "utf8");
 
   assert(
     source.includes('const normalized = String(value ?? "").trim().toLowerCase();') &&
@@ -83,6 +87,12 @@ function run() {
     "Operations imports must expose sample-file downloads and an inline JSON format example.",
   );
   assert(
+    sampleCsvSource.includes('"title,skuCode,') &&
+      sampleCsvSource.includes('"TEE-BLK-M"') &&
+      sampleJsonSource.includes('skuCode: "TEE-BLK-M"'),
+    "Downloadable CSV and JSON samples must include the required canonical skuCode field and a usable example value.",
+  );
+  assert(
     source.includes('!canEditWorkspace(actorRole)') &&
       source.includes('"No import jobs are visible for this scope."') &&
       source.includes('"No import jobs match this filter."') &&
@@ -104,6 +114,7 @@ function run() {
           "operations_imports_route_preserves_filter_scope_in_job_links",
           "operations_imports_route_wires_preflight_create_and_process_server_actions",
           "operations_imports_route_exposes_sample_files_and_json_preview",
+          "operations_import_samples_include_required_sku_code",
           "operations_imports_route_handles_empty_states_and_auth_redirects",
         ],
         checkedAt: new Date().toISOString(),

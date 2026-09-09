@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 const SAMPLE_JSON = [
   {
     title: "Classic Cotton Tee",
+    skuCode: "TEE-BLK-M",
     description: "Soft crew-neck t-shirt",
     brand: "Vexa PIM",
     hsnCode: "61091000",
