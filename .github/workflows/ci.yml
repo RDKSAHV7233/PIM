@@ -125,6 +125,7 @@ jobs:
         run: |
           node scripts/check-pr-scope.test.cjs
           node scripts/check-integration-test-coverage.test.cjs
+          node scripts/validate-ci-e2e-redis-postinstall.test.cjs
           node scripts/railway-deploy.test.cjs
           node scripts/resolve-observability-database-url.test.cjs
           node apps/api/test/integration/internal-ops-alerting-contract.test.cjs
@@ -350,6 +351,9 @@ jobs:
       QUEUE_BACKEND: memory
       QUEUE_WORKER_ENABLED: "true"
       PIM_AUTH_PASSWORD: vexa-pim-demo-password
+      # E2E uses the live redis:7 service below. Prevent redis-memory-server's
+      # install hook from downloading or compiling a second Redis binary.
+      REDISMS_DISABLE_POSTINSTALL: "true"
     services:
       postgres:
         image: postgres:16
@@ -384,12 +388,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-
-      - name: Install system redis-server (for npm ci postinstall)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
-          echo "REDISMS_SYSTEM_BINARY=$(command -v redis-server)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
