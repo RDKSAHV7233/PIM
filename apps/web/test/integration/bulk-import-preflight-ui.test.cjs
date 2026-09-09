@@ -73,6 +73,7 @@ const SERVER_ACTION = path.join(
   "app",
   "actions.ts",
 );
+const NEXT_CONFIG = path.join(REPO_ROOT, "apps", "web", "next.config.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -88,6 +89,7 @@ function run() {
   const controllerSource = fs.readFileSync(API_CONTROLLER, "utf8");
   const runServiceSource = fs.readFileSync(API_RUN_SERVICE, "utf8");
   const serverActionSource = fs.readFileSync(SERVER_ACTION, "utf8");
+  const nextConfigSource = fs.readFileSync(NEXT_CONFIG, "utf8");
 
   assert(
     componentSource.includes('fetch("/api/bulk-import/runs/upload"') &&
@@ -225,6 +227,21 @@ function run() {
       uploadRouteSource.includes("/bulk-import/runs/upload"),
     "Upload route must enforce CSRF, use bearer auth, and forward the raw multipart body to the API.",
   );
+  assert(
+    nextConfigSource.includes('middlewareClientMaxBodySize: "34mb"'),
+    "Next must preserve a complete 32 MB import file plus its multipart envelope before the upload route forwards it.",
+  );
+  assert(
+    uploadRouteSource.includes("body.byteLength < contentLength") &&
+      uploadRouteSource.includes("UPLOAD_BODY_INCOMPLETE") &&
+      uploadRouteSource.includes("Upload was interrupted before the entire file arrived"),
+    "Upload route must detect a truncated multipart body and return safe retry guidance instead of forwarding parser errors.",
+  );
+  assert(
+    uploadRouteSource.includes("Unexpected end of form") &&
+      uploadRouteSource.includes("incompleteUploadResponse"),
+    "Upload route must translate the upstream multipart parser failure into the same safe interrupted-upload response.",
+  );
 
   // ── Run validate route regression tests ───────────────────────────────────
 
@@ -307,6 +324,9 @@ function run() {
           "canonical_skuCode_mapping_and_guidance",
           "start_import_reuses_preflight_mapping",
           "upload_route_csrf_auth_multipart",
+          "next_request_clone_limit_covers_32mb_multipart_upload",
+          "upload_route_rejects_truncated_multipart_with_safe_guidance",
+          "upload_route_translates_raw_multipart_parser_failure",
           "run_validate_route_csrf_auth",
           "backend_multipart_file_interceptor_32mb",
           "backend_user_safe_oversized_empty_errors",

@@ -38,6 +38,9 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: false,
   },
   experimental: {
+    // Route Handlers clone incoming request bodies before dispatch. Keep this
+    // above the advertised 32 MB file cap so multipart metadata is not cut off.
+    middlewareClientMaxBodySize: "34mb",
     serverActions: {
       bodySizeLimit: "10mb",
     },

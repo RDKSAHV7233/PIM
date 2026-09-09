@@ -107,7 +107,8 @@ try {
     "imports page must guard jobs result before use",
   );
 
-  // --- next.config.ts: body limit must accommodate files up to the API's 8 MB cap ---
+  // Server Actions do not carry the staged file, but Next's clonable request
+  // stream must preserve a 32 MB file plus its multipart envelope.
   assert(
     nextConfig.includes("bodySizeLimit"),
     "next.config.ts must set serverActions.bodySizeLimit",
@@ -120,6 +121,18 @@ try {
   assert(
     limitMb >= 8,
     `serverActions.bodySizeLimit must be at least 8mb to match the API's MAX_SOURCE_BYTES; got ${limitMatch[0]}`,
+  );
+  const middlewareLimitMatch = nextConfig.match(/middlewareClientMaxBodySize:\s*"(\d+)(mb|kb)"/i);
+  assert(
+    middlewareLimitMatch,
+    "next.config.ts must configure experimental.middlewareClientMaxBodySize for staged multipart uploads",
+  );
+  const middlewareLimitValue = Number(middlewareLimitMatch[1]);
+  const middlewareLimitUnit = middlewareLimitMatch[2].toLowerCase();
+  const middlewareLimitMb = middlewareLimitUnit === "kb" ? middlewareLimitValue / 1024 : middlewareLimitValue;
+  assert(
+    middlewareLimitMb >= 34,
+    `middlewareClientMaxBodySize must cover a 32 MB file plus multipart envelope; got ${middlewareLimitMatch[0]}`,
   );
 
   console.log(
@@ -135,6 +148,7 @@ try {
           "import_progress_resets_counter_on_success",
           "import_progress_shows_warning_after_3_failures",
           "next_config_body_limit_accommodates_api_max_source_size",
+          "next_config_request_clone_limit_accommodates_32mb_multipart_upload",
           "imports_page_primary_fetches_degrade_gracefully_on_api_failure",
         ],
       },

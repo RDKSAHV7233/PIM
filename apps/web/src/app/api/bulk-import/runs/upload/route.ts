@@ -6,6 +6,18 @@ export const dynamic = "force-dynamic";
 
 const MAX_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_REQUEST_ENVELOPE_BYTES = MAX_FILE_BYTES + 1024 * 1024;
+const INCOMPLETE_UPLOAD_MESSAGE =
+  "Upload was interrupted before the entire file arrived. Select the file and try again.";
+
+function incompleteUploadResponse() {
+  return NextResponse.json(
+    {
+      code: "UPLOAD_BODY_INCOMPLETE",
+      message: INCOMPLETE_UPLOAD_MESSAGE,
+    },
+    { status: 400 },
+  );
+}
 
 export async function POST(request: NextRequest) {
   const csrfError = validateCsrf(request);
@@ -38,6 +50,9 @@ export async function POST(request: NextRequest) {
   if (body.byteLength > MAX_REQUEST_ENVELOPE_BYTES) {
     return NextResponse.json({ error: "File too large (max 32 MB)" }, { status: 413 });
   }
+  if (contentLength > 0 && body.byteLength < contentLength) {
+    return incompleteUploadResponse();
+  }
 
   const response = await fetch(`${getApiBaseUrl()}/bulk-import/runs/upload`, {
     method: "POST",
@@ -52,6 +67,9 @@ export async function POST(request: NextRequest) {
   });
 
   const payload = await response.text();
+  if (!response.ok && payload.includes("Unexpected end of form")) {
+    return incompleteUploadResponse();
+  }
   return new NextResponse(payload, {
     status: response.status,
     headers: {
