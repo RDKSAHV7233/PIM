@@ -404,6 +404,13 @@ jobs:
       - name: Build Web
         run: npm run build --workspace @pim1/web
 
+      - name: Disable unrelated Google Chrome apt source
+        run: |
+          for source in /etc/apt/sources.list.d/google-chrome*.list; do
+            [ -f "$source" ] || continue
+            sudo sed -i '\|dl.google.com/linux/chrome|d' "$source"
+          done
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 

@@ -24,6 +24,9 @@ jobs:
       cancel-in-progress: false
     env:
       APP_ENV: staging
+      # Deployment uses Railway Redis at runtime. Prevent redis-memory-server's
+      # npm install hook from downloading or compiling a local Redis binary.
+      REDISMS_DISABLE_POSTINSTALL: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -35,12 +38,6 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-
-      - name: Install system redis-server (for redis-memory-server)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
-          echo "REDISMS_SYSTEM_BINARY=$(command -v redis-server)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci

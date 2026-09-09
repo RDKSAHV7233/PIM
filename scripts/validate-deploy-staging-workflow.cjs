@@ -77,9 +77,18 @@ function main() {
   assert(job.concurrency && typeof job.concurrency === "object", "deploy-staging job must define concurrency");
   assert(String(job.concurrency.group ?? "").trim() === "deploy-staging", "deploy-staging concurrency group must be deploy-staging");
   assert(job.concurrency["cancel-in-progress"] === false, "deploy-staging concurrency must not cancel in-progress deploys");
+  assert(
+    String(job.env?.REDISMS_DISABLE_POSTINSTALL ?? "").trim() === "true",
+    "deploy-staging must disable redis-memory-server postinstall downloads",
+  );
 
   const steps = Array.isArray(job.steps) ? job.steps : [];
   assert(steps.length > 0, "deploy-staging job has no steps");
+  assert(
+    !steps.some((step) => String(step?.name ?? "").trim() === "Install system redis-server (for redis-memory-server)"),
+    "deploy-staging must not install a redundant host Redis package",
+  );
+  assert(!text.includes("apt-get install -y redis-server"), "deploy-staging must not depend on apt for Redis");
 
   const checkoutStep = requireStep(steps, "Checkout");
   assert(
