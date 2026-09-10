@@ -44,6 +44,8 @@ module.exports = {
     "**/billing/plan-usage-sellable-sku-lifecycle.spec.ts",
     "**/billing/commercial-requests.service.spec.ts",
     "**/billing/commercial-notifications.service.spec.ts",
+    "**/billing/stripe.service.spec.ts",
+    "**/signup/signup.service.spec.ts",
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",
     "**/bulk-import/bulk-import-run-validate.service.spec.ts",

@@ -85,6 +85,11 @@ assert("storeExternalIds() stores customerId and subscriptionId in DB",
 assert("createCustomerAndSubscription is non-fatal (catches errors)",
   serviceSrc.includes("try") && serviceSrc.includes("logger.warn") && serviceSrc.includes("createCustomerAndSubscription"));
 assert("STRIPE_API_VERSION pinned", serviceSrc.includes("2026-04-22") || serviceSrc.includes("2024-12-18"));
+// H-3: idempotent trial provisioning
+assert("createCustomerAndSubscription accepts/derives an idempotency key",
+  serviceSrc.includes("idempotencyKey") && serviceSrc.includes("signup-trial:"));
+assert("createCustomerAndSubscription short-circuits when both Stripe ids are already stored",
+  serviceSrc.includes("existing.externalCustomerId && existing.externalSubscriptionId"));
 
 // --- BillingModule registration ---
 console.log("\nBillingModule registrations:");
@@ -117,6 +122,15 @@ assert("StripeService imported in signup.service.ts", signupSrc.includes("Stripe
 assert("StripeService injected in constructor", signupSrc.includes("stripeService"));
 assert("createCustomerAndSubscription called in verifyPublicSignup",
   signupSrc.includes("createCustomerAndSubscription") && signupSrc.includes("verifyPublicSignup"));
+// H-3: billing provisioning must never throw out of verifyPublicSignup
+assert("verifyPublicSignup isolates billing provisioning in try/catch",
+  signupSrc.includes("runSignupBillingProvision") && /catch \(error: unknown\)/.test(signupSrc));
+assert("signup billing failure is deferred to the SIGNUP_BILLING_PROVISION retry queue",
+  signupSrc.includes("QUEUE_NAMES.SIGNUP_BILLING_PROVISION") && signupSrc.includes("enqueue"));
+assert("signup billing retry consumer registered on module init",
+  signupSrc.includes("OnModuleInit") && signupSrc.includes("queueService.process"));
+assert("signup billing failure logs the request ref, not the raw email",
+  signupSrc.includes("deferred to retry queue [ref:"));
 
 // --- Billing controller checkout endpoint ---
 const billingControllerSrc = readFile(path.join(__dirname, "../../src/billing/billing.controller.ts"));

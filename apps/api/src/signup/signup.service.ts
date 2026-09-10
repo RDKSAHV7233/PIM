@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -15,6 +15,8 @@ import {
 } from "../common/tenant/tenant.constants";
 import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { QueueService } from "../queue/queue.service";
+import { QUEUE_NAMES } from "../queue/queue.constants";
 import { CreatePublicSignupDto } from "./dto/create-public-signup.dto";
 
 const SIGNUP_VERIFICATION_EXPIRY_MS = 30 * 60 * 1000;
@@ -36,6 +38,17 @@ interface AttemptState {
   attempts: number;
 }
 
+// H-3: payload for the billing-provisioning retry job. adminEmail is required to
+// create the Stripe customer; it is never written to logs — correlation uses the
+// signupRequestId ref only.
+export interface SignupBillingProvisionJobPayload {
+  tenantKey: string;
+  adminEmail: string;
+  displayName: string;
+  planTier: "TRIAL";
+  signupRequestId: string;
+}
+
 export class SignupRateLimitError extends Error {
   constructor(public readonly retryAfterSeconds: number) {
     super("SIGNUP_RATE_LIMITED");
@@ -43,7 +56,7 @@ export class SignupRateLimitError extends Error {
 }
 
 @Injectable()
-export class SignupService implements OnModuleDestroy {
+export class SignupService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SignupService.name);
   private readonly signupIpAttempts = new Map<string, AttemptState>();
   private readonly signupEmailAttempts = new Map<string, AttemptState>();
@@ -60,7 +73,22 @@ export class SignupService implements OnModuleDestroy {
     private readonly planUsageService: PlanUsageService,
     private readonly metricsService: MetricsService,
     private readonly stripeService: StripeService,
+    private readonly queueService: QueueService,
   ) {}
+
+  onModuleInit(): void {
+    // H-3: consumer for billing provisioning that could not complete synchronously
+    // during verifyPublicSignup (e.g. Stripe/plan-profile outage). Registered here to
+    // mirror the other queueService.process(...) handlers (auth-email, account
+    // export/deletion). Errors are allowed to propagate so the queue's built-in
+    // retry/backoff (BullMQ: 3 attempts, exponential) can take over.
+    this.queueService.process<SignupBillingProvisionJobPayload>(
+      QUEUE_NAMES.SIGNUP_BILLING_PROVISION,
+      async (payload) => {
+        await this.runSignupBillingProvision(payload, "retry");
+      },
+    );
+  }
 
   async onModuleDestroy(): Promise<void> {
     if (!this.redisClient) {
@@ -364,35 +392,50 @@ export class SignupService implements OnModuleDestroy {
       },
     });
 
-    await this.planUsageService.getTenantPlanProfile(workspace.tenantId);
-
-    await this.stripeService.createCustomerAndSubscription({
+    // H-3: the workspace is provisioned and the request is marked verified above —
+    // that state must commit and the success response must return even if billing is
+    // down. Plan-profile seeding, Stripe customer/subscription creation and the
+    // verification metrics are isolated here so NONE of them can throw a 500 onto a
+    // user whose account already works. On failure we log with the request ref
+    // (never the raw email) and hand the work to the retry queue.
+    const billingPayload: SignupBillingProvisionJobPayload = {
       tenantKey: workspace.tenantId,
       adminEmail: request.adminEmail,
       displayName: request.displayName,
       planTier: "TRIAL",
-    });
+      signupRequestId: request.id,
+    };
+    try {
+      await this.runSignupBillingProvision(billingPayload, "verify");
 
-    const hoursToVerify = Math.max(0, (Date.now() - new Date(request.createdAt).getTime()) / (60 * 60 * 1000));
-    await Promise.all([
-      this.emitSignupMetric({
-        tenantKey: workspace.tenantId,
-        metricKey: "signup.verification_total",
-        metricValue: 1,
-        tags: {
-          source: "public_signup",
-        },
-      }),
-      this.emitSignupMetric({
-        tenantKey: workspace.tenantId,
-        metricKey: "signup.hours_to_verify",
-        metricValue: hoursToVerify,
-        unit: "hours",
-        tags: {
-          source: "public_signup",
-        },
-      }),
-    ]);
+      const hoursToVerify = Math.max(0, (Date.now() - new Date(request.createdAt).getTime()) / (60 * 60 * 1000));
+      await Promise.all([
+        this.emitSignupMetric({
+          tenantKey: workspace.tenantId,
+          metricKey: "signup.verification_total",
+          metricValue: 1,
+          tags: {
+            source: "public_signup",
+          },
+        }),
+        this.emitSignupMetric({
+          tenantKey: workspace.tenantId,
+          metricKey: "signup.hours_to_verify",
+          metricValue: hoursToVerify,
+          unit: "hours",
+          tags: {
+            source: "public_signup",
+          },
+        }),
+      ]);
+    } catch (error: unknown) {
+      const code = error instanceof Error ? error.message : String(error ?? "unknown error");
+      // Do not log the raw email address — it is PII. Use the request ID for correlation.
+      this.logger.error(
+        `Public signup billing provisioning deferred to retry queue [ref:${request.id}]: ${code}`,
+      );
+      await this.enqueueSignupBillingProvisionRetry(billingPayload);
+    }
 
     return {
       ok: true,
@@ -610,6 +653,55 @@ export class SignupService implements OnModuleDestroy {
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error ?? "unknown error");
       this.logger.warn(`Signup metrics emission failed for ${input.metricKey}/${input.tenantKey}: ${reason}`);
+    }
+  }
+
+  /**
+   * H-3: the single idempotent billing-provisioning path, shared by the synchronous
+   * verify flow and the retry queue consumer. Seeds the tenant plan profile
+   * (get-or-create) and creates the Stripe customer/subscription with a stable
+   * idempotency key so running it twice yields exactly one customer + subscription.
+   * Callers decide how to handle a throw: verify swallows + enqueues, the queue
+   * consumer rethrows so BullMQ retries.
+   */
+  private async runSignupBillingProvision(
+    payload: SignupBillingProvisionJobPayload,
+    source: "verify" | "retry",
+  ): Promise<void> {
+    // Test seam: default-inert. Lets integration tests exercise the "billing
+    // dependency is down during verify" recovery path without a live Stripe.
+    //   PIM_SIGNUP_BILLING_SIMULATE_FAILURE=verify  -> fail only the inline attempt
+    //   PIM_SIGNUP_BILLING_SIMULATE_FAILURE=always  -> fail every attempt
+    const simulateFailure = String(process.env.PIM_SIGNUP_BILLING_SIMULATE_FAILURE ?? "")
+      .trim()
+      .toLowerCase();
+    if (simulateFailure === "always" || (simulateFailure === "verify" && source === "verify")) {
+      throw new Error("SIGNUP_BILLING_SIMULATED_FAILURE");
+    }
+
+    await this.planUsageService.getTenantPlanProfile(payload.tenantKey);
+
+    await this.stripeService.createCustomerAndSubscription({
+      tenantKey: payload.tenantKey,
+      adminEmail: payload.adminEmail,
+      displayName: payload.displayName,
+      planTier: payload.planTier,
+      idempotencyKey: `signup-trial:${payload.tenantKey}`,
+    });
+  }
+
+  private async enqueueSignupBillingProvisionRetry(payload: SignupBillingProvisionJobPayload): Promise<void> {
+    try {
+      await this.queueService.enqueue(QUEUE_NAMES.SIGNUP_BILLING_PROVISION, payload, {
+        // Dedup key: at most one in-flight retry per tenant (BullMQ jobId; ignored by
+        // the in-memory backend, which is harmless here).
+        jobId: `signup-billing:${payload.tenantKey}`,
+      });
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error ?? "unknown error");
+      this.logger.error(
+        `Failed to enqueue signup billing retry [ref:${payload.signupRequestId}]: ${reason}`,
+      );
     }
   }
 
