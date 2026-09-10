@@ -141,10 +141,12 @@ export function PasswordResetPageClient({
                 type="password"
                 required
                 minLength={8}
+                maxLength={72}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
               />
+              <p className="text-xs leading-5 text-slate-600">{authCopy.resetPasswordHelp}</p>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="confirmPassword" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -155,6 +157,7 @@ export function PasswordResetPageClient({
                 type="password"
                 required
                 minLength={8}
+                maxLength={72}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"

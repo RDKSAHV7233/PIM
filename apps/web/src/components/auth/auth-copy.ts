@@ -75,6 +75,7 @@ export interface AuthCopy {
   resetError: string;
   resetInvalidToken: string;
   resetPasswordMismatch: string;
+  resetPasswordHelp: string;
   mfaChallengeTitle: string;
   mfaChallengeSubtitle: string;
   mfaChallengeCodeLabel: string;
@@ -128,7 +129,7 @@ const EN_COPY: AuthCopy = {
   signupVerificationSendFailed: "We couldn't send the verification email right now. Please try again.",
   signupEmailInvalid: "Enter a valid email address for the first admin.",
   signupTermsLabel: "I accept the Terms of Service and Privacy Policy.",
-  signupPasswordHelp: "Use at least 8 characters.",
+  signupPasswordHelp: "Use 8–72 characters.",
   signupPasswordMismatch: "The password confirmation does not match.",
   signupDisplayNameRequired: "Workspace name is required.",
   signupVerifyTitle: "Verify your workspace",
@@ -173,6 +174,7 @@ const EN_COPY: AuthCopy = {
   resetError: "Unable to process your request right now. Please try again.",
   resetInvalidToken: "This reset link is invalid or has expired.",
   resetPasswordMismatch: "The password confirmation does not match.",
+  resetPasswordHelp: "Use 8–72 characters.",
   mfaChallengeTitle: "Two-factor verification",
   mfaChallengeSubtitle: "Enter the 6-digit code from your authenticator app.",
   mfaChallengeCodeLabel: "Verification code",
