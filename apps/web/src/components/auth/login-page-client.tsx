@@ -358,7 +358,6 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
             >
               {authCopy.forgotPasswordSuffix}
             </Link>
-            .
           </p>
 
           <div className="space-y-2 pt-1 text-center">
@@ -372,7 +371,6 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
                 >
                   {authCopy.signupLinkCta}
                 </Link>
-                .
               </p>
             ) : null}
           </div>
