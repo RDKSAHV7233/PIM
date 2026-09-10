@@ -36,6 +36,7 @@
     "test:integration:auth-login-lockout": "dotenv -o -e .env -- node apps/api/test/integration/auth-login-lockout.test.cjs",
     "test:integration:auth-password-reset": "dotenv -o -e .env -- node apps/api/test/integration/auth-password-reset.test.cjs",
     "test:integration:public-signup": "dotenv -o -e .env -- node apps/api/test/integration/public-signup.test.cjs",
+    "test:integration:api-error-envelope": "dotenv -o -e .env -- node apps/api/test/integration/api-error-envelope.test.cjs",
     "test:integration:web-public-signup": "dotenv -o -e .env -- node apps/web/test/integration/public-signup-web-flow.test.cjs",
     "test:integration:auth-legacy-hash-migration": "dotenv -o -e .env -- node apps/api/test/integration/auth-legacy-hash-migration.test.cjs",
     "test:integration:auth-account-privacy": "dotenv -o -e .env -- node apps/api/test/integration/auth-account-privacy.test.cjs",

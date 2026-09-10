@@ -147,7 +147,13 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
         signal: AbortSignal.timeout(20_000),
       });
       const payload = (await response.json().catch(() => null)) as
-        | { status?: string; error?: string; retryAfterSeconds?: number }
+        | {
+            status?: string;
+            error?: string;
+            retryAfterSeconds?: number;
+            message?: string;
+            fields?: Array<{ field: string; constraints: string[] }>;
+          }
         | null;
 
       if (response.ok) {
@@ -182,6 +188,24 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
             ? `${authCopy.rateLimitedBody} ${authCopy.rateLimitedRetryIn} ${payload.retryAfterSeconds}s.`
             : authCopy.rateLimitedBody,
         );
+        return;
+      }
+
+      if (payload?.error === "VALIDATION_FAILED") {
+        const invalidFields = new Set((payload.fields ?? []).map((entry) => entry.field));
+        if (invalidFields.has("displayName")) {
+          setError(authCopy.signupDisplayNameRequired);
+        } else if (invalidFields.has("workspaceSlug")) {
+          setError(authCopy.workspaceInvalid);
+        } else if (invalidFields.has("adminEmail")) {
+          setError(authCopy.signupEmailInvalid);
+        } else if (invalidFields.has("password")) {
+          setError(authCopy.signupPasswordHelp);
+        } else if (invalidFields.has("acceptedTerms")) {
+          setError(authCopy.signupTermsLabel);
+        } else {
+          setError(payload.message?.trim() ? payload.message : authCopy.genericLoginFailure);
+        }
         return;
       }
 

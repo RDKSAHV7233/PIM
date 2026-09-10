@@ -70,8 +70,26 @@ export function PasswordResetPageClient({
           }),
           signal: AbortSignal.timeout(15_000),
         });
-        const payload = (await response.json().catch(() => null)) as { workspaceSlug?: string; error?: string } | null;
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              workspaceSlug?: string;
+              error?: string;
+              message?: string;
+              fields?: Array<{ field: string; constraints: string[] }>;
+            }
+          | null;
         if (!response.ok) {
+          if (payload?.error === "VALIDATION_FAILED") {
+            const invalidFields = new Set((payload.fields ?? []).map((entry) => entry.field));
+            if (invalidFields.has("token")) {
+              setError(authCopy.resetInvalidToken);
+            } else if (payload.message?.trim()) {
+              setError(payload.message);
+            } else {
+              setError(authCopy.resetError);
+            }
+            return;
+          }
           setError(payload?.error === "PASSWORD_RESET_TOKEN_INVALID" ? authCopy.resetInvalidToken : authCopy.resetError);
           return;
         }
