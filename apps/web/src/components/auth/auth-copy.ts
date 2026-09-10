@@ -43,6 +43,7 @@ export interface AuthCopy {
   signupResendSubmitting: string;
   signupResendSuccess: string;
   signupResendError: string;
+  signupVerifyStartOver: string;
   roleLabel: string;
   signIn: string;
   signingIn: string;
@@ -142,6 +143,7 @@ const EN_COPY: AuthCopy = {
   signupResendSubmitting: "Resending verification email...",
   signupResendSuccess: "If a pending signup exists for that email, we sent a new verification link.",
   signupResendError: "Unable to resend verification right now. Please try again.",
+  signupVerifyStartOver: "Start a new sign-up",
   roleLabel: "Role",
   signIn: "Sign in",
   signingIn: "Signing in...",

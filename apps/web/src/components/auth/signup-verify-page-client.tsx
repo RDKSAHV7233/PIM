@@ -183,6 +183,12 @@ export function SignupVerifyPageClient({
               </p>
             ) : null}
           </div>
+          <Link
+            href={`/signup?lang=${encodeURIComponent(locale)}`}
+            className="inline-flex text-sm font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+          >
+            {authCopy.signupVerifyStartOver}
+          </Link>
         </div>
       ) : null}
 
