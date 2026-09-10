@@ -96,19 +96,19 @@ function run() {
       (componentSource.includes('readCsrfCookie') || componentSource.includes('readCookie("pim_csrf_token")')) &&
       componentSource.includes('name="sourceFile"') &&
       componentSource.includes('aria-invalid={fieldErrors.sourceFile ? "true" : undefined}') &&
-      componentSource.includes("Staged import workflow") &&
-      componentSource.includes("Preflight readiness") &&
+      componentSource.includes("initialRun") &&
+      componentSource.includes("selectRunInUrl") &&
       componentSource.includes("Validation summary") &&
       componentSource.includes("Mapped fields:") &&
       componentSource.includes("Unmapped fields") &&
       componentSource.includes("Unused headers") &&
+      componentSource.includes("Grouped validation issues") &&
       componentSource.includes("Representative issues"),
-    "Import preflight form must use multipart upload (not base64 JSON), keep file-field accessibility wiring, and show a validation summary before import starts.",
+    "Import preflight form must use multipart upload, hydrate from the selected run, keep file-field accessibility wiring, and show grouped validation evidence before import starts.",
   );
   assert(
-    componentSource.includes('idleLabel={validation?.canImport ? "Start validated import" : "Validate before importing"}') &&
-      componentSource.includes('disabled={!hasCategories || validating || !validation?.canImport}') &&
-      componentSource.includes('title={') &&
+    componentSource.includes('idleLabel={canStartImport ? "Start validated import" : "Validate before importing"}') &&
+      componentSource.includes('disabled={!hasCategories || validating || !canStartImport}') &&
       componentSource.includes("Resolve the blocking issues below before creating the import job."),
     "Import preflight form must gate job creation on preflight status and explain whether the file is ready to import.",
   );
@@ -147,7 +147,7 @@ function run() {
   // cannot be submitted against a different category.
   assert(
     componentSource.includes("resetValidationState") &&
-      componentSource.includes("onChange={resetValidationState}"),
+      componentSource.includes("clearSelectedImportUrl"),
     "Import preflight form must reset validation state (including stagedRunId) when the category selection changes.",
   );
 
@@ -206,6 +206,21 @@ function run() {
       componentSource.includes("Validation issue found.") &&
       componentSource.includes("formatSampleIssue(issue)"),
     "Representative issue rows must render message/code text and legacy issue arrays without producing blank Row N output.",
+  );
+  assert(
+    componentSource.includes("Download validation summary") &&
+      componentSource.includes("Download sample CSV") &&
+      componentSource.includes("Replace file") &&
+      componentSource.includes("Revalidate") &&
+      componentSource.includes("browsers do not retain file bytes after staged upload"),
+    "Import preflight form must expose recovery actions for blocked validation without retaining source file bytes.",
+  );
+  assert(
+    componentSource.includes("issueGroups") &&
+      componentSource.includes("affectedRowCount") &&
+      componentSource.includes("sampleRowNumbers") &&
+      componentSource.includes("downloadCsv"),
+    "Import preflight form must render and download grouped validation evidence instead of relying only on repeated sample rows.",
   );
   assert(
     componentSource.includes('skuCode: "skuCode"') &&

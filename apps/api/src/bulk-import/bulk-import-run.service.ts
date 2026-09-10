@@ -74,6 +74,23 @@ type StagedSourceRows = {
   rows: Record<string, unknown>[];
 };
 
+type BulkImportPreflightIssueGroup = {
+  code: string;
+  severity: "blocking" | "warning";
+  field: string | null;
+  message: string;
+  affectedRowCount: number;
+  sampleRowNumbers: number[];
+};
+
+type BulkImportPreflightIssueGroupInput = {
+  rowNumbers: number[];
+  severity: "blocking" | "warning";
+  code: string;
+  fieldPath?: string | null;
+  message: string;
+};
+
 @Injectable()
 export class BulkImportRunService implements OnModuleInit {
   private readonly logger = new Logger(BulkImportRunService.name);
@@ -86,6 +103,53 @@ export class BulkImportRunService implements OnModuleInit {
     private readonly bulkImportService: BulkImportService,
     private readonly planUsageService: PlanUsageService,
   ) {}
+
+  private addPreflightIssueGroup(
+    groups: Map<string, BulkImportPreflightIssueGroup>,
+    input: BulkImportPreflightIssueGroupInput,
+  ) {
+    const rowNumbers = input.rowNumbers.filter((rowNumber) => Number.isFinite(rowNumber) && rowNumber >= 0);
+    const field = input.fieldPath?.trim() ? input.fieldPath.trim() : null;
+    const code = input.code.trim() || "VALIDATION_ISSUE";
+    const message = input.message.trim() || "Validation issue found.";
+    const key = `${input.severity}:${code}:${field ?? ""}:${message}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.affectedRowCount += rowNumbers.length;
+      for (const rowNumber of rowNumbers) {
+        if (existing.sampleRowNumbers.length >= 10) {
+          break;
+        }
+        if (!existing.sampleRowNumbers.includes(rowNumber)) {
+          existing.sampleRowNumbers.push(rowNumber);
+        }
+      }
+      return;
+    }
+    groups.set(key, {
+      code,
+      severity: input.severity,
+      field,
+      message,
+      affectedRowCount: rowNumbers.length,
+      sampleRowNumbers: rowNumbers.slice(0, 10),
+    });
+  }
+
+  private sortPreflightIssueGroups(
+    groups: Map<string, BulkImportPreflightIssueGroup>,
+  ): BulkImportPreflightIssueGroup[] {
+    return Array.from(groups.values()).sort((left, right) => {
+      if (left.severity !== right.severity) {
+        return left.severity === "blocking" ? -1 : 1;
+      }
+      const codeComparison = left.code.localeCompare(right.code);
+      if (codeComparison !== 0) {
+        return codeComparison;
+      }
+      return String(left.field ?? "").localeCompare(String(right.field ?? ""));
+    });
+  }
 
   onModuleInit() {
     this.queueService.processWithBackpressure<LargeRunBatchPayload | BulkImportJobPayload>(
@@ -369,6 +433,7 @@ export class BulkImportRunService implements OnModuleInit {
         message: string;
         fieldPath?: string | null;
       }> = [];
+      const issueGroupAccumulator = new Map<string, BulkImportPreflightIssueGroup>();
       const blockedRowNumbers = new Set<number>();
       const skuCodesSeen = new Map<string, number[]>();
       const brandsSeen = new Set<string>();
@@ -396,6 +461,13 @@ export class BulkImportRunService implements OnModuleInit {
               fieldPath: issue.fieldPath ?? null,
             });
           }
+          this.addPreflightIssueGroup(issueGroupAccumulator, {
+            rowNumbers: [rowNumber],
+            severity: issue.severity,
+            code: issue.code,
+            fieldPath: issue.fieldPath ?? null,
+            message: issue.message,
+          });
         }
 
         const skuCode = typeof normalizedRow.skuCode === "string" ? normalizedRow.skuCode.trim() : "";
@@ -430,6 +502,13 @@ export class BulkImportRunService implements OnModuleInit {
               fieldPath: "skuCode",
             });
           }
+          this.addPreflightIssueGroup(issueGroupAccumulator, {
+            rowNumbers,
+            code: "SKU_DUPLICATE_IN_JOB",
+            message: "Duplicate skuCode values exist in this file.",
+            severity: "blocking",
+            fieldPath: "skuCode",
+          });
         }
       }
 
@@ -469,6 +548,13 @@ export class BulkImportRunService implements OnModuleInit {
               fieldPath: "skuCode",
             });
           }
+          this.addPreflightIssueGroup(issueGroupAccumulator, {
+            rowNumbers,
+            code: "SKU_ALREADY_EXISTS",
+            message: "skuCode already exists in the catalog.",
+            severity: "blocking",
+            fieldPath: "skuCode",
+          });
         }
       }
 
@@ -488,6 +574,13 @@ export class BulkImportRunService implements OnModuleInit {
             fieldPath: null,
           });
         }
+        this.addPreflightIssueGroup(issueGroupAccumulator, {
+          rowNumbers: [effectiveRowLimit + 1],
+          code: "ROW_LIMIT_EXCEEDED",
+          message: `Your plan supports at most ${effectiveRowLimit} rows per import job.`,
+          severity: "blocking",
+          fieldPath: null,
+        });
       }
 
       // NOTE: bulk import deliberately does NOT check the cumulative plan SKU limit here.
@@ -517,6 +610,15 @@ export class BulkImportRunService implements OnModuleInit {
             fieldPath: null,
           });
         }
+        this.addPreflightIssueGroup(issueGroupAccumulator, {
+          rowNumbers: [0],
+          code: sourceFormat === "json" ? "NO_ROWS" : "INVALID_CSV_SOURCE",
+          message: sourceFormat === "json"
+            ? "JSON import file must contain at least one row object."
+            : "CSV must include a header row and at least one data row.",
+          severity: "blocking",
+          fieldPath: null,
+        });
       }
 
       if (containsWorkflowStatus) {
@@ -561,6 +663,7 @@ export class BulkImportRunService implements OnModuleInit {
         mapping: mappingSuggestion.mapping,
         unmappedFields: mappingSuggestion.unmappedFields,
         unusedHeaders: mappingSuggestion.unusedHeaders,
+        issueGroups: this.sortPreflightIssueGroups(issueGroupAccumulator),
         sampleIssues,
         canImport: blockingIssueCount === 0 && totalRows > 0,
         skuCodeSummary: duplicateCount > 0 || collisionCount > 0 ? { duplicateCount, collisionCount } : null,

@@ -16,10 +16,10 @@ function run() {
   const source = fs.readFileSync(IMPORTS_PAGE, "utf8");
 
   assert(
-    source.includes("Stage 1 and 2 | Upload and pre-validate") &&
+    source.includes("Upload, validate, and start") &&
       source.includes("Stage 3 | Start import") &&
       source.includes("Stage 4 | Review result and repair rows"),
-    "Operations imports must label the workflow as staged upload/validate, start import, and result/repair sections.",
+    "Operations imports must label the workflow as one upload/validate/start surface plus result/repair sections.",
   );
   assert(
     source.includes("Preflight creates the job in a queued state.") &&

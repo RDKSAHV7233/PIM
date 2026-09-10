@@ -42,7 +42,7 @@ test.describe("Bulk-Import CSRF httpOnly Token Handling", () => {
       });
 
       // 4. Click validate button
-      await page.click("button:has-text('Validate import file')");
+      await page.click("button:has-text('Validate file')");
 
       // 5. Wait for validation to complete
       // Should NOT see "CSRF_MISMATCH" error

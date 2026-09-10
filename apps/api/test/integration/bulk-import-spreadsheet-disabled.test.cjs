@@ -22,6 +22,12 @@ try {
   const importsPage = read("apps/web/src/app/operations/imports/page.tsx");
   const preflightForm = read("apps/web/src/components/operations/import-preflight-form.tsx");
   const apiTypes = read("apps/web/src/lib/api/core.ts");
+  const createActionStart = webActions.indexOf("export async function createBulkImportJobAction");
+  const createActionEnd = webActions.indexOf("export async function createBulkImportTemplateAction", createActionStart);
+  const createBulkImportJobAction =
+    createActionStart >= 0 && createActionEnd > createActionStart
+      ? webActions.slice(createActionStart, createActionEnd)
+      : "";
 
   assert(!apiPackage.includes('"xlsx"'), "apps/api/package.json must not include xlsx.");
   assert(!service.includes('from "xlsx"') && !service.includes("require(\"xlsx\")"), "BulkImportService must not import xlsx.");
@@ -30,8 +36,15 @@ try {
 
   assert(jobDto.includes('const SOURCE_FORMATS = ["csv", "json"] as const;'), "CreateBulkImportJobDto must allow only csv/json.");
   assert(templateDto.includes('const SOURCE_FORMATS = ["csv", "json"] as const;'), "CreateBulkImportTemplateDto must allow only csv/json.");
-  assert(webActions.includes("Spreadsheet imports are temporarily disabled."), "Server action must explain spreadsheet imports are disabled.");
-  assert(preflightForm.includes('accept=".csv,.json"'), "Operations import upload must only accept csv/json.");
+  assert(
+    createBulkImportJobAction.includes("stagedRunId") && !createBulkImportJobAction.includes("sourceFile"),
+    "Server action must require stagedRunId and avoid a raw-file spreadsheet fallback.",
+  );
+  assert(
+    preflightForm.includes('accept=".csv,.json"') &&
+      preflightForm.includes("Uploaded file must be .csv or .json. Spreadsheet imports remain disabled."),
+    "Operations import upload must only accept csv/json and explain spreadsheet files are disabled in the staged preflight flow.",
+  );
   assert(!apiTypes.includes('"xlsx" | "xls"'), "Web API bulk import types must not expose xlsx/xls.");
 
   console.log("bulk-import-spreadsheet-disabled: ok");

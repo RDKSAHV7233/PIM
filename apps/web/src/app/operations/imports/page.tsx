@@ -80,37 +80,61 @@ function importWorkflowSteps(input: {
   selectedBulkJobId: string;
   selectedBulkRunId: string;
   selectedJobStatus: string | null;
+  selectedRunStatus: string | null;
   selectedAttentionRows: number;
   selectedSuccessfulRows: number;
   selectedRunAttentionRows: number;
   selectedRunSuccessfulRows: number;
 }): WorkflowStep[] {
-  const hasSelection = input.selectedBulkJobId.length > 0 || input.selectedBulkRunId.length > 0;
   const attentionRows = input.selectedAttentionRows + input.selectedRunAttentionRows;
   const successfulRows = input.selectedSuccessfulRows + input.selectedRunSuccessfulRows;
+  const runStatus = String(input.selectedRunStatus ?? "").toLowerCase();
+  const jobStatus = String(input.selectedJobStatus ?? "").toLowerCase();
+  const hasRun = input.selectedBulkRunId.length > 0;
+  const hasJob = input.selectedBulkJobId.length > 0;
+  const stage =
+    hasJob
+      ? ["completed", "failed", "dead_letter"].includes(jobStatus)
+        ? 4
+        : 3
+      : hasRun
+        ? runStatus === "preflight_blocked"
+          ? 2
+          : runStatus === "preflight_ready"
+            ? 3
+            : ["processing", "retrying", "queued"].includes(runStatus)
+              ? 3
+              : ["completed", "failed", "repair_required", "dead_letter"].includes(runStatus)
+                ? 4
+                : 1
+        : 1;
+  const stepTwoRejected = runStatus === "preflight_blocked";
+  const stepFourCurrent = stage === 4;
 
   return [
     {
       label: "Upload and pre-validate",
-      tone: hasSelection ? "complete" : "current",
+      tone: stage > 1 ? "complete" : "current",
       description: "Choose category scope, upload the source file, and validate before creating a job.",
     },
     {
-      label: "Review validation summary",
-      tone: hasSelection ? "complete" : "pending",
+      label: stepTwoRejected ? "Fix validation issues" : "Review validation summary",
+      tone: stepTwoRejected ? "rejected" : stage > 2 ? "complete" : stage === 2 ? "current" : "pending",
       description: "Review blocking issues, warnings, sample row errors, and field mapping coverage.",
     },
     {
       label: "Start import",
-      tone: hasSelection ? "complete" : "pending",
+      tone: stage > 3 ? "complete" : stage === 3 ? "current" : "pending",
       description: "Create and process the queued import only after preflight is clear or warning-only.",
     },
     {
       label: "Review result and repair rows",
       tone:
-        attentionRows > 0
-          ? "current"
-          : successfulRows > 0 && hasSelection
+        stepFourCurrent && attentionRows > 0
+          ? "rejected"
+          : stepFourCurrent
+            ? "current"
+            : successfulRows > 0
             ? "complete"
             : "pending",
       description: "Select an import job or run to review results, download the error report, and repair remaining rows.",
@@ -213,6 +237,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       selectedBulkJobId,
       selectedBulkRunId,
       selectedJobStatus: selectedJob?.status ?? null,
+      selectedRunStatus: selectedRun?.status ?? null,
       selectedAttentionRows,
       selectedSuccessfulRows: selectedSuccessfulRows.length,
       selectedRunAttentionRows: selectedRunProblemRows.length,
@@ -387,10 +412,11 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           </Card>
 
           <Card>
-            <CardTitle>Stage 1 and 2 | Upload and pre-validate</CardTitle>
+            <CardTitle>Upload, validate, and start</CardTitle>
             <ImportPreflightForm
               categories={categories}
               canWrite={canWrite}
+              initialRun={selectedRun}
               submitAction={createBulkImportJobAction}
             />
           </Card>
