@@ -35,6 +35,9 @@ export interface ValidatedEnv {
   AUTH_EMAIL_REPLY_TO?: string;
   AUTH_EMAIL_RESEND_API_KEY?: string;
   AUTH_EMAIL_OUTBOX_DIR?: string;
+  // Svix signing secret for the Resend delivery webhook (whsec_<base64>).
+  // Optional: the webhook receiver self-guards (503) when it is absent.
+  RESEND_WEBHOOK_SECRET?: string;
   PIM_COMMERCIAL_CONTACT_URL?: string;
   PIM_COMMERCIAL_CONTACT_EMAIL?: string;
   PIM_COMMERCIAL_OPS_TOKEN?: string;
@@ -146,6 +149,7 @@ const EnvSchema = z.object({
   AUTH_EMAIL_REPLY_TO: z.string().optional(),
   AUTH_EMAIL_RESEND_API_KEY: z.string().optional(),
   AUTH_EMAIL_OUTBOX_DIR: z.string().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
   PIM_COMMERCIAL_CONTACT_URL: z.string().url().optional(),
   PIM_COMMERCIAL_CONTACT_EMAIL: z.string().email().optional(),
   PIM_EMAIL_LOGO_URL: z.string().url().optional(),

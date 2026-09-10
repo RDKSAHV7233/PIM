@@ -78,6 +78,7 @@ export interface AuthCopy {
   resetPasswordMismatch: string;
   resetPasswordHelp: string;
   resetThrottleHint: string;
+  resetSuccessResendHint: string;
   mfaChallengeTitle: string;
   mfaChallengeSubtitle: string;
   mfaChallengeCodeLabel: string;
@@ -179,6 +180,7 @@ const EN_COPY: AuthCopy = {
   resetPasswordMismatch: "The password confirmation does not match.",
   resetPasswordHelp: "Use 8–72 characters.",
   resetThrottleHint: "If you've requested this a few times, wait a few minutes before trying again.",
+  resetSuccessResendHint: "Didn't get the email? Check your spam folder, then use Send reset email again.",
   mfaChallengeTitle: "Two-factor verification",
   mfaChallengeSubtitle: "Enter the 6-digit code from your authenticator app.",
   mfaChallengeCodeLabel: "Verification code",

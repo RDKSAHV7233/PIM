@@ -31,6 +31,7 @@ function makeService(updateMany: jest.Mock, jwtBlocklistService: Record<string, 
     {} as never, // planUsageService
     {} as never, // authPolicyService
     {} as never, // mfaService
+    { emit: jest.fn() } as never, // metricsService
     errorCaptureService as never,
   );
 
@@ -97,6 +98,7 @@ describe("AuthService.recordLastSignInAt — no unhandled rejection on write fai
       {} as never,
       {} as never,
       {} as never,
+      { emit: jest.fn() } as never, // metricsService
       undefined,
     );
 

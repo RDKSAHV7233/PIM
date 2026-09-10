@@ -223,6 +223,9 @@ export function PasswordResetPageClient({
             {message}
           </p>
         )}
+        {!isConfirmMode && message && (
+          <p className="text-sm leading-6 text-slate-600">{authCopy.resetSuccessResendHint}</p>
+        )}
         {!isConfirmMode && showThrottleHint && (
           <p className="rounded-xl border border-slate-200/80 bg-slate-50/90 px-4 py-3 text-sm text-slate-600 shadow-[0_10px_24px_rgba(148,163,184,0.08)]">
             {authCopy.resetThrottleHint}

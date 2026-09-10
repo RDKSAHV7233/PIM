@@ -84,6 +84,9 @@ async function bootstrap() {
   app.set("trust proxy", 1);
 
   app.use("/api/v1/billing/stripe/webhook", raw({ type: "*/*" }));
+  // Resend delivery webhook is Svix-signed over the exact request bytes — it
+  // needs the raw body, same as the Stripe webhook above, before json() parses.
+  app.use("/api/v1/webhooks/resend", raw({ type: "*/*" }));
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));
   app.use(

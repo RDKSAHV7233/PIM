@@ -17,6 +17,7 @@ import { type FoundationRole, AppRole } from "../common/rbac/roles";
 import { normalizeAppRole, normalizeFoundationRole, resolveDefaultRole } from "../common/rbac/role-utils";
 import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
+import { MetricsService } from "../metrics/metrics.service";
 import {
   DEFAULT_TENANT_KEY,
   normalizeTenantKey,
@@ -391,10 +392,19 @@ export class AuthService implements OnModuleDestroy {
     private readonly planUsageService: PlanUsageService,
     private readonly authPolicyService: AuthPolicyService,
     private readonly mfaService: MfaService,
+    private readonly metricsService: MetricsService,
     @Optional() private readonly errorCaptureService?: ErrorCaptureService,
   ) {
     this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
-      await this.processAuthEmailJob(payload);
+      // Wrap the consumer so a Resend/delivery failure is not just logged and
+      // dropped: emit an operational metric + error log, then rethrow so BullMQ
+      // still applies its retry / dead-letter policy.
+      try {
+        await this.processAuthEmailJob(payload);
+      } catch (error: unknown) {
+        await this.emitAuthEmailJobFailure(payload, error);
+        throw error;
+      }
     });
     this.queueService.process<AccountExportJobPayload>(QUEUE_NAMES.ACCOUNT_EXPORT, async (payload) => {
       await this.processAccountExportJob(payload);
@@ -1719,6 +1729,25 @@ export class AuthService implements OnModuleDestroy {
 
   private hashRecoveryToken(token: string): string {
     return createHash("sha256").update(String(token ?? "").trim(), "utf8").digest("hex");
+  }
+
+  private async emitAuthEmailJobFailure(payload: AuthEmailJobPayload, error: unknown): Promise<void> {
+    const category = payload.kind;
+    const tenantId = normalizeTenantKey(payload.tenantId);
+    const correlationRef = `kind=${category} tenant=${tenantId} recipient=${this.maskIdentity(payload.userId)}${
+      payload.jobId ? ` jobId=${payload.jobId}` : ""
+    }`;
+    this.logger.error(`auth.email job failed (${correlationRef}): ${this.toErrorMessage(error)}`);
+    try {
+      await this.metricsService.emit({
+        tenantKey: tenantId,
+        metricKey: "auth.email.job_failed",
+        metricValue: 1,
+        tags: { category },
+      });
+    } catch (metricError: unknown) {
+      this.logger.warn(`auth.email.job_failed metric emit failed: ${this.toErrorMessage(metricError)}`);
+    }
   }
 
   private async processAuthEmailJob(payload: AuthEmailJobPayload): Promise<void> {
