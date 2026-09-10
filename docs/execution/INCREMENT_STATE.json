@@ -3040,7 +3040,7 @@
     {
       "incrementId": "INC-38",
       "name": "Large Import Mode MVP (30k CSV)",
-      "status": "completed",
+      "status": "in_progress",
       "stories": [
         {
           "storyId": "ST-LARGE-IMPORT-001",
@@ -3082,6 +3082,40 @@
             "node apps/web/test/integration/operations-imports-route-contract.test.cjs",
             "node apps/web/test/integration/import-preflight-wizard.test.cjs"
           ]
+        },
+        {
+          "storyId": "ST-LARGE-IMPORT-004",
+          "title": "Bulk Import validation UX state reconciliation and grouped issue evidence",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "scope": [
+            "apps/api/src/bulk-import/bulk-import-run.service.ts",
+            "apps/api/src/bulk-import/bulk-import-run-validate.service.spec.ts",
+            "apps/api/src/bulk-import/bulk-import.service.ts",
+            "apps/web/src/app/operations/imports/page.tsx",
+            "apps/web/src/components/operations/import-preflight-form.tsx",
+            "apps/web/src/lib/api/core.ts",
+            "apps/web/test/integration/operations-imports-route-contract.test.cjs",
+            "apps/web/test/integration/import-preflight-wizard.test.cjs",
+            "apps/web/test/integration/bulk-import-preflight-ui.test.cjs",
+            "apps/web/test/integration/bulk-import-staged-workflow-ui.test.cjs",
+            "apps/web/test/e2e/*bulk-import*.spec.js",
+            "apps/web/test/e2e/pending-feedback.spec.js"
+          ],
+          "regression_evidence": {
+            "source": "Authenticated staging screenshot and repository discovery",
+            "summary": "The 20,000-row D-drive file validates correctly as preflight_blocked for missing skuCode, but the server-rendered operator stepper remains on Step 1 while the client-side staged workflow advances to Step 2.",
+            "invalid_file_sha256": "94302f3f892982df251f99c7ec31c01eb9a81835eca958060e1dbd477065078e",
+            "expected_invalid_file_result": {
+              "rows": 20000,
+              "acceptedRows": 0,
+              "failedRows": 20000,
+              "primaryIssue": "skuCode required",
+              "rawMultipartError": "absent"
+            }
+          },
+          "tests_passed": []
         }
       ]
     },

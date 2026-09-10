@@ -30,7 +30,7 @@ test("editor can validate and start a 30000-row large import", async ({ page }) 
   });
 
   const uploadForm = page.locator("form", { has: page.locator('input[name="sourceFile"]') }).first();
-  await uploadForm.locator('button[type="button"]', { hasText: "Validate import file" }).click();
+  await uploadForm.locator('button[type="button"]', { hasText: "Validate file" }).click();
   await expect(page.getByText("Preflight passed")).toBeVisible({ timeout: 120000 });
   await expect(page.getByText("Large import mode")).toBeVisible({ timeout: 10000 });
   await expect(uploadForm.getByRole("button", { name: "Start validated import" })).toBeEnabled({ timeout: 120000 });
@@ -64,7 +64,7 @@ test("standard import (under 10k rows) uses standard mode button", async ({ page
   });
 
   const uploadForm = page.locator("form", { has: page.locator('input[name="sourceFile"]') }).first();
-  await uploadForm.locator('button[type="button"]', { hasText: "Validate import file" }).click();
+  await uploadForm.locator('button[type="button"]', { hasText: "Validate file" }).click();
   await expect(page.getByText("Preflight passed")).toBeVisible({ timeout: 60000 });
   await expect(uploadForm.getByRole("button", { name: "Start validated import" })).toBeEnabled({ timeout: 60000 });
 });

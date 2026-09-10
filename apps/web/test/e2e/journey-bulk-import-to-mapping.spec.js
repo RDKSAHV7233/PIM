@@ -128,8 +128,8 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
       buffer: buildCsvBuffer(category.name),
     });
 
-    // ── Click "Validate import file" ─────────────────────────────
-    await page.getByRole("button", { name: /validate import file/i }).click();
+    // ── Click "Validate file" ─────────────────────────────
+    await page.getByRole("button", { name: /validate file/i }).click();
 
     // Wait for the preflight result (success or warning-only — both allow import)
     await expect(

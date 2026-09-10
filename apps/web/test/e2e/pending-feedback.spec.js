@@ -79,7 +79,7 @@ test("editor sees pending feedback while uploading and starting an import", asyn
     });
 
     await test.step("Validate CSV file before import", async () => {
-      const validateButton = uploadForm.locator('button[type="button"]', { hasText: /Validate import file/ });
+      const validateButton = uploadForm.locator('button[type="button"]', { hasText: /Validate file/ });
       await validateButton.click();
       await expect(uploadButton).toHaveText("Start validated import", { timeout: 30000 });
     });

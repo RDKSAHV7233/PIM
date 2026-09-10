@@ -74,11 +74,12 @@ function run() {
       source.includes("Review result and repair rows") &&
       source.includes("<WorkflowStepper steps={operatorWorkflowSteps} />") &&
       source.includes("<ImportPreflightForm") &&
+      source.includes("initialRun={selectedRun}") &&
       source.includes("submitAction={createBulkImportJobAction}") &&
       source.includes("form action={processBulkImportJobAction}") &&
-      preflightSource.includes("Validate import file") &&
+      preflightSource.includes("Validate file") &&
       preflightSource.includes("Start validated import"),
-    "Operations imports must auto-refresh, expose the strict four-step import workflow, validate before upload, and wire both create/process actions through the current workflow.",
+    "Operations imports must auto-refresh, expose one strict four-step import workflow, restore selected run state, validate before upload, and wire both create/process actions through the current workflow.",
   );
   assert(
     source.includes('href="/api/imports/templates/sample.csv"') &&

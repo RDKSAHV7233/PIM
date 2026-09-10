@@ -181,7 +181,7 @@ test.describe("Journey: Bulk Import End-to-End", () => {
     await fileInput.setInputFiles(csvPath);
 
     // Explicitly run preflight validation before starting the import
-    await page.getByRole("button", { name: "Validate import file" }).click();
+    await page.getByRole("button", { name: "Validate file" }).click();
 
     // Wait for validation to succeed and the start button to become enabled
     const startButton = page.getByRole("button", { name: "Start validated import" });

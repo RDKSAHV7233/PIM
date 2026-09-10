@@ -194,6 +194,36 @@ describe("BulkImportRunService.validateRun — plan row-ceiling enforcement", ()
     expect(sampleIssues[0]).not.toHaveProperty("issues");
   });
 
+  it("stores grouped preflight evidence without replacing bounded sample issues", async () => {
+    const { service, updateMock } = makeService({
+      planRowLimit: 2000,
+      csvRowCount: 0,
+      sourceContent: "title,description\nProduct 1,Missing SKU\nProduct 2,Missing SKU",
+    });
+
+    await service.validateRun("run_1");
+
+    const lastCall = updateMock.mock.calls[updateMock.mock.calls.length - 1][0];
+    expect(lastCall.data.status).toBe(BulkImportRunStatus.preflight_blocked);
+    const summary = lastCall.data.preflightSummary as Record<string, unknown>;
+    expect(summary.sampleIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rowNumber: 1, code: "SKU_REQUIRED", fieldPath: "skuCode" }),
+        expect.objectContaining({ rowNumber: 2, code: "SKU_REQUIRED", fieldPath: "skuCode" }),
+      ]),
+    );
+    expect(summary.issueGroups).toEqual([
+      {
+        code: "SKU_REQUIRED",
+        severity: "blocking",
+        field: "skuCode",
+        message: "SKU code is required.",
+        affectedRowCount: 2,
+        sampleRowNumbers: [1, 2],
+      },
+    ]);
+  });
+
   it("system ceiling (30000) caps the effective limit even if planRowLimit is higher", async () => {
     // ENTERPRISE plan reports 30000 (same as system ceiling) — not above it.
     // This test verifies the min() is applied: 30001 rows against limit=30000 → blocked.
