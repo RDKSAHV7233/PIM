@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, raw, urlencoded } from "express";
 import helmet from "helmet";
 import { validateEnv } from "./common/env-validation";
+import { validationExceptionFactory } from "./common/validation-exception.factory";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
@@ -139,6 +140,9 @@ async function bootstrap() {
       transform: true,
       forbidUnknownValues: false,
       forbidNonWhitelisted: true,
+      // Emit DTO validation failures on the same `{ error: CODE, ... }` envelope
+      // the business-rule rejections use, so clients map errors deterministically.
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 
