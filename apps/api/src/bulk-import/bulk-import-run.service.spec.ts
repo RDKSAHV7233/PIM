@@ -188,7 +188,12 @@ describe("BulkImportRunService.startRun — concurrent import guard", () => {
     expect(updateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "run_1", status: BulkImportRunStatus.preflight_ready },
-        data: expect.objectContaining({ status: BulkImportRunStatus.processing }),
+        data: expect.objectContaining({
+          status: BulkImportRunStatus.processing,
+          acceptedRows: 0,
+          failedRows: 0,
+          deadLetterRows: 0,
+        }),
       }),
     );
     expect(createMock).toHaveBeenCalled();

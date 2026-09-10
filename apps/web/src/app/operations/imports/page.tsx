@@ -39,6 +39,7 @@ const SAMPLE_JSON_PREVIEW = `[
     }
   }
 ]`;
+const RUN_RETRY_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
 interface OperationsImportsPageProps {
   searchParams: Promise<{
@@ -74,6 +75,57 @@ function resolveHideTestData(value: string | undefined): boolean {
 function isBulkImportProblemRow(row: { status?: string | null; errorMessage?: string | null }): boolean {
   const status = String(row.status ?? "").trim().toLowerCase();
   return Boolean(row.errorMessage) || status === "failed" || status === "retrying" || status === "dead_letter";
+}
+
+function isActivelyProcessingRun(run: Pick<BulkImportRun, "status"> | null | undefined): boolean {
+  return String(run?.status ?? "").toLowerCase() === "processing";
+}
+
+function countRunRows(run: Pick<BulkImportRun, "acceptedRows" | "failedRows" | "deadLetterRows"> | null | undefined): number {
+  return (run?.acceptedRows ?? 0) + (run?.failedRows ?? 0) + (run?.deadLetterRows ?? 0);
+}
+
+function resolveRunProcessedRows(run: BulkImportRun | null | undefined): number {
+  if (!run) {
+    return 0;
+  }
+  if (isActivelyProcessingRun(run)) {
+    return run.progress?.processedRows ?? 0;
+  }
+  return countRunRows(run);
+}
+
+function resolveRunSuccessfulRows(run: BulkImportRun | null | undefined, fallback: number): number {
+  if (!run) {
+    return fallback;
+  }
+  if (isActivelyProcessingRun(run) && !run.progress) {
+    return 0;
+  }
+  return run.acceptedRows ?? fallback;
+}
+
+function isRunStaleForRetry(run: Pick<BulkImportRun, "updatedAt"> | null | undefined): boolean {
+  const updatedAtMs = Date.parse(String(run?.updatedAt ?? ""));
+  if (!Number.isFinite(updatedAtMs)) {
+    return false;
+  }
+  return Date.now() - updatedAtMs >= RUN_RETRY_STALE_THRESHOLD_MS;
+}
+
+function shouldShowRunRetry(run: BulkImportRun | null | undefined): boolean {
+  if (!run) {
+    return false;
+  }
+  const status = String(run.status ?? "").toLowerCase();
+  if (status === "preflight_ready" || status === "uploaded" || status === "completed" || status === "repair_required" || status === "failed") {
+    return false;
+  }
+  const processedRows = resolveRunProcessedRows(run);
+  if (processedRows >= (run.totalRows ?? 0)) {
+    return false;
+  }
+  return status !== "processing" || isRunStaleForRetry(run);
 }
 
 function importWorkflowSteps(input: {
@@ -231,8 +283,8 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const selectedRunProblemRows = selectedRunRows.filter(isBulkImportProblemRow);
     const selectedRunRowsNeedingRepair = selectedRunRows.filter((row) => row.status !== "success");
     const selectedRunSuccessfulRows = selectedRunRows.filter((row) => row.status === "success");
-    const selectedRunProcessedRows =
-      (selectedRun?.acceptedRows ?? 0) + (selectedRun?.failedRows ?? 0) + (selectedRun?.deadLetterRows ?? 0);
+    const selectedRunProcessedRows = resolveRunProcessedRows(selectedRun);
+    const selectedRunSuccessfulRowCount = resolveRunSuccessfulRows(selectedRun, selectedRunSuccessfulRows.length);
     const operatorWorkflowSteps = importWorkflowSteps({
       selectedBulkJobId,
       selectedBulkRunId,
@@ -507,7 +559,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                   key: "rows",
                   header: "Rows",
                   render: (run) => {
-                    const processedRows = (run.acceptedRows ?? 0) + (run.failedRows ?? 0) + (run.deadLetterRows ?? 0);
+                    const processedRows = resolveRunProcessedRows(run);
                     return `${processedRows}/${run.totalRows ?? 0}`;
                   },
                 },
@@ -521,9 +573,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                   key: "actions",
                   header: "Actions",
                   render: (run) => {
-                    const runStatus = String(run.status ?? "").toLowerCase();
-                    const processedRows = (run.acceptedRows ?? 0) + (run.failedRows ?? 0) + (run.deadLetterRows ?? 0);
-                    const hasStuckRows = processedRows < (run.totalRows ?? 0) && runStatus !== "preflight_ready" && runStatus !== "uploaded";
+                    const hasStuckRows = shouldShowRunRetry(run);
                     return (
                       <div className="flex flex-wrap gap-2">
                         {canWrite && hasStuckRows ? (
@@ -555,7 +605,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
               </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <KpiCard label="Rows processed" value={`${selectedRunProcessedRows}/${selectedRun.totalRows ?? 0}`} />
-                <KpiCard label="Successful rows" value={selectedRun.acceptedRows ?? selectedRunSuccessfulRows.length} tone={(selectedRun.acceptedRows ?? selectedRunSuccessfulRows.length) > 0 ? "success" : "default"} />
+                <KpiCard label="Successful rows" value={selectedRunSuccessfulRowCount} tone={selectedRunSuccessfulRowCount > 0 ? "success" : "default"} />
                 <KpiCard label="Failed rows" value={selectedRun.failedRows ?? (selectedRunRowCounts.failed ?? 0)} tone={(selectedRun.failedRows ?? (selectedRunRowCounts.failed ?? 0)) > 0 ? "danger" : "success"} />
                 <KpiCard label="Dead-letter rows" value={selectedRun.deadLetterRows ?? (selectedRunRowCounts.dead_letter ?? 0)} tone={(selectedRun.deadLetterRows ?? (selectedRunRowCounts.dead_letter ?? 0)) > 0 ? "warning" : "default"} />
               </div>
@@ -565,7 +615,16 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 <KpiCard label="Warnings" value={selectedRun.warningCount ?? 0} tone={(selectedRun.warningCount ?? 0) > 0 ? "warning" : "default"} />
               </div>
 
-              {canWrite && selectedRunProcessedRows < (selectedRun.totalRows ?? 0) && selectedRun.status !== "preflight_ready" && selectedRun.status !== "uploaded" ? (
+              {isActivelyProcessingRun(selectedRun) && !shouldShowRunRetry(selectedRun) && selectedRunProcessedRows < (selectedRun.totalRows ?? 0) ? (
+                <div className="rounded-md border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+                  <p className="font-semibold">Import in progress</p>
+                  <p className="mt-1">
+                    Vexa is processing this large import in background batches. Refresh this page to review the latest counts.
+                  </p>
+                </div>
+              ) : null}
+
+              {canWrite && shouldShowRunRetry(selectedRun) ? (
                 <div className="rounded-md border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
                   <p className="font-semibold">Import appears stuck</p>
                   <p className="mt-1">

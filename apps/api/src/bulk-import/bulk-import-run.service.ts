@@ -733,6 +733,9 @@ export class BulkImportRunService implements OnModuleInit {
         data: {
           status: BulkImportRunStatus.processing,
           estimatedBatchCount: batchCount,
+          acceptedRows: 0,
+          failedRows: 0,
+          deadLetterRows: 0,
         },
       });
       if (claimed.count === 0) {
