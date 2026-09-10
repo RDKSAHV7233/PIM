@@ -84,6 +84,19 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
     return "";
   }, [authCopy.loginReasonForbidden, authCopy.loginReasonSessionExpired, authCopy.loginReasonTenantSuspended, reason]);
 
+  const resetHref = useMemo(() => {
+    const params = new URLSearchParams({ lang: locale });
+    const trimmedEmail = userId.trim();
+    const trimmedWorkspace = workspaceSlug.trim().toLowerCase();
+    if (trimmedEmail) {
+      params.set("email", trimmedEmail);
+    }
+    if (trimmedWorkspace) {
+      params.set("workspace", trimmedWorkspace);
+    }
+    return `/login/reset?${params.toString()}`;
+  }, [locale, userId, workspaceSlug]);
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -353,7 +366,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
           <p className="text-xs leading-5 text-slate-600">
             {authCopy.forgotPasswordPrefix}{" "}
             <Link
-              href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}
+              href={resetHref}
               className="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
             >
               {authCopy.forgotPasswordSuffix}
