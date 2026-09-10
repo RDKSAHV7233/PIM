@@ -77,6 +77,7 @@ export interface AuthCopy {
   resetInvalidToken: string;
   resetPasswordMismatch: string;
   resetPasswordHelp: string;
+  resetThrottleHint: string;
   mfaChallengeTitle: string;
   mfaChallengeSubtitle: string;
   mfaChallengeCodeLabel: string;
@@ -177,6 +178,7 @@ const EN_COPY: AuthCopy = {
   resetInvalidToken: "This reset link is invalid or has expired.",
   resetPasswordMismatch: "The password confirmation does not match.",
   resetPasswordHelp: "Use 8–72 characters.",
+  resetThrottleHint: "If you've requested this a few times, wait a few minutes before trying again.",
   mfaChallengeTitle: "Two-factor verification",
   mfaChallengeSubtitle: "Enter the 6-digit code from your authenticator app.",
   mfaChallengeCodeLabel: "Verification code",

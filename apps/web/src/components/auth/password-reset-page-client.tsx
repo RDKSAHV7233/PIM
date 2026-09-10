@@ -28,6 +28,8 @@ export function PasswordResetPageClient({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [requestAttempts, setRequestAttempts] = useState(0);
+  const [showThrottleHint, setShowThrottleHint] = useState(false);
 
   const isConfirmMode = token.trim().length > 0;
   const loginHref = useMemo(() => {
@@ -46,6 +48,7 @@ export function PasswordResetPageClient({
     setSubmitting(true);
     setMessage("");
     setError("");
+    setShowThrottleHint(false);
     try {
       if (isConfirmMode) {
         if (password.trim().length < 8) {
@@ -91,11 +94,28 @@ export function PasswordResetPageClient({
         }),
         signal: AbortSignal.timeout(15_000),
       });
+      const attemptCount = requestAttempts + 1;
+      setRequestAttempts(attemptCount);
       if (!response.ok) {
         setError(authCopy.resetError);
         return;
       }
+      // Neutral throttle guidance only. The success message and the request
+      // timing must stay identical whether or not the account exists, so the
+      // hint is driven purely by the client's own submit count and the generic
+      // retry-after value (the reset rate limit is keyed on the submitted email
+      // address and increments on every request, regardless of whether an
+      // identity matched — it carries no account-existence signal).
+      const payload = (await response.json().catch(() => null)) as { retryAfterSeconds?: number } | null;
+      const headerRetryAfter = Number.parseInt(response.headers.get("x-ratelimit-retry-after") ?? "", 10);
+      const retryAfterSeconds =
+        Number.isFinite(headerRetryAfter) && headerRetryAfter > 0
+          ? headerRetryAfter
+          : Number(payload?.retryAfterSeconds) || 0;
       setMessage(authCopy.resetSuccess);
+      if (attemptCount >= 3 || retryAfterSeconds > 0) {
+        setShowThrottleHint(true);
+      }
     } catch {
       setError(authCopy.resetError);
     } finally {
@@ -183,6 +203,11 @@ export function PasswordResetPageClient({
         {message && (
           <p className="rounded-xl border border-green-300/80 bg-green-50 px-4 py-3 text-sm text-green-800 shadow-[0_10px_24px_rgba(34,197,94,0.08)]">
             {message}
+          </p>
+        )}
+        {!isConfirmMode && showThrottleHint && (
+          <p className="rounded-xl border border-slate-200/80 bg-slate-50/90 px-4 py-3 text-sm text-slate-600 shadow-[0_10px_24px_rgba(148,163,184,0.08)]">
+            {authCopy.resetThrottleHint}
           </p>
         )}
         {error && (
