@@ -30,7 +30,7 @@ review's output.
 
 | Required evidence | 2026-09-06 | 2026-09-11 |
 | --- | --- | --- |
-| CI green on the reviewed SHA | Missing | **Still missing, and worse.** The three most recent `CI` runs on `main` are all `failure`, including the current tip `05daff6d` ([run 34558958160](https://github.com/RDKSAHV7233/PIM/actions/runs/34558958160), 2026-09-11 03:34 UTC) — failing job: `build`. |
+| CI green on the reviewed SHA | Missing | **Still missing.** The three most recent `CI` runs on `main` are all `failure`, including the current tip `05daff6d` ([run 34558958160](https://github.com/RDKSAHV7233/PIM/actions/runs/34558958160), 2026-09-11 03:34 UTC) — failing step: `Integration test coverage drift guard (PIM#754)`, not a compile error. See "New finding" below — this is unrelated to WooCommerce/P1 but still means no run currently qualifies as "CI green." |
 | Deploy Staging run from current `main` | Missing | Mixed. Recent runs alternate success/failure; one failure shares a SHA with a `CI` success and vice versa. No run is tied to a green build. |
 | `STAGING_DEPLOY_POSTCHECK` artifact | Missing | Not found for this workstream. |
 | Controlled rollout snapshot | Missing | Not found. |
@@ -50,14 +50,23 @@ said would not by itself change the verdict:
 
 ## New finding not present in the 09-06 record
 
-`main`'s `CI` workflow is currently red (`build` job failing on tip
-`05daff6d`). This was independently reproduced in this session while trying
-to boot `apps/api` locally for an unrelated visual check: `nest start --watch`
-surfaced dozens of TypeScript errors from a Prisma client out of sync with
-`schema.prisma` (e.g. `Module '"@prisma/client"' has no exported member
-'MarketplaceBulkPublishItemStatus'`). This sits on top of the original P1
-scope — it blocks "CI green on the reviewed SHA" regardless of WooCommerce
-auth/tenant status specifically, and should be triaged on its own.
+`main`'s `CI` workflow is currently red on tip `05daff6d`
+([run 34558958160](https://github.com/RDKSAHV7233/PIM/actions/runs/34558958160)).
+Root cause, confirmed via `gh run view --json jobs`: the `build` job's only
+failing step is `Integration test coverage drift guard (PIM#754)`.
+`apps/web/test/integration/signup-verify-button-gate.test.cjs` (added when H-1
+merged as `6ac77941`, "gate signup verification behind an explicit click") was
+never registered in `scripts/check-integration-test-coverage.cjs`. It's a
+DB-free, pure static-assertion test (`fs.readFileSync` source checks, no
+Prisma/DB access) — the fix is a one-line addition to `GLOB_COVERED_TESTS`.
+
+*(Correction: an earlier version of this document attributed the CI failure to
+TypeScript/Prisma-client errors reproduced while booting `apps/api` locally.
+Those errors came from this session's own local environment — a `node_modules`
+junction whose generated Prisma client didn't match the worktree's schema —
+not from `main`. The `build` job's actual failure is the coverage-drift guard
+above; unrelated to WooCommerce/P1, but it does mean no current `main` run
+qualifies as "CI green.")*
 
 ## Per-lens read (audit only, not sign-off)
 
