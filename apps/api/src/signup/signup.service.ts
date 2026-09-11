@@ -668,17 +668,6 @@ export class SignupService implements OnModuleInit, OnModuleDestroy {
     payload: SignupBillingProvisionJobPayload,
     source: "verify" | "retry",
   ): Promise<void> {
-    // Test seam: default-inert. Lets integration tests exercise the "billing
-    // dependency is down during verify" recovery path without a live Stripe.
-    //   PIM_SIGNUP_BILLING_SIMULATE_FAILURE=verify  -> fail only the inline attempt
-    //   PIM_SIGNUP_BILLING_SIMULATE_FAILURE=always  -> fail every attempt
-    const simulateFailure = String(process.env.PIM_SIGNUP_BILLING_SIMULATE_FAILURE ?? "")
-      .trim()
-      .toLowerCase();
-    if (simulateFailure === "always" || (simulateFailure === "verify" && source === "verify")) {
-      throw new Error("SIGNUP_BILLING_SIMULATED_FAILURE");
-    }
-
     await this.planUsageService.getTenantPlanProfile(payload.tenantKey);
 
     await this.stripeService.createCustomerAndSubscription({

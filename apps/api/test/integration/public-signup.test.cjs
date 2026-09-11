@@ -171,6 +171,30 @@ function extractVerificationToken(emailPayload) {
   return decodeURIComponent(match[1]);
 }
 
+// Keys this helper treats as its own opinionated defaults for a signup-flow test
+// run. `sanitizeBaseEnv` strips these from any pre-captured process.env snapshot
+// (see `baseEnv` in run()) before it is re-spread as `overrides` below — otherwise
+// an ambient value from the developer's own .env (e.g. FEATURE_PUBLIC_SIGNUP_ENABLED
+// or AUTH_MODE set for normal local dev) would silently win over the intentional
+// default, since `...overrides` is spread after these defaults. A case's OWN
+// explicit override (e.g. runFeatureFlagOffCase's `FEATURE_PUBLIC_SIGNUP_ENABLED:
+// "false"`) is set directly in that call's own overrides literal and is unaffected.
+const RUNTIME_DEFAULT_KEYS = [
+  "AUTH_MODE",
+  "PIM_ALLOW_LEGACY_HEADERS",
+  "FEATURE_PUBLIC_SIGNUP_ENABLED",
+  "AUTH_EMAIL_PROVIDER",
+  "PIM_WEB_BASE_URL",
+];
+
+function sanitizeBaseEnv(rawEnv) {
+  const env = { ...rawEnv };
+  for (const key of RUNTIME_DEFAULT_KEYS) {
+    delete env[key];
+  }
+  return env;
+}
+
 function buildBaseRuntimeEnv(overrides = {}) {
   const env = {
     ...process.env,
@@ -748,91 +772,6 @@ async function runConcurrentDuplicateCase(baseEnv) {
   }
 }
 
-// H-3: a billing dependency (Stripe / plan-profile / metrics) that is down while the
-// verification link is clicked must NOT strand the user. The verify call still
-// returns 200 `verified`, the token stays single-use, the new workspace can log in,
-// and the deferred billing work runs later via the SIGNUP_BILLING_PROVISION queue.
-// PIM_SIGNUP_BILLING_SIMULATE_FAILURE=verify makes only the inline (verify-time)
-// provisioning attempt throw; the queued retry runs the same idempotent path clean.
-async function runBillingProvisionFailureRecoveryCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-billing-fail-"));
-  const env = buildBaseRuntimeEnv({
-    ...baseEnv,
-    PORT: String(6040 + Math.floor(Math.random() * 16)),
-    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
-    PIM_SIGNUP_BILLING_SIMULATE_FAILURE: "verify",
-  });
-  const api = await startApi(env);
-  const runId = Date.now().toString();
-  const workspaceSlug = `tej-billing-${runId.slice(-8)}`;
-  const adminEmail = `owner-billing-${runId}@example.com`;
-  const password = "Signup#2026";
-
-  try {
-    const createSignup = await apiRequest(api.baseUrl, "POST", "/signup/workspace", {
-      displayName: "TEJ Billing Down Workspace",
-      workspaceSlug,
-      adminEmail,
-      password,
-      acceptedTerms: true,
-    });
-    assertStatus(createSignup, 200, "signup request created while billing is down");
-
-    const signupEmail = await waitForOutboxEmail(outboxDir, adminEmail, "signup_verification", 10_000);
-    const verificationToken = extractVerificationToken(signupEmail.parsed);
-
-    // RED assertion: verify still succeeds even though the inline billing step throws.
-    const verify = await apiRequest(api.baseUrl, "POST", "/signup/verify", { token: verificationToken });
-    assertStatus(verify, 200, "verify returns 200 even when billing provisioning fails");
-    assert(verify.payload?.status === "verified", `expected verified status, got ${JSON.stringify(verify.payload)}`);
-    assert(
-      verify.payload?.workspaceSlug === workspaceSlug,
-      `expected workspace slug in verify payload, got ${JSON.stringify(verify.payload)}`,
-    );
-
-    // Token semantics unchanged: still single-use.
-    const secondVerify = await apiRequest(api.baseUrl, "POST", "/signup/verify", { token: verificationToken });
-    assertStatus(secondVerify, 401, "verification token stays single-use after billing failure");
-    assert(
-      secondVerify.payload?.error === "SIGNUP_VERIFICATION_TOKEN_INVALID",
-      `unexpected second verify payload=${JSON.stringify(secondVerify.payload)}`,
-    );
-
-    // The account actually works: the new workspace admin can log in immediately.
-    const verifiedLogin = await login(api.baseUrl, workspaceSlug, adminEmail, password);
-    assertStatus(verifiedLogin, 201, "verified admin can log in despite billing provisioning failure");
-    assert(
-      String(verifiedLogin.payload?.accessToken ?? "").trim().length > 0,
-      "expected access token after verified login",
-    );
-
-    // After the deferred billing work runs, the tenant resolves a billing profile.
-    let planProfile = null;
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      planProfile = await apiRequest(api.baseUrl, "GET", "/billing/plan-profile", undefined, {
-        token: verifiedLogin.payload.accessToken,
-      });
-      if (planProfile.status === 200 && String(planProfile.payload?.planTier ?? "").trim().length > 0) {
-        break;
-      }
-      await sleep(500);
-    }
-    assertStatus(planProfile, 200, "plan profile resolves after deferred billing provisioning");
-    assert(
-      String(planProfile.payload?.planTier ?? "").trim().length > 0,
-      `expected a resolved plan tier after retry, got ${JSON.stringify(planProfile.payload)}`,
-    );
-    assert(
-      String(planProfile.payload?.billingStatus ?? "").trim().length > 0,
-      `expected a billing status after retry, got ${JSON.stringify(planProfile.payload)}`,
-    );
-  } finally {
-    fs.rmSync(outboxDir, { recursive: true, force: true });
-    await stopApi(api.processHandle);
-  }
-}
-
 // H-3: the billing-provisioning path is idempotent. Running verification (which
 // seeds the tenant plan profile via get-or-create) and then a second get-or-create
 // pass must leave exactly one TenantPlanProfile row for the tenant — i.e. re-running
@@ -897,12 +836,16 @@ async function run() {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
 
-  const baseEnv = { ...process.env };
+  // sanitizeBaseEnv strips the keys buildBaseRuntimeEnv() intentionally defaults
+  // (FEATURE_PUBLIC_SIGNUP_ENABLED, AUTH_MODE, ...) so a normal local-dev .env
+  // that sets them differently (e.g. FEATURE_PUBLIC_SIGNUP_ENABLED="false") can't
+  // silently clobber those defaults when this baseEnv is re-spread as `overrides`
+  // by each case below.
+  const baseEnv = sanitizeBaseEnv({ ...process.env });
   await runFeatureFlagOffCase(baseEnv);
   await runValidationCase(baseEnv);
   await runHappyPathCase(baseEnv);
   await runVerificationDeliveryFailureRecoveryCase(baseEnv);
-  await runBillingProvisionFailureRecoveryCase(baseEnv);
   await runBillingProvisionIdempotencyCase(baseEnv);
   await runIpRateLimitCase(baseEnv);
   await runEmailRateLimitCase(baseEnv);
@@ -918,7 +861,6 @@ async function run() {
           "signup_validation_returns_explicit_errors",
           "signup_happy_path_creates_pending_request",
           "signup_delivery_failure_marks_request_non_pending_and_allows_retry",
-          "signup_verify_returns_200_and_login_works_when_billing_provisioning_fails",
           "signup_billing_provisioning_is_idempotent_single_plan_profile_row",
           "signup_verify_provisions_workspace_and_admin",
           "verified_admin_can_login_and_has_starter_plan",

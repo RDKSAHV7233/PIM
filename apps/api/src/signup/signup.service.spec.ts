@@ -38,7 +38,6 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
 
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV, FEATURE_PUBLIC_SIGNUP_ENABLED: "true" };
-    delete process.env.PIM_SIGNUP_BILLING_SIMULATE_FAILURE;
 
     signupRequestStore = {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -149,8 +148,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
     );
   });
 
-  it("the retry consumer runs the idempotent billing path (no simulated failure on retry)", async () => {
-    process.env.PIM_SIGNUP_BILLING_SIMULATE_FAILURE = "verify";
+  it("the retry consumer runs the idempotent billing path", async () => {
     const service = makeService();
     service.onModuleInit();
     const handler = queueService.process.mock.calls[0][1] as (payload: unknown) => Promise<void>;
@@ -172,7 +170,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
   });
 
   it("the retry consumer rethrows on failure so the queue can retry", async () => {
-    process.env.PIM_SIGNUP_BILLING_SIMULATE_FAILURE = "always";
+    stripeService.createCustomerAndSubscription.mockRejectedValueOnce(new Error("stripe 503"));
     const service = makeService();
     service.onModuleInit();
     const handler = queueService.process.mock.calls[0][1] as (payload: unknown) => Promise<void>;
@@ -185,6 +183,6 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
         planTier: "TRIAL",
         signupRequestId: "signup_test_1",
       }),
-    ).rejects.toThrow("SIGNUP_BILLING_SIMULATED_FAILURE");
+    ).rejects.toThrow("stripe 503");
   });
 });
