@@ -25,7 +25,15 @@ try {
 
   assert(
     loginClient.includes('router.push(`/login/locked?${params.toString()}`)') &&
-      loginClient.includes('href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}'),
+      loginClient.includes("const resetHref = useMemo(() => {") &&
+      loginClient.includes('return `/login/reset?${params.toString()}`;') &&
+      loginClient.includes('params.set("email", trimmedEmail)') &&
+      loginClient.includes('params.set("workspace", trimmedWorkspace)') &&
+      loginClient.includes("href={resetHref}"),
+    // L-2 (d50317c0) switched the reset link from an always-populated template
+    // literal to a URLSearchParams builder that omits blank email/workspace
+    // params. Assert the current builder + its conditional sets, not the old
+    // exact string.
     "Login client must route recovery flows into the locked and reset pages with workspace-aware query state.",
   );
 
