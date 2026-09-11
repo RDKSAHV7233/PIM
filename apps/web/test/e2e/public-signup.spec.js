@@ -218,6 +218,11 @@ test("public signup can verify a workspace and reach trial plan state through th
       { waitUntil: "domcontentloaded" },
     );
 
+    // H-1: the token is no longer consumed by the passive page load. The recipient
+    // must click through the landing card to run the single-use verification.
+    await expect(page.getByRole("button", { name: "Verify my workspace" })).toBeVisible();
+    await page.getByRole("button", { name: "Verify my workspace" }).click();
+
     await expect(
       page.getByText("Your workspace is ready. Sign in with the workspace ID, email, and password you just created."),
     ).toBeVisible();

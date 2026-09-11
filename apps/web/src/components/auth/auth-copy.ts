@@ -44,6 +44,10 @@ export interface AuthCopy {
   signupResendSuccess: string;
   signupResendError: string;
   signupVerifyStartOver: string;
+  signupVerifyLandingTitle: string;
+  signupVerifyLandingBody: string;
+  signupVerifyCta: string;
+  signupVerifyNotMe: string;
   roleLabel: string;
   signIn: string;
   signingIn: string;
@@ -145,6 +149,10 @@ const EN_COPY: AuthCopy = {
   signupResendSuccess: "If a pending signup exists for that email, we sent a new verification link.",
   signupResendError: "Unable to resend verification right now. Please try again.",
   signupVerifyStartOver: "Start a new sign-up",
+  signupVerifyLandingTitle: "Verify your workspace",
+  signupVerifyLandingBody: "Confirm you want to finish setting up this workspace for the account below.",
+  signupVerifyCta: "Verify my workspace",
+  signupVerifyNotMe: "This wasn't me",
   roleLabel: "Role",
   signIn: "Sign in",
   signingIn: "Signing in...",

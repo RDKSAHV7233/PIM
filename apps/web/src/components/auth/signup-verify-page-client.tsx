@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { PimLocale } from "@/lib/locale";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
@@ -22,13 +22,12 @@ export function SignupVerifyPageClient({
   initialWorkspaceSlug,
 }: SignupVerifyPageClientProps) {
   const authCopy = getAuthCopy(locale);
-  const [verifyState, setVerifyState] = useState<VerifyState>(initialToken ? "verifying" : "invalid");
+  const [verifyState, setVerifyState] = useState<VerifyState>(initialToken ? "idle" : "invalid");
   const [email, setEmail] = useState(initialEmail);
   const [workspaceSlug, setWorkspaceSlug] = useState(initialWorkspaceSlug);
   const [resending, setResending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const verificationStarted = useRef(false);
 
   const loginHref = useMemo(() => {
     const params = new URLSearchParams({ lang: locale });
@@ -41,50 +40,43 @@ export function SignupVerifyPageClient({
     return `/login?${params.toString()}`;
   }, [email, locale, workspaceSlug]);
 
-  useEffect(() => {
-    if (!initialToken || verificationStarted.current) {
-      if (!initialToken) {
-        setVerifyState("invalid");
-      }
+  async function onVerify() {
+    if (!initialToken || verifyState === "verifying") {
       return;
     }
-    verificationStarted.current = true;
-
-    void (async () => {
-      setVerifyState("verifying");
-      setError("");
-      try {
-        const response = await fetch("/api/signup/verify", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            token: initialToken,
-          }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        const payload = (await response.json().catch(() => null)) as
-          | { workspaceSlug?: string; userId?: string; error?: string }
-          | null;
-        if (!response.ok) {
-          setVerifyState("invalid");
-          setError(authCopy.signupVerifyInvalid);
-          return;
-        }
-        if (payload?.workspaceSlug) {
-          setWorkspaceSlug(String(payload.workspaceSlug));
-        }
-        if (payload?.userId) {
-          setEmail(String(payload.userId));
-        }
-        setVerifyState("success");
-      } catch {
+    setVerifyState("verifying");
+    setError("");
+    try {
+      const response = await fetch("/api/signup/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          token: initialToken,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { workspaceSlug?: string; userId?: string; error?: string }
+        | null;
+      if (!response.ok) {
         setVerifyState("invalid");
-        setError(authCopy.networkError);
+        setError(authCopy.signupVerifyInvalid);
+        return;
       }
-    })();
-  }, [authCopy.networkError, authCopy.signupVerifyInvalid, initialToken]);
+      if (payload?.workspaceSlug) {
+        setWorkspaceSlug(String(payload.workspaceSlug));
+      }
+      if (payload?.userId) {
+        setEmail(String(payload.userId));
+      }
+      setVerifyState("success");
+    } catch {
+      setVerifyState("invalid");
+      setError(authCopy.networkError);
+    }
+  }
 
   async function onResend() {
     setResending(true);
@@ -124,6 +116,37 @@ export function SignupVerifyPageClient({
           <p className="text-sm leading-6 text-slate-600">{authCopy.signupVerifySubtitle}</p>
         </div>
       </header>
+
+      {verifyState === "idle" ? (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-950">{authCopy.signupVerifyLandingTitle}</h2>
+            <p className="text-sm leading-6 text-slate-600">{authCopy.signupVerifyLandingBody}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 px-4 py-4 text-sm leading-6 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+            <p>
+              <strong>{authCopy.workspaceLabel}:</strong> {workspaceSlug || "Pending workspace"}
+            </p>
+            <p>
+              <strong>{authCopy.emailLabel}:</strong> {email || "Pending email"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void onVerify()}
+            disabled={!initialToken}
+            className="w-full rounded-xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800 disabled:opacity-60"
+          >
+            {authCopy.signupVerifyCta}
+          </button>
+          <Link
+            href={`/login?lang=${encodeURIComponent(locale)}`}
+            className="inline-flex text-sm font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+          >
+            {authCopy.signupVerifyNotMe}
+          </Link>
+        </div>
+      ) : null}
 
       {verifyState === "verifying" ? (
         <p className="rounded-xl border border-slate-200/80 bg-slate-50/90 px-4 py-3 text-sm text-slate-700 shadow-[0_10px_24px_rgba(148,163,184,0.08)]">
