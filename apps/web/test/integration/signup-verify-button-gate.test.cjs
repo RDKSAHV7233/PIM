@@ -57,14 +57,19 @@ try {
     "onVerify must guard against re-entrancy while a verification request is in flight.",
   );
 
-  // ── H-1 (2): landing card with heading, workspace/email, CTA + 'not me' link ─
+  // ── H-1 (2): landing card with body copy, workspace/email, CTA + 'not me' link ─
   assert(
     verifyClient.includes('verifyState === "idle" ? (') &&
-      verifyClient.includes("authCopy.signupVerifyLandingTitle") &&
       verifyClient.includes("authCopy.signupVerifyLandingBody") &&
       verifyClient.includes("authCopy.signupVerifyCta") &&
       verifyClient.includes("authCopy.signupVerifyNotMe"),
-    "signup-verify client must render a landing card (title, body, CTA, 'this wasn't me' link) in the idle state.",
+    "signup-verify client must render a landing card (body, CTA, 'this wasn't me' link) in the idle state.",
+  );
+  // ── L-5: no duplicate heading — the idle card must not render its own title;
+  // the persistent page-level <h1>{authCopy.signupVerifyTitle}</h1> already covers it.
+  assert(
+    !verifyClient.includes("signupVerifyLandingTitle"),
+    "signup-verify client must not render a second 'Verify your workspace' heading in the idle state (L-5: duplicate heading).",
   );
   assert(
     /onClick=\{\(\) => void onVerify\(\)\}/.test(verifyClient),
@@ -105,7 +110,6 @@ try {
 
   // ── H-1 (6): copy keys present, HI covered via ...EN_COPY ───────────────────
   for (const key of [
-    "signupVerifyLandingTitle",
     "signupVerifyLandingBody",
     "signupVerifyCta",
     "signupVerifyNotMe",
@@ -121,9 +125,12 @@ try {
   }
   assert(
     authCopy.includes('signupVerifyCta: "Verify my workspace"') &&
-      authCopy.includes('signupVerifyNotMe: "This wasn\'t me"') &&
-      authCopy.includes('signupVerifyLandingTitle: "Verify your workspace"'),
+      authCopy.includes('signupVerifyNotMe: "This wasn\'t me"'),
     "EN_COPY landing strings must match the approved copy.",
+  );
+  assert(
+    !/signupVerifyLandingTitle/.test(authCopy),
+    "L-5: signupVerifyLandingTitle must be removed from auth-copy.ts (no longer rendered; kept it would be dead copy).",
   );
   assert(
     !/signupVerifyLandingBody:\s*"[^"]*[{}]/.test(authCopy),
