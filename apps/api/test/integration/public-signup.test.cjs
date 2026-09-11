@@ -171,6 +171,30 @@ function extractVerificationToken(emailPayload) {
   return decodeURIComponent(match[1]);
 }
 
+// Keys this helper treats as its own opinionated defaults for a signup-flow test
+// run. `sanitizeBaseEnv` strips these from any pre-captured process.env snapshot
+// (see `baseEnv` in run()) before it is re-spread as `overrides` below — otherwise
+// an ambient value from the developer's own .env (e.g. FEATURE_PUBLIC_SIGNUP_ENABLED
+// or AUTH_MODE set for normal local dev) would silently win over the intentional
+// default, since `...overrides` is spread after these defaults. A case's OWN
+// explicit override (e.g. runFeatureFlagOffCase's `FEATURE_PUBLIC_SIGNUP_ENABLED:
+// "false"`) is set directly in that call's own overrides literal and is unaffected.
+const RUNTIME_DEFAULT_KEYS = [
+  "AUTH_MODE",
+  "PIM_ALLOW_LEGACY_HEADERS",
+  "FEATURE_PUBLIC_SIGNUP_ENABLED",
+  "AUTH_EMAIL_PROVIDER",
+  "PIM_WEB_BASE_URL",
+];
+
+function sanitizeBaseEnv(rawEnv) {
+  const env = { ...rawEnv };
+  for (const key of RUNTIME_DEFAULT_KEYS) {
+    delete env[key];
+  }
+  return env;
+}
+
 function buildBaseRuntimeEnv(overrides = {}) {
   const env = {
     ...process.env,
@@ -812,7 +836,12 @@ async function run() {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
 
-  const baseEnv = { ...process.env };
+  // sanitizeBaseEnv strips the keys buildBaseRuntimeEnv() intentionally defaults
+  // (FEATURE_PUBLIC_SIGNUP_ENABLED, AUTH_MODE, ...) so a normal local-dev .env
+  // that sets them differently (e.g. FEATURE_PUBLIC_SIGNUP_ENABLED="false") can't
+  // silently clobber those defaults when this baseEnv is re-spread as `overrides`
+  // by each case below.
+  const baseEnv = sanitizeBaseEnv({ ...process.env });
   await runFeatureFlagOffCase(baseEnv);
   await runValidationCase(baseEnv);
   await runHappyPathCase(baseEnv);
