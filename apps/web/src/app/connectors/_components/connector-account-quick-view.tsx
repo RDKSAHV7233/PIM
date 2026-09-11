@@ -9,8 +9,6 @@ interface ConnectorAccountQuickViewProps {
   title: string;
   statusLabel: string;
   statusTone: "neutral" | "success" | "warning" | "danger" | "info";
-  maturityLabel: string;
-  maturityTone: "neutral" | "success" | "warning" | "danger" | "info";
   externalReference: string;
   installedAt: string;
   lastSyncAt: string;
@@ -18,7 +16,6 @@ interface ConnectorAccountQuickViewProps {
   capabilities: string[];
   detailHref: string;
   mappingHref: string;
-  launchNote?: string | null;
   contextTitle?: string | null;
   contextSummary?: string | null;
   contextNote?: string | null;
@@ -30,8 +27,6 @@ export function ConnectorAccountQuickView({
   title,
   statusLabel,
   statusTone,
-  maturityLabel,
-  maturityTone,
   externalReference,
   installedAt,
   lastSyncAt,
@@ -39,7 +34,6 @@ export function ConnectorAccountQuickView({
   capabilities,
   detailHref,
   mappingHref,
-  launchNote,
   contextTitle,
   contextSummary,
   contextNote,
@@ -61,14 +55,7 @@ export function ConnectorAccountQuickView({
         <div className="space-y-4 text-sm text-slate-700">
           <div className="flex flex-wrap gap-2">
             <StatusChip label={statusLabel} tone={statusTone} />
-            <StatusChip label={maturityLabel} tone={maturityTone} />
           </div>
-
-          {launchNote ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-              {launchNote}
-            </p>
-          ) : null}
 
           <div className="grid gap-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

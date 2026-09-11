@@ -18,7 +18,7 @@ function run() {
   assert(
     source.includes("function capabilityMatrixValue(") &&
       source.includes("Connector capability matrix") &&
-      source.includes("Compare live connector lanes by install footprint, maturity label, and shipped operator capabilities before promising channel coverage."),
+      source.includes("Compare live connector lanes by install footprint and shipped operator capabilities before promising channel coverage."),
     "Connectors page must expose a portfolio-level capability matrix helper and explainer copy.",
   );
   assert(

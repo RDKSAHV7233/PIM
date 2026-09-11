@@ -145,11 +145,15 @@ function run() {
   );
 
   // ── Nykaa status note in connectors/page.tsx ──────────────────────────────
+  // Per owner decision the connectors workspace no longer surfaces connector
+  // development / lifecycle status, so the Nykaa portal-upload / QC-wait note is
+  // gone from this page. The install-error label mapping below is what remains.
 
   assert(
-    pageSource.includes('"nykaa"') &&
-      (pageSource.includes("portal") || pageSource.includes("7")),
-    "Connectors page must include a portal-upload / QC-wait note for Nykaa.",
+    !pageSource.includes("seller.nykaa.com") &&
+      !pageSource.includes("Catalogue Upload") &&
+      !pageSource.includes("function connectorStatusNote("),
+    "Connectors page must not carry a Nykaa portal-upload / QC-wait readiness note.",
   );
 
   // ── API installer service — Myntra credential branch ──────────────────────
@@ -230,7 +234,7 @@ function run() {
           "nykaa_portal_upload_status_note_present_in_setup_page",
           "myntra_nykaa_error_labels_in_connectors_page",
           "myntra_credentials_incomplete_in_connectors_page",
-          "nykaa_portal_note_in_connectors_page",
+          "nykaa_readiness_note_absent_from_connectors_page",
           "installer_service_has_myntra_branch",
           "installer_service_captures_all_three_credentials",
           "installer_service_guard_precedes_store_calls",

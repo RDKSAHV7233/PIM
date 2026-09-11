@@ -45,8 +45,6 @@ interface ConnectorsPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold";
-
 const CONNECTOR_CAPABILITY_BADGES = [
   { label: "Publish", capability: "PUBLISH" },
   { label: "Validate", capability: "VALIDATE" },
@@ -197,28 +195,6 @@ function formatActionBlockedReason(reason: string | null | undefined): string {
   return `Action blocked: ${reason}`;
 }
 
-function connectorStatusNote(
-  slug: string,
-  implementationStatus: string | undefined,
-): string | null {
-  if (implementationStatus === "stub") {
-    return "Credential validation and publish are not yet available for this connector. Seller self-serve install remains hidden until the connector is fully implemented.";
-  }
-  if (implementationStatus === "partial") {
-    if (slug === "meesho") {
-      return "Meesho is an export-only connector. Download a category-specific Excel file and upload it to Meesho Supplier Panel. Credential validation is pending API access. Direct publish is not supported by Meesho.";
-    }
-    if (slug === "nykaa") {
-      return "Nykaa is an export-only connector. Download a category-specific Excel file and upload it to seller.nykaa.com → Catalogue Management → Catalogue Upload. Nykaa reviews listings within 7–10 business days. Direct API publishing requires Nykaa platform-partner credentials (not yet available).";
-    }
-    if (slug === "myntra") {
-      return "Myntra API access is account-manager gated. Credentials are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff.";
-    }
-    return "This connector has limited functionality. Check the channel guide for details.";
-  }
-  return null;
-}
-
 function installationStatusTone(status: string): StatusTone {
   const normalized = String(status ?? "").trim().toUpperCase();
   if (normalized === "ACTIVE") {
@@ -245,56 +221,13 @@ function isDisabledInstallation(installation: ConnectorInstallation): boolean {
   return String(installation.status ?? "").trim().toUpperCase() === "DISABLED";
 }
 
-function connectorLaunchTone(stage: string): StatusTone {
-  if (stage === "live") {
-    return "success";
-  }
-  if (stage === "manual" || stage === "controlled_pilot" || stage === "p1_blocker_hold") {
-    return "warning";
-  }
-  return "info";
-}
-
-function connectorLaunchLabel(
-  stage: string,
-  implementationStatus: string | undefined,
-): ConnectorMaturity {
-  if (stage === "controlled_pilot") {
-    return "Controlled pilot";
-  }
-  if (stage === "p1_blocker_hold") {
-    return "P1 blocker hold";
-  }
-  if (stage === "live" && implementationStatus === "partial") {
-    return "Beta";
-  }
-  if (stage === "manual") {
-    return implementationStatus === "partial" ? "Export/manual" : "Beta";
-  }
-  if (stage === "planned") {
-    return "Experimental";
-  }
-  if (implementationStatus === "stub") {
-    return "Experimental";
-  }
-  return "Live publish";
-}
-
 function isConnectorPortfolioStage(stage: string): boolean {
   return stage === "live" || stage === "manual" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
 }
 
 function resolveInstalledStatusPresentation(
   status: string,
-  implementationStatus: string | undefined,
 ): { label: string; tone: StatusTone } {
-  const normalizedStatus = String(status ?? "").trim().toUpperCase();
-  if (normalizedStatus === "ACTIVE" && implementationStatus === "stub") {
-    return {
-      label: "CONNECTED (limited)",
-      tone: "warning",
-    };
-  }
   return {
     label: status,
     tone: installationStatusTone(status),
@@ -471,9 +404,6 @@ function connectorMatchesQuery(
     definition.slug,
     definition.authType,
     definition.connectorVersion,
-    definition.launchStage,
-    definition.launchNote ?? "",
-    definition.implementationStatus ?? "",
     ...definition.capabilities,
     ...installedForDefinition.flatMap((installation) => [
       installation.accountAlias,
@@ -497,9 +427,6 @@ function installationMatchesQuery(query: string, installation: ConnectorInstalla
     installation.accountAlias,
     installation.externalAccountRef ?? "",
     installation.status,
-    installation.launchStage,
-    installation.launchNote ?? "",
-    installation.implementationStatus ?? "",
     ...installation.capabilities,
   ]
     .join(" ")
@@ -529,20 +456,6 @@ function summarizeDefinitionWorkspace(
       label: "Needs attention",
       tone: "warning",
       description: `${attentionAccounts} account${attentionAccounts === 1 ? "" : "s"} need follow-up before the lane is healthy.`,
-    };
-  }
-  if (definition.launchStage === "manual") {
-    return {
-      label: "Export/manual",
-      tone: "warning",
-      description: "Manual export workflow. This connector supports file/export-based operations and does not enable direct live publish yet.",
-    };
-  }
-  if (definition.launchStage === "planned") {
-    return {
-      label: "Experimental",
-      tone: "info",
-      description: "Visible for roadmap awareness only. This connector is not open for seller self-serve install.",
     };
   }
   if (definition.actions?.install.allowed) {
@@ -614,7 +527,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         return {
           definition,
           installedForDefinition,
-          statusNote: connectorStatusNote(definition.slug, definition.implementationStatus),
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
@@ -630,9 +542,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
       });
     const liveDefinitions = definitionModels.filter((item) => item.definition.launchStage === "live");
     const channelCatalogDefinitions = liveDefinitions;
-    const manualDefinitions = definitionModels.filter(
-      (item) => item.definition.launchStage === "manual",
-    );
     const needsSetupDefinitions = definitionModels.filter(
       (item) => item.workspaceState.label === "Needs setup",
     );
@@ -669,16 +578,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
             <p className="font-medium text-slate-900">{item.definition.displayName}</p>
             <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
           </>
-        ),
-      },
-      {
-        key: "maturity",
-        header: "Maturity",
-        render: (item) => (
-          <StatusChip
-            label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
-            tone={connectorLaunchTone(item.definition.launchStage)}
-          />
         ),
       },
       {
@@ -818,19 +717,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   Reconnect, disable, or clean up accounts that are not currently healthy.
                 </p>
               </a>
-              <a
-                href="#connector-catalog"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Export / manual connectors</p>
-                <div className="mt-2 flex items-end justify-between gap-3">
-                  <p className="text-2xl font-semibold text-slate-900">{manualDefinitions.length}</p>
-                  <StatusChip label="portfolio review" tone="info" />
-                </div>
-                <p className="mt-2 text-sm text-slate-600">
-                  Review operationally limited and roadmap-only connectors before promising coverage.
-                </p>
-              </a>
             </div>
           </Card>
         </div>
@@ -841,7 +727,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div>
                 <CardTitle>Channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Review live connector lanes first so operators can install, map, and manage each Vexa connector from the same catalog workspace{portfolioContext}. Maturity labels distinguish live publish lanes from export/manual and experimental connectors.
+                  Review live connector lanes first so operators can install, map, and manage each Vexa connector from the same catalog workspace{portfolioContext}.
                 </p>
               </div>
               <StatusChip
@@ -871,7 +757,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     <div>
                       <p className="text-sm font-medium text-slate-900">Connector capability matrix</p>
                       <p className="mt-1 text-sm text-slate-600">
-                        Compare live connector lanes by install footprint, maturity label, and shipped operator capabilities before promising channel coverage.
+                        Compare live connector lanes by install footprint and shipped operator capabilities before promising channel coverage.
                       </p>
                     </div>
                     <StatusChip label={`${channelCatalogDefinitions.length} live lanes`} tone="info" />
@@ -887,15 +773,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   <div className="mt-4 grid gap-3 lg:hidden">
                     {channelCatalogDefinitions.map((item) => (
                       <div key={`matrix-card-${item.definition.id}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-slate-900">{item.definition.displayName}</p>
-                            <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
-                          </div>
-                          <StatusChip
-                            label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
-                            tone={connectorLaunchTone(item.definition.launchStage)}
-                          />
+                        <div>
+                          <p className="font-medium text-slate-900">{item.definition.displayName}</p>
+                          <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
                         </div>
                         <p className="mt-2 text-xs text-slate-500">{formatInstallFootprint(item.installedForDefinition)}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -913,7 +793,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                 {channelCatalogDefinitions.map((item) => {
-                  const { definition, installedForDefinition, statusNote, workspaceState } = item;
+                  const { definition, installedForDefinition, workspaceState } = item;
                   const primaryInstallation = installedForDefinition[0] ?? null;
                   const mappedChannel = primaryInstallation
                     ? mapConnectorSlugToMarketplaceChannel(primaryInstallation.slug)
@@ -937,10 +817,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
-                        <StatusChip
-                          label={connectorLaunchLabel(definition.launchStage, definition.implementationStatus)}
-                          tone={connectorLaunchTone(definition.launchStage)}
-                        />
                       </div>
                     </div>
 
@@ -968,17 +844,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           </p>
                         </div>
                       </div>
-
-                      {definition.launchNote ? (
-                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                          {definition.launchNote}
-                        </p>
-                      ) : null}
-                      {statusNote ? (
-                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                          {statusNote}
-                        </p>
-                      ) : null}
 
                       <div className="mt-4 flex flex-wrap gap-2">
                         <Link
@@ -1012,52 +877,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
         </div>
 
-        {manualDefinitions.length > 0 ? (
-          <Card className="border-slate-200 bg-white">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Export / manual</CardTitle>
-                <p className="text-sm text-slate-600">
-                  Connectors with partial or coordinated manual operating paths that still matter for account planning.
-                </p>
-              </div>
-              <StatusChip label={`${manualDefinitions.length} connectors`} tone="warning" />
-            </div>
-            <div className="mt-4 space-y-3">
-              {manualDefinitions.map((item) => (
-                <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
-                      <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
-                    </div>
-                    <StatusChip
-                      label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
-                      tone={connectorLaunchTone(item.definition.launchStage)}
-                    />
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
-                  {item.definition.launchNote ? (
-                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      {item.definition.launchNote}
-                    </p>
-                  ) : null}
-                  {item.statusNote ? (
-                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      {item.statusNote}
-                    </p>
-                  ) : null}
-                  <div className="mt-3">
-                    <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-500 cursor-default">
-                      Review manual export
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        ) : null}
-
         <Card className="border-slate-200 bg-white">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -1088,14 +907,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               {filteredInstallations.map((installation) => {
                 const mappedChannel = mapConnectorSlugToMarketplaceChannel(installation.slug);
-                const statusNote = connectorStatusNote(
-                  installation.slug,
-                  installation.implementationStatus,
-                );
-                const displayStatus = resolveInstalledStatusPresentation(
-                  installation.status,
-                  installation.implementationStatus,
-                );
+                const displayStatus = resolveInstalledStatusPresentation(installation.status);
                 const mappingHref =
                   mappedChannel && firstProductId
                     ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
@@ -1119,21 +931,8 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusChip label={displayStatus.label} tone={displayStatus.tone} />
-                        <StatusChip
-                          label={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
-                          tone={connectorLaunchTone(installation.launchStage)}
-                        />
                       </div>
                     </div>
-
-                    {installation.launchNote ? (
-                      <p className="mt-3 max-w-3xl text-sm text-slate-600">{installation.launchNote}</p>
-                    ) : null}
-                    {statusNote ? (
-                      <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        {statusNote}
-                      </p>
-                    ) : null}
 
                     {isInstallationAttentionStatus(installation.status) && (
                       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -1276,8 +1075,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         title={`${installation.displayName} / ${installation.accountAlias}`}
                         statusLabel={displayStatus.label}
                         statusTone={displayStatus.tone}
-                        maturityLabel={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
-                        maturityTone={connectorLaunchTone(installation.launchStage)}
                         externalReference={installation.externalAccountRef || "Not recorded"}
                         installedAt={formatDateTime(installation.installedAt)}
                         lastSyncAt={installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "No sync recorded yet"}
@@ -1285,7 +1082,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         capabilities={installation.capabilities.map(formatCapabilityLabel)}
                         detailHref={`/channels/connectors/${encodeURIComponent(installation.id)}`}
                         mappingHref={mappingHref}
-                        launchNote={installation.launchNote}
                         contextTitle={shopifyContext ? "Shopify connection context" : null}
                         contextSummary={
                           shopifyContext
