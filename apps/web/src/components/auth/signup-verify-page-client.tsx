@@ -119,10 +119,7 @@ export function SignupVerifyPageClient({
 
       {verifyState === "idle" ? (
         <div className="space-y-4">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-950">{authCopy.signupVerifyLandingTitle}</h2>
-            <p className="text-sm leading-6 text-slate-600">{authCopy.signupVerifyLandingBody}</p>
-          </div>
+          <p className="text-sm leading-6 text-slate-600">{authCopy.signupVerifyLandingBody}</p>
           <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 px-4 py-4 text-sm leading-6 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
             <p>
               <strong>{authCopy.workspaceLabel}:</strong> {workspaceSlug || "Pending workspace"}
