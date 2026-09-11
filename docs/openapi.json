@@ -818,6 +818,31 @@
         ]
       }
     },
+    "/api/v1/metrics/kpi-trends": {
+      "get": {
+        "operationId": "MetricsController_getKpiTrends",
+        "parameters": [
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "Trend window in days (1-90). Defaults to 30.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KPI trend series fetched"
+          }
+        },
+        "summary": "KPI trends by tenant and connector",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
     "/api/v1/billing/usage": {
       "get": {
         "operationId": "BillingController_usage",
@@ -1465,31 +1490,6 @@
         "summary": "Dashboard operations summary for current tenant",
         "tags": [
           "Dashboard"
-        ]
-      }
-    },
-    "/api/v1/metrics/kpi-trends": {
-      "get": {
-        "operationId": "MetricsController_getKpiTrends",
-        "parameters": [
-          {
-            "name": "days",
-            "required": false,
-            "in": "query",
-            "description": "Trend window in days (1-90). Defaults to 30.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "KPI trend series fetched"
-          }
-        },
-        "summary": "KPI trends by tenant and connector",
-        "tags": [
-          "Metrics"
         ]
       }
     },

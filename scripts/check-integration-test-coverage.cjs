@@ -236,6 +236,7 @@ const GLOB_COVERED_TESTS = [
   "shopify-connector-portfolio-context-ui.test.cjs",
   "shopify-connector-readiness-panel-ui.test.cjs",
   "shopify-managed-install-handoff-ui.test.cjs",
+  "signup-verify-button-gate.test.cjs",
   "taxonomy-search-component.test.cjs",
   "test-data-governance-patterns.test.cjs",
   "timeline-component.test.cjs",
