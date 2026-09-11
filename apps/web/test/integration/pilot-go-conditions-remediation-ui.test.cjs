@@ -6,7 +6,10 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 
 function read(relativePath) {
-  return fs.readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
+  // Normalize to LF: assertions below search for literal "\n"-joined
+  // snippets, which a CRLF checkout (e.g. Windows with core.autocrlf=true)
+  // would never match even though the source is otherwise identical.
+  return fs.readFileSync(path.join(REPO_ROOT, relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 
 function assert(condition, message) {
