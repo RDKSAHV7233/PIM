@@ -40,6 +40,7 @@ import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
 import { PricingModule } from "./pricing/pricing.module";
 import { QueueModule } from "./queue/queue.module";
 import { RejectionIntelligenceModule } from "./rejection-intelligence/rejection-intelligence.module";
+import { ResendWebhookModule } from "./webhooks/resend/resend-webhook.module";
 import { SignupModule } from "./signup/signup.module";
 import { TaxonomyModule } from "./taxonomy/taxonomy.module";
 import { WorkspaceUsersModule } from "./workspace-users/workspace-users.module";
@@ -82,6 +83,7 @@ const FEATURE_ONDC_ENABLED =
     PlatformAdminModule,
     PricingModule,
     RejectionIntelligenceModule,
+    ResendWebhookModule,
     SignupModule,
     WorkspaceUsersModule,
     ...(FEATURE_ONDC_ENABLED ? [OndcModule] : []),

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { TenantDirectoryModule } from "../common/tenant/tenant-directory.module";
+import { MetricsModule } from "../metrics/metrics.module";
 import { QueueModule } from "../queue/queue.module";
 import { AccountDeletionWorkerService } from "./account-deletion-worker.service";
 import { AuthPolicyController } from "./auth-policy.controller";
@@ -19,7 +20,7 @@ import { OidcService } from "./oidc.service";
 import { StepUpGuard } from "./step-up.guard";
 
 @Module({
-  imports: [AuditModule, TenantDirectoryModule, QueueModule, JwtBlocklistModule],
+  imports: [AuditModule, TenantDirectoryModule, MetricsModule, QueueModule, JwtBlocklistModule],
   controllers: [AuthController, AuthPolicyController, MfaController, OidcController],
   providers: [
     AuthService,
