@@ -22,6 +22,7 @@ function run() {
     "Visible in the channel catalog as a guided",
     "Shopify connector.",
   ].join(" ");
+
   assert(
     setupSource.includes("isSetupLaneStage(definition.launchStage)") &&
       credentialFieldsSource.includes("Shopify uses managed install. Create the Vexa connector account with store-domain context here;") &&
@@ -29,52 +30,65 @@ function run() {
       setupSource.includes("Create Shopify connector"),
     "Connector setup page must surface Shopify as a live Vexa setup lane with a store-domain install contract.",
   );
+
   assert(
-    source.includes("definition.launchNote") &&
-      source.includes("Review operationally limited and roadmap-only connectors before promising coverage."),
-    "Connectors page must explain why non-live connectors are not installable.",
+    setupSource.includes("This setup workspace exposes live and early-access setup lanes.") &&
+      setupSource.includes("Supported operations"),
+    "Connector setup page must describe the setup-lane boundary and show supported operations in plain language.",
   );
+
+  // The connectors workspace (/channels/connectors) is an operator surface. Per owner
+  // decision, it must NOT expose connector development / lifecycle status: no maturity
+  // labels, no implementation-status notes, no launch-hold banners, no "CONNECTED
+  // (limited)". Operators see account health and shipped capabilities only. The setup
+  // page (/channels/connectors/setup) still gates install lanes and keeps its own
+  // honesty copy — asserted above and unchanged by this policy.
+
   assert(
-    source.includes("Live publish") &&
-      source.includes("Export/manual") &&
-      source.includes("Experimental") &&
-      source.includes("Maturity labels distinguish live publish lanes from export/manual and experimental connectors."),
-    "Connectors page must distinguish live publish connectors from export/manual and experimental lanes.",
+    !source.includes("connectorLaunchLabel(") &&
+      !source.includes("connectorLaunchTone(") &&
+      !source.includes("Live publish") &&
+      !source.includes("P1 blocker hold") &&
+      !source.includes("Maturity labels distinguish live publish lanes from export/manual and experimental connectors."),
+    "Connectors workspace must not render connector maturity / launch-stage labels.",
   );
+
+  assert(
+    !source.includes("function connectorStatusNote(") &&
+      !source.includes("This connector has limited functionality. Check the channel guide for details.") &&
+      !source.includes("Credential validation and publish are not yet available for this connector."),
+    "Connectors workspace must not render implementation-status notes for stub / partial connectors.",
+  );
+
+  assert(
+    !source.includes("CONNECTED (limited)"),
+    "Connectors workspace must show the plain installation status, never a 'CONNECTED (limited)' variant.",
+  );
+
+  assert(
+    !source.includes("definition.launchNote") &&
+      !source.includes("installation.launchNote"),
+    "Connectors workspace must not render connector launchNote / launch-hold banners.",
+  );
+
+  assert(
+    !source.includes("Review operationally limited and roadmap-only connectors before promising coverage.") &&
+      !source.includes("<CardTitle>Export / manual</CardTitle>"),
+    "Connectors workspace must not carry the Export / manual roadmap section.",
+  );
+
+  // ── Still-true positives: the live catalog framing and no pilot special-casing ─
+
   assert(
     !source.includes("function isCatalogPilotConnector(") &&
       !source.includes(staleShopifyCatalogCopy) &&
       source.includes("Review live connector lanes first so operators can install, map, and manage each Vexa connector"),
     "Shopify must use the live channel catalog path instead of manual rollout presentation.",
   );
-  assert(
-    source.includes("function connectorStatusNote(") &&
-      source.includes("Credential validation and publish are not yet available for this connector.") &&
-      // Meesho copy updated 2026-05-28 (Phase M-1 shipped): category-specific Excel export is
-      // now available. Copy updated to accurately describe the export-only model and remove the
-      // stale "not yet available" claim. Credential validation is honestly disclosed as pending
-      // RD-MEESHO-1. The no-direct-publish guarantee is retained.
-      source.includes("Meesho is an export-only connector.") &&
-      source.includes("category-specific Excel file"),
-    "Connectors page must render implementation-status notes for stub and partial connectors with honest export-only disclosure for Meesho.",
-  );
+
   assert(
     !source.includes("You can install it to prepare your mapping"),
     "Stub connector copy must not claim self-serve install is possible when the install form is hidden.",
-  );
-  assert(
-    source.includes("installation.launchStage") && source.includes("installation.launchNote"),
-    "Installed connectors table must surface launch-stage honesty messaging.",
-  );
-  assert(
-    source.includes('label: "CONNECTED (limited)"') &&
-      source.includes('implementationStatus === "stub"'),
-    "Installed stub connectors must show CONNECTED (limited) instead of ACTIVE.",
-  );
-  assert(
-    setupSource.includes("This setup workspace exposes live and early-access setup lanes.") &&
-      setupSource.includes("Supported operations"),
-    "Connector setup page must describe the setup-lane boundary and show supported operations in plain language.",
   );
 
   console.log(
@@ -83,11 +97,13 @@ function run() {
         status: "ok",
         validated: [
           "connector_setup_page_hides_non_live_install_forms",
-          "connector_maturity_labels_are_explicit",
-          "connector_page_surfaces_launch_honesty_notes",
-          "installed_connector_rows_show_launch_stage",
-          "connector_page_surfaces_implementation_status_notes",
-          "installed_stub_connectors_show_connected_limited",
+          "connector_setup_page_describes_setup_lane_boundary",
+          "connectors_workspace_hides_maturity_labels",
+          "connectors_workspace_hides_implementation_status_notes",
+          "connectors_workspace_hides_connected_limited_variant",
+          "connectors_workspace_hides_launch_notes",
+          "connectors_workspace_has_no_export_manual_section",
+          "connectors_workspace_uses_live_catalog_path",
         ],
         checkedAt: new Date().toISOString(),
       },
