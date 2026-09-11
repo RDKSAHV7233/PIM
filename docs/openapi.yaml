@@ -487,6 +487,22 @@ paths:
         "200":
           description: ""
       tags: *a7
+  /api/v1/metrics/kpi-trends:
+    get:
+      operationId: MetricsController_getKpiTrends
+      parameters:
+        - name: days
+          required: false
+          in: query
+          description: Trend window in days (1-90). Defaults to 30.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: KPI trend series fetched
+      summary: KPI trends by tenant and connector
+      tags:
+        - Metrics
   /api/v1/billing/usage:
     get:
       operationId: BillingController_usage
@@ -872,22 +888,6 @@ paths:
           description: Dashboard operations summary fetched
       summary: Dashboard operations summary for current tenant
       tags: *a12
-  /api/v1/metrics/kpi-trends:
-    get:
-      operationId: MetricsController_getKpiTrends
-      parameters:
-        - name: days
-          required: false
-          in: query
-          description: Trend window in days (1-90). Defaults to 30.
-          schema:
-            type: string
-      responses:
-        "200":
-          description: KPI trend series fetched
-      summary: KPI trends by tenant and connector
-      tags:
-        - Metrics
   /api/v1/error-authority/ops/issues:
     get:
       operationId: ErrorAuthorityOpsController_listIssues

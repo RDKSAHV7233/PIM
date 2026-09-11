@@ -16,6 +16,14 @@ function assert(condition, message) {
   }
 }
 
+// Membership below is checked against forward-slash-only path literals.
+// path.relative() returns OS-native separators (backslashes on Windows), so
+// normalize before comparing/printing or every check spuriously fails on a
+// Windows checkout even though nothing is actually wrong.
+function toPosixRelative(from, to) {
+  return path.relative(from, to).split(path.sep).join("/");
+}
+
 function walkFiles(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const files = [];
@@ -92,15 +100,15 @@ try {
   assert(
     clientIngestTokenUsers.length === 0,
     `Trusted Error Authority ingest token must not be referenced from client components. Offenders: ${clientIngestTokenUsers
-      .map((file) => path.relative(REPO_ROOT, file))
+      .map((file) => toPosixRelative(REPO_ROOT, file))
       .join(", ")}`,
   );
   assert(
     ingestTokenUsers.every((file) =>
-      allowedServerTokenUsers.has(path.relative(REPO_ROOT, file)),
+      allowedServerTokenUsers.has(toPosixRelative(REPO_ROOT, file)),
     ),
     `Trusted Error Authority ingest token must stay in the server config/transport boundary. Users: ${ingestTokenUsers
-      .map((file) => path.relative(REPO_ROOT, file))
+      .map((file) => toPosixRelative(REPO_ROOT, file))
       .join(", ")}`,
   );
   assert(
