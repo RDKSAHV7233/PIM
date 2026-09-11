@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   }
 
   const target = new URL(`${getApiBaseUrl()}/audit/events/export`);
-  request.nextUrl.searchParams.forEach((value, key) => {
+  request.nextUrl.searchParams.forEach((value: string, key: string) => {
     if (value.trim()) {
       target.searchParams.set(key, value);
     }
