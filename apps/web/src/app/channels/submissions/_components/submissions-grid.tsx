@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { retrySubmissionInlineAction } from "@/app/actions";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -119,7 +119,7 @@ export function SubmissionsGrid({ submissions, canRetrySubmission }: Submissions
                     <Link
                       href={`/products/${encodeURIComponent(submission.productId)}`}
                       className="underline hover:text-slate-900"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e: MouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
                     >
                       {submission.productId.slice(0, 8)}…
                     </Link>
