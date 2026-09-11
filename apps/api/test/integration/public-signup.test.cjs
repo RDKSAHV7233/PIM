@@ -748,6 +748,149 @@ async function runConcurrentDuplicateCase(baseEnv) {
   }
 }
 
+// H-3: a billing dependency (Stripe / plan-profile / metrics) that is down while the
+// verification link is clicked must NOT strand the user. The verify call still
+// returns 200 `verified`, the token stays single-use, the new workspace can log in,
+// and the deferred billing work runs later via the SIGNUP_BILLING_PROVISION queue.
+// PIM_SIGNUP_BILLING_SIMULATE_FAILURE=verify makes only the inline (verify-time)
+// provisioning attempt throw; the queued retry runs the same idempotent path clean.
+async function runBillingProvisionFailureRecoveryCase(baseEnv) {
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-billing-fail-"));
+  const env = buildBaseRuntimeEnv({
+    ...baseEnv,
+    PORT: String(6040 + Math.floor(Math.random() * 16)),
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+    PIM_SIGNUP_BILLING_SIMULATE_FAILURE: "verify",
+  });
+  const api = await startApi(env);
+  const runId = Date.now().toString();
+  const workspaceSlug = `tej-billing-${runId.slice(-8)}`;
+  const adminEmail = `owner-billing-${runId}@example.com`;
+  const password = "Signup#2026";
+
+  try {
+    const createSignup = await apiRequest(api.baseUrl, "POST", "/signup/workspace", {
+      displayName: "TEJ Billing Down Workspace",
+      workspaceSlug,
+      adminEmail,
+      password,
+      acceptedTerms: true,
+    });
+    assertStatus(createSignup, 200, "signup request created while billing is down");
+
+    const signupEmail = await waitForOutboxEmail(outboxDir, adminEmail, "signup_verification", 10_000);
+    const verificationToken = extractVerificationToken(signupEmail.parsed);
+
+    // RED assertion: verify still succeeds even though the inline billing step throws.
+    const verify = await apiRequest(api.baseUrl, "POST", "/signup/verify", { token: verificationToken });
+    assertStatus(verify, 200, "verify returns 200 even when billing provisioning fails");
+    assert(verify.payload?.status === "verified", `expected verified status, got ${JSON.stringify(verify.payload)}`);
+    assert(
+      verify.payload?.workspaceSlug === workspaceSlug,
+      `expected workspace slug in verify payload, got ${JSON.stringify(verify.payload)}`,
+    );
+
+    // Token semantics unchanged: still single-use.
+    const secondVerify = await apiRequest(api.baseUrl, "POST", "/signup/verify", { token: verificationToken });
+    assertStatus(secondVerify, 401, "verification token stays single-use after billing failure");
+    assert(
+      secondVerify.payload?.error === "SIGNUP_VERIFICATION_TOKEN_INVALID",
+      `unexpected second verify payload=${JSON.stringify(secondVerify.payload)}`,
+    );
+
+    // The account actually works: the new workspace admin can log in immediately.
+    const verifiedLogin = await login(api.baseUrl, workspaceSlug, adminEmail, password);
+    assertStatus(verifiedLogin, 201, "verified admin can log in despite billing provisioning failure");
+    assert(
+      String(verifiedLogin.payload?.accessToken ?? "").trim().length > 0,
+      "expected access token after verified login",
+    );
+
+    // After the deferred billing work runs, the tenant resolves a billing profile.
+    let planProfile = null;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      planProfile = await apiRequest(api.baseUrl, "GET", "/billing/plan-profile", undefined, {
+        token: verifiedLogin.payload.accessToken,
+      });
+      if (planProfile.status === 200 && String(planProfile.payload?.planTier ?? "").trim().length > 0) {
+        break;
+      }
+      await sleep(500);
+    }
+    assertStatus(planProfile, 200, "plan profile resolves after deferred billing provisioning");
+    assert(
+      String(planProfile.payload?.planTier ?? "").trim().length > 0,
+      `expected a resolved plan tier after retry, got ${JSON.stringify(planProfile.payload)}`,
+    );
+    assert(
+      String(planProfile.payload?.billingStatus ?? "").trim().length > 0,
+      `expected a billing status after retry, got ${JSON.stringify(planProfile.payload)}`,
+    );
+  } finally {
+    fs.rmSync(outboxDir, { recursive: true, force: true });
+    await stopApi(api.processHandle);
+  }
+}
+
+// H-3: the billing-provisioning path is idempotent. Running verification (which
+// seeds the tenant plan profile via get-or-create) and then a second get-or-create
+// pass must leave exactly one TenantPlanProfile row for the tenant — i.e. re-running
+// provisioning never forks a second billing record. (Exactly-one Stripe
+// customer/subscription is asserted at the unit level in
+// apps/api/src/billing/stripe.service.spec.ts, since this harness runs with Stripe
+// billing disabled and has no Stripe stub.)
+async function runBillingProvisionIdempotencyCase(baseEnv) {
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-billing-idem-"));
+  const env = buildBaseRuntimeEnv({
+    ...baseEnv,
+    PORT: String(6060 + Math.floor(Math.random() * 16)),
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+  });
+  const prisma = buildDbClient(baseEnv);
+  const api = await startApi(env);
+  const runId = Date.now().toString();
+  const workspaceSlug = `tej-idem-${runId.slice(-8)}`;
+  const adminEmail = `owner-idem-${runId}@example.com`;
+  const password = "Signup#2026";
+
+  try {
+    const createSignup = await apiRequest(api.baseUrl, "POST", "/signup/workspace", {
+      displayName: "TEJ Idempotent Billing Workspace",
+      workspaceSlug,
+      adminEmail,
+      password,
+      acceptedTerms: true,
+    });
+    assertStatus(createSignup, 200, "signup request created for idempotency case");
+
+    const signupEmail = await waitForOutboxEmail(outboxDir, adminEmail, "signup_verification", 10_000);
+    const verificationToken = extractVerificationToken(signupEmail.parsed);
+
+    const verify = await apiRequest(api.baseUrl, "POST", "/signup/verify", { token: verificationToken });
+    assertStatus(verify, 200, "verify succeeds for idempotency case");
+
+    const verifiedLogin = await login(api.baseUrl, workspaceSlug, adminEmail, password);
+    assertStatus(verifiedLogin, 201, "admin can log in for idempotency case");
+
+    // Second provisioning pass (another get-or-create) via the plan-profile endpoint.
+    const secondPass = await apiRequest(api.baseUrl, "GET", "/billing/plan-profile", undefined, {
+      token: verifiedLogin.payload.accessToken,
+    });
+    assertStatus(secondPass, 200, "second billing provisioning pass succeeds");
+
+    const profiles = await prisma.tenantPlanProfile.findMany({ where: { tenantKey: workspaceSlug } });
+    assert(
+      profiles.length === 1,
+      `expected exactly one TenantPlanProfile row after repeated provisioning, got ${profiles.length}`,
+    );
+  } finally {
+    await prisma.$disconnect();
+    fs.rmSync(outboxDir, { recursive: true, force: true });
+    await stopApi(api.processHandle);
+  }
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
@@ -759,6 +902,8 @@ async function run() {
   await runValidationCase(baseEnv);
   await runHappyPathCase(baseEnv);
   await runVerificationDeliveryFailureRecoveryCase(baseEnv);
+  await runBillingProvisionFailureRecoveryCase(baseEnv);
+  await runBillingProvisionIdempotencyCase(baseEnv);
   await runIpRateLimitCase(baseEnv);
   await runEmailRateLimitCase(baseEnv);
   await runResendRateLimitCase(baseEnv);
@@ -773,6 +918,8 @@ async function run() {
           "signup_validation_returns_explicit_errors",
           "signup_happy_path_creates_pending_request",
           "signup_delivery_failure_marks_request_non_pending_and_allows_retry",
+          "signup_verify_returns_200_and_login_works_when_billing_provisioning_fails",
+          "signup_billing_provisioning_is_idempotent_single_plan_profile_row",
           "signup_verify_provisions_workspace_and_admin",
           "verified_admin_can_login_and_has_starter_plan",
           "signup_kpi_trends_expose_request_verification_and_conversion_metrics",

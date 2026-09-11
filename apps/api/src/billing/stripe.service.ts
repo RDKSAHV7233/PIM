@@ -62,6 +62,7 @@ export class StripeService implements OnModuleInit {
     adminEmail: string;
     displayName: string;
     planTier?: string;
+    idempotencyKey?: string;
   }): Promise<void> {
     if (!this.isEnabled()) {
       return;
@@ -71,18 +72,29 @@ export class StripeService implements OnModuleInit {
       return;
     }
     const tenantKey = normalizeTenantKey(input.tenantKey);
+    // Idempotency (H-3): running provisioning twice — e.g. a retry after a Stripe
+    // timeout — must yield exactly one customer + one subscription. Stripe de-dupes
+    // create calls that carry the same idempotency key; we also short-circuit once
+    // both ids are already persisted so a retry becomes a no-op.
+    const idempotencyKey = String(input.idempotencyKey ?? `signup-trial:${tenantKey}`).trim();
     try {
       const stripe = this.getClient();
 
       const existing = await this.getStoredIds(tenantKey);
+      if (existing.externalCustomerId && existing.externalSubscriptionId) {
+        return;
+      }
       let customerId = existing.externalCustomerId;
 
       if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: input.adminEmail,
-          name: input.displayName,
-          metadata: { tenantKey },
-        });
+        const customer = await stripe.customers.create(
+          {
+            email: input.adminEmail,
+            name: input.displayName,
+            metadata: { tenantKey },
+          },
+          { idempotencyKey: `${idempotencyKey}:customer` },
+        );
         customerId = customer.id;
       }
 
@@ -92,12 +104,15 @@ export class StripeService implements OnModuleInit {
       let subscriptionId = existing.externalSubscriptionId;
 
       if (!subscriptionId && priceId) {
-        const subscription = await stripe.subscriptions.create({
-          customer: customerId,
-          items: [{ price: priceId }],
-          trial_period_days: Number(process.env.PIM_COMMERCIAL_TRIAL_DAYS ?? "90"),
-          metadata: { tenantKey },
-        });
+        const subscription = await stripe.subscriptions.create(
+          {
+            customer: customerId,
+            items: [{ price: priceId }],
+            trial_period_days: Number(process.env.PIM_COMMERCIAL_TRIAL_DAYS ?? "90"),
+            metadata: { tenantKey },
+          },
+          { idempotencyKey: `${idempotencyKey}:subscription` },
+        );
         subscriptionId = subscription.id;
       }
 
