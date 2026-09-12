@@ -121,9 +121,23 @@ describe("InternalOpsAlertsService", () => {
 
     expect(queueService.enqueue).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
-      "Internal ops alert delivery skipped because destination is not configured.",
+      "Internal ops alert delivery skipped because no destination is configured.",
       { alertType: "error_authority_new_p0p1_issue" },
     );
+  });
+
+  it("still enqueues for delivery when only the Slack webhook is configured (no legacy sink)", async () => {
+    process.env.OPS_ALERT_WEBHOOK_URL = "";
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    const { service, db, queueService } = makeService();
+    db.$queryRaw.mockResolvedValueOnce([{ alert_key: "error:p0p1:iss_1" }]);
+
+    await expect(service.captureNewP0P1Issue({ issueId: "iss_1", severity: "p1" })).resolves.toEqual({
+      alerted: true,
+      reason: "queued",
+    });
+
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
   });
 
   it("fails open when enqueue fails", async () => {
@@ -563,6 +577,97 @@ describe("InternalOpsAlertsService", () => {
         },
       }),
     ).rejects.toThrow("Internal ops alert destination returned 503");
+  });
+
+  it("also posts a human-readable Slack message when OPS_ALERT_SLACK_WEBHOOK_URL is configured", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    const { service, queueService } = makeService();
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, status: 200 } as Response);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await handler({
+      envelope: {
+        version: 1,
+        alertType: "stuck_jobs_threshold_exceeded",
+        severity: "p1",
+        environment: "test",
+        release: "test-sha",
+        observedAt: "2026-08-23T10:00:00.000Z",
+        internalUrl: "https://ops.vexa.test/internal/ops",
+        stuckCount: 5,
+        stuckAgeThresholdHours: 6,
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const slackCall = fetchMock.mock.calls.find(([url]) => url === "https://hooks.slack.com/services/T000/B000/XXXX");
+    expect(slackCall).toBeDefined();
+    const slackBody = JSON.parse(String(slackCall?.[1]?.body ?? "{}"));
+    expect(slackBody.text).toContain("5 job(s) stuck");
+    expect(slackBody.text).toContain("https://ops.vexa.test/internal/ops");
+  });
+
+  it("still delivers to Slack when the legacy sink destination is not configured", async () => {
+    process.env.OPS_ALERT_WEBHOOK_URL = "";
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    const { service, queueService, logger } = makeService();
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, status: 200 } as Response);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await handler({
+      envelope: {
+        version: 1,
+        alertType: "error_authority_new_p0p1_issue",
+        severity: "p0",
+        environment: "test",
+        release: null,
+        observedAt: "2026-08-23T10:00:00.000Z",
+        internalUrl: "/internal/ops/errors",
+        issueId: "iss_1",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("https://hooks.slack.com/services/T000/B000/XXXX", expect.anything());
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Internal ops alert delivery skipped because destination is not configured.",
+      { alertType: "error_authority_new_p0p1_issue" },
+    );
+  });
+
+  it("does not fail the queue handler when Slack delivery fails — only the legacy sink result matters for retry", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    const { service, queueService, logger } = makeService();
+    jest.spyOn(global, "fetch").mockImplementation((async (url: string) => {
+      if (url === "https://hooks.slack.com/services/T000/B000/XXXX") {
+        return { ok: false, status: 500 } as Response;
+      }
+      return { ok: true, status: 200 } as Response;
+    }) as typeof fetch);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await expect(
+      handler({
+        envelope: {
+          version: 1,
+          alertType: "error_authority_new_p0p1_issue",
+          severity: "p1",
+          environment: "test",
+          release: null,
+          observedAt: "2026-08-23T10:00:00.000Z",
+          internalUrl: "/internal/ops/errors",
+          issueId: "iss_1",
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Internal ops Slack alert delivery failed.",
+      expect.objectContaining({ alertType: "error_authority_new_p0p1_issue" }),
+    );
   });
 
   it("only one concurrent reservation for the same alert key queues delivery", async () => {
