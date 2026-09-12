@@ -13,7 +13,7 @@ This document is prepared by Claude Code to consolidate what has changed since t
 
 ## 2. Release under review
 
-- `main` @ `3412dff11292b06ae6e7568778e77a3772b4c5aa` (as of 2026-09-11T18:34Z; confirm current SHA before signing)
+- `main` @ `3412dff11292b06ae6e7568778e77a3772b4c5aa` as of the original 2026-09-11T18:34Z draft; `main` has since advanced (PR #805's fix merged 2026-09-12T10:15Z) — confirm the current SHA before signing, this document is not re-verified against every subsequent commit.
 - Branch protection: still `false`, no required status checks enforced as of this writing.
 
 ## 3. Decision summary — PENDING
@@ -30,8 +30,12 @@ This document is prepared by Claude Code to consolidate what has changed since t
 
 ### Gate 1 — P0/P1 disposition
 **Was:** opaque — Ops Summary reported `p0p1OpenCount: 4` with no way to see which records.
-**Now:** [#801](https://github.com/RDKSAHV7233/PIM/issues/801) tracks this; [PR #803](https://github.com/RDKSAHV7233/PIM/pull/803) (merged) added tooling to dump the actual records. All 4 identified — 3 are `p1`, 0 are `p0`. Highest-risk one (`prisma.category.delete()` error, 177 occurrences) is still recurring on the current release SHA.
-**Still needed:** each of the 4 individually dispositioned (closed/accepted-risk/active-defect) by Security/SRE/QA per the assignments on #801.
+**Now (updated 2026-09-12, post PR #805 merge):** [#801](https://github.com/RDKSAHV7233/PIM/issues/801) tracks this; [PR #803](https://github.com/RDKSAHV7233/PIM/pull/803) (merged) added tooling to dump the actual records, and two snapshots ~16h apart gave comparative evidence on all 4:
+- **Record 1 — `prisma.category.delete()` error:** root-caused (a global soft-delete scope extension silently excluded soft-deleted-but-not-purged products from the pre-delete check) and fixed in [PR #805](https://github.com/RDKSAHV7233/PIM/pull/805), merged 2026-09-12T10:15Z with a real-Postgres regression test in CI. Occurrence count was climbing (177→180) right up to the merge; no new occurrence since, though that's not yet proof on its own since the triggering action (deleting a category with soft-deleted products) is infrequent — the CI regression test is the stronger evidence the fix works.
+- **Record 2 — signup verification Bad Gateway:** 0 new occurrences in 16h+ (last seen 2026-09-10). Reads as a transient upstream gateway blip, not a live defect.
+- **Record 3 — DB connectivity error:** 0 new occurrences in 16h+ (last seen 2026-09-08). Reads as a transient Postgres proxy blip.
+- **Record 4 — WooCommerce credentials invalid:** 0 new occurrences (last seen 2026-09-05), and a WooCommerce reconciliation ran successfully today with 0 errors for the `default` tenant.
+**Still needed:** Security/SRE/QA to actually disposition (not just observe) each of the 4 — this analysis is evidence for that decision, not the decision itself. Records 2-4 look closeable; Record 1's fix needs to be confirmed live once the trigger condition recurs, or verified directly in staging.
 
 ### Gate 2 — Full staging E2E on current SHA
 **Was:** last full `E2E - Staging User Journey` success was on `05daff6d…`, predating the SHA under review.
@@ -58,6 +62,8 @@ This document is prepared by Claude Code to consolidate what has changed since t
 - [PR #803](https://github.com/RDKSAHV7233/PIM/pull/803) merged (CTO-approved via required-team review) — staging deploy now dumps the actual open P0/P1 records instead of only a count.
 - The 4 open records identified by ID, severity, state, occurrence count, and recency (see #801 for full detail).
 - A non-binding CTO/PO-style risk triage was posted to #801 to help prioritize the 4 records; it is explicitly not a decision.
+- Record 1 root-caused and fixed in [PR #805](https://github.com/RDKSAHV7233/PIM/pull/805) (merged 2026-09-12T10:15Z, real CTO review, CI green including a new regression test against real Postgres).
+- Recurrence check (two snapshots ~16h apart) posted to #801: records 2-4 show zero new occurrences and look closeable; record 1 was climbing until the fix merged.
 
 ## 6. What this document is not
 
