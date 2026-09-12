@@ -11,6 +11,7 @@ function makeService() {
     $queryRaw: jest.fn(),
     $executeRaw: jest.fn().mockResolvedValue(1),
     $transaction: jest.fn((fn: (txArg: typeof tx) => Promise<unknown>) => fn(tx)),
+    kpiMetricEvent: { count: jest.fn().mockResolvedValue(0) },
   };
   const prismaDirect = { getClient: jest.fn().mockReturnValue(db) };
   const queueService = {
@@ -227,6 +228,105 @@ describe("InternalOpsAlertsService", () => {
 
     expect(db.$executeRaw).toHaveBeenCalledTimes(1);
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not alert when auth-email failure count is at or below threshold and resets breach state", async () => {
+    const { service, db, queueService } = makeService();
+
+    await expect(service.processAuthEmailJobFailureCount(3, new Date("2026-08-23T10:00:00Z"))).resolves.toEqual({
+      alerted: false,
+      reason: "not_breached",
+    });
+
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("alerts on first auth-email job-failure breach", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw.mockResolvedValueOnce([{ alert_key: "auth_email_job_failure:global" }]);
+
+    await expect(service.processAuthEmailJobFailureCount(4, new Date("2026-08-23T10:00:00Z"))).resolves.toEqual({
+      alerted: true,
+      reason: "queued",
+    });
+
+    const payload = queueService.enqueue.mock.calls[0][1];
+    expect(alertKeys(payload)).toEqual([
+      "alertType",
+      "authEmailFailureCount",
+      "authEmailFailureThreshold",
+      "authEmailFailureWindowMinutes",
+      "environment",
+      "internalUrl",
+      "observedAt",
+      "release",
+      "severity",
+      "version",
+    ]);
+    expect(payload.envelope).toMatchObject({
+      alertType: "auth_email_job_failure_threshold_exceeded",
+      severity: "p1",
+      authEmailFailureCount: 4,
+      authEmailFailureThreshold: 3,
+      authEmailFailureWindowMinutes: 15,
+    });
+    expect(queueService.enqueue.mock.calls[0][2].jobId).toBe("ops-alert-auth-email-failures-2026-08-23T10_00_00_000Z");
+    expect(JSON.stringify(payload)).not.toMatch(/tenant|product|connector|credential|headers|cookies|token|stack|payload/i);
+  });
+
+  it("suppresses auth-email job-failure alert while cooldown is active", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    await expect(service.processAuthEmailJobFailureCount(5, new Date("2026-08-23T10:00:00Z"))).resolves.toEqual({
+      alerted: false,
+      reason: "cooldown_active",
+    });
+
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("re-alerts for auth-email job failures after cooldown expires", async () => {
+    const { service, db, queueService } = makeService();
+    db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ alert_key: "auth_email_job_failure:global" }]);
+
+    await expect(service.processAuthEmailJobFailureCount(5, new Date("2026-08-23T10:31:00Z"))).resolves.toEqual({
+      alerted: true,
+      reason: "queued",
+    });
+
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets auth-email job-failure breach and allows a later new breach", async () => {
+    const { service, db, queueService } = makeService();
+    await service.processAuthEmailJobFailureCount(0, new Date("2026-08-23T10:00:00Z"));
+    db.$queryRaw.mockResolvedValueOnce([{ alert_key: "auth_email_job_failure:global" }]);
+
+    await expect(service.processAuthEmailJobFailureCount(4, new Date("2026-08-23T11:00:00Z"))).resolves.toEqual({
+      alerted: true,
+      reason: "queued",
+    });
+
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts auth.email.job_failed rows in the trailing 15-minute window", async () => {
+    const { service, db } = makeService();
+    db.kpiMetricEvent.count.mockResolvedValue(2);
+
+    const result = await service.evaluateAuthEmailJobFailures(new Date("2026-08-23T12:00:00Z"));
+
+    expect(result.failureCount).toBe(2);
+    expect(db.kpiMetricEvent.count).toHaveBeenCalledWith({
+      where: {
+        metricKey: "auth.email.job_failed",
+        observedAt: { gte: new Date("2026-08-23T11:45:00Z"), lte: new Date("2026-08-23T12:00:00Z") },
+      },
+    });
   });
 
   it("queues one safe media-integrity alert when defects are detected", async () => {

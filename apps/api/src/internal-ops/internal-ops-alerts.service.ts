@@ -14,7 +14,8 @@ import {
 export type InternalOpsAlertType =
   | "error_authority_new_p0p1_issue"
   | "stuck_jobs_threshold_exceeded"
-  | "media_integrity_defect_detected";
+  | "media_integrity_defect_detected"
+  | "auth_email_job_failure_threshold_exceeded";
 export type InternalOpsAlertSeverity = "p0" | "p1";
 
 export type InternalOpsAlertEnvelope = {
@@ -31,6 +32,9 @@ export type InternalOpsAlertEnvelope = {
   missingCount?: number;
   unverifiableCount?: number;
   affectedTenantCount?: number;
+  authEmailFailureCount?: number;
+  authEmailFailureThreshold?: number;
+  authEmailFailureWindowMinutes?: number;
 };
 
 type OpsAlertQueuePayload = {
@@ -59,6 +63,17 @@ const STUCK_ALERT_KEY = "stuck_jobs:global";
 const MEDIA_INTEGRITY_ALERT_KEY = "media_integrity:defects";
 const MEDIA_INTEGRITY_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
+// H-2 follow-up: auth.email.job_failed threshold alert. This is the "reset/unlock/
+// signup mail never left the building" signal (BullMQ auth-email consumer failure) —
+// distinct from Resend delivery/bounce visibility (H-2's webhook path), which
+// requires a Resend plan upgrade that was checked and declined. This alert needs
+// no such upgrade: it counts the metric the API already emits on its own.
+const AUTH_EMAIL_JOB_FAILURE_ALERT_KEY = "auth_email_job_failure:global";
+const AUTH_EMAIL_JOB_FAILURE_EVALUATION_INTERVAL_MS = 5 * 60 * 1000;
+const AUTH_EMAIL_JOB_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_EMAIL_JOB_FAILURE_THRESHOLD = 3;
+const AUTH_EMAIL_JOB_FAILURE_COOLDOWN_MS = 30 * 60 * 1000;
+
 const EXPORT_ACTIVE_STATUSES = [ExportJobStatus.queued, ExportJobStatus.processing, ExportJobStatus.retrying] as const;
 const IMPORT_JOB_ACTIVE_STATUSES = [
   BulkImportJobStatus.queued,
@@ -71,6 +86,9 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   private timer: ReturnType<typeof setTimeout> | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private evaluatingStuckJobs = false;
+  private authEmailFailureTimer: ReturnType<typeof setTimeout> | null = null;
+  private authEmailFailureIntervalId: ReturnType<typeof setInterval> | null = null;
+  private evaluatingAuthEmailJobFailures = false;
   private queueService: InternalOpsQueuePort | null | undefined;
 
   constructor(
@@ -117,6 +135,20 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       this.intervalId.unref();
     }, OPS_ALERT_INITIAL_DELAY_MS);
     this.timer.unref();
+
+    if (String(process.env.OPS_ALERT_AUTH_EMAIL_JOB_FAILURE_CHECK_DISABLED ?? "").trim().toLowerCase() === "true") {
+      this.logger.info("Internal ops auth-email job-failure alert evaluation disabled.");
+      return;
+    }
+    this.authEmailFailureTimer = setTimeout(() => {
+      void this.runScheduledAuthEmailJobFailureEvaluation();
+      this.authEmailFailureIntervalId = setInterval(
+        () => void this.runScheduledAuthEmailJobFailureEvaluation(),
+        AUTH_EMAIL_JOB_FAILURE_EVALUATION_INTERVAL_MS,
+      );
+      this.authEmailFailureIntervalId.unref();
+    }, OPS_ALERT_INITIAL_DELAY_MS);
+    this.authEmailFailureTimer.unref();
   }
 
   onApplicationShutdown(): void {
@@ -127,6 +159,14 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+    if (this.authEmailFailureTimer) {
+      clearTimeout(this.authEmailFailureTimer);
+      this.authEmailFailureTimer = null;
+    }
+    if (this.authEmailFailureIntervalId) {
+      clearInterval(this.authEmailFailureIntervalId);
+      this.authEmailFailureIntervalId = null;
     }
   }
 
@@ -230,6 +270,91 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     });
 
     return { alerted: true, reason: "queued" };
+  }
+
+  private async runScheduledAuthEmailJobFailureEvaluation(): Promise<void> {
+    let ran = false;
+    try {
+      ran = await runWithAdvisoryLock("internal-ops-alerts-auth-email", () =>
+        this.evaluateAuthEmailJobFailures().then(() => undefined),
+      );
+    } catch (error: unknown) {
+      this.logger.error("Scheduler lock failure for internal-ops-alerts-auth-email.", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (!ran) {
+      this.logger.info(
+        "Skipped internal ops auth-email job-failure alert evaluation: another replica holds the scheduler lock.",
+      );
+    }
+  }
+
+  async evaluateAuthEmailJobFailures(
+    now = new Date(),
+  ): Promise<{ alerted: boolean; failureCount: number; reason: string }> {
+    if (this.evaluatingAuthEmailJobFailures) {
+      return { alerted: false, failureCount: 0, reason: "already_running" };
+    }
+    this.evaluatingAuthEmailJobFailures = true;
+    try {
+      const failureCount = await this.countRecentAuthEmailJobFailures(now);
+      const result = await this.processAuthEmailJobFailureCount(failureCount, now);
+      return { ...result, failureCount };
+    } catch (error: unknown) {
+      this.logger.warn("Internal ops auth-email job-failure alert evaluation failed open.", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return { alerted: false, failureCount: 0, reason: "evaluation_failed_open" };
+    } finally {
+      this.evaluatingAuthEmailJobFailures = false;
+    }
+  }
+
+  async processAuthEmailJobFailureCount(
+    failureCountInput: number,
+    observedAt = new Date(),
+  ): Promise<{ alerted: boolean; reason: string }> {
+    const failureCount = Math.max(0, Math.floor(Number(failureCountInput) || 0));
+    if (failureCount <= AUTH_EMAIL_JOB_FAILURE_THRESHOLD) {
+      await this.resetAuthEmailJobFailureBreach(observedAt);
+      return { alerted: false, reason: "not_breached" };
+    }
+
+    const cooldownUntil = new Date(observedAt.getTime() + AUTH_EMAIL_JOB_FAILURE_COOLDOWN_MS);
+    const reserved = await this.reserveAuthEmailJobFailureAlert(observedAt, cooldownUntil);
+    if (!reserved) {
+      await this.touchAlertState(AUTH_EMAIL_JOB_FAILURE_ALERT_KEY, observedAt);
+      return { alerted: false, reason: "cooldown_active" };
+    }
+
+    await this.enqueueAlert({
+      version: OPS_ALERT_VERSION,
+      alertType: "auth_email_job_failure_threshold_exceeded",
+      severity: "p1",
+      environment: this.resolveEnvironment(),
+      release: this.resolveRelease(),
+      observedAt: observedAt.toISOString(),
+      internalUrl: this.buildInternalUrl("/internal/ops"),
+      authEmailFailureCount: failureCount,
+      authEmailFailureThreshold: AUTH_EMAIL_JOB_FAILURE_THRESHOLD,
+      authEmailFailureWindowMinutes: AUTH_EMAIL_JOB_FAILURE_WINDOW_MS / (60 * 1000),
+    });
+
+    return { alerted: true, reason: "queued" };
+  }
+
+  private async countRecentAuthEmailJobFailures(now: Date): Promise<number> {
+    const windowStart = new Date(now.getTime() - AUTH_EMAIL_JOB_FAILURE_WINDOW_MS);
+    const db = this.prismaDirect.getClient();
+    const count = await db.kpiMetricEvent.count({
+      where: {
+        metricKey: "auth.email.job_failed",
+        observedAt: { gte: windowStart, lte: now },
+      },
+    });
+    return Number(count ?? 0);
   }
 
   async captureMediaIntegrityDefects(input: {
@@ -421,6 +546,64 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     return updated.length > 0;
   }
 
+  private async reserveAuthEmailJobFailureAlert(observedAt: Date, cooldownUntil: Date): Promise<boolean> {
+    const inserted = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
+      INSERT INTO ops_alert_states (
+        id,
+        alert_key,
+        alert_type,
+        first_observed_at,
+        last_observed_at,
+        last_sent_at,
+        cooldown_until,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${AUTH_EMAIL_JOB_FAILURE_ALERT_KEY},
+        ${"auth_email_job_failure_threshold_exceeded"},
+        ${observedAt},
+        ${observedAt},
+        ${observedAt},
+        ${cooldownUntil},
+        ${observedAt},
+        ${observedAt}
+      )
+      ON CONFLICT (alert_key) DO NOTHING
+      RETURNING alert_key
+    `);
+    if (inserted.length > 0) {
+      return true;
+    }
+
+    const updated = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
+      UPDATE ops_alert_states
+      SET
+        last_observed_at = ${observedAt},
+        last_sent_at = ${observedAt},
+        cooldown_until = ${cooldownUntil},
+        updated_at = ${observedAt}
+      WHERE alert_key = ${AUTH_EMAIL_JOB_FAILURE_ALERT_KEY}
+        AND (cooldown_until IS NULL OR cooldown_until <= ${observedAt})
+      RETURNING alert_key
+    `);
+    return updated.length > 0;
+  }
+
+  private async resetAuthEmailJobFailureBreach(observedAt: Date): Promise<void> {
+    await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
+      UPDATE ops_alert_states
+      SET
+        first_observed_at = ${observedAt},
+        last_observed_at = ${observedAt},
+        last_sent_at = NULL,
+        cooldown_until = NULL,
+        updated_at = ${observedAt}
+      WHERE alert_key = ${AUTH_EMAIL_JOB_FAILURE_ALERT_KEY}
+    `);
+  }
+
   private async touchAlertState(alertKey: string, observedAt: Date): Promise<void> {
     await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
       UPDATE ops_alert_states
@@ -538,6 +721,14 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         affectedTenantCount: normalizeCount(envelope.affectedTenantCount),
       };
     }
+    if (envelope.alertType === "auth_email_job_failure_threshold_exceeded") {
+      return {
+        ...base,
+        authEmailFailureCount: normalizeCount(envelope.authEmailFailureCount),
+        authEmailFailureThreshold: AUTH_EMAIL_JOB_FAILURE_THRESHOLD,
+        authEmailFailureWindowMinutes: AUTH_EMAIL_JOB_FAILURE_WINDOW_MS / (60 * 1000),
+      };
+    }
     return base;
   }
 
@@ -583,6 +774,9 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     }
     if (envelope.alertType === "media_integrity_defect_detected") {
       return `ops-alert-media-integrity-${this.sanitizeQueueJobId(envelope.observedAt)}`;
+    }
+    if (envelope.alertType === "auth_email_job_failure_threshold_exceeded") {
+      return `ops-alert-auth-email-failures-${this.sanitizeQueueJobId(envelope.observedAt)}`;
     }
     return `ops-alert-stuck-jobs-${this.sanitizeQueueJobId(envelope.observedAt)}`;
   }

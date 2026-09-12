@@ -40,6 +40,21 @@ function run() {
   assert(service.includes("unverifiableCount?: number"), "Media integrity alert payload may expose only aggregate unverifiable count.");
   assert(service.includes("affectedTenantCount?: number"), "Media integrity alert payload may expose only aggregate affected tenant count.");
 
+  // H-2 follow-up: auth.email.job_failed threshold alert (needs no Resend plan/webhook).
+  assert(
+    service.includes("auth_email_job_failure_threshold_exceeded"),
+    "Auth-email job-failure alert type must be registered.",
+  );
+  assert(service.includes("AUTH_EMAIL_JOB_FAILURE_ALERT_KEY"), "Auth-email job-failure alert must use persistent state.");
+  assert(
+    service.includes('metricKey: "auth.email.job_failed"'),
+    "Auth-email job-failure alert must count the auth.email.job_failed metric.",
+  );
+  assert(
+    service.includes("authEmailFailureCount?: number"),
+    "Auth-email job-failure alert payload may expose only the aggregate failure count.",
+  );
+
   const forbiddenPayloadFragments = [
     "tenantKey:",
     "productId:",
@@ -68,6 +83,7 @@ function run() {
           "queue_retry_reuse",
           "new_p0p1_issue_trigger_only",
           "media_integrity_defect_trigger",
+          "auth_email_job_failure_threshold_alert",
           "safe_payload_allowlist",
         ],
         checkedAt: new Date().toISOString(),
