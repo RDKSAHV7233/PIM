@@ -1362,3 +1362,70 @@ describe("BulkImportService.processJob — atomic claim", () => {
     expect(updateManyMock).not.toHaveBeenCalled();
   });
 });
+describe("BulkImportService.requeueDlq — reprocessing after reset", () => {
+  function makeRequeueService(options?: { deadLetterRowIds?: string[] }) {
+    const deadLetterRowIds = options?.deadLetterRowIds ?? ["row-1", "row-2"];
+    const findManyMock = jest.fn().mockResolvedValue(deadLetterRowIds.map((id) => ({ id })));
+    const updateManyMock = jest.fn().mockResolvedValue({ count: deadLetterRowIds.length });
+    const groupByMock = jest.fn().mockResolvedValue([]);
+    const jobFindUniqueMock = jest.fn().mockResolvedValue({ id: "job-1", status: "dead_letter", categoryId: "cat1" });
+    const jobUpdateMock = jest.fn().mockResolvedValue({ id: "job-1", status: "retrying" });
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportRow: {
+          findMany: findManyMock,
+          updateMany: updateManyMock,
+          groupBy: groupByMock,
+        },
+        bulkImportJob: {
+          findUnique: jobFindUniqueMock,
+          update: jobUpdateMock,
+        },
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+    };
+    const svc = new BulkImportService(
+      prisma as never,
+      {} as never,
+      { emitImportStatus: jest.fn().mockResolvedValue(undefined) } as never,
+      accessPolicy as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+    );
+    return { svc, findManyMock, updateManyMock };
+  }
+
+  it("resets dead-letter rows to queued and immediately re-drives processing instead of leaving them stuck", async () => {
+    const { svc, findManyMock, updateManyMock } = makeRequeueService();
+    const processJobSpy = jest.spyOn(svc, "processJob").mockResolvedValue({ id: "job-1", status: "processing" } as never);
+
+    const actor = { actorId: "u1", actorRole: "admin" as never };
+    const result = await svc.requeueDlq("job-1", 100, actor);
+
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ jobId: "job-1", status: BulkImportRowStatus.dead_letter }) }),
+    );
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: BulkImportRowStatus.queued, retryCount: 0, errorMessage: null }),
+      }),
+    );
+    expect(processJobSpy).toHaveBeenCalledWith("job-1", undefined, actor);
+    expect(result).toEqual({ id: "job-1", status: "processing" });
+  });
+
+  it("does not call processJob when there are no dead-letter rows to requeue", async () => {
+    const { svc } = makeRequeueService({ deadLetterRowIds: [] });
+    const processJobSpy = jest.spyOn(svc, "processJob").mockResolvedValue({ id: "job-1" } as never);
+    const getJobSpy = jest.spyOn(svc, "getJob").mockResolvedValue({ id: "job-1", status: "completed" } as never);
+
+    await svc.requeueDlq("job-1", 100, { actorId: "u1", actorRole: "admin" as never });
+
+    expect(processJobSpy).not.toHaveBeenCalled();
+    expect(getJobSpy).toHaveBeenCalledWith("job-1", expect.objectContaining({ actorId: "u1" }));
+  });
+});

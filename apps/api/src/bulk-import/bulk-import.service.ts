@@ -1122,23 +1122,32 @@ export class BulkImportService {
       select: { id: true },
     });
 
-    if (rows.length > 0) {
-      await this.prisma.tenant().bulkImportRow.updateMany({
-        where: {
-          id: {
-            in: rows.map((row) => row.id),
-          },
-        },
-        data: {
-          status: BulkImportRowStatus.queued,
-          retryCount: 0,
-          errorMessage: null,
-        },
-      });
+    if (rows.length === 0) {
+      await this.refreshJobCounters(jobId);
+      return this.getJob(jobId, actor);
     }
 
+    await this.prisma.tenant().bulkImportRow.updateMany({
+      where: {
+        id: {
+          in: rows.map((row) => row.id),
+        },
+      },
+      data: {
+        status: BulkImportRowStatus.queued,
+        retryCount: 0,
+        errorMessage: null,
+      },
+    });
+
     await this.refreshJobCounters(jobId);
-    return this.getJob(jobId, actor);
+    // Resetting dead-letter rows to "queued" only changes DB state — standalone
+    // jobs (no linked run) have no background worker that would ever pick them
+    // back up, so without driving processing here the rows sit at "queued"
+    // forever and keep tripping the internal-ops stuck_jobs_threshold_exceeded
+    // alert. Re-run processing immediately instead of leaving that to a
+    // separate, easy-to-forget follow-up call.
+    return this.processJob(jobId, undefined, actor);
   }
 
   async buildErrorReportCsv(jobId: string, actor?: PolicyActor) {
