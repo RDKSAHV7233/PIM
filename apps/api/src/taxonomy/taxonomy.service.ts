@@ -245,7 +245,15 @@ export class TaxonomyService {
       throw new BadRequestException("Cannot delete category with child categories");
     }
 
-    const productCount = await this.prisma.tenant().product.count({ where: { categoryId: id, deletedAt: null } });
+    // Product.category is onDelete: Restrict at the DB level, and that FK does not
+    // distinguish soft-deleted rows — a product only stops referencing its category
+    // once it's purged (see CatalogService.purgeProduct), not once it's soft-deleted
+    // (CatalogService.deleteProduct only sets deletedAt; categoryId is left intact).
+    // Counting only deletedAt: null products let this check pass while a soft-deleted
+    // product still pointed at the category, so the delete below hit the DB constraint
+    // directly and surfaced as an unhandled PrismaClientUnknownRequestError instead of
+    // this 400.
+    const productCount = await this.prisma.tenant().product.count({ where: { categoryId: id } });
     if (productCount > 0) {
       throw new BadRequestException("Cannot delete category with attached products");
     }
