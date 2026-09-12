@@ -639,8 +639,8 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async enqueueAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
-    if (!this.resolveDestinationUrl()) {
-      this.logger.warn("Internal ops alert delivery skipped because destination is not configured.", {
+    if (!this.resolveDestinationUrl() && !this.resolveSlackWebhookUrl()) {
+      this.logger.warn("Internal ops alert delivery skipped because no destination is configured.", {
         alertType: envelope.alertType,
       });
       return;
@@ -669,6 +669,12 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async deliverAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
+    // Slack delivery is best-effort and independent of the legacy sink below: it
+    // must never block or fail the primary delivery (which drives this queue
+    // consumer's retry/backpressure behavior), and it must still fire even when
+    // the legacy sink destination isn't configured at all.
+    await this.deliverSlackAlert(envelope);
+
     const destinationUrl = this.resolveDestinationUrl();
     if (!destinationUrl) {
       this.logger.warn("Internal ops alert delivery skipped because destination is not configured.", {
@@ -690,6 +696,48 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
 
     if (!response.ok) {
       throw new Error(`Internal ops alert destination returned ${response.status}`);
+    }
+  }
+
+  private async deliverSlackAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
+    const slackWebhookUrl = this.resolveSlackWebhookUrl();
+    if (!slackWebhookUrl) {
+      return;
+    }
+
+    try {
+      const response = await fetch(slackWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: this.buildSlackMessageText(envelope) }),
+        signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        throw new Error(`Slack webhook returned ${response.status}`);
+      }
+    } catch (error: unknown) {
+      this.logger.warn("Internal ops Slack alert delivery failed.", {
+        alertType: envelope.alertType,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private buildSlackMessageText(envelope: InternalOpsAlertEnvelope): string {
+    const severityLabel = envelope.severity.toUpperCase();
+    const envLabel = envelope.environment;
+    const link = envelope.internalUrl;
+    switch (envelope.alertType) {
+      case "error_authority_new_p0p1_issue":
+        return `:rotating_light: [${severityLabel}] New ${severityLabel} issue in ${envLabel} — issue \`${envelope.issueId ?? "unknown"}\`. <${link}|View in Error Authority>`;
+      case "stuck_jobs_threshold_exceeded":
+        return `:warning: [${severityLabel}] ${normalizeCount(envelope.stuckCount)} job(s) stuck for over ${envelope.stuckAgeThresholdHours ?? INTERNAL_OPS_STUCK_THRESHOLD_HOURS}h in ${envLabel}. <${link}|View stuck jobs>`;
+      case "media_integrity_defect_detected":
+        return `:warning: [${severityLabel}] Media integrity defects in ${envLabel}: ${normalizeCount(envelope.missingCount)} missing, ${normalizeCount(envelope.unverifiableCount)} unverifiable across ${normalizeCount(envelope.affectedTenantCount)} tenant(s). <${link}|View details>`;
+      case "auth_email_job_failure_threshold_exceeded":
+        return `:warning: [${severityLabel}] ${normalizeCount(envelope.authEmailFailureCount)} auth email job failures in the last ${envelope.authEmailFailureWindowMinutes ?? AUTH_EMAIL_JOB_FAILURE_WINDOW_MS / (60 * 1000)} min in ${envLabel} (threshold ${envelope.authEmailFailureThreshold ?? AUTH_EMAIL_JOB_FAILURE_THRESHOLD}). <${link}|View details>`;
+      default:
+        return `:warning: [${severityLabel}] Internal ops alert (${envelope.alertType}) in ${envLabel}. <${link}|View details>`;
     }
   }
 
@@ -751,6 +799,23 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       // fall through to the redacted warning below
     }
     this.logger.warn("Internal ops alert destination is invalid; delivery disabled.");
+    return null;
+  }
+
+  private resolveSlackWebhookUrl(): string | null {
+    const raw = String(process.env.OPS_ALERT_SLACK_WEBHOOK_URL ?? "").trim();
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol === "https:") {
+        return parsed.toString();
+      }
+    } catch {
+      // fall through to the warning below
+    }
+    this.logger.warn("Internal ops Slack alert webhook is invalid; Slack delivery disabled.");
     return null;
   }
 
