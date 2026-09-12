@@ -1,0 +1,49 @@
+name: Staging P0/P1 Resolve (one-time #801 action)
+
+# Manual-dispatch only. Resolves the 3 records dispositioned in #801 as
+# "fixed" / "transient, safe to resolve", and confirms the 4th (already
+# suspected resolved from a disappearance between two staging dumps) via
+# the resolve endpoint's own idempotent response. See
+# scripts/staging-p0p1-resolve-and-confirm.cjs for the exact target IDs
+# and reasoning, and #801 for the full disposition evidence.
+#
+# Uses the same admin-authenticated STAGING_SMOKE_* credentials the
+# read-only "Dump open P0/P1 issue records" step in deploy-staging.yml
+# already uses against the same endpoint family.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  resolve-and-confirm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve and confirm #801 P0/P1 records
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          P0P1_RESOLVE_OUTPUT: .run-logs/p0p1-resolve-and-confirm-${{ github.run_id }}.json
+        run: |
+          node scripts/staging-p0p1-resolve-and-confirm.cjs
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0p1-resolve-and-confirm-${{ github.run_id }}
+          path: .run-logs/p0p1-resolve-and-confirm-*.json
+          retention-days: 90
+          if-no-files-found: warn
