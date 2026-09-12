@@ -51,6 +51,7 @@ module.exports = {
     "**/bulk-import/bulk-import-run-validate.service.spec.ts",
     "**/bulk-import/csv-safe.spec.ts",
     "**/bulk-import/bulk-import-storage.service.spec.ts",
+    "**/bulk-import/bulk-import-stale-row-recovery.service.spec.ts",
     "**/connector-installer/credential-encryption.util.spec.ts",
     "**/connector-installer/connector-oauth-state.spec.ts",
     "**/connectors/shopify/shopify-oauth-hmac.spec.ts",
