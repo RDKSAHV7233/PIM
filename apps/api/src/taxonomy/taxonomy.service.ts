@@ -11,6 +11,7 @@ import {
 } from "../common/pagination/cursor-pagination";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { withSoftDeleteBypass } from "../common/prisma-soft-delete.middleware";
 import { PrismaService } from "../prisma/prisma.service";
 import { type AppRole } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
@@ -249,11 +250,15 @@ export class TaxonomyService {
     // distinguish soft-deleted rows — a product only stops referencing its category
     // once it's purged (see CatalogService.purgeProduct), not once it's soft-deleted
     // (CatalogService.deleteProduct only sets deletedAt; categoryId is left intact).
-    // Counting only deletedAt: null products let this check pass while a soft-deleted
-    // product still pointed at the category, so the delete below hit the DB constraint
-    // directly and surfaced as an unhandled PrismaClientUnknownRequestError instead of
-    // this 400.
-    const productCount = await this.prisma.tenant().product.count({ where: { categoryId: id } });
+    // The global tenant-scope extension (applyProductSoftDeleteScope) silently injects
+    // `deletedAt: null` into every Product count/find query, so this check needs the
+    // documented bypass to see soft-deleted-but-not-purged products too — otherwise it
+    // passes while one still references the category, and the delete below hits the DB
+    // constraint directly, surfacing an unhandled PrismaClientUnknownRequestError
+    // instead of this 400.
+    const productCount = await this.prisma.tenant().product.count(
+      withSoftDeleteBypass<Prisma.ProductCountArgs>({ where: { categoryId: id } }),
+    );
     if (productCount > 0) {
       throw new BadRequestException("Cannot delete category with attached products");
     }
