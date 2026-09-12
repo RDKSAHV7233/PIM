@@ -7,6 +7,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { BulkImportController } from "./bulk-import.controller";
 import { BulkImportService } from "./bulk-import.service";
 import { BulkImportRunService } from "./bulk-import-run.service";
+import { BulkImportStaleRowRecoveryService } from "./bulk-import-stale-row-recovery.service";
 import { BulkImportStorageService } from "./bulk-import-storage.service";
 
 @Module({
@@ -21,7 +22,7 @@ import { BulkImportStorageService } from "./bulk-import-storage.service";
     MulterModule.register({ storage: undefined, limits: { fileSize: 32 * 1024 * 1024 } }),
   ],
   controllers: [BulkImportController],
-  providers: [BulkImportService, BulkImportRunService, BulkImportStorageService],
+  providers: [BulkImportService, BulkImportRunService, BulkImportStorageService, BulkImportStaleRowRecoveryService],
   exports: [BulkImportService, BulkImportRunService, BulkImportStorageService],
 })
 export class BulkImportModule {}
