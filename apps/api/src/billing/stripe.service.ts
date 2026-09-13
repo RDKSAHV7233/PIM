@@ -1,12 +1,15 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 
 type StripeClient = InstanceType<typeof Stripe>;
 
-const STRIPE_API_VERSION = Stripe.API_VERSION;
+export const STRIPE_API_VERSION = "2026-05-27.dahlia";
+const STRIPE_WEBHOOK_PROCESSING_LEASE_MS = 5 * 60 * 1000;
+const STRIPE_WEBHOOK_ERROR_LIMIT = 1_000;
 const PLAN_TIER_TO_PRICE_ID_ENV: Record<string, string> = {
   STARTER: "STRIPE_PRICE_ID_STARTER",
   GROWTH: "STRIPE_PRICE_ID_GROWTH",
@@ -212,6 +215,111 @@ export class StripeService implements OnModuleInit {
       throw new Error("STRIPE_WEBHOOK_SECRET_NOT_CONFIGURED");
     }
     return this.getClient().webhooks.constructEvent(payload, signature, secret);
+  }
+
+  async reserveWebhookEvent(eventId: string, eventType: string): Promise<{ accepted: boolean; reason?: "processed" | "in_progress" }> {
+    const normalizedEventId = String(eventId ?? "").trim();
+    const normalizedEventType = String(eventType ?? "").trim() || "unknown";
+    if (!normalizedEventId) {
+      throw new Error("STRIPE_WEBHOOK_EVENT_ID_MISSING");
+    }
+    const now = new Date();
+    const leaseUntil = new Date(now.getTime() + STRIPE_WEBHOOK_PROCESSING_LEASE_MS);
+    return this.prisma.tenant().$transaction(async (tx) => {
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
+      // $executeRaw, which discards the result set, to take the lock.
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${normalizedEventId}, 0)::bigint)`);
+      const existing = await tx.$queryRaw<
+        Array<{ id: string; processingStatus: string; processedAt: Date | null; processingLeaseUntil: Date | null }>
+      >(Prisma.sql`
+        SELECT
+          id,
+          processing_status AS "processingStatus",
+          processed_at AS "processedAt",
+          processing_lease_until AS "processingLeaseUntil"
+        FROM stripe_webhook_events
+        WHERE external_event_id = ${normalizedEventId}
+        LIMIT 1
+      `);
+      const row = existing[0];
+      if (row?.processedAt || row?.processingStatus === "processed") {
+        return { accepted: false, reason: "processed" };
+      }
+      if (
+        row?.processingStatus === "processing" &&
+        row.processingLeaseUntil &&
+        row.processingLeaseUntil.getTime() > now.getTime()
+      ) {
+        return { accepted: false, reason: "in_progress" };
+      }
+      if (row) {
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE stripe_webhook_events
+          SET
+            event_type = ${normalizedEventType},
+            processing_status = 'processing',
+            processing_attempt_count = processing_attempt_count + 1,
+            processing_lease_until = ${leaseUntil},
+            last_error = NULL,
+            updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+      } else {
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO stripe_webhook_events (
+            id,
+            external_event_id,
+            event_type,
+            processing_status,
+            processing_attempt_count,
+            processing_lease_until,
+            received_at,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${randomUUID()},
+            ${normalizedEventId},
+            ${normalizedEventType},
+            'processing',
+            1,
+            ${leaseUntil},
+            NOW(),
+            NOW(),
+            NOW()
+          )
+        `);
+      }
+      return { accepted: true };
+    });
+  }
+
+  async markWebhookEventProcessed(eventId: string, tenantKey: string | null): Promise<void> {
+    await this.prisma.tenant().$executeRaw(Prisma.sql`
+      UPDATE stripe_webhook_events
+      SET
+        tenant_key = ${tenantKey},
+        processing_status = 'processed',
+        processing_lease_until = NULL,
+        processed_at = NOW(),
+        last_error = NULL,
+        updated_at = NOW()
+      WHERE external_event_id = ${eventId}
+    `);
+  }
+
+  async markWebhookEventFailed(eventId: string, error: unknown, tenantKey: string | null = null): Promise<void> {
+    const message = (error instanceof Error ? error.message : String(error ?? "unknown")).slice(0, STRIPE_WEBHOOK_ERROR_LIMIT);
+    await this.prisma.tenant().$executeRaw(Prisma.sql`
+      UPDATE stripe_webhook_events
+      SET
+        tenant_key = ${tenantKey},
+        processing_status = 'failed',
+        processing_lease_until = NULL,
+        last_error = ${message},
+        updated_at = NOW()
+      WHERE external_event_id = ${eventId}
+    `);
   }
 
   private async getStoredIds(

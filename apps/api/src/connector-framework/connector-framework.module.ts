@@ -18,6 +18,7 @@ import { ConnectorHeartbeatService } from "./connector-heartbeat.service";
 import { ConnectorHttpClient } from "./connector-http-client.service";
 import { ConnectorSubmissionStorageService } from "./connector-submission-storage.service";
 import { ConnectorWebhookIngestionService } from "./connector-webhook-ingestion.service";
+import { ConnectorWebhookLeaseSweeperService } from "./connector-webhook-lease-sweeper.service";
 import { ConnectorWebhookProcessingService } from "./connector-webhook-processing.service";
 import { ConnectorWebhookRelayController } from "./connector-webhook-relay.controller";
 import { ConnectorFrameworkService } from "./connector-framework.service";
@@ -46,6 +47,7 @@ import { ConnectorRegistry } from "./connector.registry";
     ConnectorFrameworkService,
     ConnectorWebhookIngestionService,
     ConnectorWebhookProcessingService,
+    ConnectorWebhookLeaseSweeperService,
   ],
   exports: [
     ConnectorRegistry,

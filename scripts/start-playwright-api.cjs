@@ -992,6 +992,12 @@ const env = {
     process.env.PIM_COMMERCIAL_OPS_TOKEN ||
     fileEnv.PIM_COMMERCIAL_OPS_TOKEN ||
     "vexa-pim-playwright-commercial-ops-token",
+  // E2E outbound-webhook specs (admin-webhooks.spec.js) point endpoints at a local
+  // http://127.0.0.1 capture server. Webhook target validation otherwise requires
+  // HTTPS + a public address. Same local/E2E-only escape hatch the integration
+  // suites use (apps/api/test/integration/outbound-webhooks.test.cjs). Never set
+  // this on staging or production.
+  PIM_UNSAFE_HTTP_WEBHOOK_TARGETS: "true",
   CREDENTIAL_ENCRYPTION_KEY_V1:
     process.env.CREDENTIAL_ENCRYPTION_KEY_V1 ||
     fileEnv.CREDENTIAL_ENCRYPTION_KEY_V1 ||

@@ -430,6 +430,29 @@ export class AmazonConnector implements ConnectorInterface {
       return null;
     }
 
+    return this.mapEnvelopeToEvent(envelope);
+  }
+
+  parseStoredWebhookEvent(args: {
+    payload: unknown;
+    eventType: string;
+    rawEventId: string;
+  }): ParsedWebhookEvent | null {
+    // Replay path: the persisted payload column is the full, already-verified
+    // notification envelope (JSON.parse of the original body). No signature check.
+    let envelope: AmazonNotificationEnvelope | null;
+    try {
+      envelope = this.parseNotificationEnvelope(Buffer.from(JSON.stringify(args.payload ?? {}), "utf8"));
+    } catch {
+      envelope = null;
+    }
+    if (!envelope) {
+      return null;
+    }
+    return this.mapEnvelopeToEvent(envelope);
+  }
+
+  private mapEnvelopeToEvent(envelope: AmazonNotificationEnvelope): ParsedWebhookEvent | null {
     const notificationType = String(envelope.NotificationType ?? "").trim().toUpperCase();
     const payload = envelope.Payload ?? {};
     const rawEventId = String(envelope.NotificationMetadata?.NotificationId ?? "").trim();

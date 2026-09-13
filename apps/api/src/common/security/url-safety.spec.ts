@@ -62,6 +62,31 @@ describe("validateWebhookTargetUrl", () => {
     await expect(validateWebhookTargetUrl("https://0.0.0.0/hook")).rejects.toThrow("private or reserved IP");
   });
 
+  it("rejects a host with no DNS records by default (dispatch time fails closed)", async () => {
+    await expect(
+      validateWebhookTargetUrl("https://no-such-host.invalid/hook"),
+    ).rejects.toThrow("must resolve to a public address");
+  });
+
+  it("soft-allows a host with no DNS records when requireResolvable is false (registration)", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const result = await validateWebhookTargetUrl("https://no-such-host.invalid/hook", {
+        requireResolvable: false,
+      });
+      expect(result).toBe("https://no-such-host.invalid/hook");
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still blocks a private IP even when requireResolvable is false", async () => {
+    await expect(
+      validateWebhookTargetUrl("https://10.0.0.1/hook", { requireResolvable: false }),
+    ).rejects.toThrow("private or reserved IP");
+  });
+
   it("allows HTTP and loopback when PIM_UNSAFE_HTTP_WEBHOOK_TARGETS is true", async () => {
     const old = process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS;
     process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS = "true";

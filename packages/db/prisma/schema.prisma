@@ -1023,19 +1023,44 @@ model ConnectorSubmission {
 }
 
 model ConnectorWebhookEvent {
-  id              String    @id
-  tenantKey       String    @default("default") @map("tenant_key")
-  installationId  String    @map("installation_id")
-  externalEventId String    @map("external_event_id")
-  eventType       String    @map("event_type")
-  payload         Json
-  receivedAt      DateTime  @default(now()) @map("received_at")
-  processedAt     DateTime? @map("processed_at")
-  submissionId    String?   @map("submission_id")
+  id                     String    @id
+  tenantKey              String    @default("default") @map("tenant_key")
+  installationId         String    @map("installation_id")
+  externalEventId        String    @map("external_event_id")
+  eventType              String    @map("event_type")
+  payload                Json
+  rawBodySha256          String?   @map("raw_body_sha256")
+  processingStatus       String    @default("received") @map("processing_status")
+  processingAttemptCount Int       @default(0) @map("processing_attempt_count")
+  processingLeaseUntil   DateTime? @map("processing_lease_until")
+  lastError              String?   @map("last_error")
+  receivedAt             DateTime  @default(now()) @map("received_at")
+  processedAt            DateTime? @map("processed_at")
+  submissionId           String?   @map("submission_id")
 
   @@unique([installationId, externalEventId], map: "connector_webhook_installation_event_unique")
   @@index([tenantKey, installationId, processedAt], map: "idx_connector_webhooks_tenant_processed")
+  @@index([tenantKey, processingStatus, processingLeaseUntil, receivedAt], map: "idx_connector_webhooks_recovery")
   @@map("connector_webhook_events")
+}
+
+model StripeWebhookEvent {
+  id                     String    @id @default(cuid())
+  externalEventId        String    @map("external_event_id")
+  eventType              String    @map("event_type")
+  tenantKey              String?   @map("tenant_key")
+  processingStatus       String    @default("received") @map("processing_status")
+  processingAttemptCount Int       @default(0) @map("processing_attempt_count")
+  processingLeaseUntil   DateTime? @map("processing_lease_until")
+  lastError              String?   @map("last_error")
+  receivedAt             DateTime  @default(now()) @map("received_at")
+  processedAt            DateTime? @map("processed_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  @@unique([externalEventId], map: "stripe_webhook_event_unique")
+  @@index([processingStatus, processingLeaseUntil, receivedAt], map: "idx_stripe_webhook_events_recovery")
+  @@map("stripe_webhook_events")
 }
 
 model ConnectorMappingVersion {
@@ -1285,24 +1310,28 @@ model ConnectorProductLink {
 }
 
 model OutboundWebhookDelivery {
-  id             String    @id @default(cuid())
-  tenantKey      String    @default("default") @map("tenant_key")
-  endpointId     String    @map("endpoint_id")
-  eventType      String    @map("event_type")
-  eventId        String    @map("event_id")
-  status         String    @default("queued")
-  attemptCount   Int       @default(0) @map("attempt_count")
-  requestBody    Json      @default("{}") @map("request_body")
-  responseStatus Int?      @map("response_status")
-  responseBody   String?   @map("response_body")
-  errorMessage   String?   @map("error_message")
-  attemptedAt    DateTime? @map("attempted_at")
-  deliveredAt    DateTime? @map("delivered_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id                   String    @id @default(cuid())
+  tenantKey            String    @default("default") @map("tenant_key")
+  endpointId           String    @map("endpoint_id")
+  eventType            String    @map("event_type")
+  eventId              String    @map("event_id")
+  status               String    @default("queued")
+  attemptCount         Int       @default(0) @map("attempt_count")
+  requestBody          Json      @default("{}") @map("request_body")
+  responseStatus       Int?      @map("response_status")
+  responseBody         String?   @map("response_body")
+  errorMessage         String?   @map("error_message")
+  queueJobId           String?   @map("queue_job_id")
+  lastEnqueueAttemptAt DateTime? @map("last_enqueue_attempt_at")
+  enqueueError         String?   @map("enqueue_error")
+  attemptedAt          DateTime? @map("attempted_at")
+  deliveredAt          DateTime? @map("delivered_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   @@index([tenantKey, endpointId, createdAt(sort: Desc)], map: "idx_outbound_webhook_deliveries_endpoint_created")
   @@index([tenantKey, eventType, status, createdAt(sort: Desc)], map: "idx_outbound_webhook_deliveries_event_status_created")
+  @@index([tenantKey, status, attemptedAt, createdAt], map: "idx_outbound_webhook_deliveries_stuck_queued")
   @@map("outbound_webhook_deliveries")
 }
 

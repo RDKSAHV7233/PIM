@@ -35,7 +35,9 @@ async function bootstrap() {
     queueBackend: env.QUEUE_BACKEND,
     port: env.PORT,
   });
+  bootDebug("app-module:import:start");
   const { AppModule } = await import("./app.module");
+  bootDebug("app-module:import:done");
 
   if (env.SENTRY_DSN) {
     try {
@@ -87,6 +89,9 @@ async function bootstrap() {
   // Resend delivery webhook is Svix-signed over the exact request bytes — it
   // needs the raw body, same as the Stripe webhook above, before json() parses.
   app.use("/api/v1/webhooks/resend", raw({ type: "*/*" }));
+  // Connector webhook relay is HMAC-signed over the exact request bytes -- it
+  // needs the raw body before json() parses, same as the Stripe/Resend webhooks above.
+  app.use("/api/v1/connector-webhooks/relay", raw({ type: "*/*", limit: EXPRESS_BODY_LIMIT }));
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));
   app.use(

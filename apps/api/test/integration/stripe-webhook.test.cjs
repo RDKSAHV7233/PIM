@@ -84,7 +84,7 @@ assert("storeExternalIds() stores customerId and subscriptionId in DB",
   serviceSrc.includes("storeExternalIds") && serviceSrc.includes("externalSubscriptionId"));
 assert("createCustomerAndSubscription is non-fatal (catches errors)",
   serviceSrc.includes("try") && serviceSrc.includes("logger.warn") && serviceSrc.includes("createCustomerAndSubscription"));
-assert("STRIPE_API_VERSION pinned", serviceSrc.includes("2026-04-22") || serviceSrc.includes("2024-12-18"));
+assert("STRIPE_API_VERSION pinned", serviceSrc.includes("2026-05-27.dahlia"));
 // H-3: idempotent trial provisioning
 assert("createCustomerAndSubscription accepts/derives an idempotency key",
   serviceSrc.includes("idempotencyKey") && serviceSrc.includes("signup-trial:"));
