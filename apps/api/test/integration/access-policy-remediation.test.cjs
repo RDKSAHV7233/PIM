@@ -163,30 +163,6 @@ async function waitForWebhookDeliveryRow(baseUrl, token, endpointId, predicate, 
   throw new Error(`Timed out waiting for outbound webhook delivery row for endpoint ${endpointId} after ${timeoutMs}ms`);
 }
 
-async function waitForBulkEditOperation(baseUrl, token, operationId, timeoutMs) {
-  const terminal = new Set(["completed", "completed_with_errors", "failed"]);
-  const deadline = Date.now() + timeoutMs;
-  let last = null;
-  while (Date.now() < deadline) {
-    const response = await apiRequest(
-      baseUrl,
-      "GET",
-      `/bulk-edit/operations/${encodeURIComponent(operationId)}`,
-      token,
-    );
-    if (response.status === 200 && response.payload) {
-      last = response.payload;
-      if (terminal.has(String(response.payload.status))) {
-        return response.payload;
-      }
-    }
-    await sleep(250);
-  }
-  throw new Error(
-    `Timed out waiting for bulk edit operation ${operationId} to reach a terminal status after ${timeoutMs}ms (last=${JSON.stringify(last)})`,
-  );
-}
-
 async function waitForHealth(baseUrl, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -354,11 +330,6 @@ async function run() {
     PIM_AUTH_PASSWORD: authPassword,
     PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
     PIM_ACCESS_POLICY_SHADOW_MODE: "true",
-    // The boundary failure webhook fixture below registers an http:// loopback
-    // target on purpose (delivery is expected to fail at fetch time). Mirror
-    // outbound-webhooks.test.cjs and allow it for this local integration run.
-    // Never set this in production — it disables SSRF and HTTPS enforcement.
-    PIM_UNSAFE_HTTP_WEBHOOK_TARGETS: "true",
   };
 
   const prisma = new PrismaClient({
@@ -1860,33 +1831,7 @@ async function run() {
       adminBulkEditAllowed.status === 200 || adminBulkEditAllowed.status === 201,
       `admin bulk edit status update failed: got ${adminBulkEditAllowed.status} payload=${JSON.stringify(adminBulkEditAllowed.payload)}`,
     );
-    // bulk-edit/apply is now async: the POST creates a queued BulkEditOperation
-    // (status:"queued", appliedCount:0) and processApplyJob() applies the updates
-    // off the request path. Accept the operation, then poll it to a terminal
-    // status and assert exactly one product was updated.
-    const adminBulkEditOperationId = adminBulkEditAllowed.payload?.id;
-    assert(
-      typeof adminBulkEditOperationId === "string" && adminBulkEditOperationId.length > 0,
-      `expected bulk edit apply to return an operation id, got ${JSON.stringify(adminBulkEditAllowed.payload)}`,
-    );
-    const adminBulkEditOperation = await waitForBulkEditOperation(
-      baseUrl,
-      adminToken,
-      adminBulkEditOperationId,
-      30_000,
-    );
-    assert(
-      String(adminBulkEditOperation.status) === "completed",
-      `expected admin bulk edit operation to complete cleanly, got ${JSON.stringify({
-        status: adminBulkEditOperation.status,
-        appliedCount: adminBulkEditOperation.appliedCount,
-        failedCount: adminBulkEditOperation.failedCount,
-      })}`,
-    );
-    assert(
-      Number(adminBulkEditOperation.appliedCount ?? 0) === 1,
-      `expected admin bulk edit to apply exactly once, got ${JSON.stringify(adminBulkEditOperation)}`,
-    );
+    assert(Number(adminBulkEditAllowed.payload?.appliedCount ?? 0) === 1, "expected admin bulk edit to apply exactly once");
 
     const editorBulkImportDenied = await apiRequest(baseUrl, "POST", "/bulk-import/jobs", editorToken, {
       categoryId: category.payload.id,
