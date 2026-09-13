@@ -185,3 +185,125 @@ describe("WorkspaceUsersService — plan-tier role gating", () => {
     await expect(bcrypt.compare("staging-shared-password-must-not-be-used", createPayload.passwordHash)).resolves.toBe(false);
   });
 });
+
+// ─── deactivateUser / last-admin guard (#816) ────────────────────────────────
+//
+// Live-reproduced bug: with exactly one active admin, deactivating them
+// succeeded instead of being rejected — Admin Coverage silently went 1 → 0.
+// Root-caused to the guard's count-then-update running as two separate,
+// non-transactional round trips against the tenant PrismaClient. The fix
+// wraps both in a single Serializable transaction. These tests target that
+// contract directly: the count and the update must happen inside the same
+// `$transaction` call, and a sole active admin must never be deactivatable.
+
+function makeDeactivateStubs(options: { targetRole: string; targetActive: boolean; activeAdminCount: number }) {
+  const targetRow = {
+    id: "row-target",
+    userId: "target@tenant",
+    role: options.targetRole,
+    assignedRoles: [] as string[],
+    isActive: options.targetActive,
+    lockedUntil: null,
+    lastSignInAt: null,
+    createdBy: "actor@tenant",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const txAuthIdentity = {
+    count: jest.fn().mockResolvedValue(options.activeAdminCount),
+    update: jest.fn().mockResolvedValue({ ...targetRow, isActive: false }),
+  };
+
+  const authIdentity = {
+    findFirst: jest.fn().mockResolvedValue(targetRow),
+  };
+
+  const transactionSpy = jest.fn(async (callback: (tx: unknown) => unknown, txOptions?: unknown) => {
+    return callback({ authIdentity: txAuthIdentity });
+  });
+
+  const tenantClient = {
+    authIdentity,
+    $transaction: transactionSpy,
+  };
+  const prisma = {
+    tenant: jest.fn().mockReturnValue(tenantClient),
+  } as unknown as PrismaService;
+
+  const audit = {
+    record: jest.fn().mockResolvedValue(undefined),
+  } as unknown as AuditService;
+
+  const planUsage = {
+    getTenantPlanTier: jest.fn().mockResolvedValue("ENTERPRISE"),
+    checkLimit: jest.fn().mockResolvedValue({ allowed: true, limit: 999, current: 0 }),
+  } as unknown as PlanUsageService;
+
+  return { prisma, audit, planUsage, txAuthIdentity, transactionSpy };
+}
+
+describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () => {
+  it("rejects deactivating the sole active admin and never applies the update", async () => {
+    const { prisma, audit, planUsage, txAuthIdentity } = makeDeactivateStubs({
+      targetRole: "admin",
+      targetActive: true,
+      activeAdminCount: 1,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant"),
+    ).rejects.toMatchObject({
+      response: { error: "LAST_ADMIN_GUARD" },
+    });
+
+    expect(txAuthIdentity.update).not.toHaveBeenCalled();
+  });
+
+  it("allows deactivating an admin when another active admin remains", async () => {
+    const { prisma, audit, planUsage, txAuthIdentity } = makeDeactivateStubs({
+      targetRole: "admin",
+      targetActive: true,
+      activeAdminCount: 2,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant"),
+    ).resolves.toMatchObject({ isActive: false });
+
+    expect(txAuthIdentity.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the guard count and the update inside one Serializable transaction, not two round trips", async () => {
+    const { prisma, audit, planUsage, transactionSpy } = makeDeactivateStubs({
+      targetRole: "admin",
+      targetActive: true,
+      activeAdminCount: 2,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant");
+
+    expect(transactionSpy).toHaveBeenCalledTimes(1);
+    const isolationOptions = transactionSpy.mock.calls[0]?.[1] as { isolationLevel?: string } | undefined;
+    expect(isolationOptions?.isolationLevel).toBe("Serializable");
+  });
+
+  it("does not run the admin-count guard at all for a non-admin target", async () => {
+    const { prisma, audit, planUsage, txAuthIdentity } = makeDeactivateStubs({
+      targetRole: "editor",
+      targetActive: true,
+      activeAdminCount: 0,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant"),
+    ).resolves.toMatchObject({ isActive: false });
+
+    expect(txAuthIdentity.count).not.toHaveBeenCalled();
+    expect(txAuthIdentity.update).toHaveBeenCalledTimes(1);
+  });
+});

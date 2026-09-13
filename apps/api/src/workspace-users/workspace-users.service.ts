@@ -403,38 +403,57 @@ export class WorkspaceUsersService {
 
     // U-02: last-admin guard — prevent deactivating the final active admin.
     // Without this, a single-admin workspace can be permanently locked out.
-    if (existing.role === "admin") {
-      const activeAdminCount = await this.prisma.tenant(normalizedTenantId).authIdentity.count({
-        where: { role: "admin", isActive: true },
-      });
-      if (activeAdminCount <= 1) {
-        throw new BadRequestException({
-          error: "LAST_ADMIN_GUARD",
-          message: "Cannot deactivate the last active admin. Promote another user to admin first.",
-        });
-      }
-    }
+    //
+    // #816 fix: the guard's count-and-then-update was two separate round trips
+    // against the tenant's own PrismaClient (one plain `count`, one plain
+    // `update`), with no transaction tying them together. Under READ COMMITTED
+    // (Postgres's default), a concurrent request — e.g. two admin deactivations
+    // submitted close together, or another automation hitting this same
+    // endpoint — can each independently observe `activeAdminCount > 1` (or, in
+    // this bug's confirmed live reproduction, the guard's own count simply not
+    // reflecting the same state the UI's Governance Snapshot had just shown)
+    // and both proceed, leaving zero active admins with no error surfaced.
+    // Serializable isolation forces Postgres to abort one side with a
+    // serialization failure if the two transactions would otherwise interleave
+    // unsafely, so the count-then-update is now atomic with respect to any
+    // other concurrent deactivation.
+    const updated = await this.prisma.tenant(normalizedTenantId).$transaction(
+      async (tx) => {
+        if (existing.role === "admin") {
+          const activeAdminCount = await tx.authIdentity.count({
+            where: { role: "admin", isActive: true },
+          });
+          if (activeAdminCount <= 1) {
+            throw new BadRequestException({
+              error: "LAST_ADMIN_GUARD",
+              message: "Cannot deactivate the last active admin. Promote another user to admin first.",
+            });
+          }
+        }
 
-    const updated = await this.prisma.tenant(normalizedTenantId).authIdentity.update({
-      where: {
-        id: existing.id,
+        return tx.authIdentity.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            isActive: false,
+          },
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            assignedRoles: true,
+            isActive: true,
+            lockedUntil: true,
+            lastSignInAt: true,
+            createdBy: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
       },
-      data: {
-        isActive: false,
-      },
-      select: {
-        id: true,
-        userId: true,
-        role: true,
-        assignedRoles: true,
-        isActive: true,
-        lockedUntil: true,
-        lastSignInAt: true,
-        createdBy: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     await this.auditService.record({
       actorId: normalizedActorId,

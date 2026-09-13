@@ -214,10 +214,16 @@ export async function deactivateWorkspaceUserAction(formData: FormData) {
     if (error instanceof ApiHttpError) {
       const body = error.body as Record<string, unknown> | null;
       if (body?.error === "LAST_ADMIN_GUARD") {
-        redirectWithError("Cannot deactivate the last active admin. Promote another user to admin first.");
+        // #816 hygiene fix: redirect() throws internally in Next.js, so this call
+        // already terminates the function today — but that's implementation
+        // behavior, not a guarantee this file's control flow makes explicit
+        // anywhere else. Adding `return` removes the implicit dependency so a
+        // future refactor (e.g. wrapping this in another try/catch upstream)
+        // can't silently reintroduce a fallthrough to the success redirect below.
+        return redirectWithError("Cannot deactivate the last active admin. Promote another user to admin first.");
       }
     }
-    redirectWithError(error instanceof Error ? error.message : "Unable to deactivate workspace user.");
+    return redirectWithError(error instanceof Error ? error.message : "Unable to deactivate workspace user.");
   }
   redirectWithStatus("user-deactivated");
 }
