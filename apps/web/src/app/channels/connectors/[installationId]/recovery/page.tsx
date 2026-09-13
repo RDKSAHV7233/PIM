@@ -30,7 +30,7 @@ export default async function ConnectorRecoveryPage({ params, searchParams }: Re
   try {
     const [installations, groups] = await Promise.all([
       getInstalledConnectors({ role: actorRole, authHeader }),
-      getConnectorRecoveryGroups(installationId, { role: actorRole, authHeader }).catch(() => []),
+      getConnectorRecoveryGroups(installationId, { role: actorRole, authHeader }),
     ]);
 
     const installation = installations.find((item) => item.id === installationId);

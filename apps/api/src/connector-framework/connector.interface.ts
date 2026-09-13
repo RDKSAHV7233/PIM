@@ -367,6 +367,21 @@ export interface ConnectorInterface {
   ): Promise<ParsedWebhookEvent | null>;
 
   /**
+   * Re-derive a ParsedWebhookEvent from a persisted connector_webhook_events row
+   * whose original body/headers are no longer available. Used only by the lease
+   * sweeper to re-drive an event whose in-flight processing lease expired without
+   * a redelivery. The stored payload was already HMAC-verified when the row was
+   * first created by parseWebhookEvent(), so this path performs NO signature
+   * check. Return null if the event cannot be reconstructed from stored state.
+   */
+  parseStoredWebhookEvent?(args: {
+    payload: unknown;
+    eventType: string;
+    rawEventId: string;
+    installationId: string;
+  }): ParsedWebhookEvent | null;
+
+  /**
    * Whether this connector verifies HMAC signatures in parseWebhookEvent.
    * Defaults to true for all connectors with WEBHOOK_RECEIVE capability.
    * The ingestion service emits a security warning if this is false but the

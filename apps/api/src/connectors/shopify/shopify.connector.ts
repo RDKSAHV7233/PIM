@@ -892,6 +892,30 @@ export class ShopifyConnector implements ConnectorInterface {
       return null;
     }
 
+    return this.buildWebhookEvent(topic, rawEventId, payload);
+  }
+
+  parseStoredWebhookEvent(args: {
+    payload: unknown;
+    eventType: string;
+    rawEventId: string;
+  }): ParsedWebhookEvent | null {
+    // Replay path: args.eventType is the persisted Shopify topic; the row's
+    // payload was already HMAC-verified at ingestion, so no signature check.
+    const topic = String(args.eventType ?? "").trim().toLowerCase();
+    const rawEventId = String(args.rawEventId ?? "").trim();
+    if (!topic || !rawEventId) {
+      return null;
+    }
+    const payload = this.asRecord(args.payload) as ShopifyWebhookProductPayload;
+    return this.buildWebhookEvent(topic, rawEventId, payload);
+  }
+
+  private buildWebhookEvent(
+    topic: string,
+    rawEventId: string,
+    payload: ShopifyWebhookProductPayload,
+  ): ParsedWebhookEvent {
     const { status, channelErrors } = this.mapWebhookOutcome(topic, payload);
     return {
       eventType: topic,

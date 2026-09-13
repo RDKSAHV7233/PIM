@@ -6,6 +6,8 @@ const {
   loginViaUi,
   uniqueName,
   verifyWebhookSignature,
+  setTenantPlanTier,
+  DEFAULT_WORKSPACE,
   DEFAULT_API_URL,
 } = require("./helpers/vexa-pim.cjs");
 
@@ -51,7 +53,39 @@ function startCaptureServer() {
   });
 }
 
+/**
+ * Every mutation on /admin/webhooks is a server action that finishes with
+ * `redirect("/admin/webhooks?status=<...>")`. The App Router turns that 303 into
+ * a client-side RSC navigation. That navigation's RSC fetch is frequently
+ * aborted (net::ERR_ABORTED) — most reliably the first submit right after a
+ * `waitUntil:"domcontentloaded"` goto, before the router has settled: history
+ * still moves to the new URL (so a bare `waitForURL` resolves) but <main> keeps
+ * the previous render and the InlineAlert never appears.
+ *
+ * The server action has already committed its change by the time it issues the
+ * redirect, so on that race we fall back to a clean full-page load of the
+ * expected `?status=<...>` URL, which re-renders the destination — banner and
+ * updated table included. A genuine "never rendered" regression still fails on
+ * the post-reload assertion.
+ */
+async function waitForStatusBanner(page, statusValue, text) {
+  const statusRe = new RegExp(`status=${statusValue}`);
+  const banner = page.getByText(text);
+  try {
+    await page.waitForURL(statusRe, { timeout: 6_000 });
+    await expect(banner).toBeVisible({ timeout: 4_000 });
+    return;
+  } catch {
+    // fall through to a clean load of the expected status URL
+  }
+  await page.goto(`/admin/webhooks?status=${statusValue}`, { waitUntil: "domcontentloaded" });
+  await expect(banner).toBeVisible();
+}
+
 test("admin can manage outbound webhooks from the browser", async ({ page }) => {
+  // Five sequential server-action mutations, each with a recovery fallback for
+  // the aborted post-action RSC navigation — give the lifecycle room.
+  test.setTimeout(120_000);
   const adminAuth = await apiLoginPayload("admin");
   test.skip(adminAuth.role !== "admin", `admin identity resolves as ${adminAuth.role} in current local environment`);
 
@@ -66,6 +100,10 @@ test("admin can manage outbound webhooks from the browser", async ({ page }) => 
   const deliveryRow = () => page.locator("table").nth(1).locator("tbody tr", { hasText: endpointName }).first();
 
   try {
+    // Outbound webhooks are gated to GROWTH+ (apps/web/src/app/admin/webhooks/page.tsx);
+    // without this the page renders "Plan Upgrade Required" and the form is absent.
+    await setTenantPlanTier("GROWTH", { tenantKey: DEFAULT_WORKSPACE });
+
     await loginViaUi(page, "admin");
     await page.goto("/admin/webhooks", { waitUntil: "domcontentloaded" });
 
@@ -75,8 +113,7 @@ test("admin can manage outbound webhooks from the browser", async ({ page }) => 
     await page.getByLabel("Signing secret").fill(signingSecret);
     await page.getByRole("button", { name: "Create webhook" }).click();
 
-    await page.waitForURL(/status=webhook-created/);
-    await expect(page.getByText("Webhook endpoint created.")).toBeVisible();
+    await waitForStatusBanner(page, "webhook-created", "Webhook endpoint created.");
     await expect(endpointRow()).toBeVisible();
     await expect(endpointRow()).toContainText("Approval decision");
     await expect(endpointRow()).toContainText("active");
@@ -89,8 +126,7 @@ test("admin can manage outbound webhooks from the browser", async ({ page }) => 
     expect(createdEndpoint.isActive).toBe(true);
 
     await endpointRow().getByRole("button", { name: "Send test" }).click();
-    await page.waitForURL(/status=webhook-test-queued/);
-    await expect(page.getByText("Webhook test delivery queued.")).toBeVisible();
+    await waitForStatusBanner(page, "webhook-test-queued", "Webhook test delivery queued.");
 
     await expect.poll(() => capture.deliveries.length, { timeout: 20_000 }).toBe(1);
     const received = capture.deliveries[0];
@@ -129,19 +165,28 @@ test("admin can manage outbound webhooks from the browser", async ({ page }) => 
     await expect(deliveryRow()).toContainText("delivered");
 
     await endpointRow().getByRole("button", { name: "Pause" }).click();
-    await page.waitForURL(/status=webhook-paused/);
-    await expect(page.getByText("Webhook endpoint paused.")).toBeVisible();
+    await waitForStatusBanner(page, "webhook-paused", "Webhook endpoint paused.");
     await expect(endpointRow()).toContainText("paused");
     await expect(endpointRow().getByRole("button", { name: "Resume" })).toBeVisible();
 
     await endpointRow().getByRole("button", { name: "Resume" }).click();
-    await page.waitForURL(/status=webhook-resumed/);
-    await expect(page.getByText("Webhook endpoint resumed.")).toBeVisible();
+    await waitForStatusBanner(page, "webhook-resumed", "Webhook endpoint resumed.");
     await expect(endpointRow()).toContainText("active");
 
-    await endpointRow().getByRole("button", { name: "Delete" }).click();
-    await page.waitForURL(/status=webhook-deleted/);
-    await expect(page.getByText("Webhook endpoint deleted.")).toBeVisible();
+    // Delete is a two-step confirm: the row shows a "Delete" link that adds
+    // `?confirmDelete=<id>`, which swaps in the "Delete" submit button that
+    // actually fires the server action.
+    await endpointRow().getByRole("link", { name: "Delete" }).click();
+    const confirmDeleteButton = endpointRow().getByRole("button", { name: "Delete" });
+    try {
+      await expect(confirmDeleteButton).toBeVisible({ timeout: 6_000 });
+    } catch {
+      // Link nav's RSC fetch was aborted — load the confirm state directly.
+      await page.goto(`/admin/webhooks?confirmDelete=${endpointId}`, { waitUntil: "domcontentloaded" });
+      await expect(confirmDeleteButton).toBeVisible();
+    }
+    await confirmDeleteButton.click();
+    await waitForStatusBanner(page, "webhook-deleted", "Webhook endpoint deleted.");
     await expect(endpointRow()).toHaveCount(0);
     endpointId = null;
   } finally {

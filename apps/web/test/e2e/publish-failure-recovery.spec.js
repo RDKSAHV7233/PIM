@@ -12,6 +12,17 @@ const {
   uniqueName,
   updateProduct,
 } = require("./helpers/vexa-pim.cjs");
+const { seedConnectorCredentials } = require("./helpers/seed-connector-credentials.cjs");
+
+// The playwright_e2e schema ships a credential-less Flipkart installation, which
+// the connector heartbeat marks CREDENTIAL_EXPIRED — so export-job creation used
+// to fail with DESTINATION_NOT_FOUND and this spec self-skipped. Seed working-
+// looking credentials + restore the install to ACTIVE so job creation is
+// accepted; dispatch then still fails because the connector cannot reach
+// Flipkart, which is exactly the failure this spec follows into recovery.
+test.beforeAll(async () => {
+  await seedConnectorCredentials({ connectorSlug: "flipkart" });
+});
 
 test("admin can follow a failed publish from jobs into recovery guidance", async ({ page }) => {
   const adminToken = await apiLogin("admin");
@@ -60,8 +71,28 @@ test("admin can follow a failed publish from jobs into recovery guidance", async
       throw err;
     }
     exportJobId = String(exportJobResponse.id);
+    // Dispatch is partly async now (the CONNECTOR_SUBMISSION queue worker can
+    // land the terminal state after /process returns), so the POST may still
+    // report "processing". Poll the job to a terminal failure state.
     const processed = await apiRequest("POST", `/marketplace/export-jobs/${encodeURIComponent(exportJobId)}/process`, adminToken);
-    expect(["failed", "dead_letter"]).toContain(String(processed.status));
+    let terminalStatus = String(processed.status);
+    if (!["failed", "dead_letter"].includes(terminalStatus)) {
+      await expect
+        .poll(
+          async () => {
+            const job = await apiRequest(
+              "GET",
+              `/marketplace/export-jobs/${encodeURIComponent(exportJobId)}`,
+              adminToken,
+            );
+            terminalStatus = String(job.status);
+            return terminalStatus;
+          },
+          { timeout: 30_000, intervals: [500, 1000, 2000] },
+        )
+        .toMatch(/^(failed|dead_letter)$/);
+    }
+    expect(["failed", "dead_letter"]).toContain(terminalStatus);
 
     await loginViaUi(page, "admin");
 

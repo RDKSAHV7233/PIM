@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHmac } from "node:crypto";
@@ -27,6 +29,9 @@ import { UpdateOutboundWebhookDto } from "./dto/update-outbound-webhook.dto";
 
 const OUTBOUND_WEBHOOK_TIMEOUT_MS = 10_000;
 const OUTBOUND_WEBHOOK_MAX_RESPONSE_CHARS = 2_000;
+const OUTBOUND_WEBHOOK_STUCK_QUEUED_MS = 60_000;
+const OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS = 60_000;
+const OUTBOUND_WEBHOOK_ENQUEUE_ERROR_LIMIT = 1_000;
 
 export type OutboundWebhookDeliveryStatus = "queued" | "delivered" | "failed" | "skipped";
 
@@ -52,6 +57,8 @@ export interface OutboundWebhookDeliveryRecord {
   attemptCount: number;
   responseStatus: number | null;
   errorMessage: string | null;
+  queueJobId: string | null;
+  enqueueError: string | null;
   attemptedAt: string | null;
   deliveredAt: string | null;
   createdAt: string;
@@ -93,9 +100,11 @@ type WebhookPayload = {
 };
 
 @Injectable()
-export class OutboundWebhooksService {
+export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly encryptionKeys = loadCredentialEncryptionKeys(process.env);
   private readonly currentKeyVersion = resolveCurrentCredentialKeyVersion(process.env);
+  private recoveryTimer: ReturnType<typeof setInterval> | null = null;
+  private recoveringQueuedDeliveries = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -104,6 +113,22 @@ export class OutboundWebhooksService {
     private readonly planUsageService: PlanUsageService,
   ) {
     this.registerWorker();
+  }
+
+  onApplicationBootstrap(): void {
+    if (String(process.env.OUTBOUND_WEBHOOK_RECOVERY_DISABLED ?? "").trim().toLowerCase() === "true") {
+      return;
+    }
+    this.recoveryTimer = setInterval(() => {
+      void this.recoverStuckQueuedDeliveries();
+    }, OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS);
+  }
+
+  onApplicationShutdown(): void {
+    if (this.recoveryTimer) {
+      clearInterval(this.recoveryTimer);
+      this.recoveryTimer = null;
+    }
   }
 
   async listEndpoints(tenantKeyInput: string): Promise<OutboundWebhookEndpointRecord[]> {
@@ -137,7 +162,10 @@ export class OutboundWebhooksService {
   ): Promise<OutboundWebhookEndpointRecord> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
     const name = String(dto.name ?? "").trim();
-    const targetUrl = await this.normalizeTargetUrl(dto.targetUrl);
+    // Registration soft-allows a target that currently returns no DNS records
+    // (transient resolver failure / offline box). Private/loopback/metadata IPs
+    // and blocked hosts are still rejected here; dispatch re-validates strictly.
+    const targetUrl = await this.normalizeTargetUrl(dto.targetUrl, { requireResolvable: false });
     const signingSecret = String(dto.signingSecret ?? "").trim();
     if (!name) {
       throw new BadRequestException("Webhook name is required.");
@@ -209,7 +237,8 @@ export class OutboundWebhooksService {
       metadata.name = data.name;
     }
     if (dto.targetUrl !== undefined) {
-      data.targetUrl = await this.normalizeTargetUrl(dto.targetUrl);
+      // Same soft-allow as create(): a transient DNS miss must not block an edit.
+      data.targetUrl = await this.normalizeTargetUrl(dto.targetUrl, { requireResolvable: false });
       metadata.targetUrl = data.targetUrl;
     }
     if (dto.isActive !== undefined) {
@@ -311,6 +340,8 @@ export class OutboundWebhooksService {
         attemptCount: true,
         responseStatus: true,
         errorMessage: true,
+        queueJobId: true,
+        enqueueError: true,
         attemptedAt: true,
         deliveredAt: true,
         createdAt: true,
@@ -479,6 +510,52 @@ export class OutboundWebhooksService {
     );
   }
 
+  async recoverStuckQueuedDeliveries(limit = 100): Promise<{ recovered: number; failed: number }> {
+    if (this.recoveringQueuedDeliveries) {
+      return { recovered: 0, failed: 0 };
+    }
+    this.recoveringQueuedDeliveries = true;
+    const cutoff = new Date(Date.now() - OUTBOUND_WEBHOOK_STUCK_QUEUED_MS);
+    let recovered = 0;
+    let failed = 0;
+    try {
+      const rows = await this.prisma.tenant().$queryRaw<
+        Array<{ id: string; tenantKey: string; endpointId: string }>
+      >(Prisma.sql`
+        SELECT id, tenant_key AS "tenantKey", endpoint_id AS "endpointId"
+        FROM outbound_webhook_deliveries
+        WHERE status = 'queued'
+          AND attempted_at IS NULL
+          AND created_at < ${cutoff}
+          AND (last_enqueue_attempt_at IS NULL OR last_enqueue_attempt_at < ${cutoff})
+        ORDER BY created_at ASC
+        LIMIT ${Math.max(1, Math.min(500, Math.floor(limit)))}
+      `);
+
+      for (const row of rows) {
+        const delivery = await this.enqueueDelivery(row.tenantKey, row.id, row.endpointId);
+        if (delivery.status === "failed") {
+          failed++;
+        } else {
+          recovered++;
+        }
+      }
+      if (recovered > 0 || failed > 0) {
+        await this.auditService.record({
+          actorId: "system",
+          actorRole: "system",
+          action: "outbound_webhook.queued_recovery",
+          resource: "OutboundWebhookDelivery",
+          resourceId: "stuck-queued",
+          metadata: { recovered, failed },
+        });
+      }
+      return { recovered, failed };
+    } finally {
+      this.recoveringQueuedDeliveries = false;
+    }
+  }
+
   private registerWorker() {
     this.queueService.processWithBackpressure<DeliveryQueuePayload>(
       QUEUE_NAMES.WEBHOOK_EVENT,
@@ -510,6 +587,7 @@ export class OutboundWebhooksService {
           endpointId: true,
           eventType: true,
           eventId: true,
+          status: true,
           requestBody: true,
         },
       }),
@@ -527,7 +605,7 @@ export class OutboundWebhooksService {
       }),
     ]);
 
-    if (!delivery) {
+    if (!delivery || delivery.status !== "queued") {
       return;
     }
 
@@ -580,8 +658,12 @@ export class OutboundWebhooksService {
     const signature = this.signPayload(requestBody, timestamp, endpoint.signingSecretEncrypted, endpoint.signingSecretKeyVersion);
 
     try {
-      const response = await fetch(endpoint.targetUrl, {
+      // Dispatch-time re-validation is strict (requireResolvable defaults to
+      // true): a target that no longer resolves must not be contacted.
+      const targetUrl = await this.normalizeTargetUrl(endpoint.targetUrl);
+      const response = await fetch(targetUrl, {
         method: "POST",
+        redirect: "manual",
         headers: {
           "Content-Type": "application/json",
           "User-Agent": "PIM1-OutboundWebhook/1.0",
@@ -718,6 +800,8 @@ export class OutboundWebhooksService {
         attemptCount: true,
         responseStatus: true,
         errorMessage: true,
+        queueJobId: true,
+        enqueueError: true,
         attemptedAt: true,
         deliveredAt: true,
         createdAt: true,
@@ -725,19 +809,85 @@ export class OutboundWebhooksService {
       },
     });
 
-    await this.queueService.enqueue(QUEUE_NAMES.WEBHOOK_EVENT, {
-      tenantKey,
-      endpointId,
-      deliveryId: delivery.id,
-      forceDelivery: options?.forceDelivery === true,
-    } satisfies DeliveryQueuePayload);
-
-    return delivery;
+    return this.enqueueDelivery(tenantKey, delivery.id, endpointId, options);
   }
 
-  private async normalizeTargetUrl(value: string): Promise<string> {
+  private async enqueueDelivery(
+    tenantKey: string,
+    deliveryId: string,
+    endpointId: string,
+    options?: { forceDelivery?: boolean },
+  ) {
+    const queueJobId = `outbound-webhook:${tenantKey}:${deliveryId}`;
+    const now = new Date();
+    try {
+      await this.queueService.enqueue(
+        QUEUE_NAMES.WEBHOOK_EVENT,
+        {
+          tenantKey,
+          endpointId,
+          deliveryId,
+          forceDelivery: options?.forceDelivery === true,
+        } satisfies DeliveryQueuePayload,
+        { jobId: queueJobId },
+      );
+      return this.prisma.tenant(tenantKey).outboundWebhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          status: "queued",
+          queueJobId,
+          lastEnqueueAttemptAt: now,
+          enqueueError: null,
+          errorMessage: null,
+        },
+        select: this.deliverySelect(),
+      });
+    } catch (error: unknown) {
+      const message = this.normalizeEnqueueError(error);
+      return this.prisma.tenant(tenantKey).outboundWebhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          status: "failed",
+          queueJobId,
+          lastEnqueueAttemptAt: now,
+          enqueueError: message,
+          errorMessage: `enqueue_failed: ${message}`,
+        },
+        select: this.deliverySelect(),
+      });
+    }
+  }
+
+  private async normalizeTargetUrl(
+    value: string,
+    options?: { requireResolvable?: boolean },
+  ): Promise<string> {
     const { validateWebhookTargetUrl } = await import("../common/security/url-safety");
-    return validateWebhookTargetUrl(value);
+    return validateWebhookTargetUrl(value, options ?? {});
+  }
+
+  private deliverySelect() {
+    return {
+      id: true,
+      endpointId: true,
+      eventType: true,
+      eventId: true,
+      status: true,
+      attemptCount: true,
+      responseStatus: true,
+      errorMessage: true,
+      queueJobId: true,
+      enqueueError: true,
+      attemptedAt: true,
+      deliveredAt: true,
+      createdAt: true,
+      updatedAt: true,
+    } as const;
+  }
+
+  private normalizeEnqueueError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error ?? "unknown");
+    return message.slice(0, OUTBOUND_WEBHOOK_ENQUEUE_ERROR_LIMIT);
   }
 
   private encryptSecret(secret: string): { cipher: string; keyVersion: string } {
@@ -825,6 +975,8 @@ export class OutboundWebhooksService {
       attemptCount: number;
       responseStatus: number | null;
       errorMessage: string | null;
+      queueJobId?: string | null;
+      enqueueError?: string | null;
       attemptedAt: Date | null;
       deliveredAt: Date | null;
       createdAt: Date;
@@ -842,6 +994,8 @@ export class OutboundWebhooksService {
       attemptCount: row.attemptCount,
       responseStatus: row.responseStatus,
       errorMessage: row.errorMessage,
+      queueJobId: row.queueJobId ?? null,
+      enqueueError: row.enqueueError ?? null,
       attemptedAt: row.attemptedAt?.toISOString() ?? null,
       deliveredAt: row.deliveredAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),

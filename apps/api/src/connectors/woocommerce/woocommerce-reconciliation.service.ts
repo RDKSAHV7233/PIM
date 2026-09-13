@@ -77,6 +77,16 @@ export class WooCommerceReconciliationService implements OnApplicationBootstrap,
             );
             checked++;
 
+            if (result.providerReadUnavailable) {
+              errors++;
+              this.logger.warn('WooCommerce reconciliation: provider read unavailable — drift status blocked', {
+                installationId: inst.id,
+                externalRef:    sub.externalRef,
+                providerStatus: result.providerReadStatus ?? null,
+              });
+              continue;
+            }
+
             if (result.needsRepublish) {
               this.logger.warn('WooCommerce reconciliation: drift detected — re-publishing', {
                 installationId: inst.id,

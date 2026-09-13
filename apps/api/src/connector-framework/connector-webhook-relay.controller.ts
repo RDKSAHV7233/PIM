@@ -1,5 +1,5 @@
 import {
-  Body,
+  BadRequestException,
   Controller,
   Headers,
   HttpCode,
@@ -28,7 +28,6 @@ export class ConnectorWebhookRelayController {
     @Param("tenantKey") tenantKey: string,
     @Param("installationId") installationId: string,
     @Headers("x-pim-connector-relay-token") relayToken: string | undefined,
-    @Body() body: unknown,
     @Req() request: Request,
   ) {
     const expectedToken = String(process.env.PIM_CONNECTOR_WEBHOOK_RELAY_TOKEN ?? "").trim();
@@ -64,7 +63,7 @@ export class ConnectorWebhookRelayController {
       throw error;
     }
 
-    const canonicalBody = this.serialiseRelayBody(body);
+    const canonicalBody = this.readRawRequestBody(request);
     await this.processingService.enqueue({
       tenantKey: normalizedTenantKey,
       installationId: normalizedInstallationId,
@@ -92,14 +91,17 @@ export class ConnectorWebhookRelayController {
     };
   }
 
-  private serialiseRelayBody(body: unknown): Buffer {
-    if (Buffer.isBuffer(body)) {
-      return body;
+  private readRawRequestBody(request: Request): Buffer {
+    if (Buffer.isBuffer(request.body)) {
+      return request.body;
     }
-    if (typeof body === "string") {
-      return Buffer.from(body, "utf8");
+    if (typeof request.body === "string") {
+      return Buffer.from(request.body, "utf8");
     }
-    return Buffer.from(JSON.stringify(body ?? {}), "utf8");
+    if (request.body == null) {
+      return Buffer.alloc(0);
+    }
+    throw new BadRequestException("Connector webhook relay requires an exact raw request body.");
   }
 
   private normalizeHeaders(

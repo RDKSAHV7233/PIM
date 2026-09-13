@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Logger, Post, Req } from "@nestjs/common";
+import { Controller, Headers, HttpCode, HttpStatus, Logger, Post, Req } from "@nestjs/common";
 import { ApiExcludeEndpoint } from "@nestjs/swagger";
 import { Request } from "express";
 import { Public } from "../auth/public.decorator";
@@ -58,9 +58,18 @@ export class StripeWebhookController {
       return { received: false };
     }
 
+    const reservation = await this.stripeService.reserveWebhookEvent(event.id, event.type);
+    if (!reservation.accepted) {
+      this.logger.log(`Stripe webhook duplicate skipped: event=${event.id} type=${event.type} reason=${reservation.reason ?? "duplicate"}`);
+      return { received: true };
+    }
+
+    let tenantKey: string | null = null;
     try {
-      await this.dispatch(event);
+      tenantKey = await this.dispatch(event);
+      await this.stripeService.markWebhookEventProcessed(event.id, tenantKey);
     } catch (error: unknown) {
+      await this.stripeService.markWebhookEventFailed(event.id, error, tenantKey);
       const message = error instanceof Error ? error.message : String(error ?? "unknown");
       this.logger.error(`Stripe webhook dispatch failed for event ${event.id} type=${event.type}: ${message}`);
       // Re-throw so Stripe sees HTTP 500 and retries — swallowing the error
@@ -72,30 +81,26 @@ export class StripeWebhookController {
     return { received: true };
   }
 
-  private async dispatch(event: StripeEvent): Promise<void> {
+  private async dispatch(event: StripeEvent): Promise<string | null> {
     const data = event.data.object as unknown;
     switch (event.type) {
       case "invoice.paid":
-        await this.onInvoicePaid(data as StripeInvoiceData);
-        break;
+        return this.onInvoicePaid(data as StripeInvoiceData);
       case "invoice.payment_failed":
-        await this.onInvoicePaymentFailed(data as StripeInvoiceData);
-        break;
+        return this.onInvoicePaymentFailed(data as StripeInvoiceData);
       case "customer.subscription.updated":
-        await this.onSubscriptionUpdated(data as StripeSubscriptionData);
-        break;
+        return this.onSubscriptionUpdated(data as StripeSubscriptionData);
       case "customer.subscription.deleted":
-        await this.onSubscriptionDeleted(data as StripeSubscriptionData);
-        break;
+        return this.onSubscriptionDeleted(data as StripeSubscriptionData);
       default:
-        break;
+        return null;
     }
   }
 
-  private async onInvoicePaid(invoice: StripeInvoiceData): Promise<void> {
+  private async onInvoicePaid(invoice: StripeInvoiceData): Promise<string | null> {
     const tenantKey = await this.resolveTenantKey(invoice);
     if (!tenantKey) {
-      return;
+      return null;
     }
     const paidThroughAt = this.resolveSubscriptionPeriodEnd(invoice);
     const profile = await this.planUsageService.updateCommercialStateForTenant(
@@ -109,12 +114,13 @@ export class StripeWebhookController {
       profile,
     });
     this.logger.log(`Stripe invoice.paid: tenantKey=${tenantKey} paidThroughAt=${paidThroughAt ?? "n/a"}`);
+    return tenantKey;
   }
 
-  private async onInvoicePaymentFailed(invoice: StripeInvoiceData): Promise<void> {
+  private async onInvoicePaymentFailed(invoice: StripeInvoiceData): Promise<string | null> {
     const tenantKey = await this.resolveTenantKey(invoice);
     if (!tenantKey) {
-      return;
+      return null;
     }
     const graceEndsAt = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const profile = await this.planUsageService.updateCommercialStateForTenant(
@@ -124,18 +130,19 @@ export class StripeWebhookController {
     );
     await this.commercialNotificationsService.notifyPaymentFailed({ tenantKey, profile });
     this.logger.log(`Stripe invoice.payment_failed: tenantKey=${tenantKey} graceEndsAt=${graceEndsAt}`);
+    return tenantKey;
   }
 
-  private async onSubscriptionUpdated(subscription: StripeSubscriptionData): Promise<void> {
+  private async onSubscriptionUpdated(subscription: StripeSubscriptionData): Promise<string | null> {
     const tenantKey = await this.resolveTenantKeyFromCustomer(subscription.customer);
     if (!tenantKey) {
-      return;
+      return null;
     }
     await this.stripeService.storeExternalIds(tenantKey, null, subscription.id);
 
     const billingStatus = this.mapStripeSubscriptionStatus(subscription.status);
     if (!billingStatus) {
-      return;
+      return tenantKey;
     }
     const paidThroughAt =
       subscription.status === "active" || subscription.status === "trialing"
@@ -148,12 +155,13 @@ export class StripeWebhookController {
       STRIPE_WEBHOOK_ACTOR,
     );
     this.logger.log(`Stripe customer.subscription.updated: tenantKey=${tenantKey} status=${subscription.status} -> billingStatus=${billingStatus}`);
+    return tenantKey;
   }
 
-  private async onSubscriptionDeleted(subscription: StripeSubscriptionData): Promise<void> {
+  private async onSubscriptionDeleted(subscription: StripeSubscriptionData): Promise<string | null> {
     const tenantKey = await this.resolveTenantKeyFromCustomer(subscription.customer);
     if (!tenantKey) {
-      return;
+      return null;
     }
     const cancelledAt = new Date().toISOString();
     const profile = await this.planUsageService.updateCommercialStateForTenant(
@@ -167,6 +175,7 @@ export class StripeWebhookController {
       profile,
     });
     this.logger.log(`Stripe customer.subscription.deleted: tenantKey=${tenantKey} cancelledAt=${cancelledAt}`);
+    return tenantKey;
   }
 
   private async resolveTenantKey(invoice: StripeInvoiceData): Promise<string | null> {

@@ -26,6 +26,7 @@ const RETRY_ON_STATUS = new Set([429, 500, 502, 503, 504]);
 class TokenBucket {
   private tokens: number;
   private lastRefill: number;
+  private consumeChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly capacity: number,
@@ -36,15 +37,21 @@ class TokenBucket {
   }
 
   async consume(): Promise<void> {
-    this.refill();
-    if (this.tokens >= 1) {
-      this.tokens--;
-      return;
+    const next = this.consumeChain.then(() => this.consumeLocked());
+    this.consumeChain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async consumeLocked(): Promise<void> {
+    for (;;) {
+      this.refill();
+      if (this.tokens >= 1) {
+        this.tokens--;
+        return;
+      }
+      const waitMs = this.refillMs * (1 - this.tokens);
+      await delay(Math.max(0, Math.ceil(waitMs)));
     }
-    const waitMs = this.refillMs * (1 - this.tokens);
-    await delay(Math.max(0, Math.ceil(waitMs)));
-    this.refill();
-    this.tokens = Math.max(0, this.tokens - 1);
   }
 
   private refill(): void {

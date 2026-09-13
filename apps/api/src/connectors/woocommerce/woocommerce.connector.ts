@@ -48,6 +48,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
+import { ConnectorHttpClient } from '../../connector-framework/connector-http-client.service';
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { tenantExecRaw } from '../../common/tenant/tenant-raw';
 
@@ -237,6 +238,7 @@ export class WooCommerceConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    private readonly httpClient?: ConnectorHttpClient,
   ) {}
 
   // ─── credential helpers ─────────────────────────────────────────────────────
@@ -671,6 +673,18 @@ export class WooCommerceConnector implements ConnectorInterface {
     body?: unknown,
   ): Promise<Response> {
     const url = `${siteUrl}/wp-json/wc/v3${path}`;
+    if (this.httpClient) {
+      return this.httpClient.fetch('woocommerce', `${this.slug}:${siteUrl}`, url, {
+        method,
+        timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': buildBasicAuthHeader(consumerKey, consumerSecret),
+        },
+        body: body != null ? JSON.stringify(body) : undefined,
+      });
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONNECTOR_HTTP_TIMEOUT_MS);
     try {
@@ -1147,6 +1161,48 @@ export class WooCommerceConnector implements ConnectorInterface {
     };
   }
 
+  // ─── optional: parseStoredWebhookEvent (lease-sweeper replay) ───────────────
+  //
+  // Re-derive the event from a persisted connector_webhook_events row. The stored
+  // eventType is the already-transformed value ('PRODUCT_DEACTIVATED' /
+  // 'PRODUCT_STATUS_CHANGED') and the payload was HMAC-verified at ingestion, so
+  // this performs no signature check and needs no raw delivery topic.
+  parseStoredWebhookEvent(args: {
+    payload: unknown;
+    eventType: string;
+    rawEventId: string;
+  }): ParsedWebhookEvent | null {
+    const eventType = String(args.eventType ?? '').trim();
+    const deliveryId = String(args.rawEventId ?? '').trim();
+    if (!eventType || !deliveryId) {
+      return null;
+    }
+    if (eventType !== 'PRODUCT_DEACTIVATED' && eventType !== 'PRODUCT_STATUS_CHANGED') {
+      return null;
+    }
+
+    const payload = (args.payload ?? {}) as WcWebhookProductPayload;
+    const wcProductId = payload.id != null ? String(payload.id) : undefined;
+    const vexaMeta = payload.meta_data?.find((m) => m.key === '_vexa_pim_product_id');
+    const vexaSku = vexaMeta?.value != null ? String(vexaMeta.value) : undefined;
+
+    let status: 'SUCCESS' | 'REJECTED' | 'SUPPRESSED' | undefined;
+    if (eventType === 'PRODUCT_DEACTIVATED' || payload.status === 'trash') {
+      status = 'SUPPRESSED';
+    } else if (payload.status === 'publish') {
+      status = 'SUCCESS';
+    }
+
+    return {
+      eventType,
+      externalRef: wcProductId,
+      productSku: vexaSku ?? (payload.sku ? String(payload.sku) : undefined),
+      ...(status ? { status } : {}),
+      channelErrors: [],
+      rawEventId: deliveryId,
+    };
+  }
+
   // ─── optional: handleOAuthCallback ──────────────────────────────────────────
   //
   // WooCommerce app-auth delivers credentials to our callback URL as query params:
@@ -1428,11 +1484,23 @@ export class WooCommerceConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     externalRef: string,
     payloadSnapshot: Record<string, unknown>,
-  ): Promise<{ needsRepublish: boolean; driftedFields: string[] }> {
+  ): Promise<{ needsRepublish: boolean; driftedFields: string[]; providerReadUnavailable?: boolean; providerReadStatus?: number }> {
     try {
       const { siteUrl, consumerKey, consumerSecret } = await this.resolveCredentials(ctx);
       const res = await this.callApi('GET', `/products/${externalRef}`, siteUrl, consumerKey, consumerSecret);
-      if (!res.ok) return { needsRepublish: false, driftedFields: [] }; // can't compare — skip
+      if (!res.ok) {
+        this.logger.warn('WooCommerce reconcileSubmission provider read failed', {
+          installationId: ctx.installationId,
+          externalRef,
+          status: res.status,
+        });
+        return {
+          needsRepublish: false,
+          driftedFields: [],
+          providerReadUnavailable: true,
+          providerReadStatus: res.status,
+        };
+      }
 
       const wc = await res.json() as WcProductResponse & { name?: string; regular_price?: string };
       const driftedFields: string[] = [];
@@ -1454,7 +1522,7 @@ export class WooCommerceConnector implements ConnectorInterface {
         externalRef,
         reason: err instanceof Error ? err.message : String(err),
       });
-      return { needsRepublish: false, driftedFields: [] };
+      return { needsRepublish: false, driftedFields: [], providerReadUnavailable: true };
     }
   }
 
