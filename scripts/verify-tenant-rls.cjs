@@ -6,6 +6,13 @@ const BOOTSTRAP_TABLES_WITH_MANUAL_TENANT_FILTER = new Set([
   "AuthIdentity",
   "WorkspaceDirectory",
   "api_access_keys",
+  // Platform-level Stripe webhook dedup ledger, not tenant-partitioned data: the
+  // row is created (tenant_key NULL) before the event's tenant is known --
+  // reserveWebhookEvent() must dedup a given Stripe event id across the whole
+  // platform, not per tenant -- and tenant_key is populated afterward purely as
+  // dispatch-attribution metadata. No tenant-facing endpoint ever reads this
+  // table (only apps/api/src/billing/stripe.service.ts touches it).
+  "stripe_webhook_events",
 ]);
 
 function parseTablesArg(argv) {
