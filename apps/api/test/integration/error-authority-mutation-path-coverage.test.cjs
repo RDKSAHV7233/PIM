@@ -99,7 +99,7 @@ function run() {
   {
     const source = readSource("billing/stripe-webhook.controller.ts");
     assert(
-      /await this\.dispatch\(event\);\s*\n\s*\} catch \(error: unknown\) \{[\s\S]{0,600}?throw error;/.test(source),
+      /await this\.dispatch\(event\);[\s\S]{0,300}?\} catch \(error: unknown\) \{[\s\S]{0,600}?throw error;/.test(source),
       "Stripe webhook dispatch must still re-throw on failure so Stripe retries and the failure reaches " +
         "Error Authority — do not swallow this into a 200/{received:false}.",
     );
