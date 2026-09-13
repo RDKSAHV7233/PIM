@@ -99,7 +99,7 @@ describe("ConnectorHttpClient.fetch — retry on transient errors", () => {
     const resultPromise = client.fetch("shopify", "inst-1", "https://example.com/api");
 
     // Flush the backoff timer
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 100; i++) {
       jest.runAllTimers();
       await Promise.resolve();
     }
@@ -115,7 +115,7 @@ describe("ConnectorHttpClient.fetch — retry on transient errors", () => {
 
     const resultPromise = client.fetch("shopify", "inst-1", "https://example.com/api");
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 100; i++) {
       jest.runAllTimers();
       await Promise.resolve();
     }
@@ -253,7 +253,7 @@ describe("ConnectorHttpClient.fetch — network error retry", () => {
 
     const resultPromise = client.fetch("flipkart", "inst-1", "https://example.com/api");
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 100; i++) {
       jest.runAllTimers();
       await Promise.resolve();
     }
