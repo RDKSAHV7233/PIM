@@ -169,7 +169,7 @@ async function run() {
       "POST",
       "/api/v1/platform/tenants",
       null,
-      { tenantKey, workspaceSlug, displayName: `Stripe E3 ${runId}`, initialAdminUserId: adminUserId },
+      { tenantKey, workspaceSlug, displayName: `Stripe E3 ${runId}`, initialAdminUserId: adminUserId, initialAdminPassword: process.env.PIM_AUTH_PASSWORD },
       { "x-pim-platform-admin-token": platformToken },
     );
     assert(provision.status === 201, `provision tenant: expected 201, got ${provision.status} ${JSON.stringify(provision.payload)}`);
