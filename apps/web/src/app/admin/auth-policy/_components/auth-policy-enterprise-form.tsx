@@ -58,8 +58,8 @@ export function AuthPolicyEnterpriseForm({ action, policy }: AuthPolicyEnterpris
         <span>
           <span className="font-medium text-slate-900">Require MFA</span>
           <span className="mt-1 block text-slate-600">
-            Enforced at login in database auth mode: unenrolled members are required to enroll, enrolled members are
-            challenged for their code.
+            Enforced at login in database auth mode: enrolled members are challenged for their code. Unenrolled
+            members can keep signing in during the grace period below, then are required to enroll once it ends.
           </span>
         </span>
       </label>
@@ -75,6 +75,10 @@ export function AuthPolicyEnterpriseForm({ action, policy }: AuthPolicyEnterpris
             defaultValue={policy.mfaGracePeriodDays}
             className="rounded-md border border-slate-300 px-3 py-2"
           />
+          <span className="text-xs text-slate-500">
+            Rollout window from when Require MFA is turned on — unenrolled members can still sign in until it ends,
+            then enrollment is enforced. Changing this value doesn't restart an already-running window.
+          </span>
         </label>
 
         <label className="grid gap-1 text-sm">

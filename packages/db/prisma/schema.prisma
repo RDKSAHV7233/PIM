@@ -861,17 +861,24 @@ model TenantPlanProfile {
 }
 
 model TenantAuthPolicy {
-  id                    String   @id @default(cuid())
-  tenantKey             String   @unique
-  externalIdentityMode  Boolean  @default(false)
-  mfaRequired           Boolean  @default(false)
-  mfaGracePeriodDays    Int      @default(7)
-  sessionTimeoutMinutes Int      @default(240)
-  allowedAuthMethods    String[] @default(["password"])
+  id                    String    @id @default(cuid())
+  tenantKey             String    @unique
+  externalIdentityMode  Boolean   @default(false)
+  mfaRequired           Boolean   @default(false)
+  // Set only when mfaRequired flips false -> true; cleared when it flips back to
+  // false. Anchors the mfaGracePeriodDays rollout window to the actual policy
+  // change, not the row's own updatedAt (which also moves on unrelated edits like
+  // sessionTimeoutMinutes). NULL means "no known start" — login enforcement in
+  // auth.service.ts treats that as no grace (matches pre-grace-period behavior for
+  // tenants that had mfaRequired=true before this column existed).
+  mfaRequiredSince      DateTime?
+  mfaGracePeriodDays    Int       @default(7)
+  sessionTimeoutMinutes Int       @default(240)
+  allowedAuthMethods    String[]  @default(["password"])
   createdBy             String?
   updatedBy             String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@index([tenantKey, updatedAt])
 }

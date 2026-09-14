@@ -116,3 +116,96 @@ describe("AuthPolicyService.updatePolicy — plan-tier write guard", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+// mfaRequiredSince anchors the grace-period rollout window to the actual
+// false->true transition, not TenantAuthPolicy's own updatedAt (which also
+// moves on unrelated field edits and would incorrectly restart the window).
+describe("AuthPolicyService.updatePolicy — mfaRequiredSince rollout-window tracking", () => {
+  const ORIGINAL_AUTH_MODE = process.env.AUTH_MODE;
+  beforeEach(() => { process.env.AUTH_MODE = "db"; });
+  afterEach(() => { process.env.AUTH_MODE = ORIGINAL_AUTH_MODE; });
+
+  function makeDynamicService(currentRow: Record<string, unknown> | null) {
+    const upsert = jest.fn(({ create, update }: { create: Record<string, unknown>; update: Record<string, unknown> }) =>
+      Promise.resolve({ ...PERSISTED_POLICY, ...(currentRow ? update : create) }),
+    );
+    const tenantAuthPolicy = {
+      findUnique: jest.fn().mockResolvedValue(currentRow),
+      upsert,
+    };
+    const prisma = { tenant: jest.fn().mockReturnValue({ tenantAuthPolicy }) } as unknown as PrismaService;
+    const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+    const planUsage = { getTenantPlanTier: jest.fn().mockResolvedValue("ENTERPRISE") } as unknown as PlanUsageService;
+    const service = new AuthPolicyService(prisma, audit, planUsage);
+    return { service, upsert };
+  }
+
+  it("false -> true sets mfaRequiredSince to now", async () => {
+    const { service, upsert } = makeDynamicService({ ...PERSISTED_POLICY, mfaRequired: false, mfaRequiredSince: null });
+    const before = Date.now();
+
+    await service.updatePolicy("acme", "actor-1", "admin", { mfaRequired: true });
+
+    const [{ update }] = upsert.mock.calls[0] as unknown as [{ update: { mfaRequiredSince: Date } }];
+    expect(update.mfaRequiredSince).toBeInstanceOf(Date);
+    expect(update.mfaRequiredSince.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  it("stays true across an unrelated field edit -> mfaRequiredSince is preserved, not bumped", async () => {
+    const anchor = new Date("2026-01-01T00:00:00.000Z");
+    const { service, upsert } = makeDynamicService({ ...PERSISTED_POLICY, mfaRequired: true, mfaRequiredSince: anchor });
+
+    await service.updatePolicy("acme", "actor-1", "admin", { sessionTimeoutMinutes: 30 });
+
+    const [{ update }] = upsert.mock.calls[0] as unknown as [{ update: { mfaRequiredSince: Date | null } }];
+    expect(update.mfaRequiredSince).toEqual(anchor);
+  });
+
+  it("true -> false clears mfaRequiredSince", async () => {
+    const { service, upsert } = makeDynamicService({
+      ...PERSISTED_POLICY,
+      mfaRequired: true,
+      mfaRequiredSince: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    await service.updatePolicy("acme", "actor-1", "admin", { mfaRequired: false });
+
+    const [{ update }] = upsert.mock.calls[0] as unknown as [{ update: { mfaRequiredSince: Date | null } }];
+    expect(update.mfaRequiredSince).toBeNull();
+  });
+
+  it("re-enabling after being off starts a fresh window, not the stale one", async () => {
+    const staleAnchor = new Date("2020-01-01T00:00:00.000Z");
+    const { service, upsert } = makeDynamicService({
+      ...PERSISTED_POLICY,
+      mfaRequired: false,
+      mfaRequiredSince: staleAnchor, // shouldn't happen in practice (should've been cleared), but defend anyway
+    });
+
+    await service.updatePolicy("acme", "actor-1", "admin", { mfaRequired: true });
+
+    const [{ update }] = upsert.mock.calls[0] as unknown as [{ update: { mfaRequiredSince: Date } }];
+    expect(update.mfaRequiredSince.getTime()).toBeGreaterThan(staleAnchor.getTime());
+  });
+});
+
+describe("AuthPolicyService.isWithinMfaGracePeriod", () => {
+  it("null mfaRequiredSince -> false (no grace, matches pre-feature behavior)", () => {
+    const service = new AuthPolicyService({} as never, {} as never, {} as never);
+    expect(service.isWithinMfaGracePeriod({ mfaRequiredSince: null, mfaGracePeriodDays: 7 })).toBe(false);
+  });
+
+  it("now before mfaRequiredSince + graceDays -> true", () => {
+    const service = new AuthPolicyService({} as never, {} as never, {} as never);
+    const since = new Date("2026-01-01T00:00:00.000Z");
+    const now = new Date("2026-01-05T00:00:00.000Z"); // 4 days in, 7-day grace
+    expect(service.isWithinMfaGracePeriod({ mfaRequiredSince: since, mfaGracePeriodDays: 7 }, now)).toBe(true);
+  });
+
+  it("now at/after mfaRequiredSince + graceDays -> false", () => {
+    const service = new AuthPolicyService({} as never, {} as never, {} as never);
+    const since = new Date("2026-01-01T00:00:00.000Z");
+    const now = new Date("2026-01-09T00:00:00.000Z"); // 8 days in, 7-day grace — expired
+    expect(service.isWithinMfaGracePeriod({ mfaRequiredSince: since, mfaGracePeriodDays: 7 }, now)).toBe(false);
+  });
+});

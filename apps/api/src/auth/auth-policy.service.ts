@@ -18,6 +18,7 @@ const AUTH_POLICY_SELECT = {
   tenantKey: true,
   externalIdentityMode: true,
   mfaRequired: true,
+  mfaRequiredSince: true,
   mfaGracePeriodDays: true,
   sessionTimeoutMinutes: true,
   allowedAuthMethods: true,
@@ -36,6 +37,7 @@ export interface TenantAuthPolicyView {
   tenantKey: string;
   externalIdentityMode: boolean;
   mfaRequired: boolean;
+  mfaRequiredSince: string | null;
   mfaGracePeriodDays: number;
   sessionTimeoutMinutes: number;
   allowedAuthMethods: AuthPolicyMethod[];
@@ -86,16 +88,39 @@ export class AuthPolicyService {
     return this.normalizeSessionTimeoutMinutes(row?.sessionTimeoutMinutes);
   }
 
-  async getEffectiveMfaPolicy(tenantIdInput: string): Promise<{ mfaRequired: boolean }> {
+  async getEffectiveMfaPolicy(
+    tenantIdInput: string,
+  ): Promise<{ mfaRequired: boolean; mfaRequiredSince: Date | null; mfaGracePeriodDays: number }> {
     if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
-      return { mfaRequired: false };
+      return { mfaRequired: false, mfaRequiredSince: null, mfaGracePeriodDays: DEFAULT_MFA_GRACE_PERIOD_DAYS };
     }
     const tenantId = normalizeTenantKey(tenantIdInput);
     const row = await this.prisma.tenant(tenantId).tenantAuthPolicy.findUnique({
       where: { tenantKey: tenantId },
-      select: { mfaRequired: true },
+      select: { mfaRequired: true, mfaRequiredSince: true, mfaGracePeriodDays: true },
     });
-    return { mfaRequired: row?.mfaRequired ?? false };
+    return {
+      mfaRequired: row?.mfaRequired ?? false,
+      mfaRequiredSince: row?.mfaRequiredSince ?? null,
+      mfaGracePeriodDays: this.normalizeMfaGracePeriodDays(row?.mfaGracePeriodDays),
+    };
+  }
+
+  /**
+   * Whether `mfaRequired` is still inside its rollout grace window — i.e. it was
+   * turned on recently enough that unenrolled members shouldn't be forced into
+   * enrollment yet. `mfaRequiredSince` is null both for tenants that never had
+   * this column populated (predates this feature) and for one-off cases where
+   * the transition wasn't tracked; treating null as "no grace" preserves the
+   * immediate-enforcement behavior that shipped before grace periods existed,
+   * rather than silently granting an open-ended pass.
+   */
+  isWithinMfaGracePeriod(policy: { mfaRequiredSince: Date | null; mfaGracePeriodDays: number }, now = new Date()): boolean {
+    if (!policy.mfaRequiredSince) {
+      return false;
+    }
+    const graceEndsAt = policy.mfaRequiredSince.getTime() + policy.mfaGracePeriodDays * 24 * 60 * 60 * 1000;
+    return now.getTime() < graceEndsAt;
   }
 
   async getEffectiveAllowedAuthMethods(tenantIdInput: string): Promise<AuthPolicyMethod[]> {
@@ -166,12 +191,24 @@ export class AuthPolicyService {
       allowedAuthMethods: this.normalizeAuthMethods(dto.allowedAuthMethods ?? current?.allowedAuthMethods),
     };
 
+    // Anchor the grace-period rollout window to this exact transition, not to
+    // updatedAt (which also moves on unrelated field changes below). Turning
+    // MFA off clears it, so re-enabling later starts a fresh window rather than
+    // resuming a stale one.
+    const wasRequired = current?.mfaRequired ?? false;
+    const mfaRequiredSince = next.mfaRequired
+      ? wasRequired
+        ? current?.mfaRequiredSince ?? null
+        : new Date()
+      : null;
+
     const persisted = await this.prisma.tenant(tenantId).tenantAuthPolicy.upsert({
       where: { tenantKey: tenantId },
       create: {
         tenantKey: tenantId,
         externalIdentityMode: next.externalIdentityMode,
         mfaRequired: next.mfaRequired,
+        mfaRequiredSince,
         mfaGracePeriodDays: next.mfaGracePeriodDays,
         sessionTimeoutMinutes: next.sessionTimeoutMinutes,
         allowedAuthMethods: next.allowedAuthMethods,
@@ -181,6 +218,7 @@ export class AuthPolicyService {
       update: {
         externalIdentityMode: next.externalIdentityMode,
         mfaRequired: next.mfaRequired,
+        mfaRequiredSince,
         mfaGracePeriodDays: next.mfaGracePeriodDays,
         sessionTimeoutMinutes: next.sessionTimeoutMinutes,
         allowedAuthMethods: next.allowedAuthMethods,
@@ -205,6 +243,7 @@ export class AuthPolicyService {
         before: {
           externalIdentityMode: before.externalIdentityMode,
           mfaRequired: before.mfaRequired,
+          mfaRequiredSince: before.mfaRequiredSince,
           mfaGracePeriodDays: before.mfaGracePeriodDays,
           sessionTimeoutMinutes: before.sessionTimeoutMinutes,
           allowedAuthMethods: before.allowedAuthMethods,
@@ -213,6 +252,7 @@ export class AuthPolicyService {
         after: {
           externalIdentityMode: after.externalIdentityMode,
           mfaRequired: after.mfaRequired,
+          mfaRequiredSince: after.mfaRequiredSince,
           mfaGracePeriodDays: after.mfaGracePeriodDays,
           sessionTimeoutMinutes: after.sessionTimeoutMinutes,
           allowedAuthMethods: after.allowedAuthMethods,
@@ -230,6 +270,7 @@ export class AuthPolicyService {
       tenantKey: tenantId,
       externalIdentityMode: row?.externalIdentityMode ?? false,
       mfaRequired: row?.mfaRequired ?? false,
+      mfaRequiredSince: row?.mfaRequiredSince ? row.mfaRequiredSince.toISOString() : null,
       mfaGracePeriodDays: this.normalizeMfaGracePeriodDays(row?.mfaGracePeriodDays),
       sessionTimeoutMinutes: this.normalizeSessionTimeoutMinutes(row?.sessionTimeoutMinutes),
       allowedAuthMethods: this.normalizeAuthMethods(row?.allowedAuthMethods),
@@ -275,6 +316,9 @@ export class AuthPolicyService {
     }
     if (before.mfaRequired !== after.mfaRequired) {
       changed.push("mfaRequired");
+    }
+    if (before.mfaRequiredSince !== after.mfaRequiredSince) {
+      changed.push("mfaRequiredSince");
     }
     if (before.mfaGracePeriodDays !== after.mfaGracePeriodDays) {
       changed.push("mfaGracePeriodDays");
