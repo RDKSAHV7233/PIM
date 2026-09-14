@@ -1475,6 +1475,41 @@
           }
         },
         {
+          "name": "WorkspaceUsersController_lookupUser",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workspace/users/lookup?userId=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "workspace",
+                "users",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "Get role capabilities",
           "request": {
             "method": "GET",
