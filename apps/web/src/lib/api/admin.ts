@@ -89,6 +89,9 @@ export async function getWorkspaceUsers(options?: ApiRequestOptions) {
 
 export interface WorkspaceUserStats {
   adminUsers: number;
+  activeUsers: number;
+  lockedUsers: number;
+  mfaEnrolledCount: number;
 }
 
 // Unbounded count from the backend — unlike getWorkspaceUsers() above, which
