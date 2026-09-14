@@ -88,6 +88,7 @@ module.exports = {
     "**/auth/auth.service.spec.ts",
     "**/auth/oidc-auth.service.spec.ts",
     "**/outbound-webhooks/outbound-webhooks.service.spec.ts",
+    "**/api-keys/api-keys.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
