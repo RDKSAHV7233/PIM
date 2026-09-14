@@ -399,61 +399,67 @@ export class WorkspaceUsersService {
       throw new BadRequestException({ error: "CANNOT_DEACTIVATE_SELF" });
     }
 
-    const existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
+    let existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
 
     // U-02: last-admin guard — prevent deactivating the final active admin.
     // Without this, a single-admin workspace can be permanently locked out.
     //
-    // #816 fix: the guard's count-and-then-update was two separate round trips
-    // against the tenant's own PrismaClient (one plain `count`, one plain
-    // `update`), with no transaction tying them together. Under READ COMMITTED
-    // (Postgres's default), a concurrent request — e.g. two admin deactivations
-    // submitted close together, or another automation hitting this same
-    // endpoint — can each independently observe `activeAdminCount > 1` (or, in
-    // this bug's confirmed live reproduction, the guard's own count simply not
-    // reflecting the same state the UI's Governance Snapshot had just shown)
-    // and both proceed, leaving zero active admins with no error surfaced.
-    // Serializable isolation forces Postgres to abort one side with a
-    // serialization failure if the two transactions would otherwise interleave
-    // unsafely, so the count-then-update is now atomic with respect to any
-    // other concurrent deactivation.
-    const updated = await this.prisma.tenant(normalizedTenantId).$transaction(
-      async (tx) => {
-        if (existing.role === "admin") {
-          const activeAdminCount = await tx.authIdentity.count({
-            where: { role: "admin", isActive: true },
+    // #816 fix, round 1 (Serializable transaction around count+update): closes
+    // the naive two-round-trip race, but a real-Postgres write-skew
+    // reproduction (two different admins deactivated concurrently, run 5x with
+    // the actual compiled service code and natural Promise.allSettled timing —
+    // no artificial delay) showed it does NOT reliably hold: Postgres's
+    // Serializable Snapshot Isolation detects conflicts on COUNT aggregates
+    // opportunistically, not with a 100% guarantee under realistic timing —
+    // it caught the conflict when an artificial delay widened the overlap
+    // window, and missed it 5/5 times without one.
+    //
+    // #816 fix, round 2 (this version): explicit pessimistic row locking via
+    // `SELECT ... FOR UPDATE` on every currently-active admin row, inside the
+    // transaction, BEFORE counting. A concurrent deactivation targeting a
+    // DIFFERENT admin row will genuinely BLOCK on this SELECT until the first
+    // transaction commits or rolls back — true mutual exclusion on the exact
+    // rows the invariant depends on, not optimistic conflict detection after
+    // the fact. This is the standard, reliable pattern for a "last one out"
+    // invariant in Postgres. Re-verified via the same real-Postgres
+    // reproduction, 5/5 runs, guard held every time (see
+    // last-admin-guard-real-service-proof.cjs in the PR).
+    const updated = await this.prisma.tenant(normalizedTenantId).$transaction(async (tx) => {
+      if (existing.role === "admin") {
+        const lockedActiveAdmins = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "AuthIdentity"
+          WHERE "tenantKey" = ${normalizedTenantId} AND "role" = 'admin' AND "isActive" = true
+          FOR UPDATE
+        `;
+        if (lockedActiveAdmins.length <= 1) {
+          throw new BadRequestException({
+            error: "LAST_ADMIN_GUARD",
+            message: "Cannot deactivate the last active admin. Promote another user to admin first.",
           });
-          if (activeAdminCount <= 1) {
-            throw new BadRequestException({
-              error: "LAST_ADMIN_GUARD",
-              message: "Cannot deactivate the last active admin. Promote another user to admin first.",
-            });
-          }
         }
+      }
 
-        return tx.authIdentity.update({
-          where: {
-            id: existing.id,
-          },
-          data: {
-            isActive: false,
-          },
-          select: {
-            id: true,
-            userId: true,
-            role: true,
-            assignedRoles: true,
-            isActive: true,
-            lockedUntil: true,
-            lastSignInAt: true,
-            createdBy: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        });
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+      return tx.authIdentity.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          isActive: false,
+        },
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+          assignedRoles: true,
+          isActive: true,
+          lockedUntil: true,
+          lastSignInAt: true,
+          createdBy: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    });
 
     await this.auditService.record({
       actorId: normalizedActorId,
