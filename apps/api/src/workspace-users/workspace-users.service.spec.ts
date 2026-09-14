@@ -190,13 +190,25 @@ describe("WorkspaceUsersService — plan-tier role gating", () => {
 //
 // Live-reproduced bug: with exactly one active admin, deactivating them
 // succeeded instead of being rejected — Admin Coverage silently went 1 → 0.
-// Root-caused to the guard's count-then-update running as two separate,
-// non-transactional round trips against the tenant PrismaClient. The fix
-// wraps both in a single Serializable transaction. These tests target that
-// contract directly: the count and the update must happen inside the same
-// `$transaction` call, and a sole active admin must never be deactivatable.
+//
+// Round 1 of the fix (Serializable transaction around a plain `count`) was
+// itself disproven by a real-Postgres reproduction: run 5x with the actual
+// compiled service and natural concurrent timing (no artificial delay),
+// Postgres's Serializable Snapshot Isolation missed the write-skew conflict
+// 5/5 times on the COUNT aggregate. Round 2 (this version) uses explicit
+// pessimistic row locking — `SELECT ... FOR UPDATE` on every active admin row
+// — inside the transaction, before counting. A concurrent deactivation
+// targeting a different admin row genuinely blocks on this SELECT until the
+// first transaction commits, then re-evaluates against the post-commit state.
+// Re-verified via the same real-Postgres reproduction, 5/5 runs held.
+//
+// These unit tests target the mechanism directly with mocks; the real
+// concurrency proof lives in last-admin-guard-real-service-proof.cjs (run
+// against an isolated Postgres database, not this shared tenant — see
+// feedback-pim-shared-tenant-concurrency memory for why a live click-test on
+// app.vexapim.com can't be trusted for this).
 
-function makeDeactivateStubs(options: { targetRole: string; targetActive: boolean; activeAdminCount: number }) {
+function makeDeactivateStubs(options: { targetRole: string; targetActive: boolean; activeAdminIds: string[] }) {
   const targetRow = {
     id: "row-target",
     userId: "target@tenant",
@@ -210,8 +222,8 @@ function makeDeactivateStubs(options: { targetRole: string; targetActive: boolea
     updatedAt: new Date(),
   };
 
+  const queryRawSpy = jest.fn().mockResolvedValue(options.activeAdminIds.map((id) => ({ id })));
   const txAuthIdentity = {
-    count: jest.fn().mockResolvedValue(options.activeAdminCount),
     update: jest.fn().mockResolvedValue({ ...targetRow, isActive: false }),
   };
 
@@ -219,8 +231,8 @@ function makeDeactivateStubs(options: { targetRole: string; targetActive: boolea
     findFirst: jest.fn().mockResolvedValue(targetRow),
   };
 
-  const transactionSpy = jest.fn(async (callback: (tx: unknown) => unknown, txOptions?: unknown) => {
-    return callback({ authIdentity: txAuthIdentity });
+  const transactionSpy = jest.fn(async (callback: (tx: unknown) => unknown) => {
+    return callback({ authIdentity: txAuthIdentity, $queryRaw: queryRawSpy });
   });
 
   const tenantClient = {
@@ -240,7 +252,7 @@ function makeDeactivateStubs(options: { targetRole: string; targetActive: boolea
     checkLimit: jest.fn().mockResolvedValue({ allowed: true, limit: 999, current: 0 }),
   } as unknown as PlanUsageService;
 
-  return { prisma, audit, planUsage, txAuthIdentity, transactionSpy };
+  return { prisma, audit, planUsage, txAuthIdentity, transactionSpy, queryRawSpy };
 }
 
 describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () => {
@@ -248,7 +260,7 @@ describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () 
     const { prisma, audit, planUsage, txAuthIdentity } = makeDeactivateStubs({
       targetRole: "admin",
       targetActive: true,
-      activeAdminCount: 1,
+      activeAdminIds: ["row-target"],
     });
     const svc = new WorkspaceUsersService(prisma, audit, planUsage);
 
@@ -265,7 +277,7 @@ describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () 
     const { prisma, audit, planUsage, txAuthIdentity } = makeDeactivateStubs({
       targetRole: "admin",
       targetActive: true,
-      activeAdminCount: 2,
+      activeAdminIds: ["row-target", "row-other-admin"],
     });
     const svc = new WorkspaceUsersService(prisma, audit, planUsage);
 
@@ -276,26 +288,29 @@ describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () 
     expect(txAuthIdentity.update).toHaveBeenCalledTimes(1);
   });
 
-  it("runs the guard count and the update inside one Serializable transaction, not two round trips", async () => {
-    const { prisma, audit, planUsage, transactionSpy } = makeDeactivateStubs({
+  it("locks active admin rows with FOR UPDATE inside the same transaction as the update, not two round trips", async () => {
+    const { prisma, audit, planUsage, transactionSpy, queryRawSpy } = makeDeactivateStubs({
       targetRole: "admin",
       targetActive: true,
-      activeAdminCount: 2,
+      activeAdminIds: ["row-target", "row-other-admin"],
     });
     const svc = new WorkspaceUsersService(prisma, audit, planUsage);
 
     await svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant");
 
     expect(transactionSpy).toHaveBeenCalledTimes(1);
-    const isolationOptions = transactionSpy.mock.calls[0]?.[1] as { isolationLevel?: string } | undefined;
-    expect(isolationOptions?.isolationLevel).toBe("Serializable");
+    expect(queryRawSpy).toHaveBeenCalledTimes(1);
+    const sqlFragments = queryRawSpy.mock.calls[0]?.[0] as string[] | undefined;
+    const fullSql = Array.isArray(sqlFragments) ? sqlFragments.join("?") : String(sqlFragments);
+    expect(fullSql).toMatch(/FOR UPDATE/);
+    expect(fullSql).toMatch(/isActive/i);
   });
 
-  it("does not run the admin-count guard at all for a non-admin target", async () => {
-    const { prisma, audit, planUsage, txAuthIdentity } = makeDeactivateStubs({
+  it("does not run the admin-lock guard at all for a non-admin target", async () => {
+    const { prisma, audit, planUsage, txAuthIdentity, queryRawSpy } = makeDeactivateStubs({
       targetRole: "editor",
       targetActive: true,
-      activeAdminCount: 0,
+      activeAdminIds: [],
     });
     const svc = new WorkspaceUsersService(prisma, audit, planUsage);
 
@@ -303,7 +318,7 @@ describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () 
       svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant"),
     ).resolves.toMatchObject({ isActive: false });
 
-    expect(txAuthIdentity.count).not.toHaveBeenCalled();
+    expect(queryRawSpy).not.toHaveBeenCalled();
     expect(txAuthIdentity.update).toHaveBeenCalledTimes(1);
   });
 });
