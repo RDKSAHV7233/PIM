@@ -69,6 +69,24 @@ export class MissingTenantContextError extends Error {
   }
 }
 
+// Mirrors ShopifyPublishError (shopify.connector.ts) — carries the structured
+// ConnectorIssue[] built from normaliseError()/WC_ERROR_MAP through the
+// throw/catch boundary into marketplace.service.ts's recordSubmissionAttempt,
+// instead of degrading to a generic CONNECTOR_PUBLISH_FAILED with a raw
+// message. Before this, publishProduct/updateProduct threw a bare Error on
+// every failure, which marketplace.service.ts has no special handling for —
+// so WC_ERROR_MAP's seller-friendly messages were entirely unreachable dead
+// code for the two operations that actually fail in production.
+export class WooCommercePublishError extends Error {
+  constructor(
+    public readonly issues: ConnectorIssue[],
+    message: string,
+  ) {
+    super(message);
+    this.name = 'WooCommercePublishError';
+  }
+}
+
 // ─── WooCommerce REST API shapes ───────────────────────────────────────────────
 
 type WcProductPayload = {
@@ -161,6 +179,16 @@ const WC_ERROR_MAP: Record<string, { fieldPath: string; sellerMessage: string; s
     sellerMessage: 'A product attribute or category with this name already exists. The existing term will be reused.',
   },
   woocommerce_rest_product_image_upload_error: {
+    fieldPath: 'mainImageUrl',
+    severity: 'error',
+    sellerMessage: 'WooCommerce could not download or process the product image. Ensure the image URL is publicly accessible and returns a valid image format (JPG/PNG/WebP).',
+  },
+  // Same failure, different code: image sideloading goes through WordPress's own
+  // media-upload path (wp_handle_upload), not the WooCommerce REST product
+  // controller, so real-world stores return this code — without the `_rest_`
+  // segment — rather than the one above. Observed live: "Sorry, you are not
+  // allowed to upload this file type."
+  woocommerce_product_image_upload_error: {
     fieldPath: 'mainImageUrl',
     severity: 'error',
     sellerMessage: 'WooCommerce could not download or process the product image. Ensure the image URL is publicly accessible and returns a valid image format (JPG/PNG/WebP).',
@@ -1035,6 +1063,27 @@ export class WooCommerceConnector implements ConnectorInterface {
     };
   }
 
+  // Shared by publishProduct/updateProduct's !res.ok branches — parses the WC
+  // REST error body, runs it through normaliseError()/WC_ERROR_MAP, and wraps
+  // the result in a WooCommercePublishError so marketplace.service.ts can
+  // surface the real seller message instead of falling back to a generic
+  // CONNECTOR_PUBLISH_FAILED with the raw HTTP body.
+  private async buildPublishError(res: Response, operation: 'publish' | 'update'): Promise<WooCommercePublishError> {
+    const body = await res.text();
+    let errorCode = `HTTP_${res.status}`;
+    let rawMessage = body.slice(0, 200);
+    try {
+      const parsed = JSON.parse(body) as WcProductResponse;
+      if (parsed.code) errorCode = parsed.code;
+      if (parsed.message) rawMessage = parsed.message;
+    } catch { /* ignore — body wasn't JSON, keep the HTTP_<status> code and raw text */ }
+    const issue = this.normaliseError(errorCode, rawMessage);
+    return new WooCommercePublishError(
+      [issue],
+      `WooCommerce product ${operation} failed: ${issue.sellerMessage}`,
+    );
+  }
+
   // ─── required: normaliseError ────────────────────────────────────────────────
 
   normaliseError(errorCode: string, rawMessage: string): ConnectorIssue {
@@ -1341,13 +1390,7 @@ export class WooCommerceConnector implements ConnectorInterface {
 
     const res = await this.callApi(method, path, siteUrl, consumerKey, consumerSecret, wcProduct);
     if (!res.ok) {
-      const body = await res.text();
-      let errorCode = `HTTP_${res.status}`;
-      try {
-        const parsed = JSON.parse(body) as WcProductResponse;
-        if (parsed.code) errorCode = parsed.code;
-      } catch { /* ignore */ }
-      throw new Error(`WooCommerce product publish failed: ${errorCode} — ${body.slice(0, 200)}`);
+      throw await this.buildPublishError(res, 'publish');
     }
     const data = await res.json() as WcProductResponse;
     const parentId = data.id ?? existingId;
@@ -1392,13 +1435,7 @@ export class WooCommerceConnector implements ConnectorInterface {
 
     const res = await this.callApi('PUT', `/products/${externalRef}`, siteUrl, consumerKey, consumerSecret, wcProduct);
     if (!res.ok) {
-      const body = await res.text();
-      let errorCode = `HTTP_${res.status}`;
-      try {
-        const parsed = JSON.parse(body) as WcProductResponse;
-        if (parsed.code) errorCode = parsed.code;
-      } catch { /* ignore */ }
-      throw new Error(`WooCommerce product update failed: ${errorCode} — ${body.slice(0, 200)}`);
+      throw await this.buildPublishError(res, 'update');
     }
     const data = await res.json() as WcProductResponse;
     const parsed = parseInt(externalRef, 10);

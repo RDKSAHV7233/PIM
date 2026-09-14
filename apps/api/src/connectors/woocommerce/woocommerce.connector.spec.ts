@@ -1,6 +1,6 @@
 import type { ProductPayload } from "../../connector-framework/connector.interface";
 import { ConnectorNetworkError } from "../../connector-framework/connector.errors";
-import { MissingTenantContextError, WooCommerceConnector } from "./woocommerce.connector";
+import { MissingTenantContextError, WooCommerceConnector, WooCommercePublishError } from "./woocommerce.connector";
 
 const TEST_KEY = "c".repeat(64);
 
@@ -622,6 +622,90 @@ describe("WooCommerceConnector.publishProduct create-vs-update branching", () =>
     const publishCall = callApi.mock.calls.find(([method]) => method === "PUT");
     expect(publishCall?.[0]).toBe("PUT");
     expect(publishCall?.[1]).toBe("/products/777");
+  });
+});
+
+// A failed publish/update previously threw a bare Error with the raw WC HTTP
+// body, so WC_ERROR_MAP's seller-friendly messages (and its fieldPath/severity
+// metadata) were unreachable dead code — marketplace.service.ts has no special
+// handling for a generic Error and always fell back to a raw CONNECTOR_PUBLISH_FAILED
+// message. These assert the real failure path now goes through normaliseError().
+describe("WooCommerceConnector.publishProduct/updateProduct — structured errors via WooCommercePublishError", () => {
+  const product: ProductPayload = {
+    sku: "WC-ERR-001",
+    title: "Product that will fail to publish",
+    description: "desc",
+    brand: "Vexa",
+    hsnCode: "6204",
+    gstRate: 12,
+    mrp: 999,
+    sellingPrice: 799,
+    mainImageUrl: "https://cdn.example.com/bad.jpg",
+    attributes: {},
+    productType: "",
+  };
+
+  function mockResolvedCredentials(connector: WooCommerceConnector) {
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: "https://store.example.com",
+      consumerKey: "ck_test",
+      consumerSecret: "cs_test",
+    });
+  }
+
+  function mockFailedApi(connector: WooCommerceConnector, code: string, message: string) {
+    jest.spyOn(connector as any, "callApi").mockImplementation(async (method: any, path: any) => {
+      if (method === "GET" && String(path).startsWith("/products?")) {
+        return { ok: true, json: async () => [] } as unknown as Response;
+      }
+      return {
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ code, message, data: { status: 400 } }),
+      } as unknown as Response;
+    });
+  }
+
+  it("publishProduct maps a known WC_ERROR_MAP code (image upload, no _rest_ segment) to the friendly seller message", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    mockFailedApi(connector, "woocommerce_product_image_upload_error", "Sorry, you are not allowed to upload this file type.");
+
+    try {
+      await connector.publishProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product);
+      fail("expected publishProduct to reject");
+    } catch (err) {
+      expect(err).toBeInstanceOf(WooCommercePublishError);
+      const publishErr = err as WooCommercePublishError;
+      expect(publishErr.issues).toHaveLength(1);
+      expect(publishErr.issues[0]).toMatchObject({
+        code: "woocommerce_product_image_upload_error",
+        fieldPath: "mainImageUrl",
+        severity: "error",
+      });
+      expect(publishErr.issues[0].sellerMessage).toMatch(/publicly accessible/);
+      expect(publishErr.message).toContain(publishErr.issues[0].sellerMessage);
+    }
+  });
+
+  it("updateProduct falls back to WOO_UNKNOWN_ERROR but still preserves the real WC message for an unmapped code", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => JSON.stringify({ code: "some_new_wc_error_code", message: "A brand new WooCommerce failure mode." }),
+    } as unknown as Response);
+
+    try {
+      await connector.updateProduct({ tenantId: "t1", installationId: "inst-1", connectorId: "conn-1" } as any, product, "777");
+      fail("expected updateProduct to reject");
+    } catch (err) {
+      expect(err).toBeInstanceOf(WooCommercePublishError);
+      const publishErr = err as WooCommercePublishError;
+      expect(publishErr.issues[0].code).toBe("WOO_UNKNOWN_ERROR");
+      expect(publishErr.issues[0].sellerMessage).toContain("A brand new WooCommerce failure mode.");
+    }
   });
 });
 
