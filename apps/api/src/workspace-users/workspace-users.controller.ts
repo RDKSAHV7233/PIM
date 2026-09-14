@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
@@ -74,6 +75,23 @@ export class WorkspaceUsersController {
       this.workspaceUsersService.getUserStats(actor.tenantId),
     ]);
     return { adminUsers, ...rest };
+  }
+
+  /**
+   * Direct, uncapped lookup by exact userId — bypasses listUsers()'s
+   * take: 1_000 page. See workspace-users.service.ts#findUserByExactId for
+   * why this exists: a real tenant's own root admin was unreachable through
+   * the capped roster.
+   */
+  @Get("lookup")
+  async lookupUser(@Req() request: AuthenticatedRequest, @Query("userId") userId?: string) {
+    const actor = this.requireActor(request);
+    const trimmed = String(userId ?? "").trim();
+    if (!trimmed) {
+      return { user: null };
+    }
+    const user = await this.workspaceUsersService.findUserByExactId(actor.tenantId, trimmed);
+    return { user };
   }
 
   /** Returns the role capability matrix plus the tenant's plan-gated availableRoles. */

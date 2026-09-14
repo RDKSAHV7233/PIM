@@ -102,6 +102,17 @@ export async function getWorkspaceUserStats(options?: ApiRequestOptions) {
   return fetchJson<WorkspaceUserStats>("/admin/workspace/users/stats", undefined, options);
 }
 
+// Direct, uncapped lookup by exact userId — bypasses getWorkspaceUsers()'s
+// 1,000-row page. Use this to find/manage a specific known user (e.g. the
+// tenant's own root admin) that the roster table may not be showing.
+export async function getWorkspaceUserLookup(userId: string, options?: ApiRequestOptions) {
+  return fetchJson<{ user: WorkspaceUser | null }>(
+    `/admin/workspace/users/lookup?userId=${encodeURIComponent(userId)}`,
+    undefined,
+    options,
+  );
+}
+
 export async function createWorkspaceUser(
   dto: { userId: string; role: AppRole; password?: string },
   options?: ApiRequestOptions,

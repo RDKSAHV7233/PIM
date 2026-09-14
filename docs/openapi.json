@@ -6576,6 +6576,29 @@
         ]
       }
     },
+    "/api/v1/admin/workspace/users/lookup": {
+      "get": {
+        "operationId": "WorkspaceUsersController_lookupUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
     "/api/v1/admin/workspace/users/role-capabilities": {
       "get": {
         "operationId": "WorkspaceUsersController_getRoleCapabilities",

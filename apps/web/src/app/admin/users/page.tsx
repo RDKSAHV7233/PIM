@@ -10,6 +10,7 @@ import {
   getRoleCapabilities,
   getWorkspaceUsers,
   getWorkspaceUserStats,
+  getWorkspaceUserLookup,
   type TenantAuthPolicy,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -108,6 +109,11 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
     const mfaUnenrolledCount = activeUsers - mfaEnrolledCount;
     const atUserLimit = usage.users.current >= usage.users.limit;
 
+    const lookupUserId = String(query.lookupUserId ?? "").trim();
+    const lookupResult = lookupUserId
+      ? (await getWorkspaceUserLookup(lookupUserId, { role: actorRole, authHeader })).user
+      : undefined;
+
     return (
       <AdminUsersPageContent
         query={query}
@@ -127,6 +133,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         mfaEnrolledCount={mfaEnrolledCount}
         mfaUnenrolledCount={mfaUnenrolledCount}
         atUserLimit={atUserLimit}
+        lookupUserId={lookupUserId}
+        lookupResult={lookupResult}
       />
     );
   } catch (error: unknown) {

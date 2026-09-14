@@ -158,6 +158,65 @@ export class WorkspaceUsersService {
     };
   }
 
+  /**
+   * Direct, uncapped lookup by exact userId — a way to actually reach a user
+   * that listUsers()'s take: 1_000 page has pushed out. Confirmed live need
+   * (2026-09-14): the staging tenant's own root/founding admin identity fell
+   * outside the 1,000 most-recently-created rows and was completely
+   * unreachable through the roster table, including by the client-side
+   * UserSearchFilter (which only searches the same already-capped page, so it
+   * reports "no match" for a real user rather than "not in this page").
+   *
+   * Deliberately exact-match only, not a fuzzy/partial search — a full search
+   * experience over an unbounded, possibly-large identity set needs its own
+   * design (indexing, rate limiting, etc.), tracked in #823. This is the
+   * narrow, safe fix: if you know the exact userId you're looking for, you
+   * can always find and manage it, no matter how many newer rows exist.
+   */
+  async findUserByExactId(tenantId: string, targetUserId: string): Promise<WorkspaceUserRow | null> {
+    const normalizedTenantId = normalizeTenantKey(tenantId);
+    const normalizedTargetUserId = this.normalizeUserId(targetUserId);
+    if (!normalizedTargetUserId) {
+      return null;
+    }
+    const row = await this.prisma.tenant(normalizedTenantId).authIdentity.findFirst({
+      where: {
+        tenantKey: normalizedTenantId,
+        userId: normalizedTargetUserId,
+      },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        assignedRoles: true,
+        isActive: true,
+        lockedUntil: true,
+        lastSignInAt: true,
+        createdBy: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!row) {
+      return null;
+    }
+    const isDbMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+    let mfaEnrolled = false;
+    if (isDbMode) {
+      const mfaRow = await this.prisma.tenant(normalizedTenantId).userMfaEnrollment.findFirst({
+        where: {
+          tenantKey: normalizedTenantId,
+          userId: row.userId,
+          method: "totp",
+          status: "active",
+        },
+        select: { id: true },
+      });
+      mfaEnrolled = Boolean(mfaRow);
+    }
+    return this.mapWorkspaceUserRow(row, mfaEnrolled);
+  }
+
   async createUser(
     tenantId: string,
     actorId: string,
