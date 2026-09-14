@@ -34,6 +34,7 @@ import { MarketPrice, ProductPayload } from "../connector-framework/connector.in
 import { PriceResolutionService } from "./price-resolution.service";
 import { MediaStorageService } from "../media/media-storage.service";
 import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
+import { WooCommercePublishError } from "../connectors/woocommerce/woocommerce.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import {
   CursorPaginationQuery,
@@ -3487,10 +3488,11 @@ export class MarketplaceService implements OnModuleInit {
               }
             : { kind: publishClassification, installationId: installation.id, submissionId: submission.id };
       } catch (error) {
-        // ShopifyPublishError carries parsed ConnectorIssue[] with real fieldPaths.
-        // Generic errors fall back to a single CONNECTOR_PUBLISH_FAILED issue.
+        // ShopifyPublishError/WooCommercePublishError carry parsed ConnectorIssue[]
+        // with real fieldPaths. Generic errors fall back to a single
+        // CONNECTOR_PUBLISH_FAILED issue.
         const channelErrors =
-          error instanceof ShopifyPublishError && error.issues.length > 0
+          (error instanceof ShopifyPublishError || error instanceof WooCommercePublishError) && error.issues.length > 0
             ? error.issues.map((issue) => ({
                 code: issue.code,
                 fieldPath: issue.fieldPath,
