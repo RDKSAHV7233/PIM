@@ -58,7 +58,8 @@ export function AuthPolicyEnterpriseForm({ action, policy }: AuthPolicyEnterpris
         <span>
           <span className="font-medium text-slate-900">Require MFA</span>
           <span className="mt-1 block text-slate-600">
-            Stores the tenant MFA requirement now. Enrollment and challenge enforcement ship in the MFA follow-on slice.
+            Enforced at login in database auth mode: unenrolled members are required to enroll, enrolled members are
+            challenged for their code.
           </span>
         </span>
       </label>
