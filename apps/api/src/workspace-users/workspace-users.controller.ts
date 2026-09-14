@@ -69,8 +69,11 @@ export class WorkspaceUsersController {
   @Get("stats")
   async getStats(@Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
-    const adminUsers = await this.workspaceUsersService.countActiveAdmins(actor.tenantId);
-    return { adminUsers };
+    const [adminUsers, rest] = await Promise.all([
+      this.workspaceUsersService.countActiveAdmins(actor.tenantId),
+      this.workspaceUsersService.getUserStats(actor.tenantId),
+    ]);
+    return { adminUsers, ...rest };
   }
 
   /** Returns the role capability matrix plus the tenant's plan-gated availableRoles. */

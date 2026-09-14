@@ -96,13 +96,15 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       acc[item.principalType] = (acc[item.principalType] ?? 0) + 1;
       return acc;
     }, {});
-    const activeUsers = workspaceUsers.filter((user) => user.isActive).length;
-    const lockedUsers = workspaceUsers.filter((user) => user.isLocked && user.isActive).length;
-    // Real, unbounded count from the API — not workspaceUsers.filter(...), which
+    // Real, unbounded counts from the API — not workspaceUsers.filter(...), which
     // only sees the 1,000 most recently created identities and can silently
-    // undercount admins in a tenant with more than that (see #816/#819).
+    // undercount in a tenant with more than that (see #816/#819, #823). The
+    // roster table below still renders from the capped workspaceUsers list —
+    // paginating that is a separate UX decision, tracked in #823.
+    const activeUsers = workspaceUserStats.activeUsers;
+    const lockedUsers = workspaceUserStats.lockedUsers;
     const adminUsers = workspaceUserStats.adminUsers;
-    const mfaEnrolledCount = workspaceUsers.filter((user) => user.mfaEnrolled && user.isActive).length;
+    const mfaEnrolledCount = workspaceUserStats.mfaEnrolledCount;
     const mfaUnenrolledCount = activeUsers - mfaEnrolledCount;
     const atUserLimit = usage.users.current >= usage.users.limit;
 

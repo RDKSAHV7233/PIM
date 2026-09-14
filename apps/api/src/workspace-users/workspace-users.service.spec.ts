@@ -342,3 +342,40 @@ describe("WorkspaceUsersService.countActiveAdmins — Admin Coverage governance 
     // admin rows silently dropped the way listUsers()'s 1,000-row page can.
   });
 });
+
+describe("WorkspaceUsersService.getUserStats — Active Users / Locked Users / MFA Enrolled (#823)", () => {
+  it("returns the aggregate query's row, not a capped findMany + client-side filter", async () => {
+    const queryRawSpy = jest.fn().mockResolvedValue([{ activeUsers: 812, lockedUsers: 3, mfaEnrolledCount: 640 }]);
+    const tenantClient = { $queryRaw: queryRawSpy };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    const result = await svc.getUserStats("tenant-a");
+
+    expect(result).toEqual({ activeUsers: 812, lockedUsers: 3, mfaEnrolledCount: 640 });
+    expect(queryRawSpy).toHaveBeenCalledTimes(1);
+    const sqlFragments = queryRawSpy.mock.calls[0]?.[0] as string[] | undefined;
+    const fullSql = Array.isArray(sqlFragments) ? sqlFragments.join("?") : String(sqlFragments);
+    // No LIMIT/take anywhere — same reasoning as countActiveAdmins: these three
+    // headline numbers must not silently drop rows past the first 1,000
+    // identities the way listUsers() does for the roster table.
+    expect(fullSql).not.toMatch(/LIMIT/i);
+    expect(fullSql).toMatch(/FILTER/i);
+    expect(fullSql).toMatch(/LEFT JOIN/i);
+  });
+
+  it("defaults to zero for all three fields when the query returns no row", async () => {
+    const queryRawSpy = jest.fn().mockResolvedValue([]);
+    const tenantClient = { $queryRaw: queryRawSpy };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    const result = await svc.getUserStats("tenant-a");
+
+    expect(result).toEqual({ activeUsers: 0, lockedUsers: 0, mfaEnrolledCount: 0 });
+  });
+});

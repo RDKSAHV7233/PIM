@@ -121,6 +121,43 @@ export class WorkspaceUsersService {
     });
   }
 
+  /**
+   * Same fix as countActiveAdmins, extended to the other three Governance
+   * Snapshot / MFA Policy headline numbers on /admin/users: activeUsers,
+   * lockedUsers, and mfaEnrolledCount were all still being derived from
+   * listUsers()'s capped 1,000-row page (page.tsx's workspaceUsers.filter(...)),
+   * so they shared the exact same undercount risk as Admin Coverage (#816/#822)
+   * in any tenant with more identities than that. One aggregate query, no
+   * per-row cap — mfaEnrolledCount needs a join since MFA enrollment lives in
+   * a separate table, not a plain count().
+   *
+   * Deliberately not extended to the roster table itself (still capped at
+   * 1,000 rows for display) — giving admins a real way to reach every user in
+   * a >1,000-identity tenant is a UX decision (search? cursor pagination?),
+   * not a plain count() fix. Tracked separately in #823.
+   */
+  async getUserStats(tenantId: string): Promise<{ activeUsers: number; lockedUsers: number; mfaEnrolledCount: number }> {
+    const normalizedTenantId = normalizeTenantKey(tenantId);
+    const rows = await this.prisma.tenant(normalizedTenantId).$queryRaw<
+      Array<{ activeUsers: bigint | number; lockedUsers: bigint | number; mfaEnrolledCount: bigint | number }>
+    >`
+      SELECT
+        COUNT(*) FILTER (WHERE ai."isActive" = true)::int AS "activeUsers",
+        COUNT(*) FILTER (WHERE ai."isActive" = true AND ai."lockedUntil" > NOW())::int AS "lockedUsers",
+        COUNT(DISTINCT ai."id") FILTER (WHERE ai."isActive" = true AND me."id" IS NOT NULL)::int AS "mfaEnrolledCount"
+      FROM "AuthIdentity" ai
+      LEFT JOIN "user_mfa_enrollments" me
+        ON me."userId" = ai."userId" AND me."tenantKey" = ai."tenantKey" AND me."method" = 'totp' AND me."status" = 'active'
+      WHERE ai."tenantKey" = ${normalizedTenantId}
+    `;
+    const row = rows[0];
+    return {
+      activeUsers: Number(row?.activeUsers ?? 0),
+      lockedUsers: Number(row?.lockedUsers ?? 0),
+      mfaEnrolledCount: Number(row?.mfaEnrolledCount ?? 0),
+    };
+  }
+
   async createUser(
     tenantId: string,
     actorId: string,
