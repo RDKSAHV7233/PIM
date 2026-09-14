@@ -379,3 +379,74 @@ describe("WorkspaceUsersService.getUserStats — Active Users / Locked Users / M
     expect(result).toEqual({ activeUsers: 0, lockedUsers: 0, mfaEnrolledCount: 0 });
   });
 });
+
+// Confirmed live (2026-09-14): the staging tenant's own root admin
+// (info@vexapim.com) fell outside listUsers()'s take: 1_000 page — exactly
+// 1,000 unique emails were visible on /admin/users and that account wasn't
+// one of them. findUserByExactId() is the direct, uncapped fix.
+describe("WorkspaceUsersService.findUserByExactId — direct lookup bypassing the capped roster (#823)", () => {
+  function makeServiceWithMfaLookup(authIdentityRow: Record<string, unknown> | null, mfaRow: Record<string, unknown> | null) {
+    process.env.AUTH_MODE = "db";
+    const findFirst = jest.fn().mockResolvedValue(authIdentityRow);
+    const mfaFindFirst = jest.fn().mockResolvedValue(mfaRow);
+    const tenantClient = {
+      authIdentity: { findFirst },
+      userMfaEnrollment: { findFirst: mfaFindFirst },
+    };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+    return { svc, findFirst, mfaFindFirst };
+  }
+
+  const ORIGINAL_AUTH_MODE = process.env.AUTH_MODE;
+  afterEach(() => {
+    if (ORIGINAL_AUTH_MODE === undefined) delete process.env.AUTH_MODE;
+    else process.env.AUTH_MODE = ORIGINAL_AUTH_MODE;
+  });
+
+  it("finds a user regardless of how many newer rows would push them out of listUsers()'s page", async () => {
+    const row = {
+      id: "row-1",
+      userId: "info@vexapim.com",
+      role: "admin",
+      assignedRoles: ["super_admin"],
+      isActive: true,
+      lockedUntil: null,
+      lastSignInAt: null,
+      createdBy: null,
+      createdAt: new Date("2025-01-01"),
+      updatedAt: new Date("2025-01-01"),
+    };
+    const { svc, findFirst, mfaFindFirst } = makeServiceWithMfaLookup(row, { id: "mfa-1" });
+
+    const result = await svc.findUserByExactId("tenant-a", "info@vexapim.com");
+
+    expect(result?.userId).toBe("info@vexapim.com");
+    expect(result?.mfaEnrolled).toBe(true);
+    // No `take`/`orderBy`-then-slice anywhere — a single findFirst by exact
+    // userId, unaffected by how many other rows exist or when they were created.
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantKey: "tenant-a", userId: "info@vexapim.com" } }),
+    );
+    expect(mfaFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null, not an exception, when no user matches the exact id", async () => {
+    const { svc } = makeServiceWithMfaLookup(null, null);
+
+    const result = await svc.findUserByExactId("tenant-a", "nobody@vexapim.com");
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null for an empty/whitespace userId without querying the database", async () => {
+    const { svc, findFirst } = makeServiceWithMfaLookup(null, null);
+
+    const result = await svc.findUserByExactId("tenant-a", "   ");
+
+    expect(result).toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+});

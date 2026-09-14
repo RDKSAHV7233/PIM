@@ -52,6 +52,8 @@ interface AdminUsersPageContentProps {
   mfaEnrolledCount: number;
   mfaUnenrolledCount: number;
   atUserLimit: boolean;
+  lookupUserId: string;
+  lookupResult: WorkspaceUser | null | undefined;
 }
 
 const ROLE_INVITE_DESCRIPTIONS: Record<string, string> = {
@@ -125,6 +127,8 @@ export function AdminUsersPageContent({
   mfaEnrolledCount,
   mfaUnenrolledCount,
   atUserLimit,
+  lookupUserId,
+  lookupResult,
 }: AdminUsersPageContentProps) {
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
@@ -366,6 +370,172 @@ export function AdminUsersPageContent({
           </form>
         </Card>
       ) : null}
+
+      <Card>
+        <CardTitle>Find User by Exact Email</CardTitle>
+        <p className="mt-2 text-sm text-slate-600">
+          The roster below only shows the 1,000 most recently created identities — in a workspace with more than
+          that, an older user (including this tenant&apos;s own founding admin) can be completely invisible there.
+          This looks the user up directly, no matter how many newer rows exist.
+        </p>
+        <form action="/admin/users" method="GET" className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">Exact user ID / email</span>
+            <input
+              type="text"
+              name="lookupUserId"
+              defaultValue={lookupUserId}
+              placeholder="name@example.com"
+              className="min-w-[260px] rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Find user
+          </button>
+          {lookupUserId ? (
+            <Link href="/admin/users" className="text-sm text-blue-600 underline">
+              Clear
+            </Link>
+          ) : null}
+        </form>
+
+        {lookupUserId && lookupResult === null ? (
+          <p className="mt-3 text-sm text-slate-600">
+            No user found with the exact ID <span className="font-medium text-slate-900">{lookupUserId}</span>. This
+            is an exact match only — check spelling, or the account may not exist in this workspace.
+          </p>
+        ) : null}
+
+        {lookupUserId && lookupResult ? (
+          (() => {
+            const user = lookupResult;
+            const isSelf = user.userId === currentUserId;
+            const isOutOfTier = !capabilities.availableRoles.includes(user.role as never);
+            const editOptions = capabilities.availableRoles.includes(user.role as never)
+              ? capabilities.availableRoles
+              : [...capabilities.availableRoles, user.role];
+            const statusChip = getUserStatus(user);
+            return (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-900">{user.userId}</p>
+                    <p className="text-xs text-slate-500">Created {formatDateTime(user.createdAt)}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusChip label={statusChip.label} tone={statusChip.tone} />
+                    <StatusChip
+                      label={user.mfaEnrolled ? "mfa enrolled" : "mfa none"}
+                      tone={user.mfaEnrolled ? "success" : "neutral"}
+                    />
+                  </div>
+                </div>
+                {canManageUsers ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3">
+                    <form action={updateWorkspaceUserRoleAction} className="flex items-center gap-2">
+                      <input type="hidden" name="userId" value={user.userId} />
+                      <select
+                        name="role"
+                        defaultValue={user.role}
+                        className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                        disabled={isSelf}
+                      >
+                        {editOptions.map((r) => {
+                          const locked = !capabilities.availableRoles.includes(r as never);
+                          return (
+                            <option key={r} value={r} disabled={locked}>
+                              {locked ? `${r} (Requires ${minimumTierLabel(r)} plan)` : r}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        type="submit"
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isSelf}
+                      >
+                        Save role
+                      </button>
+                    </form>
+                    {isOutOfTier ? (
+                      <span className="inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                        Requires {minimumTierLabel(user.role)} plan
+                      </span>
+                    ) : null}
+                    {user.isLocked ? (
+                      <form action={unlockWorkspaceUserAction}>
+                        <input type="hidden" name="userId" value={user.userId} />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Unlock
+                        </button>
+                      </form>
+                    ) : (
+                      <form action={lockWorkspaceUserAction} className="flex items-center gap-1.5">
+                        <input type="hidden" name="userId" value={user.userId} />
+                        <select
+                          name="durationMinutes"
+                          defaultValue="60"
+                          disabled={isSelf || !user.isActive}
+                          aria-label="Lock duration"
+                          className="rounded-md border border-amber-300 px-2 py-1.5 text-sm text-amber-800 disabled:opacity-60"
+                        >
+                          <option value="60">60m</option>
+                          <option value="240">4h</option>
+                          <option value="1440">24h</option>
+                          <option value="10080">7d</option>
+                        </select>
+                        <button
+                          type="submit"
+                          className="rounded-md border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isSelf || !user.isActive}
+                        >
+                          Lock
+                        </button>
+                      </form>
+                    )}
+                    {confirmDeactivateUserId === user.userId ? (
+                      <form action={deactivateWorkspaceUserAction} className="flex flex-col gap-2">
+                        <input type="hidden" name="userId" value={user.userId} />
+                        <p className="text-xs text-rose-700">Type user ID to confirm:</p>
+                        <input
+                          type="text"
+                          name="confirmUserId"
+                          placeholder={user.userId}
+                          className="rounded-md border border-rose-300 px-2 py-1 text-xs"
+                          required
+                          aria-label="Confirm User ID"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                        >
+                          Confirm deactivate
+                        </button>
+                      </form>
+                    ) : (
+                      <Link
+                        href={isSelf || !user.isActive ? "#" : `/admin/users?lookupUserId=${encodeURIComponent(user.userId)}&confirmDeactivate=${encodeURIComponent(user.userId)}`}
+                        aria-disabled={isSelf || !user.isActive}
+                        className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+                      >
+                        Deactivate
+                      </Link>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-500">Read-only</p>
+                )}
+              </div>
+            );
+          })()
+        ) : null}
+      </Card>
 
       <Card id="workspace-users" className="scroll-mt-24">
         <CardTitle>Workspace Users</CardTitle>
