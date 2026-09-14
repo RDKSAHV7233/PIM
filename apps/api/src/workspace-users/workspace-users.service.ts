@@ -106,6 +106,21 @@ export class WorkspaceUsersService {
     return rows.map((row) => this.mapWorkspaceUserRow(row, enrolledUserIds.has(row.userId)));
   }
 
+  /**
+   * Real, unbounded count of active admins — unlike listUsers()'s `take: 1_000`
+   * page, this can't silently omit an admin whose row falls outside the most
+   * recent 1,000 identities. The Governance Snapshot's "Admin Coverage" card
+   * depends on this being exact: it's the same invariant the last-admin guard
+   * (deactivateUser, #816/#819) protects, so undercounting it here can make a
+   * healthy tenant look mistakenly at-risk (or mask a real one).
+   */
+  async countActiveAdmins(tenantId: string): Promise<number> {
+    const normalizedTenantId = normalizeTenantKey(tenantId);
+    return this.prisma.tenant(normalizedTenantId).authIdentity.count({
+      where: { role: "admin", isActive: true },
+    });
+  }
+
   async createUser(
     tenantId: string,
     actorId: string,
