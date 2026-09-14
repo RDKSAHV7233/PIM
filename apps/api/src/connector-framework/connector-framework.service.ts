@@ -222,6 +222,7 @@ export class ConnectorFrameworkService {
         isAsync: result.isAsync,
         durationMs: Date.now() - started,
       });
+      this.touchLastSyncAt(installation);
       return result;
     } catch (err) {
       this.logger.warn("connector.publish.failure", {
@@ -262,6 +263,7 @@ export class ConnectorFrameworkService {
         sku: product.sku,
         durationMs: Date.now() - started,
       });
+      this.touchLastSyncAt(installation);
       return result;
     } catch (err) {
       this.logger.warn("connector.update.failure", {
@@ -496,6 +498,28 @@ export class ConnectorFrameworkService {
     >,
   ): ConnectorContext {
     return this.buildContext(installation);
+  }
+
+  // ConnectorInstallation.lastSyncAt is read on every connector card (apps/web's
+  // /channels/connectors pages: "Last synced" / "No sync recorded yet"), but until
+  // this, nothing anywhere in the codebase ever wrote it — grep confirms zero other
+  // writers. Fire-and-forget: a failure here must never fail the publish/update
+  // call that already succeeded against the real marketplace.
+  private touchLastSyncAt(installation: Pick<ConnectorInstallationRecord, "id" | "tenantKey" | "slug">): void {
+    this.prisma
+      .tenant(installation.tenantKey)
+      .connectorInstallation.update({
+        where: { id: installation.id },
+        data: { lastSyncAt: new Date() },
+      })
+      .catch((err: unknown) => {
+        this.logger.warn("connector.last_sync_at.update_failed", {
+          slug: installation.slug,
+          tenantKey: installation.tenantKey,
+          installationId: installation.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
   }
 
   private buildContext(
