@@ -6562,6 +6562,20 @@
         ]
       }
     },
+    "/api/v1/admin/workspace/users/stats": {
+      "get": {
+        "operationId": "WorkspaceUsersController_getStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
     "/api/v1/admin/workspace/users/role-capabilities": {
       "get": {
         "operationId": "WorkspaceUsersController_getRoleCapabilities",

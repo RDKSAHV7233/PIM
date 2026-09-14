@@ -1448,6 +1448,33 @@
           }
         },
         {
+          "name": "WorkspaceUsersController_getStats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workspace/users/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "workspace",
+                "users",
+                "stats"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "Get role capabilities",
           "request": {
             "method": "GET",

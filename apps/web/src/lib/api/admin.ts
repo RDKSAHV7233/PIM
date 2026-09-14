@@ -87,6 +87,18 @@ export async function getWorkspaceUsers(options?: ApiRequestOptions) {
   return fetchJson<WorkspaceUser[]>("/admin/workspace/users", undefined, options);
 }
 
+export interface WorkspaceUserStats {
+  adminUsers: number;
+}
+
+// Unbounded count from the backend — unlike getWorkspaceUsers() above, which
+// caps at 1,000 rows for display, this can't silently undercount admins in a
+// tenant with more identities than that. Use this for the Admin Coverage
+// governance metric, not workspaceUsers.filter(...).
+export async function getWorkspaceUserStats(options?: ApiRequestOptions) {
+  return fetchJson<WorkspaceUserStats>("/admin/workspace/users/stats", undefined, options);
+}
+
 export async function createWorkspaceUser(
   dto: { userId: string; role: AppRole; password?: string },
   options?: ApiRequestOptions,

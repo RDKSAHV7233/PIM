@@ -60,6 +60,19 @@ export class WorkspaceUsersController {
     return this.workspaceUsersService.listUsers(actor.tenantId);
   }
 
+  /**
+   * Governance stats that must stay correct regardless of how many identities
+   * the tenant has — listUsers() above caps at 1,000 rows for display, which
+   * is fine for a roster page but silently wrong for a headline count like
+   * Admin Coverage. See workspace-users.service.ts#countActiveAdmins.
+   */
+  @Get("stats")
+  async getStats(@Req() request: AuthenticatedRequest) {
+    const actor = this.requireActor(request);
+    const adminUsers = await this.workspaceUsersService.countActiveAdmins(actor.tenantId);
+    return { adminUsers };
+  }
+
   /** Returns the role capability matrix plus the tenant's plan-gated availableRoles. */
   @Get("role-capabilities")
   async getRoleCapabilities(@Req() request: AuthenticatedRequest) {

@@ -322,3 +322,23 @@ describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () 
     expect(txAuthIdentity.update).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("WorkspaceUsersService.countActiveAdmins — Admin Coverage governance metric", () => {
+  it("uses a real count(), not a capped findMany + client-side filter", async () => {
+    const countSpy = jest.fn().mockResolvedValue(3);
+    const tenantClient = { authIdentity: { count: countSpy } };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    const result = await svc.countActiveAdmins("tenant-a");
+
+    expect(result).toBe(3);
+    expect(countSpy).toHaveBeenCalledTimes(1);
+    expect(countSpy).toHaveBeenCalledWith({ where: { role: "admin", isActive: true } });
+    // No `take` limit anywhere in this call — a tenant with >1,000 identities
+    // (e.g. one under continuous automated test churn) must not have its real
+    // admin rows silently dropped the way listUsers()'s 1,000-row page can.
+  });
+});

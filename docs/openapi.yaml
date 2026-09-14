@@ -3879,6 +3879,14 @@ paths:
         "201":
           description: ""
       tags: *a26
+  /api/v1/admin/workspace/users/stats:
+    get:
+      operationId: WorkspaceUsersController_getStats
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a26
   /api/v1/admin/workspace/users/role-capabilities:
     get:
       operationId: WorkspaceUsersController_getRoleCapabilities

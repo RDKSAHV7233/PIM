@@ -9,6 +9,7 @@ import {
   getTenantAuthPolicy,
   getRoleCapabilities,
   getWorkspaceUsers,
+  getWorkspaceUserStats,
   type TenantAuthPolicy,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -68,12 +69,13 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const canManageUsers = actorRole === "admin";
 
   try {
-    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, capabilities] = await Promise.all([
+    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, capabilities, workspaceUserStats] = await Promise.all([
       getBillingUsage({ role: actorRole, authHeader }),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
       getWorkspaceUsers({ role: actorRole, authHeader }),
       getAccessScopeAssignments({ role: actorRole, authHeader }),
       getRoleCapabilities({ role: actorRole, authHeader }),
+      getWorkspaceUserStats({ role: actorRole, authHeader }),
     ]);
 
     let authPolicy: TenantAuthPolicy | null = null;
@@ -96,7 +98,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
     }, {});
     const activeUsers = workspaceUsers.filter((user) => user.isActive).length;
     const lockedUsers = workspaceUsers.filter((user) => user.isLocked && user.isActive).length;
-    const adminUsers = workspaceUsers.filter((user) => user.role === "admin" && user.isActive).length;
+    // Real, unbounded count from the API — not workspaceUsers.filter(...), which
+    // only sees the 1,000 most recently created identities and can silently
+    // undercount admins in a tenant with more than that (see #816/#819).
+    const adminUsers = workspaceUserStats.adminUsers;
     const mfaEnrolledCount = workspaceUsers.filter((user) => user.mfaEnrolled && user.isActive).length;
     const mfaUnenrolledCount = activeUsers - mfaEnrolledCount;
     const atUserLimit = usage.users.current >= usage.users.limit;
