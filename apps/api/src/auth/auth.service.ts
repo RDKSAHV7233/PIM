@@ -548,7 +548,7 @@ export class AuthService implements OnModuleDestroy {
       return { type: "mfa_required", pendingToken, maskedEmail: this.maskIdentity(identity.userId) };
     }
 
-    if (mfaPolicy.mfaRequired) {
+    if (mfaPolicy.mfaRequired && !this.authPolicyService.isWithinMfaGracePeriod(mfaPolicy)) {
       const enrollmentToken = signPimJwt({
         sub: identity.userId,
         tenantId: identity.tenantId,

@@ -347,6 +347,7 @@ export interface TenantAuthPolicy {
   tenantKey: string;
   externalIdentityMode: boolean;
   mfaRequired: boolean;
+  mfaRequiredSince: string | null;
   mfaGracePeriodDays: number;
   sessionTimeoutMinutes: number;
   allowedAuthMethods: Array<"password" | "oidc">;

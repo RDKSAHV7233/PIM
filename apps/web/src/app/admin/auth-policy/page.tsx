@@ -85,6 +85,20 @@ function AdminAuthPolicyUnavailableState() {
   );
 }
 
+// Mirrors AuthPolicyService.isWithinMfaGracePeriod's date math for display —
+// this is read-only, so duplicating the trivial calculation here avoids a
+// second round trip just to render a status string.
+function describeMfaGracePeriod(mfaRequiredSince: string | null, mfaGracePeriodDays: number): string {
+  if (!mfaRequiredSince) {
+    return "No rollout window recorded — enforced immediately";
+  }
+  const graceEndsAt = new Date(mfaRequiredSince).getTime() + mfaGracePeriodDays * 24 * 60 * 60 * 1000;
+  if (Date.now() >= graceEndsAt) {
+    return "Ended — enforced immediately";
+  }
+  return `Active until ${formatDateTime(new Date(graceEndsAt).toISOString())}`;
+}
+
 function InfoCards({ policy }: { policy: Awaited<ReturnType<typeof getTenantAuthPolicy>> }) {
   return (
     <section className="grid gap-4 xl:grid-cols-3">
@@ -113,6 +127,12 @@ function InfoCards({ policy }: { policy: Awaited<ReturnType<typeof getTenantAuth
             <dt>MFA enrollment enforcement</dt>
             <dd className="font-medium text-slate-900">{policy.runtimeApplied.mfaEnrollment ? "Active now" : "Stored only"}</dd>
           </div>
+          {policy.mfaRequired && (
+            <div className="flex items-center justify-between gap-4">
+              <dt>MFA grace period</dt>
+              <dd className="font-medium text-slate-900">{describeMfaGracePeriod(policy.mfaRequiredSince, policy.mfaGracePeriodDays)}</dd>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4">
             <dt>External identity enforcement</dt>
             <dd className="font-medium text-slate-900">{policy.runtimeApplied.externalIdentity ? "Active now" : "Stored only"}</dd>
