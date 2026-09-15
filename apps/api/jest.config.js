@@ -90,6 +90,7 @@ module.exports = {
     "**/outbound-webhooks/outbound-webhooks.service.spec.ts",
     "**/api-keys/api-keys.service.spec.ts",
     "**/connector-installer/credential-encryption.service.spec.ts",
+    "**/auth/mfa.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
