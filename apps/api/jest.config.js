@@ -105,6 +105,7 @@ module.exports = {
     "**/connector-framework/connector-webhook-lease-sweeper.service.spec.ts",
     "**/connector-framework/connector-submission-storage.service.spec.ts",
     "**/notifications/notifications.service.spec.ts",
+    "**/connector-framework/connector-heartbeat.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
