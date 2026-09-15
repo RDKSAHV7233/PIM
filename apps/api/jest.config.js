@@ -96,6 +96,7 @@ module.exports = {
     "**/connector-installer/connector-permission.service.spec.ts",
     "**/auth/oidc.service.spec.ts",
     "**/auth/oidc-config.service.spec.ts",
+    "**/auth/account-deletion-worker.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
