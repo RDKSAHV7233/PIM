@@ -103,6 +103,7 @@ module.exports = {
     "**/connectors/woocommerce/woocommerce-bulk-publish.service.spec.ts",
     "**/connectors/woocommerce/woocommerce-brownfield-import.service.spec.ts",
     "**/connector-framework/connector-webhook-lease-sweeper.service.spec.ts",
+    "**/connector-framework/connector-submission-storage.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
