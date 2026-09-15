@@ -100,6 +100,7 @@ module.exports = {
     "**/auth/auth-export-storage.service.spec.ts",
     "**/auth/auth-email.service.spec.ts",
     "**/connectors/woocommerce/woocommerce-reconciliation.service.spec.ts",
+    "**/connectors/woocommerce/woocommerce-bulk-publish.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
