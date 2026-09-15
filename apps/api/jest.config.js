@@ -92,6 +92,7 @@ module.exports = {
     "**/connector-installer/credential-encryption.service.spec.ts",
     "**/auth/mfa.service.spec.ts",
     "**/connector-framework/connector-credential.service.spec.ts",
+    "**/connector-framework/connector-webhook-ingestion.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
