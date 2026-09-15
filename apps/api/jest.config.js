@@ -95,6 +95,7 @@ module.exports = {
     "**/connector-framework/connector-webhook-ingestion.service.spec.ts",
     "**/connector-installer/connector-permission.service.spec.ts",
     "**/auth/oidc.service.spec.ts",
+    "**/auth/oidc-config.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
