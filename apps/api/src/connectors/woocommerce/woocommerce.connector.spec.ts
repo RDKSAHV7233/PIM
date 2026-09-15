@@ -819,3 +819,128 @@ describe("WooCommerceConnector.publishProduct/updateProduct — terminal status 
     expect(publishResult.status).toBe(syncResult.status);
   });
 });
+
+describe("WooCommerceConnector.reconcileSubmission — W6 pim_wins drift detection (no prior coverage)", () => {
+  function mockResolvedCredentials(connector: WooCommerceConnector) {
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: "https://store.example.com",
+      consumerKey: "ck_test",
+      consumerSecret: "cs_test",
+    });
+  }
+
+  const baseSnapshot = { title: "Original Title", mrp: 999, status: "APPROVED" };
+
+  it("reports no drift when title, price, and status all still match the live WooCommerce product", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Original Title", regular_price: "999", status: "publish" }),
+    } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result).toEqual({ needsRepublish: false, driftedFields: [] });
+  });
+
+  it("detects a title-only drift", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Someone Edited This In WordPress", regular_price: "999", status: "publish" }),
+    } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result.needsRepublish).toBe(true);
+    expect(result.driftedFields).toEqual(["title"]);
+  });
+
+  it("detects a price-only drift, comparing WC's string price against PIM's numeric mrp", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Original Title", regular_price: "1499.00", status: "publish" }),
+    } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result.driftedFields).toEqual(["regular_price"]);
+  });
+
+  it("detects a status drift — WC shows draft when PIM expects it published", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Original Title", regular_price: "999", status: "draft" }),
+    } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result.driftedFields).toEqual(["status"]);
+  });
+
+  it("expects WC status 'draft' (not 'publish') when PIM's own snapshot status is DRAFT — no drift when they agree", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Original Title", regular_price: "999", status: "draft" }),
+    } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", { ...baseSnapshot, status: "DRAFT" });
+
+    expect(result.needsRepublish).toBe(false);
+  });
+
+  it("reports every drifted field at once when title, price, and status have all changed", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Totally Different", regular_price: "1.00", status: "draft" }),
+    } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result.driftedFields.sort()).toEqual(["regular_price", "status", "title"]);
+  });
+
+  it("skips a field's drift check entirely when the stored snapshot never captured that field, rather than treating 'unknown' as drift", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Whatever WooCommerce Has Now", regular_price: "500", status: "publish" }),
+    } as unknown as Response);
+
+    // Snapshot has no title and no mrp at all — only status is present.
+    const result = await connector.reconcileSubmission({} as any, "555", { status: "APPROVED" });
+
+    expect(result.driftedFields).toEqual([]);
+  });
+
+  it("marks the provider read unavailable (not a drift verdict) when WooCommerce returns a non-ok response", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockResolvedValue({ ok: false, status: 503 } as unknown as Response);
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result).toEqual({ needsRepublish: false, driftedFields: [], providerReadUnavailable: true, providerReadStatus: 503 });
+  });
+
+  it("marks the provider read unavailable, not a crash, when the API call itself throws (network error)", async () => {
+    const connector = makeConnector();
+    mockResolvedCredentials(connector);
+    jest.spyOn(connector as any, "callApi").mockRejectedValue(new Error("ECONNRESET"));
+
+    const result = await connector.reconcileSubmission({} as any, "555", baseSnapshot);
+
+    expect(result).toEqual({ needsRepublish: false, driftedFields: [], providerReadUnavailable: true });
+  });
+});
