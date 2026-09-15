@@ -108,6 +108,7 @@ module.exports = {
     "**/connector-framework/connector-heartbeat.service.spec.ts",
     "**/ondc/ondc.service.spec.ts",
     "**/taxonomy/taxonomy.service.spec.ts",
+    "**/auto-suggestions/auto-suggestions.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
