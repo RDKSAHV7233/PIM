@@ -98,6 +98,7 @@ module.exports = {
     "**/auth/oidc-config.service.spec.ts",
     "**/auth/account-deletion-worker.service.spec.ts",
     "**/auth/auth-export-storage.service.spec.ts",
+    "**/auth/auth-email.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
