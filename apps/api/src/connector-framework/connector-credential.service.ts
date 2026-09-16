@@ -72,6 +72,13 @@ export class ConnectorCredentialService {
    * Safe to run multiple times (idempotent — skips credentials already on current version).
    * Run this after rotating CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION in env.
    * Called automatically by the heartbeat on startup when a version change is detected.
+   *
+   * Loops in ROTATION_BATCH_SIZE batches, ordered by id with a `gt` cursor, until every
+   * stale row is drained. The cursor (not just the shrinking keyVersion filter) matters:
+   * a row that fails to rotate (bad ciphertext, missing key) never changes keyVersion, so
+   * without a cursor it would be re-fetched and re-fail forever. Previously took exactly
+   * one bounded batch and returned, silently leaving a tenant with >ROTATION_BATCH_SIZE
+   * stale credentials only partially rotated until the next app restart.
    */
   async rotateAllCredentials(): Promise<CredentialRotationResult> {
     const db = this.prismaDirect.getClient();
@@ -88,53 +95,66 @@ export class ConnectorCredentialService {
     let rotated = 0;
     let skipped = 0;
     let errors = 0;
+    let batchNumber = 0;
+    let lastId = "";
 
-    const staleRows = await db.connectorCredential.findMany({
-      where: { keyVersion: { not: currentVersion } },
-      take: ROTATION_BATCH_SIZE,
-      select: { id: true, encryptedValue: true, keyVersion: true },
-    });
+    while (true) {
+      const staleRows = await db.connectorCredential.findMany({
+        where: { id: { gt: lastId }, keyVersion: { not: currentVersion } },
+        orderBy: [{ id: "asc" }],
+        take: ROTATION_BATCH_SIZE,
+        select: { id: true, encryptedValue: true, keyVersion: true },
+      });
 
-    this.logger.info("connector.credential.rotation_started", {
-      staleCount: staleRows.length,
-      targetVersion: currentVersion,
-    });
+      if (staleRows.length === 0) {
+        break;
+      }
 
-    for (const row of staleRows) {
-      try {
-        const oldVersion = parseCredentialKeyVersion(row.keyVersion);
-        const oldKey = this.keys.get(oldVersion);
-        if (!oldKey) {
-          this.logger.warn("connector.credential.rotation_skipped_missing_key", {
-            credentialId: row.id,
-            keyVersion: row.keyVersion,
+      batchNumber++;
+      this.logger.info("connector.credential.rotation_batch_started", {
+        batchNumber,
+        batchCount: staleRows.length,
+        targetVersion: currentVersion,
+      });
+
+      for (const row of staleRows) {
+        lastId = row.id;
+        try {
+          const oldVersion = parseCredentialKeyVersion(row.keyVersion);
+          const oldKey = this.keys.get(oldVersion);
+          if (!oldKey) {
+            this.logger.warn("connector.credential.rotation_skipped_missing_key", {
+              credentialId: row.id,
+              keyVersion: row.keyVersion,
+            });
+            skipped++;
+            continue;
+          }
+
+          const plaintext = decryptCredentialValue(row.encryptedValue, oldKey);
+          const newCipher = encryptCredentialValue(plaintext, currentKey, this.currentKeyVersion);
+
+          await db.connectorCredential.updateMany({
+            where: { id: row.id, keyVersion: row.keyVersion },
+            data: {
+              encryptedValue: newCipher,
+              keyVersion: currentVersion,
+              updatedAt: new Date(),
+            },
           });
-          skipped++;
-          continue;
+          rotated++;
+        } catch (err) {
+          errors++;
+          this.logger.warn("connector.credential.rotation_error", {
+            credentialId: row.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
-
-        const plaintext = decryptCredentialValue(row.encryptedValue, oldKey);
-        const newCipher = encryptCredentialValue(plaintext, currentKey, this.currentKeyVersion);
-
-        await db.connectorCredential.updateMany({
-          where: { id: row.id, keyVersion: row.keyVersion },
-          data: {
-            encryptedValue: newCipher,
-            keyVersion: currentVersion,
-            updatedAt: new Date(),
-          },
-        });
-        rotated++;
-      } catch (err) {
-        errors++;
-        this.logger.warn("connector.credential.rotation_error", {
-          credentialId: row.id,
-          error: err instanceof Error ? err.message : String(err),
-        });
       }
     }
 
     this.logger.info("connector.credential.rotation_completed", {
+      batches: batchNumber,
       rotated,
       skipped,
       errors,
