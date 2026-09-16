@@ -87,6 +87,38 @@ export async function getWorkspaceUsers(options?: ApiRequestOptions) {
   return fetchJson<WorkspaceUser[]>("/admin/workspace/users", undefined, options);
 }
 
+export interface WorkspaceUsersPage {
+  items: WorkspaceUser[];
+  limit: number;
+  nextCursor: string | null;
+}
+
+// Real server-side pagination + search/role/status filtering, over the FULL
+// identity set — not just the first 1,000 like getWorkspaceUsers() above.
+// Closes #823's roster-reachability gap. Always requests cursor mode.
+export async function getWorkspaceUsersPaginated(
+  filters?: { search?: string; role?: string; status?: string; cursor?: string; limit?: number },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams({ pagination: "cursor" });
+  if (filters?.search) {
+    params.set("search", filters.search);
+  }
+  if (filters?.role) {
+    params.set("role", filters.role);
+  }
+  if (filters?.status) {
+    params.set("status", filters.status);
+  }
+  if (filters?.cursor) {
+    params.set("cursor", filters.cursor);
+  }
+  if (typeof filters?.limit === "number" && Number.isFinite(filters.limit)) {
+    params.set("limit", String(filters.limit));
+  }
+  return fetchJson<WorkspaceUsersPage>(`/admin/workspace/users?${params.toString()}`, undefined, options);
+}
+
 export interface WorkspaceUserStats {
   adminUsers: number;
   activeUsers: number;

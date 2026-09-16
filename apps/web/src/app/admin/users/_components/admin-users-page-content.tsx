@@ -41,6 +41,7 @@ interface AdminUsersPageContentProps {
   usage: BillingUsage;
   connectorPermissions: ConnectorPermission[];
   workspaceUsers: WorkspaceUser[];
+  workspaceUsersNextCursor: string | null;
   accessScopeAssignments: AccessScopeAssignment[];
   capabilities: RoleCapabilityMatrix;
   authPolicy: TenantAuthPolicy | null;
@@ -116,6 +117,7 @@ export function AdminUsersPageContent({
   usage,
   connectorPermissions,
   workspaceUsers,
+  workspaceUsersNextCursor,
   accessScopeAssignments,
   capabilities,
   authPolicy,
@@ -545,6 +547,11 @@ export function AdminUsersPageContent({
         <div className="mt-2">
           <UserSearchFilter
             users={workspaceUsers}
+            search={String(query.search ?? "").trim()}
+            role={String(query.role ?? "").trim()}
+            userStatus={String(query.userStatus ?? "").trim()}
+            nextCursor={workspaceUsersNextCursor}
+            onLaterPage={Boolean(String(query.cursor ?? "").trim())}
             currentUserId={currentUserId}
             availableRoles={capabilities.availableRoles}
             columns={[

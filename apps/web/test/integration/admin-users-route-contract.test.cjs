@@ -71,10 +71,11 @@ function run() {
     source.includes("await Promise.all([") &&
       source.includes("getBillingUsage({ role: actorRole, authHeader })") &&
       source.includes("getConnectorPermissions(undefined, { role: actorRole, authHeader })") &&
-      source.includes("getWorkspaceUsers({ role: actorRole, authHeader })") &&
+      source.includes("getWorkspaceUsersPaginated(") &&
       source.includes("getAccessScopeAssignments({ role: actorRole, authHeader })") &&
-      source.includes("getRoleCapabilities({ role: actorRole, authHeader })"),
-    "Admin users must load billing usage, connector overrides, workspace users, delegated scope assignments, and role capabilities through the shared auth context.",
+      source.includes("getRoleCapabilities({ role: actorRole, authHeader })") &&
+      source.includes("getWorkspaceUserStats({ role: actorRole, authHeader })"),
+    "Admin users must load billing usage, connector overrides, workspace users (real server-side pagination, #823), delegated scope assignments, role capabilities, and unbounded user stats through the shared auth context.",
   );
   // byPrincipalType reduction is in page.tsx; KPI rendering is in the content component
   assert(

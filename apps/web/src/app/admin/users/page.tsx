@@ -8,7 +8,7 @@ import {
   getConnectorPermissions,
   getTenantAuthPolicy,
   getRoleCapabilities,
-  getWorkspaceUsers,
+  getWorkspaceUsersPaginated,
   getWorkspaceUserStats,
   getWorkspaceUserLookup,
   type TenantAuthPolicy,
@@ -70,14 +70,29 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const canManageUsers = actorRole === "admin";
 
   try {
-    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, capabilities, workspaceUserStats] = await Promise.all([
+    const rosterSearch = String(query.search ?? "").trim();
+    const rosterRole = String(query.role ?? "").trim();
+    const rosterUserStatus = String(query.userStatus ?? "").trim();
+    const rosterCursor = String(query.cursor ?? "").trim();
+
+    const [usage, connectorPermissions, workspaceUsersPage, accessScopeAssignments, capabilities, workspaceUserStats] = await Promise.all([
       getBillingUsage({ role: actorRole, authHeader }),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
-      getWorkspaceUsers({ role: actorRole, authHeader }),
+      getWorkspaceUsersPaginated(
+        {
+          search: rosterSearch || undefined,
+          role: rosterRole || undefined,
+          status: rosterUserStatus || undefined,
+          cursor: rosterCursor || undefined,
+          limit: 100,
+        },
+        { role: actorRole, authHeader },
+      ),
       getAccessScopeAssignments({ role: actorRole, authHeader }),
       getRoleCapabilities({ role: actorRole, authHeader }),
       getWorkspaceUserStats({ role: actorRole, authHeader }),
     ]);
+    const workspaceUsers = workspaceUsersPage.items;
 
     let authPolicy: TenantAuthPolicy | null = null;
     let authPolicyUnavailable = false;
@@ -98,10 +113,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       return acc;
     }, {});
     // Real, unbounded counts from the API — not workspaceUsers.filter(...), which
-    // only sees the 1,000 most recently created identities and can silently
-    // undercount in a tenant with more than that (see #816/#819, #823). The
-    // roster table below still renders from the capped workspaceUsers list —
-    // paginating that is a separate UX decision, tracked in #823.
+    // only ever saw whatever page was loaded and could silently undercount in a
+    // tenant with more identities than that (see #816/#819, #823). The roster
+    // table below is now real server-side cursor pagination + search/role/
+    // userStatus filtering (also #823), not a capped single page.
     const activeUsers = workspaceUserStats.activeUsers;
     const lockedUsers = workspaceUserStats.lockedUsers;
     const adminUsers = workspaceUserStats.adminUsers;
@@ -122,6 +137,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         usage={usage}
         connectorPermissions={connectorPermissions}
         workspaceUsers={workspaceUsers}
+        workspaceUsersNextCursor={workspaceUsersPage.nextCursor}
         accessScopeAssignments={accessScopeAssignments}
         capabilities={capabilities}
         authPolicy={authPolicy}
