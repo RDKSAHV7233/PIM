@@ -114,7 +114,14 @@ export class JwtBlocklistService implements OnModuleDestroy {
         this.redisRetryAfterMs = 0;
       } catch (error: unknown) {
         if (pendingClient) {
-          await pendingClient.quit().catch(() => undefined);
+          // PIM#817-outage-proof: pendingClient.quit() sends a graceful QUIT
+          // command and requires an established connection to do so. A client
+          // whose *first* connect attempt failed never reaches that state, so
+          // quit() hangs forever (proven: 15s+ with no resolution against a
+          // dead Redis) instead of the bounded-failure policy this whole
+          // module exists to guarantee. disconnect() tears the socket down
+          // immediately regardless of connection state.
+          await pendingClient.disconnect().catch(() => undefined);
         }
         const message = error instanceof Error ? error.message : String(error ?? "unknown error");
         this.markRedisUnavailable(`Redis unavailable for JWT blocklist; falling back to in-memory revocation only: ${message}`);
@@ -308,7 +315,16 @@ export class JwtBlocklistService implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     if (this.redisClient) {
-      await this.redisClient.quit().catch(() => undefined);
+      // PIM#817-outage-proof follow-up: an established client's quit() can also
+      // hang if Redis becomes unreachable mid-shutdown (half-open socket, no
+      // server response to QUIT). Bound the wait instead of blocking app
+      // shutdown indefinitely — mirrors auth.service.ts's onModuleDestroy().
+      await Promise.race([
+        this.redisClient.quit().catch(() => undefined),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 300);
+        }),
+      ]);
       this.redisClient = null;
     }
     this.redisAvailable = false;
