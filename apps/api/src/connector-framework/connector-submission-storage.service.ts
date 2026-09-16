@@ -35,10 +35,7 @@ export class ConnectorSubmissionStorageService {
     // Private artifacts live in a separate bucket from public media — falls back
     // to R2_BUCKET_NAME only if the dedicated private bucket isn't configured.
     this.bucketName = String(process.env.R2_PRIVATE_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "").trim();
-    this.localStorageRoot = path.join(
-      process.cwd(),
-      String(process.env.CONNECTOR_SNAPSHOT_STORAGE_DIR ?? DEFAULT_LOCAL_STORAGE_ROOT).trim(),
-    );
+    this.localStorageRoot = this.resolveLocalStorageRoot();
     this.useLocalFallback = this.shouldUseLocalFallback(accountId, explicitEndpoint);
 
     if (!this.useLocalFallback) {
@@ -109,6 +106,17 @@ export class ConnectorSubmissionStorageService {
     });
 
     return { storageKey: key, accessUrl };
+  }
+
+  private resolveLocalStorageRoot(): string {
+    // Matches AuthExportStorageService.resolveFilesystemStorageRoot(): path.resolve()
+    // (not path.join()) on a configured dir so an absolute CONNECTOR_SNAPSHOT_STORAGE_DIR
+    // actually relocates storage there instead of nesting under cwd.
+    const configuredDir = String(process.env.CONNECTOR_SNAPSHOT_STORAGE_DIR ?? "").trim();
+    if (configuredDir) {
+      return path.resolve(configuredDir);
+    }
+    return path.join(process.cwd(), DEFAULT_LOCAL_STORAGE_ROOT);
   }
 
   private shouldUseLocalFallback(accountId: string, explicitEndpoint: string): boolean {

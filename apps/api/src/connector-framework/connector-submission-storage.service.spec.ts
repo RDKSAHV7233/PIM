@@ -5,24 +5,18 @@
 // for AuthExportStorageService (PR #840) — checked here too, against the
 // real filesystem backend and a real temp directory, not mocks.
 //
-// One real difference from AuthExportStorageService worth calling out: this
-// service builds its storage root as `path.join(process.cwd(), CONNECTOR_
-// SNAPSHOT_STORAGE_DIR)` rather than `path.resolve(...)`. path.join never
-// collapses an absolute second argument the way path.resolve does, so
-// setting CONNECTOR_SNAPSHOT_STORAGE_DIR to an absolute path doesn't
-// actually relocate storage there — it nests under cwd instead (e.g.
-// cwd=/repo, dir=/tmp/x -> root becomes /repo/tmp/x, not /tmp/x). Harmless
-// for an operator who only ever sets this to a relative path (the normal
-// case), but worth documenting rather than assuming "absolute override"
-// works the way AuthExportStorageService's does. Tests below compute the
-// real expected root the same way the service does, and clean that up.
+// resolveLocalStorageRoot() now matches AuthExportStorageService's
+// resolveFilesystemStorageRoot() pattern: path.resolve() on a configured
+// dir (so an absolute CONNECTOR_SNAPSHOT_STORAGE_DIR actually relocates
+// storage there), path.join(cwd, default) when unset. Tests below compute
+// the real expected root the same way the service does, and clean that up.
 
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 function expectedRootFor(configuredDir: string): string {
-  return path.join(process.cwd(), configuredDir);
+  return path.resolve(configuredDir);
 }
 
 describe("ConnectorSubmissionStorageService — filesystem backend path safety (no prior coverage)", () => {
@@ -98,20 +92,26 @@ describe("ConnectorSubmissionStorageService — filesystem backend path safety (
     expect(path.resolve(result.storageKey).startsWith(path.resolve(realRoot) + path.sep)).toBe(true);
   });
 
-  it("documents that path.join never collapses an absolute CONNECTOR_SNAPSHOT_STORAGE_DIR the way path.resolve would — an absolute override does not relocate storage there", () => {
-    // Pure string-level check (no filesystem write): on both POSIX and Windows,
-    // path.join(cwd, absoluteDir) concatenates rather than collapsing to absoluteDir,
-    // unlike AuthExportStorageService's resolveFilesystemStorageRoot(), which uses
-    // path.resolve() specifically to support an absolute override. A misconfigured
-    // absolute CONNECTOR_SNAPSHOT_STORAGE_DIR silently lands somewhere under cwd
-    // instead (and can outright fail to create the directory on Windows, where the
-    // joined path embeds a second drive letter) rather than at the intended location.
-    const absoluteDir = path.win32.isAbsolute(process.cwd())
-      ? "C:\\some\\other\\absolute\\dir"
-      : "/some/other/absolute/dir";
+  it("an absolute CONNECTOR_SNAPSHOT_STORAGE_DIR actually relocates storage there, not nested under cwd", async () => {
+    const absoluteDir = await fs.mkdtemp(path.join(os.tmpdir(), "pim1-snapshot-abs-test-"));
+    process.env = {
+      ...originalEnv,
+      CONNECTOR_SNAPSHOT_STORAGE_MODE: "filesystem",
+      CONNECTOR_SNAPSHOT_STORAGE_DIR: absoluteDir,
+    };
+    jest.resetModules();
 
-    expect(path.join(process.cwd(), absoluteDir)).not.toBe(absoluteDir);
-    expect(path.resolve(process.cwd(), absoluteDir)).toBe(path.resolve(absoluteDir));
+    try {
+      const service = loadService();
+      const result = await service.storeSnapshot({ tenantKey: "tenant-a", jobId: "job-1", content: "{}" });
+
+      // Must land inside the absolute dir itself — not path.join(cwd, absoluteDir),
+      // which would nest it somewhere unrelated under the repo root instead.
+      expect(path.resolve(result.storageKey).startsWith(path.resolve(absoluteDir) + path.sep)).toBe(true);
+      expect(result.storageKey.startsWith(path.join(process.cwd(), absoluteDir))).toBe(false);
+    } finally {
+      await fs.rm(absoluteDir, { recursive: true, force: true });
+    }
   });
 });
 
