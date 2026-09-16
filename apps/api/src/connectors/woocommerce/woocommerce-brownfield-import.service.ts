@@ -67,7 +67,13 @@ export class WooCommerceBrownfieldImportService {
 
       for (const item of items) {
         const wcId = item.id != null ? String(item.id) : null;
-        if (!wcId) continue;
+        if (!wcId) {
+          // Can't be matched or submitted without a WC id — count it as unmatched so
+          // `total` stays equal to `linked + skuLinked + unmatched` (previously this
+          // dropped out of every bucket, so total could technically exceed their sum).
+          unmatched++;
+          continue;
+        }
 
         // Primary match: _vexa_pim_product_id meta_data key (written by W2)
         const vexaSkuMeta = item.meta_data?.find((m) => m.key === '_vexa_pim_product_id');

@@ -130,11 +130,11 @@ describe("WooCommerceBrownfieldImportService.importExistingProducts — brownfie
     expect(stubs.connector.listProductsPage).toHaveBeenCalledTimes(1);
   });
 
-  it("documents a real edge case: a WC product with no id at all is silently excluded from every count bucket, so total can outrun linked+skuLinked+unmatched", async () => {
+  it("counts a WC product with no id at all as unmatched, keeping total === linked+skuLinked+unmatched", async () => {
     const stubs = makeStubs({ "SKU-1": { id: "variant-1", productId: "product-1" } });
     (stubs.connector.listProductsPage as jest.Mock).mockResolvedValue(
       page([
-        { id: null, sku: "SKU-1", meta_data: [] }, // no id — dropped entirely, not counted in any bucket
+        { id: null, sku: "SKU-1", meta_data: [] }, // no id — can't be matched/submitted, but must still be counted
         { id: 999, sku: "no-match", meta_data: [] },
       ]),
     );
@@ -142,8 +142,7 @@ describe("WooCommerceBrownfieldImportService.importExistingProducts — brownfie
 
     const result = await service.importExistingProducts(ctx, "install-1", "tenant-a");
 
-    // total reflects both scanned items, but only one of them landed in a bucket.
-    expect(result.total).toBe(2);
-    expect(result.linked + result.skuLinked + result.unmatched).toBe(1);
+    expect(result).toEqual({ linked: 0, skuLinked: 0, unmatched: 2, total: 2 });
+    expect(result.linked + result.skuLinked + result.unmatched).toBe(result.total);
   });
 });
