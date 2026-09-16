@@ -111,6 +111,7 @@ module.exports = {
     "**/auto-suggestions/auto-suggestions.service.spec.ts",
     "**/common/throttler/pre-auth-ip-throttler.guard.spec.ts",
     "**/common/throttler/identity-throttler.guard.spec.ts",
+    "**/dashboard/dashboard.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
