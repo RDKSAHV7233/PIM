@@ -376,7 +376,20 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       closeTasks.push(this.scheduledSyncQueue.close().catch(() => undefined));
     }
     if (this.metadataRedis?.isOpen) {
-      closeTasks.push(this.metadataRedis.quit().then(() => undefined).catch(() => undefined));
+      // A half-open socket at shutdown never gets a QUIT response, so quit()
+      // can hang indefinitely and, since it's aggregated into closeTasks below,
+      // block every other queue/worker close from ever being awaited-through.
+      // Bound the wait instead — mirrors auth.service.ts's onModuleDestroy()
+      // (see PIM#817-outage-proof and its jwt-blocklist.service.ts follow-up
+      // for the same finding).
+      closeTasks.push(
+        Promise.race([
+          this.metadataRedis.quit().then(() => undefined).catch(() => undefined),
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 300);
+          }),
+        ]),
+      );
     }
     await Promise.all(closeTasks);
   }

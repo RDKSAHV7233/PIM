@@ -134,7 +134,16 @@ export class CacheService implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     if (this.redisClient) {
-      await this.redisClient.quit().catch(() => undefined);
+      // A half-open socket at shutdown never gets a QUIT response, so quit()
+      // can hang indefinitely and block process exit. Bound the wait instead
+      // — mirrors auth.service.ts's onModuleDestroy() (see PIM#817-outage-proof
+      // and its jwt-blocklist.service.ts follow-up for the same finding).
+      await Promise.race([
+        this.redisClient.quit().catch(() => undefined),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 300);
+        }),
+      ]);
       this.redisClient = null;
     }
     this.redisAvailable = false;

@@ -396,3 +396,39 @@ describe("DashboardService — computeDashboardHealth snapshot/trend fallback", 
     expect(result.snapshot.totalSkus).toBe(5);
   });
 });
+
+// PIM#817-outage-proof follow-up: quit() on an already-established client can
+// hang indefinitely if Redis becomes unreachable mid-shutdown (half-open
+// socket, no QUIT response), blocking process exit. Bounded with the same
+// 300ms Promise.race pattern auth.service.ts's onModuleDestroy() already uses.
+describe("DashboardService.onModuleDestroy — bounded quit() so shutdown can't hang", () => {
+  it("resolves within the timeout bound even when quit() never settles, and still clears the client", async () => {
+    const { service } = createService();
+    const quit = jest.fn(() => new Promise(() => {}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- seeding private connection state for the test
+    const svc = service as any;
+    svc.redisClient = { quit };
+    svc.redisAvailable = true;
+
+    const start = Date.now();
+    await service.onModuleDestroy();
+    const elapsedMs = Date.now() - start;
+
+    expect(quit).toHaveBeenCalledTimes(1);
+    expect(elapsedMs).toBeLessThan(5_000);
+    expect(svc.redisClient).toBeNull();
+    expect(svc.redisAvailable).toBe(false);
+  });
+
+  it("still quits normally (no hang, no error) when quit() resolves quickly", async () => {
+    const { service } = createService();
+    const quit = jest.fn().mockResolvedValue(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- seeding private connection state for the test
+    const svc = service as any;
+    svc.redisClient = { quit };
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    expect(quit).toHaveBeenCalledTimes(1);
+  });
+});

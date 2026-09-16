@@ -161,3 +161,54 @@ describe("QueueService worker error authority capture", () => {
     expect(captureUnexpected).not.toHaveBeenCalled();
   });
 });
+
+// PIM#817-outage-proof follow-up: metadataRedis.quit() on an already
+// -established client can hang indefinitely if Redis becomes unreachable
+// mid-shutdown (half-open socket, no QUIT response) — and since it's
+// aggregated into closeTasks alongside every worker/queue close, that hang
+// blocks Promise.all(closeTasks) from ever settling, so onModuleDestroy()
+// never returns. Bounded with the same 300ms Promise.race pattern
+// auth.service.ts's onModuleDestroy() already uses.
+describe("QueueService.onModuleDestroy — bounded metadataRedis.quit() so shutdown can't hang", () => {
+  it("resolves within the timeout bound even when quit() never settles", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { QueueService } = require("./queue.service");
+    const service = new QueueService();
+    const quit = jest.fn(() => new Promise(() => {}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- seeding private connection state for the test
+    (service as any).metadataRedis = { isOpen: true, quit };
+
+    const start = Date.now();
+    await service.onModuleDestroy();
+    const elapsedMs = Date.now() - start;
+
+    expect(quit).toHaveBeenCalledTimes(1);
+    expect(elapsedMs).toBeLessThan(5_000);
+  });
+
+  it("still quits normally (no hang, no error) when quit() resolves quickly", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { QueueService } = require("./queue.service");
+    const service = new QueueService();
+    const quit = jest.fn().mockResolvedValue(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- seeding private connection state for the test
+    (service as any).metadataRedis = { isOpen: true, quit };
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    expect(quit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when metadataRedis is not open", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { QueueService } = require("./queue.service");
+    const service = new QueueService();
+    const quit = jest.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- seeding private connection state for the test
+    (service as any).metadataRedis = { isOpen: false, quit };
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    expect(quit).not.toHaveBeenCalled();
+  });
+});
