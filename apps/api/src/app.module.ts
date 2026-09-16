@@ -1,8 +1,9 @@
-import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { ExecutionContext, MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerModule } from "@nestjs/throttler";
-import { TenantThrottlerGuard } from "./common/throttler/tenant-throttler.guard";
+import { PreAuthIpThrottlerGuard } from "./common/throttler/pre-auth-ip-throttler.guard";
+import { IdentityThrottlerGuard } from "./common/throttler/identity-throttler.guard";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { AutoSuggestionsModule } from "./auto-suggestions/auto-suggestions.module";
 import { AuthModule } from "./auth/auth.module";
@@ -52,7 +53,63 @@ const FEATURE_ONDC_ENABLED =
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
+    // Two layers, in guard-registration order below:
+    //  1. "ip" — pre-auth, IP-keyed, enforced by PreAuthIpThrottlerGuard before
+    //     JwtAuthGuard runs, so unauthenticated abuse is bounded before it can
+    //     force the more expensive auth path (JWT verify, blocklist check,
+    //     API-key hash/DB lookup).
+    //  2. "user"/"tenant"/"apiKey"/"tenantApi" — post-auth, identity-keyed,
+    //     enforced by IdentityThrottlerGuard after JwtAuthGuard has resolved
+    //     pimAuthType/pimTenant/pimUserId/pimApiKeyId. Each entry's skipIf
+    //     scopes it to the matching auth type so a JWT session only ever
+    //     contributes to user/tenant, and an API key only to apiKey/tenantApi.
+    //     An API key gets its own tighter per-key limit (120/min) distinct
+    //     from its tenant's aggregate ceiling so one automation credential
+    //     can't starve the rest of that tenant's traffic, and a tenant with
+    //     several keys isn't reduced to one key's worth of quota.
+    //
+    //     tenant/tenantApi are set well above the per-user/per-key limit
+    //     (not a low multiple of it) because they're a single shared bucket
+    //     across every user/key in that tenant: this guard was previously
+    //     dead code (ran before identity was resolved, so it never actually
+    //     enforced anything), and turning it on for real exposed that this
+    //     app's own rbac-role-enforcement e2e suite alone drives one tenant
+    //     well past 300 write/read calls within 60s during normal automated
+    //     testing across several roles - a real multi-user tenant doing
+    //     ordinary concurrent work would do the same. These are meant to
+    //     catch runaway/abusive aggregate usage, not constrain normal
+    //     multi-user or multi-key activity within one tenant.
+    ThrottlerModule.forRoot([
+      { name: "ip", ttl: 60_000, limit: 300 },
+      {
+        name: "user",
+        ttl: 60_000,
+        limit: 300,
+        skipIf: (context: ExecutionContext) =>
+          context.switchToHttp().getRequest().pimAuthType !== "user_jwt",
+      },
+      {
+        name: "tenant",
+        ttl: 60_000,
+        limit: 2000,
+        skipIf: (context: ExecutionContext) =>
+          context.switchToHttp().getRequest().pimAuthType !== "user_jwt",
+      },
+      {
+        name: "apiKey",
+        ttl: 60_000,
+        limit: 120,
+        skipIf: (context: ExecutionContext) =>
+          context.switchToHttp().getRequest().pimAuthType !== "api_key",
+      },
+      {
+        name: "tenantApi",
+        ttl: 60_000,
+        limit: 600,
+        skipIf: (context: ExecutionContext) =>
+          context.switchToHttp().getRequest().pimAuthType !== "api_key",
+      },
+    ]),
     CacheModule,
     LoggingModule,
     ObservabilityModule,
@@ -91,13 +148,19 @@ const FEATURE_ONDC_ENABLED =
   ],
   providers: [
     TenantContextMiddleware,
+    // Guard order matters: pre-auth IP throttle, then auth (resolves identity),
+    // then identity-scoped throttle (reads what auth just resolved), then RBAC.
     {
       provide: APP_GUARD,
-      useClass: TenantThrottlerGuard,
+      useClass: PreAuthIpThrottlerGuard,
     },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: IdentityThrottlerGuard,
     },
     {
       provide: APP_GUARD,

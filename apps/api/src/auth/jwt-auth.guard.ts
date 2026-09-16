@@ -41,6 +41,7 @@ interface AuthenticatedRequest extends Request {
   pimEffectiveRoles?: string[];
   pimAdminBoundaryRoles?: string[];
   pimApiScopes?: string[];
+  pimApiKeyId?: string;
 }
 
 const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -160,6 +161,7 @@ export class JwtAuthGuard implements CanActivate {
       request.pimAdminBoundaryRoles = resolvedRoles.adminBoundaryRoles;
       request.pimAuthType = "api_key";
       request.pimApiScopes = resolved.scopes;
+      request.pimApiKeyId = resolved.keyId;
       void this.apiKeysService.touchLastUsed(resolved.keyId);
       return true;
     }
