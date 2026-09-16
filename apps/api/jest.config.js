@@ -112,6 +112,7 @@ module.exports = {
     "**/common/throttler/pre-auth-ip-throttler.guard.spec.ts",
     "**/common/throttler/identity-throttler.guard.spec.ts",
     "**/dashboard/dashboard.service.spec.ts",
+    "**/marketplace/connector-mapping.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
