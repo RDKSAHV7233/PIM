@@ -450,3 +450,191 @@ describe("WorkspaceUsersService.findUserByExactId — direct lookup bypassing th
     expect(findFirst).not.toHaveBeenCalled();
   });
 });
+
+// Closes the roster-table half of #823: countActiveAdmins/getUserStats above
+// already made the headline numbers unbounded, but the table itself still
+// could not reach any identity past the 1,000 most recently created. These
+// tests cover the new opt-in cursor-pagination mode; the default (no
+// `pagination` arg) legacy path is asserted to stay byte-identical.
+describe("WorkspaceUsersService.listUsers — cursor pagination (#823)", () => {
+  function makeAuthIdentityRow(overrides: Record<string, unknown>) {
+    return {
+      id: "row-1",
+      userId: "user@tenant",
+      role: "editor",
+      assignedRoles: [],
+      isActive: true,
+      lockedUntil: null,
+      lastSignInAt: null,
+      createdBy: null,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      updatedAt: new Date("2026-01-01T00:00:00Z"),
+      ...overrides,
+    };
+  }
+
+  function makeService(rows: Array<Record<string, unknown>>) {
+    const findMany = jest.fn().mockResolvedValue(rows);
+    const tenantClient = { authIdentity: { findMany }, userMfaEnrollment: { findMany: jest.fn().mockResolvedValue([]) } };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+    return { svc, findMany };
+  }
+
+  it("with no pagination arg at all, stays byte-identical to the original take:1_000 flat-array call", async () => {
+    const row = makeAuthIdentityRow({});
+    const { svc, findMany } = makeService([row]);
+
+    const result = await svc.listUsers("tenant-a");
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 1_000 }));
+  });
+
+  it("pagination=cursor returns the {items, limit, nextCursor} shape instead of a flat array", async () => {
+    const row = makeAuthIdentityRow({});
+    const { svc } = makeService([row]);
+
+    const result = await svc.listUsers("tenant-a", { pagination: "cursor" });
+
+    expect(result).toEqual({
+      items: [expect.objectContaining({ userId: "user@tenant" })],
+      limit: expect.any(Number),
+      nextCursor: null,
+    });
+  });
+
+  it("signals a next page (nextCursor set) when more rows exist than the requested limit, and requests one extra row to detect it", async () => {
+    const rows = [
+      makeAuthIdentityRow({ id: "row-2", createdAt: new Date("2026-01-02T00:00:00Z") }),
+      makeAuthIdentityRow({ id: "row-1", createdAt: new Date("2026-01-01T00:00:00Z") }),
+    ];
+    const { svc, findMany } = makeService(rows);
+
+    const result = await svc.listUsers("tenant-a", { pagination: "cursor", limit: 1 });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 2 })); // limit+1
+    if (Array.isArray(result)) throw new Error("expected paginated shape");
+    expect(result.items).toHaveLength(1);
+    expect(result.nextCursor).not.toBeNull();
+  });
+
+  it("decodes a cursor into a real createdAt/id 'strictly older' where clause, not just a client-side skip", async () => {
+    const { svc, findMany } = makeService([]);
+    const cursor = Buffer.from(JSON.stringify({ sort: "2026-01-02T00:00:00.000Z", id: "row-2" }), "utf8").toString(
+      "base64url",
+    );
+
+    await svc.listUsers("tenant-a", { pagination: "cursor", cursor });
+
+    const callArgs = findMany.mock.calls[0][0];
+    // Cursor boundary lives in where.AND[0] (search/role/status filters occupy
+    // AND[1]) — kept as separate AND entries, not spread into one object, so
+    // an "active" status filter's own OR clause can never clobber this one.
+    expect(callArgs.where.AND[0].OR).toEqual([
+      { createdAt: { lt: new Date("2026-01-02T00:00:00.000Z") } },
+      { createdAt: new Date("2026-01-02T00:00:00.000Z"), id: { lt: "row-2" } },
+    ]);
+  });
+
+  it("rejects a malformed cursor with BadRequestException instead of silently ignoring it", async () => {
+    const { svc } = makeService([]);
+
+    await expect(svc.listUsers("tenant-a", { pagination: "cursor", cursor: "not-a-real-cursor" })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+});
+
+// Real server-side search/role/status, so filtering applies to the whole
+// tenant rather than only whatever page the client-side UserSearchFilter
+// happened to have loaded. Only takes effect in cursor-pagination mode (see
+// listUsers()'s doc comment) — the legacy flat-array call ignores `filters`.
+describe("WorkspaceUsersService.listUsers — search/role/status filters (#823)", () => {
+  function makeService(rows: Array<Record<string, unknown>> = []) {
+    const findMany = jest.fn().mockResolvedValue(rows);
+    const tenantClient = { authIdentity: { findMany }, userMfaEnrollment: { findMany: jest.fn().mockResolvedValue([]) } };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+    return { svc, findMany };
+  }
+
+  it("search becomes a case-insensitive substring match on userId, not a prefix-only or exact match", async () => {
+    const { svc, findMany } = makeService();
+
+    await svc.listUsers("tenant-a", { pagination: "cursor" }, { search: "Smith" });
+
+    const callArgs = findMany.mock.calls[0][0];
+    expect(callArgs.where.AND[1].userId).toEqual({ contains: "Smith", mode: "insensitive" });
+  });
+
+  it("an empty/whitespace search does not add a userId filter at all", async () => {
+    const { svc, findMany } = makeService();
+
+    await svc.listUsers("tenant-a", { pagination: "cursor" }, { search: "   " });
+
+    const callArgs = findMany.mock.calls[0][0];
+    expect(callArgs.where.AND[1].userId).toBeUndefined();
+  });
+
+  it("role filters by exact role match", async () => {
+    const { svc, findMany } = makeService();
+
+    await svc.listUsers("tenant-a", { pagination: "cursor" }, { role: "admin" });
+
+    const callArgs = findMany.mock.calls[0][0];
+    expect(callArgs.where.AND[1].role).toBe("admin");
+  });
+
+  it("status=inactive/locked/active map to the same isActive+lockedUntil precedence as mapWorkspaceUserRow's isLocked field", async () => {
+    const { svc, findMany } = makeService();
+
+    await svc.listUsers("tenant-a", { pagination: "cursor" }, { status: "inactive" });
+    expect(findMany.mock.calls[0][0].where.AND[1]).toEqual({ isActive: false });
+
+    await svc.listUsers("tenant-a", { pagination: "cursor" }, { status: "locked" });
+    expect(findMany.mock.calls[1][0].where.AND[1]).toEqual({
+      isActive: true,
+      lockedUntil: { gt: expect.any(Date) },
+    });
+
+    await svc.listUsers("tenant-a", { pagination: "cursor" }, { status: "active" });
+    expect(findMany.mock.calls[2][0].where.AND[1]).toEqual({
+      isActive: true,
+      OR: [{ lockedUntil: null }, { lockedUntil: { lte: expect.any(Date) } }],
+    });
+  });
+
+  it("regression guard: combining cursor pagination with status=active never lets the filter's own OR clobber the cursor boundary's OR", async () => {
+    const { svc, findMany } = makeService();
+    const cursor = Buffer.from(JSON.stringify({ sort: "2026-01-02T00:00:00.000Z", id: "row-2" }), "utf8").toString(
+      "base64url",
+    );
+
+    await svc.listUsers("tenant-a", { pagination: "cursor", cursor }, { status: "active" });
+
+    const where = findMany.mock.calls[0][0].where;
+    // Both OR clauses must survive, each in its own AND entry — a naive
+    // `{ ...cursorClause, ...filtersClause }` spread would have the second
+    // object's `OR` key silently overwrite the first's.
+    expect(where.AND[0].OR).toEqual([
+      { createdAt: { lt: new Date("2026-01-02T00:00:00.000Z") } },
+      { createdAt: new Date("2026-01-02T00:00:00.000Z"), id: { lt: "row-2" } },
+    ]);
+    expect(where.AND[1].OR).toEqual([{ lockedUntil: null }, { lockedUntil: { lte: expect.any(Date) } }]);
+  });
+
+  it("the legacy (non-cursor) call ignores filters entirely, unchanged from before this feature existed", async () => {
+    const { svc, findMany } = makeService();
+
+    await svc.listUsers("tenant-a", undefined, { search: "should-be-ignored", role: "admin" });
+
+    const callArgs = findMany.mock.calls[0][0];
+    expect(callArgs.where).toEqual({ tenantKey: "tenant-a" });
+    expect(callArgs.take).toBe(1_000);
+  });
+});

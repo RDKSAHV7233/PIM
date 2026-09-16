@@ -18,6 +18,14 @@ import {
 } from "../common/rbac/roles";
 import { normalizeAppRole, normalizeFoundationRole } from "../common/rbac/role-utils";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import {
+  type CursorPaginatedResponse,
+  type CursorPaginationQuery,
+  decodeCursorToken,
+  encodeCursorToken,
+  isCursorPagination,
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
 import { LockWorkspaceUserDto } from "./dto/lock-workspace-user.dto";
@@ -35,6 +43,12 @@ type AuthIdentityRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export interface WorkspaceUsersListFilters {
+  search?: string;
+  role?: string;
+  status?: "active" | "inactive" | "locked";
+}
 
 export interface WorkspaceUserRow {
   id: string;
@@ -59,8 +73,91 @@ export class WorkspaceUsersService {
     private readonly planUsage: PlanUsageService,
   ) {}
 
-  async listUsers(tenantId: string): Promise<WorkspaceUserRow[]> {
+  /**
+   * Default call shape (no `pagination` arg, or `pagination.pagination !==
+   * "cursor"`) is byte-identical to before: the flat, take:1_000 array. Pass
+   * `{ pagination: "cursor", ... }` to page through the FULL, unbounded
+   * identity set instead — closes the #823 gap (the roster table couldn't
+   * reach any identity past the 1,000 most recently created, unlike the
+   * exact-userId lookup added in #829). Same (sort, id) cursor-token
+   * convention as AuditService.list()/TaxonomyService.listCategories(),
+   * ordered createdAt desc/id desc to match this method's existing order.
+   *
+   * `filters` (search/role/status) only apply in cursor mode, matching
+   * CatalogService.listProducts()'s pattern of a separate `options` param
+   * rather than folding domain filters into CursorPaginationQuery itself.
+   * search is a real server-side ILIKE '%term%' on userId (case-insensitive
+   * substring, not just prefix) — deliberately not backed by a trigram index
+   * yet; a per-tenant identity table sequential-scans in milliseconds at
+   * current scale, and this route already sits behind the tenant-scoped
+   * identity rate limit (IdentityThrottlerGuard). Revisit with a pg_trgm
+   * index only if a tenant's identity count grows enough to matter.
+   */
+  async listUsers(
+    tenantId: string,
+    pagination?: CursorPaginationQuery,
+    filters?: WorkspaceUsersListFilters,
+  ): Promise<WorkspaceUserRow[] | CursorPaginatedResponse<WorkspaceUserRow>> {
     const normalizedTenantId = normalizeTenantKey(tenantId);
+
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorCreatedAt = token ? new Date(token.sort) : null;
+      if (token && (!cursorCreatedAt || Number.isNaN(cursorCreatedAt.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+
+      // AND'd as separate array entries, not spread into one object: both the
+      // cursor boundary and the "active" status filter independently need
+      // their own top-level OR clause, and spreading two OR-bearing objects
+      // together would let the second silently clobber the first.
+      const rows = await this.prisma.tenant(normalizedTenantId).authIdentity.findMany({
+        where: {
+          tenantKey: normalizedTenantId,
+          AND: [
+            token && cursorCreatedAt
+              ? {
+                  OR: [
+                    { createdAt: { lt: cursorCreatedAt } },
+                    { createdAt: cursorCreatedAt, id: { lt: token.id } },
+                  ],
+                }
+              : {},
+            this.buildListFiltersWhere(filters),
+          ],
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+          assignedRoles: true,
+          isActive: true,
+          lockedUntil: true,
+          lastSignInAt: true,
+          createdBy: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      const hasNext = rows.length > limit;
+      const pageRows = hasNext ? rows.slice(0, limit) : rows;
+      const items = await this.attachMfaEnrollment(normalizedTenantId, pageRows);
+      const last = pageRows[pageRows.length - 1];
+      return {
+        items,
+        limit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({ sort: last.createdAt.toISOString(), id: last.id })
+          : null,
+      };
+    }
+
     const rows = await this.prisma.tenant(normalizedTenantId).authIdentity.findMany({
       where: {
         tenantKey: normalizedTenantId,
@@ -87,6 +184,42 @@ export class WorkspaceUsersService {
         updatedAt: true,
       },
     });
+    return this.attachMfaEnrollment(normalizedTenantId, rows);
+  }
+
+  /**
+   * status maps to the same isActive/lockedUntil derivation as
+   * mapWorkspaceUserRow()'s isLocked field: "locked" means isActive AND
+   * lockedUntil is still in the future (an inactive user is "inactive"
+   * regardless of a stale lockedUntil value, matching the UI's own
+   * precedence: !isActive -> inactive, else isLocked -> locked, else active).
+   */
+  private buildListFiltersWhere(filters?: WorkspaceUsersListFilters): Prisma.AuthIdentityWhereInput {
+    const where: Prisma.AuthIdentityWhereInput = {};
+    const search = String(filters?.search ?? "").trim();
+    if (search) {
+      where.userId = { contains: search, mode: "insensitive" };
+    }
+    const role = String(filters?.role ?? "").trim();
+    if (role) {
+      where.role = role;
+    }
+    if (filters?.status === "inactive") {
+      where.isActive = false;
+    } else if (filters?.status === "locked") {
+      where.isActive = true;
+      where.lockedUntil = { gt: new Date() };
+    } else if (filters?.status === "active") {
+      where.isActive = true;
+      where.OR = [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }];
+    }
+    return where;
+  }
+
+  private async attachMfaEnrollment(
+    normalizedTenantId: string,
+    rows: AuthIdentityRecord[],
+  ): Promise<WorkspaceUserRow[]> {
     const isDbMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
     let enrolledUserIds = new Set<string>();
     if (isDbMode && rows.length > 0) {
@@ -131,10 +264,9 @@ export class WorkspaceUsersService {
    * per-row cap — mfaEnrolledCount needs a join since MFA enrollment lives in
    * a separate table, not a plain count().
    *
-   * Deliberately not extended to the roster table itself (still capped at
-   * 1,000 rows for display) — giving admins a real way to reach every user in
-   * a >1,000-identity tenant is a UX decision (search? cursor pagination?),
-   * not a plain count() fix. Tracked separately in #823.
+   * These headline numbers are already unbounded regardless of how the
+   * roster table itself is paged — see listUsers()'s cursor-pagination mode
+   * (#823) for reaching every identity in a >1,000-user tenant.
    */
   async getUserStats(tenantId: string): Promise<{ activeUsers: number; lockedUsers: number; mfaEnrolledCount: number }> {
     const normalizedTenantId = normalizeTenantKey(tenantId);

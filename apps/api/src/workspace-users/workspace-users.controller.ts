@@ -26,6 +26,7 @@ import {
   ROLE_PERMISSION_MATRIX,
   Roles,
 } from "../common/rbac/roles";
+import type { CursorPaginationQuery } from "../common/pagination/cursor-pagination";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
 import { LockWorkspaceUserDto } from "./dto/lock-workspace-user.dto";
 import { SetUserPasswordDto } from "./dto/set-user-password.dto";
@@ -56,9 +57,19 @@ export class WorkspaceUsersController {
   ) {}
 
   @Get()
-  listUsers(@Req() request: AuthenticatedRequest) {
+  listUsers(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: CursorPaginationQuery,
+    @Query("search") search?: string,
+    @Query("role") role?: string,
+    @Query("status") status?: string,
+  ) {
     const actor = this.requireActor(request);
-    return this.workspaceUsersService.listUsers(actor.tenantId);
+    // search/role/status only take effect in cursor-pagination mode — see
+    // WorkspaceUsersService.listUsers()'s doc comment for why they aren't
+    // folded into CursorPaginationQuery itself.
+    const normalizedStatus = status === "active" || status === "inactive" || status === "locked" ? status : undefined;
+    return this.workspaceUsersService.listUsers(actor.tenantId, query, { search, role, status: normalizedStatus });
   }
 
   /**
