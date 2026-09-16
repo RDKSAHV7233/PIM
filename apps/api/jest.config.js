@@ -113,6 +113,7 @@ module.exports = {
     "**/common/throttler/identity-throttler.guard.spec.ts",
     "**/dashboard/dashboard.service.spec.ts",
     "**/marketplace/connector-mapping.service.spec.ts",
+    "**/common/access-policy/access-policy.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
