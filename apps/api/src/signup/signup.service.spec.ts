@@ -19,7 +19,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
   let prisma: { tenant: jest.Mock };
   let tenantDirectoryService: { provisionWorkspaceWithPasswordHash: jest.Mock };
   let authEmailService: { send: jest.Mock };
-  let planUsageService: { getTenantPlanProfile: jest.Mock };
+  let planUsageService: { initializeTrialPlanProfile: jest.Mock };
   let metricsService: { emit: jest.Mock };
   let stripeService: { createCustomerAndSubscription: jest.Mock };
   let queueService: { process: jest.Mock; enqueue: jest.Mock };
@@ -60,7 +60,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
         .mockResolvedValue({ tenantId: "acme", workspaceSlug: "acme" }),
     };
     authEmailService = { send: jest.fn().mockResolvedValue(undefined) };
-    planUsageService = { getTenantPlanProfile: jest.fn().mockResolvedValue({ planTier: "STARTER" }) };
+    planUsageService = { initializeTrialPlanProfile: jest.fn().mockResolvedValue({ planTier: "TRIAL" }) };
     metricsService = { emit: jest.fn().mockResolvedValue(undefined) };
     stripeService = { createCustomerAndSubscription: jest.fn().mockResolvedValue(undefined) };
     queueService = { process: jest.fn(), enqueue: jest.fn().mockResolvedValue(undefined) };
@@ -93,7 +93,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
   });
 
   it("still returns 'verified' and enqueues a retry when plan-profile seeding fails", async () => {
-    planUsageService.getTenantPlanProfile.mockRejectedValueOnce(new Error("db timeout"));
+    planUsageService.initializeTrialPlanProfile.mockRejectedValueOnce(new Error("db timeout"));
     const service = makeService();
 
     const result = await service.verifyPublicSignup(TOKEN);
@@ -128,7 +128,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
   });
 
   it("does not throw out of verify even if enqueueing the retry itself fails", async () => {
-    planUsageService.getTenantPlanProfile.mockRejectedValueOnce(new Error("db timeout"));
+    planUsageService.initializeTrialPlanProfile.mockRejectedValueOnce(new Error("db timeout"));
     queueService.enqueue.mockRejectedValueOnce(new Error("redis down"));
     const service = makeService();
 
@@ -163,7 +163,7 @@ describe("SignupService.verifyPublicSignup billing isolation (H-3)", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(planUsageService.getTenantPlanProfile).toHaveBeenCalledWith("acme");
+    expect(planUsageService.initializeTrialPlanProfile).toHaveBeenCalledWith("acme");
     expect(stripeService.createCustomerAndSubscription).toHaveBeenCalledWith(
       expect.objectContaining({ idempotencyKey: "signup-trial:acme" }),
     );

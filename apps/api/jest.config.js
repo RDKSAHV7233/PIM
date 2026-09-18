@@ -43,6 +43,7 @@ module.exports = {
     "**/billing/plan-guard.guard.spec.ts",
     "**/billing/plan-usage-resource-limits.spec.ts",
     "**/billing/plan-usage-sellable-sku-lifecycle.spec.ts",
+    "**/billing/plan-usage-trial-signup-seed.spec.ts",
     "**/billing/commercial-requests.service.spec.ts",
     "**/billing/commercial-notifications.service.spec.ts",
     "**/billing/stripe.service.spec.ts",

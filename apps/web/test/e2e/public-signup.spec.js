@@ -249,7 +249,7 @@ test("public signup can verify a workspace and reach trial plan state through th
       }
       return response.json();
     });
-    expect(billingUsage.planTier).toBe("STARTER");
+    expect(billingUsage.planTier).toBe("TRIAL");
     expect(billingUsage.billingStatus).toBe("trial");
     expect(billingUsage.accessStatus).toBe("active");
     expect(typeof billingUsage.profile?.trialEndsAt).toBe("string");

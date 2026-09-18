@@ -728,6 +728,31 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * Establishes the initial TenantPlanProfile for a brand-new public signup as TRIAL,
+   * per docs/product/commercial-policy.md (self-serve signups get Trial limits, not
+   * Starter's). Scoped to the public signup path only — getOrCreateTenantPlanProfile's
+   * STARTER fallback (used by every other tenant-provisioning path and existing test
+   * harnesses that depend on it) is left untouched. Idempotent: if a profile already
+   * exists for this tenant, the INSERT is a no-op and the existing row is returned
+   * unchanged.
+   */
+  async initializeTrialPlanProfile(tenantKeyInput: string): Promise<PlanProfileSummary> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const trialEndsAt = this.buildTrialEndsAt();
+
+    await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
+      INSERT INTO "TenantPlanProfile"
+        ("id", "tenantKey", "planTier", "billingStatus", "accessStatus", "effectiveFrom", "trialEndsAt", "billingContactEmail", "createdAt", "updatedAt")
+      VALUES
+        (${this.randomId()}, ${tenantKey}, 'TRIAL', 'trial', 'active', NOW(), ${trialEndsAt}, NULL, NOW(), NOW())
+      ON CONFLICT ("tenantKey") DO NOTHING
+    `);
+
+    await this.cache.invalidate(`plan:profile:${tenantKey}`);
+    return this.getOrCreateTenantPlanProfile(tenantKey);
+  }
+
   async setTenantPlanTier(
     planTierInput: string,
     actorId: string,

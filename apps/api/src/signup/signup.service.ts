@@ -668,7 +668,12 @@ export class SignupService implements OnModuleInit, OnModuleDestroy {
     payload: SignupBillingProvisionJobPayload,
     source: "verify" | "retry",
   ): Promise<void> {
-    await this.planUsageService.getTenantPlanProfile(payload.tenantKey);
+    // Seeds TRIAL explicitly — getTenantPlanProfile()'s own fallback seeds STARTER for any
+    // tenant with no plan-usage history (always true here), and createCustomerAndSubscription()
+    // below no-ops entirely for planTier "TRIAL" (no Stripe subscription needed during a free
+    // trial), so nothing else would ever correct a STARTER seed. See PlanUsageService.
+    // initializeTrialPlanProfile()'s own doc comment for why this is scoped to this path only.
+    await this.planUsageService.initializeTrialPlanProfile(payload.tenantKey);
 
     await this.stripeService.createCustomerAndSubscription({
       tenantKey: payload.tenantKey,

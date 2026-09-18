@@ -247,7 +247,7 @@ test("workspace admin can submit an upgrade request from the plan page", async (
 
     await page.goto("/admin/plan", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Trial is active")).toBeVisible();
-    await expect(page.getByText("Plan: STARTER", { exact: false })).toBeVisible();
+    await expect(page.getByText("Plan: TRIAL", { exact: false })).toBeVisible();
 
     await page.getByLabel("Request notes").fill(requestNotes);
 
@@ -266,7 +266,7 @@ test("workspace admin can submit an upgrade request from the plan page", async (
     expect(requestLookup?.item?.status).toBe("open");
     expect(requestLookup?.item?.notes).toBe(requestNotes);
     expect(requestLookup?.item?.requestedBy).toBe(signup.adminEmail);
-    expect(requestLookup?.item?.currentPlanTier).toBe("STARTER");
+    expect(requestLookup?.item?.currentPlanTier).toBe("TRIAL");
     expect(requestLookup?.item?.currentBillingStatus).toBe("trial");
     expect(requestLookup?.item?.currentAccessStatus).toBe("active");
 

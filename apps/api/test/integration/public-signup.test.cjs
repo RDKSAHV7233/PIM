@@ -424,7 +424,7 @@ async function runHappyPathCase(baseEnv) {
       token: verifiedLogin.payload.accessToken,
     });
     assertStatus(planProfile, 200, "plan profile available after signup verification");
-    assert(planProfile.payload?.planTier === "STARTER", `expected STARTER plan, got ${JSON.stringify(planProfile.payload)}`);
+    assert(planProfile.payload?.planTier === "TRIAL", `expected TRIAL plan, got ${JSON.stringify(planProfile.payload)}`);
     assert(planProfile.payload?.billingStatus === "trial", `expected trial billing status, got ${JSON.stringify(planProfile.payload)}`);
     assert(planProfile.payload?.accessStatus === "active", `expected active access status, got ${JSON.stringify(planProfile.payload)}`);
     assert(
@@ -863,7 +863,7 @@ async function run() {
           "signup_delivery_failure_marks_request_non_pending_and_allows_retry",
           "signup_billing_provisioning_is_idempotent_single_plan_profile_row",
           "signup_verify_provisions_workspace_and_admin",
-          "verified_admin_can_login_and_has_starter_plan",
+          "verified_admin_can_login_and_has_trial_plan",
           "signup_kpi_trends_expose_request_verification_and_conversion_metrics",
           "duplicate_slug_and_email_are_rejected",
           "expired_token_is_rejected",

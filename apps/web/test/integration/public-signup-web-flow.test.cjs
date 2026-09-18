@@ -459,7 +459,7 @@ async function run() {
       "x-csrf-token": cookieJar.get("pim_csrf_token") ?? "",
     });
     assertStatus(billingUsage, 200, "billing usage after signup");
-    assert(String(billingUsage.payload?.planTier ?? "") === "STARTER", "Expected self-serve signup tenant to resolve to STARTER.");
+    assert(String(billingUsage.payload?.planTier ?? "") === "TRIAL", "Expected self-serve signup tenant to resolve to TRIAL.");
     assert(String(billingUsage.payload?.billingStatus ?? "") === "trial", "Expected self-serve signup tenant to start in trial status.");
     assert(String(billingUsage.payload?.accessStatus ?? "") === "active", "Expected self-serve signup tenant to start with active access.");
     assert(
