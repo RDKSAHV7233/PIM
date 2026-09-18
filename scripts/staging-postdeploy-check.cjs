@@ -152,12 +152,24 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
   const tempUsers = ["viewer", "reviewer", "editor"].map(makeTempUser);
   const validated = [];
 
-  async function deactivateUser(userId) {
+  // Deactivate then hard-delete: purge requires the identity to already be
+  // deactivated, so these temp accounts don't linger as permanent ghost rows
+  // in the real tenant after every deploy.
+  async function retireUser(userId) {
     await requestJson(
       baseUrl,
       `/api/v1/admin/workspace/users/${encodeURIComponent(userId)}/deactivate`,
       {
         method: "POST",
+        headers: adminHeaders,
+        retries: 1,
+      },
+    ).catch(() => null);
+    await requestJson(
+      baseUrl,
+      `/api/v1/admin/workspace/users/${encodeURIComponent(userId)}/purge`,
+      {
+        method: "DELETE",
         headers: adminHeaders,
         retries: 1,
       },
@@ -361,7 +373,7 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
     return validated;
   } finally {
     for (const user of tempUsers) {
-      await deactivateUser(user.userId);
+      await retireUser(user.userId);
     }
   }
 }
@@ -440,51 +452,16 @@ async function verifyDatabaseSeed(baseUrl, adminToken) {
   console.log("✓ Database plan limits match seed values (all 5 tiers verified)");
 }
 
-async function testBulkImportCsrfFlow(baseUrl, webBaseUrl, adminToken, cookieHeader) {
-  // Test 1: Fetch without CSRF token (httpOnly scenario)
-  console.log("Testing bulk-import CSRF flow (httpOnly scenario)...");
-
-  const uploadRequest = await requestJson(
-    baseUrl,
-    "/api/v1/bulk-import/runs",
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${adminToken}`,
-        "content-type": "application/json",
-        cookie: cookieHeader, // Browser automatically sends this
-        // NO x-csrf-token header (because httpOnly prevents JS from reading it)
-      },
-      body: {
-        categoryId: "test-category",
-        sourceFormat: "csv",
-        sourceName: "test.csv",
-        csvContent: "title,description\nProduct1,Desc1\n",
-        mapping: { title: "title", description: "description" },
-        chunkSize: 100,
-        maxRetries: 3,
-      },
-      retries: 2,
-    },
-  ).catch(() => null);
-
-  // Should NOT return 403 CSRF_MISMATCH
-  if (uploadRequest && uploadRequest.status === 403) {
-    const errorMsg = String(uploadRequest.payload?.error ?? uploadRequest.payload?.message ?? "");
-    if (errorMsg.includes("CSRF")) {
-      throw new Error(
-        `Bulk-import CSRF regression: httpOnly cookie path failing with 403. ` +
-          `This was fixed in PR #278. Verify the fix was deployed. payload=${JSON.stringify(uploadRequest.payload)}`,
-      );
-    }
-  }
-
-  if (uploadRequest && [200, 201].includes(uploadRequest.status)) {
-    console.log("✓ Bulk-import CSRF flow works (httpOnly cookie accepted without header)");
-  } else if (!uploadRequest) {
-    console.warn("⚠ Bulk-import CSRF test inconclusive (endpoint unavailable), but not critical");
-  }
-}
+// testBulkImportCsrfFlow (PR #278 regression check) was removed here: it
+// posted to the NestJS API directly with categoryId: "test-category", which
+// 404s against every real category id (Category.id is a cuid()) — so it has
+// silently tested nothing since it was written. It also can't test what it
+// claims to: CSRF is enforced only in the Next.js web proxy route
+// (apps/web/src/app/api/_auth.ts), not the API this script posts to. A real
+// version of this check needs to hit webBaseUrl's proxy route, use a real
+// category, and have somewhere to clean up the run/product it creates
+// (BulkImportRun has no delete endpoint today) — tracked as a follow-up
+// rather than shipped half-fixed against the live tenant.
 
 async function run() {
   const baseUrl = requireEnv("STAGING_BASE_URL").replace(/\/+$/, "");
@@ -670,7 +647,6 @@ async function run() {
   }
   verifyCsrfToken(webLogin.setCookie);
   await verifyDatabaseSeed(baseUrl, securityChecksToken);
-  await testBulkImportCsrfFlow(baseUrl, webBaseUrl, securityChecksToken, cookieHeader);
 
   console.log(
     JSON.stringify(

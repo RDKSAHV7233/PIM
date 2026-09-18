@@ -718,6 +718,53 @@ export class WorkspaceUsersService {
     return this.mapWorkspaceUserRow(updated);
   }
 
+  /**
+   * Hard-deletes an AuthIdentity row. Requires the identity to already be
+   * deactivated (mirrors CatalogService.purgeProduct's soft-delete-first
+   * invariant) so this can't be used to skip the deactivate flow's
+   * last-admin guard — an admin can only reach isActive:false via
+   * deactivateUser(), which already refuses to deactivate the last admin.
+   */
+  async purgeUser(
+    tenantId: string,
+    actorId: string,
+    actorRole: AppRole,
+    targetUserId: string,
+  ): Promise<{ ok: true }> {
+    const normalizedTenantId = normalizeTenantKey(tenantId);
+    const normalizedActorId = this.normalizeUserId(actorId);
+    const normalizedTargetUserId = this.normalizeUserId(targetUserId);
+
+    if (normalizedTargetUserId === normalizedActorId) {
+      throw new BadRequestException({ error: "CANNOT_PURGE_SELF" });
+    }
+
+    const existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
+    if (existing.isActive) {
+      throw new BadRequestException({
+        error: "USER_MUST_BE_DEACTIVATED_BEFORE_PURGE",
+        message: "Deactivate this user before purging it.",
+      });
+    }
+
+    await this.prisma.tenant(normalizedTenantId).authIdentity.delete({
+      where: { id: existing.id },
+    });
+
+    await this.auditService.record({
+      actorId: normalizedActorId,
+      actorRole,
+      action: "workspace_user.purged",
+      resource: "AuthIdentity",
+      resourceId: existing.id,
+      metadata: {
+        targetUserId: existing.userId,
+      },
+    });
+
+    return { ok: true };
+  }
+
   async setUserPassword(
     tenantId: string,
     actorId: string,

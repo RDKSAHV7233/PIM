@@ -1715,6 +1715,41 @@
           }
         },
         {
+          "name": "WorkspaceUsersController_purgeUser",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workspace/users/:userId/purge",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "workspace",
+                "users",
+                ":userId",
+                "purge"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Path parameter"
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "Set user password",
           "request": {
             "method": "POST",

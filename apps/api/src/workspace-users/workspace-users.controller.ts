@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -184,6 +185,18 @@ export class WorkspaceUsersController {
   deactivateUser(@Param("userId") userId: string, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
     return this.workspaceUsersService.deactivateUser(
+      actor.tenantId,
+      actor.userId,
+      actor.role,
+      decodeURIComponent(userId),
+    );
+  }
+
+  @Delete(":userId/purge")
+  @HttpCode(200)
+  purgeUser(@Param("userId") userId: string, @Req() request: AuthenticatedRequest) {
+    const actor = this.requireActor(request);
+    return this.workspaceUsersService.purgeUser(
       actor.tenantId,
       actor.userId,
       actor.role,

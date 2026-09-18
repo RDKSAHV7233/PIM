@@ -6750,6 +6750,29 @@
         ]
       }
     },
+    "/api/v1/admin/workspace/users/{userId}/purge": {
+      "delete": {
+        "operationId": "WorkspaceUsersController_purgeUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
     "/api/v1/admin/workspace/users/{userId}/password": {
       "post": {
         "operationId": "WorkspaceUsersController_setUserPassword",

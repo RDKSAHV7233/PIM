@@ -638,3 +638,77 @@ describe("WorkspaceUsersService.listUsers — search/role/status filters (#823)"
     expect(callArgs.take).toBe(1_000);
   });
 });
+
+describe("WorkspaceUsersService — purgeUser", () => {
+  function makePurgeStubs(existing: Record<string, unknown> | null) {
+    const authIdentity = {
+      findFirst: jest.fn().mockResolvedValue(existing),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    const tenantClient = { authIdentity };
+    const prisma = {
+      tenant: jest.fn().mockReturnValue(tenantClient),
+    } as unknown as PrismaService;
+    const audit = {
+      record: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuditService;
+    const planUsage = {} as unknown as PlanUsageService;
+    return { prisma, audit, planUsage, authIdentity };
+  }
+
+  it("rejects purging yourself", async () => {
+    const { prisma, audit, planUsage } = makePurgeStubs(null);
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.purgeUser("tenant-a", "actor@tenant", "admin", "actor@tenant"),
+    ).rejects.toMatchObject({ response: { error: "CANNOT_PURGE_SELF" } });
+  });
+
+  it("404s when the target user does not exist", async () => {
+    const { prisma, audit, planUsage } = makePurgeStubs(null);
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.purgeUser("tenant-a", "actor@tenant", "admin", "ghost@tenant"),
+    ).rejects.toMatchObject({ response: { error: "USER_NOT_FOUND" } });
+  });
+
+  it("refuses to purge a still-active user", async () => {
+    const { prisma, audit, planUsage, authIdentity } = makePurgeStubs({
+      id: "row-id",
+      userId: "temp@tenant",
+      role: "viewer",
+      isActive: true,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.purgeUser("tenant-a", "actor@tenant", "admin", "temp@tenant"),
+    ).rejects.toMatchObject({ response: { error: "USER_MUST_BE_DEACTIVATED_BEFORE_PURGE" } });
+    expect(authIdentity.delete).not.toHaveBeenCalled();
+  });
+
+  it("hard-deletes an already-deactivated user and audits it", async () => {
+    const { prisma, audit, planUsage, authIdentity } = makePurgeStubs({
+      id: "row-id",
+      userId: "temp@tenant",
+      role: "viewer",
+      isActive: false,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.purgeUser("tenant-a", "actor@tenant", "admin", "temp@tenant"),
+    ).resolves.toEqual({ ok: true });
+
+    expect(authIdentity.delete).toHaveBeenCalledWith({ where: { id: "row-id" } });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "workspace_user.purged",
+        resourceId: "row-id",
+        metadata: { targetUserId: "temp@tenant" },
+      }),
+    );
+  });
+});

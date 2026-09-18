@@ -23,6 +23,7 @@ async function main() {
   const tokens = new Map([["test-token", { userId: "admin@vexa-pim.local", role: "admin" }]]);
   const lockedUsers = new Set();
   const inactiveUsers = new Set();
+  const purgedUsers = new Set();
   const auditLogDeniedRoles = new Set();
   let viewerCreateConflictExercised = false;
   let viewerAdminListDenied = false;
@@ -293,6 +294,27 @@ async function main() {
       return;
     }
 
+    if (req.method === "DELETE" && /^\/api\/v1\/admin\/workspace\/users\/.+\/purge$/.test(url.pathname)) {
+      const actor = currentActor(req);
+      if (!actor || actor.role !== "admin") {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "FORBIDDEN" }));
+        return;
+      }
+      const targetUserId = routeUserId(url);
+      if (!inactiveUsers.has(targetUserId)) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "USER_MUST_BE_DEACTIVATED_BEFORE_PURGE" }));
+        return;
+      }
+      purgedUsers.add(targetUserId);
+      users.delete(targetUserId);
+      inactiveUsers.delete(targetUserId);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "NOT_FOUND", path: url.pathname }));
   });
@@ -422,6 +444,7 @@ async function main() {
   assert.equal(staleViewerLockedRejected, true, "viewer stale token must be rejected after lock");
   assert.equal(staleViewerInactiveRejected, true, "viewer stale token must be rejected after deactivation");
   assert.equal(deactivatedViewerLoginRejected, true, "deactivated viewer login must be rejected");
+  assert.equal(purgedUsers.size, 3, "all three temp access-policy users must be purged, not just deactivated, after the run");
 
   console.log(
     JSON.stringify(
