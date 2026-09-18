@@ -62,6 +62,11 @@ const AUDIT_SELECT = {
   createdAt: true,
 } satisfies Prisma.AuditLogSelect;
 
+// Cap on rows returned by a single CSV export — prevents an unbounded query
+// against a large tenant's audit log. See queryEventsForExport()/renderEventsCsv()
+// for how truncation past this cap is detected and surfaced.
+const AUDIT_EXPORT_ROW_CAP = 5000;
+
 const AUDIT_ORDER_BY = [
   { createdAt: "desc" },
   { id: "desc" },
@@ -284,18 +289,26 @@ export class AuditService {
     return this.renderEventsCsv(result.items);
   }
 
-  async queryEventsForExport(query: ListAuditEventsDto): Promise<AuditExplorerRow[]> {
+  async queryEventsForExport(query: ListAuditEventsDto): Promise<{ items: AuditExplorerRow[]; truncated: boolean }> {
     const where = this.buildExplorerWhere(query, null, null);
+    // Fetch one row past the cap so truncation can be detected precisely — a
+    // plain `take: CAP` can't tell "exactly CAP matching rows" apart from
+    // "more than CAP rows, silently cut off here". Without this, a security
+    // audit export for a busy tenant/date-range could silently omit events
+    // past the cap with zero indication anywhere (same failure class as the
+    // compliance.service.ts issue-inbox truncation fixed separately).
     const rows = await this.prisma.tenant().auditLog.findMany({
       where,
       orderBy: AUDIT_ORDER_BY,
-      take: 5000,
+      take: AUDIT_EXPORT_ROW_CAP + 1,
       select: AUDIT_SELECT,
     });
-    return rows.map((row) => this.normalizeExplorerRow(row));
+    const truncated = rows.length > AUDIT_EXPORT_ROW_CAP;
+    const bounded = truncated ? rows.slice(0, AUDIT_EXPORT_ROW_CAP) : rows;
+    return { items: bounded.map((row) => this.normalizeExplorerRow(row)), truncated };
   }
 
-  renderEventsCsv(items: AuditExplorerRow[]) {
+  renderEventsCsv(items: AuditExplorerRow[], options?: { truncated?: boolean }) {
     const lines = [
       [
         "timestamp",
@@ -321,6 +334,30 @@ export class AuditService {
           row.resource,
           row.resourceId ?? "",
           JSON.stringify(row.metadata ?? {}),
+        ]
+          .map((value) => this.escapeCsv(value))
+          .join(","),
+      );
+    }
+    if (options?.truncated) {
+      // A plain HTTP response header would be invisible here — this endpoint
+      // is downloaded via a native browser link (no JS layer reads response
+      // headers) and opened directly in a spreadsheet tool. The only way to
+      // make truncation actually visible to the admin reviewing the file is
+      // to put it in the CSV content itself, as the last row so it's exactly
+      // where someone scanning to the end of the export will see it.
+      lines.push(
+        [
+          new Date().toISOString(),
+          "",
+          "",
+          "system",
+          "EXPORT_TRUNCATED",
+          "audit_export",
+          "",
+          JSON.stringify({
+            message: `This export was capped at ${AUDIT_EXPORT_ROW_CAP} rows. Older events matching your filters exist but are not included — narrow your date range or filters to see them.`,
+          }),
         ]
           .map((value) => this.escapeCsv(value))
           .join(","),
