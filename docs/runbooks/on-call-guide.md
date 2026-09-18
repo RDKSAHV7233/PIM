@@ -8,6 +8,8 @@ owner: DevOps
 
 ## 0. Current staging baseline
 
+> **Corrected 2026-09-17:** this "staging" service pair (App Vexa / Vexa API) is the only Railway environment that exists and is what serves real customer traffic at `app.vexapim.com` — there is no separate production Railway environment (the `promote-stage3.yml` pipeline has zero recorded runs, ever, confirmed via `gh run list`). The health-check table below (§1) is written for this single reality. See `docs/operations/CURRENT_PRODUCTION_ARCHITECTURE.md`.
+
 As of 2026-05-17, the staging deployment recovery baseline is GitHub Actions run `25988595126`:
 
 - URL: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25988595126`
@@ -26,9 +28,9 @@ Do not authorize additional deploy-path edits for this incident unless a newer f
 | Signal | Where to find it | Healthy value | Alert threshold |
 |---|---|---|---|
 | API health | `GET /api/v1/health` | `status: "ok"` | Non-200 response or `status != "ok"` |
-| Environment identity | `GET /api/v1/health` | `env` matches the environment being checked (`staging` or `production`) | Unexpected env value in a live service |
-| Queue backend | `GET /api/v1/health -> queueRuntime.backend` | `bullmq` in staging and production | Any other backend in a shared environment |
-| Queue worker enabled | `GET /api/v1/health -> queueRuntime.workerEnabled` | `true` in staging and production | `false` in staging or production |
+| Environment identity | `GET /api/v1/health` | `env: "staging"` — this is the only environment value that has ever actually been observed live (confirmed 2026-09-17; there is no second Railway environment) | Any value other than `staging` in the live service |
+| Queue backend | `GET /api/v1/health -> queueRuntime.backend` | `bullmq` | Any other backend |
+| Queue worker enabled | `GET /api/v1/health -> queueRuntime.workerEnabled` | `true` | `false` |
 | Queue paused lanes | `GET /api/v1/health -> queues.*.pausedLanes` | `0` across queues | Any paused lane sustained beyond one connector pause window |
 | Auth error rate | Railway request and application logs | Normal background level of 401, 423, and 429 responses | Sustained spike in 401, 423, or 429 responses |
 | Database connectivity | `GET /api/v1/health`, Railway logs, and deploy logs | Health endpoint stays green and Prisma boot logs stay clean | Health goes 500 or logs show Prisma connection or migration errors |
@@ -42,7 +44,7 @@ Do not authorize additional deploy-path edits for this incident unless a newer f
   - Evidence: `apps/api/src/auth/auth.service.ts`.
 - Queue is running outside BullMQ-backed durable mode.
   - Effect: jobs may still process in memory, but they are not durable across restarts.
-  - In staging and production this should be blocked by env validation, so if it happens it indicates a misconfigured or non-standard runtime.
+  - This should be blocked by env validation on the live environment, so if it happens it indicates a misconfigured or non-standard runtime.
   - Evidence: `apps/api/src/queue/queue.service.ts`, `apps/api/src/common/env-validation.ts`.
 - Connector registry is using its safe fallback set because connector-definition discovery failed.
   - Effect: surfaced connector availability may not match the database definition state.

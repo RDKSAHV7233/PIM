@@ -6,11 +6,13 @@ last_updated: 2026-09-03
 owner: DevOps + Engineering Lead
 ---
 
+> **Corrected 2026-09-17:** every "production" reference in this document means the single Railway environment named "Staging" that serves `app.vexapim.com` — confirmed there is no separate production Railway environment (the `promote-stage3.yml` pipeline has zero recorded runs, ever). Do not spend triage time looking for a second system. See `docs/operations/CURRENT_PRODUCTION_ARCHITECTURE.md` for the current live topology.
+
 ## 1. Severity levels and response targets
 
 | Severity | Definition | Response target | Example |
 |---|---|---|---|
-| P0 | Production down, data-loss risk, or auth broken for all users | 15 min | API returns 500 on all routes; all tenants fail login |
+| P0 | The one real environment (app.vexapim.com) is down, at data-loss risk, or auth is broken for all users | 15 min | API returns 500 on all routes; all tenants fail login |
 | P1 | Feature degraded, elevated error rate, or one tenant materially affected | 1 hour | Queue backlog grows; one tenant cannot publish |
 | P2 | Performance degraded or a non-critical feature is broken | 4 hours | Dashboard reads are slow; an audit filter is broken |
 
@@ -75,10 +77,10 @@ CTO escalation: Vishal Bhoi — bhoivishal216@gmail.com — page for all P0s wit
 
 1. Verify `JWT_SECRET` has not changed unexpectedly.
    - Changing it invalidates every active session token.
-   - In staging and production, the API service and web service must use the same `JWT_SECRET` or `PIM_JWT_SECRET`.
+   - The API service and web service must use the same `JWT_SECRET` or `PIM_JWT_SECRET` (there is one real environment — see the note at the top of this file).
    - If the API can mint an admin token but the web app re-verifies it with a different secret, server-rendered pages silently fall back to viewer/read-only mode.
 2. Verify `AUTH_MODE=db` in Railway env.
-   - Staging and production should not run in local auth mode.
+   - This environment should never run in local auth mode.
 3. Check API logs for the failure shape.
    - Distinguish missing bearer token, revoked token, expired token, and invalid credential responses.
 4. Check Redis availability.

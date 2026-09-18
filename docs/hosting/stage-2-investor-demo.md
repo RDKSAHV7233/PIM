@@ -8,6 +8,8 @@ owner: Engineering
 
 # Stage 2 — Investor Demo
 
+> **STATUS: NEVER EXECUTED — verified 2026-09-17.** `promote-stage2.yml` has zero recorded runs in the repo's GitHub Actions history (`gh run list --workflow=promote-stage2.yml`). The multi-provider architecture below (Render/Railway + Vercel + Neon + Upstash) was never built. Real traffic ships directly to a single self-hosted Railway environment (see `docs/operations/CURRENT_PRODUCTION_ARCHITECTURE.md`). Treat this document as a historical/aspirational plan from 2026-05-17, not a live procedure, until it is either executed for real or formally retired.
+
 **Cost:** ₹3,000–5,000/month  
 **Purpose:** Customer-facing demo, investor walkthrough, always-on availability  
 **Workflow:** [promote-stage2.yml](../../.github/workflows/promote-stage2.yml)

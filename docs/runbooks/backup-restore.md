@@ -20,6 +20,10 @@ Use this runbook to verify backup health, trigger an ad-hoc backup, and restore 
 
 **Current environment note (corrected 2026-08-27):** staging/production Postgres runs as a **self-hosted Railway service** (`ghcr.io/railwayapp-templates/postgres-ssl` image + Railway volume), not Neon. There is no managed point-in-time-recovery product in front of it — this doc previously described a Neon PITR path that was never actually provisioned in this environment. **The daily `pg_dump` → R2 backup below is the only real recovery path.** RPO is bounded by the backup interval (up to 24h), not by continuous PITR. If Neon (or another PITR-capable managed Postgres) is adopted later, restore this section's PITR guidance and update RES-05E accordingly — until then, do not tell an incident responder to look for a Neon dashboard.
 
+**Confirmed 2026-09-17, directly against the Railway dashboard:** Railway's own backup/PITR is Pro-plan-only; this account is on Hobby, "No backup schedule" is configured, and there's exactly one manual snapshot (~25 days old) per Postgres instance. Railway contributes nothing ongoing — the workflow below is the entire real backup mechanism.
+
+**Second gap, also confirmed 2026-09-17:** there are actually **two** Postgres instances in this Railway project. This whole runbook — including the workflow below — only ever covers the main application database (`STAGING_DATABASE_URL_DIRECT`). The second instance, backing `OBSERVABILITY_DATABASE_URL` (captured errors/exceptions), has **no backup path at all** — not this workflow, not a Railway snapshot, nothing. It's designed to fail open and self-purge after 90 days, so treating it as disposable is probably the right call, but nobody has written that decision down. Add it to the workflow below or explicitly accept the gap here — don't leave it silent.
+
 ---
 
 ## 2. Automated Daily Backup

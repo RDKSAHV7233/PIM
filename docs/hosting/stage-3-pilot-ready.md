@@ -8,6 +8,8 @@ owner: Engineering
 
 # Stage 3 — Pilot Ready
 
+> **STATUS: NEVER EXECUTED — verified 2026-09-17.** `promote-stage3.yml` has zero recorded runs in the repo's GitHub Actions history (`gh run list --workflow=promote-stage3.yml`), and only one `RAILWAY_PROJECT_ID` secret exists repo-wide — so even if run, it would deploy into the same Railway project as staging, under an environment name ("Production") that doesn't currently exist there. The multi-provider architecture below (Railway + Vercel + Neon/Railway-Pro-PITR + Upstash) was never built. Real pilot traffic — including a real ENTERPRISE-plan tenant with active billing — runs directly on the single self-hosted Railway environment described in `docs/operations/CURRENT_PRODUCTION_ARCHITECTURE.md`. Treat this document as a historical/aspirational plan from 2026-05-17, not a live procedure, until it is either executed for real or formally retired. In particular, the "Exit gate — pilot go-live" checklist below was never actually the gate the real pilot went live through.
+
 **Cost:** ₹10,000–15,000/month  
 **Purpose:** Production-grade hosting for pilot tenants; multi-tenant RLS enforced; daily backups  
 **Workflow:** [promote-stage3.yml](../../.github/workflows/promote-stage3.yml)

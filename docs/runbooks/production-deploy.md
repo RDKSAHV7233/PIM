@@ -8,6 +8,8 @@ owner: Engineering / DevOps
 
 Use this runbook when deploying the Vexa PIM API or Web app to production. Follow it for every production deploy, including hotfixes. Do not skip steps under time pressure — a failed migration is harder to recover from than a delayed deploy.
 
+> **Corrected 2026-09-17:** confirmed directly against the live Railway dashboard — there is currently exactly **one** Railway environment (named "Staging" in Railway, serving `app.vexapim.com`), and it is what "production" means everywhere in this document. The separate `promote-stage3.yml` pipeline this doc's rollback/notification sections implicitly assume has **never executed** (zero GitHub Actions runs, ever, confirmed via `gh run list`) and targets an environment name that doesn't exist in the only accessible Railway project. Every deploy step below happens on the one real environment, triggered by `deploy-staging.yml`. The Web app also runs on **Railway**, not Vercel — § 3B below is corrected accordingly. See `docs/operations/CURRENT_PRODUCTION_ARCHITECTURE.md` for the current live topology.
+
 ---
 
 ## 1. Pre-Deploy Checklist
@@ -65,11 +67,13 @@ Railway runs in this order:
 
 The deploy is not live until the healthcheck passes.
 
-### 3B. Web App (Vercel)
+### 3B. Web App (Railway)
 
 ```bash
-# Vercel auto-deploys from main branch via GitHub integration.
-# For a manual promote: Vercel dashboard → Project → Deployments → Promote to Production
+# Railway auto-deploys the "App Vexa" service from the main branch on every push,
+# same as the API service. Confirmed live: Settings → Source → Branch connected: main.
+
+# For a manual trigger: Railway dashboard → Project → App Vexa service → Deploy → Trigger deploy
 ```
 
 Web deploys do not run database migrations — deploy order does not matter between API and Web.
@@ -83,15 +87,23 @@ Run immediately after Railway reports the deploy as healthy.
 ```bash
 # 1. API health
 curl https://api.yourvexa.com/api/v1/health
-# Expected: {"status":"ok","env":"production","queueRuntime":{"backend":"bullmq","workerEnabled":false}}
+# Expected: {"status":"ok","env":"staging","queueRuntime":{"backend":"bullmq","workerEnabled":true}}
+# (env will read "staging" — that's the real environment name; see the note at the top of this
+# file. workerEnabled reflects whether QUEUE_WORKER_ENABLED is set on this service — see § 2 below.)
 
-# 2. Worker health (separate Railway service)
-curl https://worker.yourvexa.com/api/v1/health
-# Expected: queueRuntime.workerEnabled: true
+# 2. Worker health
+# Corrected 2026-09-17: no separate worker Railway service was found in the live dashboard check —
+# only "App Vexa" (web) and "Vexa API" (API) exist. If worker mode runs in-process on the API
+# service, its health is already covered by step 1's queueRuntime.workerEnabled field. If a
+# dedicated worker service is stood up later, check its own /api/v1/health the same way.
 
 # 3. Post-deploy script
 node scripts/staging-postdeploy-check.cjs
-# (Run against production URL — update STAGING_URL env var to point at prod)
+# This runs against the one real environment there is — there is no separate
+# production URL/variable to point it at (confirmed 2026-09-17; see the note
+# at the top of this file). Be aware this script creates and mutates real
+# workspace users and a real product on every run — see
+# docs/runbooks/test-data-governance.md.
 
 # 4. Auth: log in with the ops admin account and confirm JWT is issued
 # 5. Catalog: open any product and confirm it loads
@@ -116,7 +128,7 @@ Use when: smoke tests fail, error rate spikes, or a migration regression is dete
 # 6. Deploy the compensating migration as a new deploy cycle
 ```
 
-**Web rollback:** Vercel dashboard → Deployments → find previous deployment → Promote to Production.
+**Web rollback:** Railway dashboard → App Vexa service → Deployments → find previous deployment (green status) → Re-deploy.
 
 ---
 

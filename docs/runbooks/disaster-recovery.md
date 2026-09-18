@@ -17,6 +17,10 @@ Use this runbook when a production incident requires restoring service from a ba
 
 These are current-state targets for Pilot. Enterprise targets (lower RPO/RTO) require either active streaming replication or a managed Postgres with built-in PITR (e.g. Neon, RDS) — neither is in place today.
 
+> **New gap, confirmed 2026-09-17:** the RPO/RTO targets above cover the main application database only. A **second Postgres instance** exists for observability data (`OBSERVABILITY_DATABASE_URL`, backing captured errors/exceptions) and has **no backup of any kind** — not the daily R2 job, not a Railway snapshot, nothing. That data is designed to fail open and self-purge after 90 days, so it's likely fine to treat as disposable — but that's never been written down as a decision. If it needs a real RPO, add it to `backup-r2-daily.yml` explicitly; if it doesn't, say so here instead of leaving it unaddressed.
+
+> Also confirmed 2026-09-17, directly against the Railway dashboard: Railway's own backup/PITR is **Pro-plan-only**; this account is on **Hobby**, has **no backup schedule** configured, and has exactly one manual snapshot per database, ~25 days old. Railway itself contributes zero ongoing protection — the daily `pg_dump` → R2 job below is the entire real backup story for the main database.
+
 ---
 
 ## 2. Failure Scenarios and Recovery Steps

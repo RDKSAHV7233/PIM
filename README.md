@@ -11,7 +11,7 @@ The repo code is the source of truth. Treat dated execution notes, review memos,
 - Database: PostgreSQL with Prisma
 - Queue/cache: local fallback or BullMQ/Redis depending on environment
 - Media/object storage: R2-compatible object storage plus local export fallback paths
-- Connectors in code: Amazon India, Flipkart, Meesho, Myntra, Nykaa, Shopify, WooCommerce
+- Connectors in code: Amazon India, Flipkart, Meesho, Myntra, Nykaa, Shopify, WooCommerce — these are not equally ready. Flipkart and Myntra are unconditionally live/GA; Shopify is live but managed OAuth/webhooks are unverified; WooCommerce is a controlled pilot capped at 2 Enterprise tenants; Amazon India is experimental and not recommended for production catalogues; Meesho and Nykaa are manual Excel-export only. See `apps/api/src/connector-framework/connector-launch-policy.ts` for the authoritative per-connector launch stage.
 
 ## Quick Start
 
@@ -47,6 +47,7 @@ Default local URLs:
 - [API guide](docs/api.md)
 - [Developer guide](docs/developer-guide.md)
 - [Architecture](docs/architecture.md)
+- [Current production architecture](docs/operations/CURRENT_PRODUCTION_ARCHITECTURE.md) — what's actually deployed right now, verified against the live Railway dashboard
 - [Connector index](docs/connectors/README.md)
 - [Current state](docs/execution/CURRENT_STATE.md)
 - [QA data pack](qa/realistic-data/README.md)
