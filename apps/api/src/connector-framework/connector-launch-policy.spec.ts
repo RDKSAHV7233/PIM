@@ -7,6 +7,7 @@ import {
   resolveConnectorPipelineMetadata,
   type ConnectorLaunchStage,
 } from "./connector-launch-policy";
+import { runWithTenantContext } from "../common/tenant/tenant-context";
 
 describe("resolveConnectorLaunchPolicy", () => {
   const allCaps: ConnectorCap[] = ["VALIDATE", "PUBLISH", "STATUS_SYNC", "WEBHOOK_RECEIVE", "EXCEL_EXPORT"];
@@ -119,6 +120,153 @@ describe("resolveConnectorLaunchPolicy", () => {
       expect(policy.launchNote).toMatch(/fresh CTO\/PO\/Security\/QA\/SRE signoff/i);
       expect(policy.launchNote).not.toMatch(/approved.*controlled pilot/i);
       expect(policy.launchNote).not.toMatch(/available to install/i);
+    });
+  });
+
+  // PIM#817: explicitly-opted-in override so the missing real WooCommerce
+  // onboarding + tenant-owned credential-write proof can actually be
+  // produced, WITHOUT reopening WooCommerce for any real customer tenant.
+  //
+  // CORRECTED 2026-09-17: originally gated on APP_ENV=staging alone. A
+  // same-day docs audit (PIM#867) confirmed this deployment has only ONE
+  // Railway environment — internally named "Staging" in APP_ENV terms — and
+  // it serves real customer traffic, including a paying ENTERPRISE pilot
+  // tenant. APP_ENV=staging is therefore true on the live system at all
+  // times; it can never be used to distinguish "safe to test" from "real
+  // customers are on this." Fixed by additionally requiring the CURRENT
+  // REQUEST'S TENANT (via tenant context, the same mechanism every other
+  // tenant-scoped service in this codebase uses) to exactly match one
+  // explicitly-designated proof tenant. The tests below prove the fix: the
+  // override must stay OFF for a different tenant sharing the same
+  // environment and flag, and must FAIL CLOSED (not fail open) when no
+  // proof tenant is configured at all.
+  describe("woocommerce — PIM#817 staging proof override", () => {
+    const ORIGINAL_ENV = { ...process.env };
+    const PROOF_TENANT = "woo-p1-proof-tenant";
+    const REAL_CUSTOMER_TENANT = "acme-enterprise-pilot";
+
+    afterEach(() => {
+      process.env = { ...ORIGINAL_ENV };
+    });
+
+    function resolveAsTenant(tenantKey: string, slug: string) {
+      return runWithTenantContext(tenantKey, () => resolveConnectorLaunchPolicy(slug, allCaps));
+    }
+
+    it("stays p1_blocker_hold when no env var is set", () => {
+      delete process.env.APP_ENV;
+      delete process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED;
+      delete process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY;
+      expect(resolveAsTenant(PROOF_TENANT, "woocommerce").launchStage).toBe("p1_blocker_hold");
+    });
+
+    it("stays p1_blocker_hold when APP_ENV=staging but the flag is not set", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      delete process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED;
+      expect(resolveAsTenant(PROOF_TENANT, "woocommerce").launchStage).toBe("p1_blocker_hold");
+    });
+
+    it("stays p1_blocker_hold when the flag is set but APP_ENV is production", () => {
+      process.env.APP_ENV = "production";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      expect(resolveAsTenant(PROOF_TENANT, "woocommerce").launchStage).toBe("p1_blocker_hold");
+    });
+
+    it("stays p1_blocker_hold when the flag is set but APP_ENV is development", () => {
+      process.env.APP_ENV = "development";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      expect(resolveAsTenant(PROOF_TENANT, "woocommerce").launchStage).toBe("p1_blocker_hold");
+    });
+
+    it("REGRESSION GUARD: stays p1_blocker_hold when APP_ENV=staging and the flag is true but no proof tenant is configured — must fail closed, not unlock every tenant in the environment", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      delete process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY;
+      expect(resolveAsTenant(REAL_CUSTOMER_TENANT, "woocommerce").launchStage).toBe("p1_blocker_hold");
+      expect(resolveAsTenant(PROOF_TENANT, "woocommerce").launchStage).toBe("p1_blocker_hold");
+    });
+
+    it("REGRESSION GUARD: a real customer tenant stays p1_blocker_hold even with both env vars set, because it is not the designated proof tenant", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      const policy = resolveAsTenant(REAL_CUSTOMER_TENANT, "woocommerce");
+      expect(policy.launchStage).toBe("p1_blocker_hold");
+      expect(isInstallableStage(policy.launchStage)).toBe(false);
+    });
+
+    it("resolves to early_access (installable) only for the designated proof tenant, with both env vars set", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      const policy = resolveAsTenant(PROOF_TENANT, "woocommerce");
+      expect(policy.launchStage).toBe("early_access");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("trims surrounding whitespace from the configured proof tenant key, same normalizeTenantKey() every other tenant-scoped lookup in this codebase uses", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = `  ${PROOF_TENANT}  `;
+      const policy = resolveAsTenant(PROOF_TENANT, "woocommerce");
+      expect(policy.launchStage).toBe("early_access");
+    });
+
+    it("is exact-match, not case-folded — tenant keys are case-sensitive elsewhere in this codebase, so a differently-cased tenant key must not match", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT.toUpperCase();
+      const policy = resolveAsTenant(PROOF_TENANT, "woocommerce");
+      expect(policy.launchStage).toBe("p1_blocker_hold");
+    });
+
+    it("override launchNote states the tenant-scoped mechanism, not a blanket production-safety claim", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      const policy = resolveAsTenant(PROOF_TENANT, "woocommerce");
+      expect(policy.launchNote).toMatch(/TEMPORARY/);
+      expect(policy.launchNote).toMatch(/ONLY for the one tenant/i);
+      expect(policy.launchNote).toMatch(/PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY/);
+      expect(policy.launchNote).toMatch(/NOT the full named CTO\/PO\/Security\/QA\/SRE signoff/i);
+    });
+
+    it("other connectors are never affected by the override, even for the proof tenant", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      expect(resolveAsTenant(PROOF_TENANT, "shopify").launchStage).toBe("live");
+      expect(resolveAsTenant(PROOF_TENANT, "meesho").launchStage).toBe("manual");
+    });
+
+    it("resolveConnectorPipelineMetadata reflects the override, scoped to the proof tenant, when queried from that tenant's context", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      const woo = runWithTenantContext(PROOF_TENANT, () => resolveConnectorPipelineMetadata("woocommerce"));
+      expect(woo.internalNotes).toMatch(/Vishal \(CTO\)/);
+      expect(woo.internalNotes).toMatch(/designated proof tenant/i);
+      expect(woo.internalNotes).toMatch(/Revert by unsetting both env vars/i);
+      expect(woo.blockers.join(" ")).toMatch(/PO\/Security\/QA\/SRE still outstanding/i);
+    });
+
+    it("resolveConnectorPipelineMetadata stays on the original hold metadata for a real customer tenant even while the override is active for the proof tenant", () => {
+      process.env.APP_ENV = "staging";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED = "true";
+      process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY = PROOF_TENANT;
+      const woo = runWithTenantContext(REAL_CUSTOMER_TENANT, () => resolveConnectorPipelineMetadata("woocommerce"));
+      expect(woo.milestone).toBe("P1 blocker-closure hold");
+    });
+
+    it("resolveConnectorPipelineMetadata stays on the original hold metadata when the override is off entirely", () => {
+      delete process.env.APP_ENV;
+      delete process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED;
+      delete process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY;
+      const woo = resolveConnectorPipelineMetadata("woocommerce");
+      expect(woo.milestone).toBe("P1 blocker-closure hold");
     });
   });
 
