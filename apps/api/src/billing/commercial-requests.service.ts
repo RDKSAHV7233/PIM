@@ -164,29 +164,58 @@ export class CommercialRequestsService {
     input: CreateUpgradeRequestInput,
   ): Promise<{ item: CommercialRequestSummary; created: boolean }> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
-    const existing = await this.getOpenUpgradeRequestForTenant(tenantKey);
-    if (existing) {
-      return { item: existing, created: false };
-    }
-
     const usageSnapshot = this.normalizeUsageSnapshot(input.usageSnapshot);
-    const created = await this.prisma.tenant(tenantKey).tenantCommercialRequest.create({
-      data: {
-        tenantKey,
-        requestType: "upgrade",
-        status: "open",
-        requestedBy: String(input.requestedBy ?? "").trim(),
-        requesterRole: String(input.requesterRole ?? "").trim() || "admin",
-        currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
-        requestedPlanTier: this.normalizeRequestedPlanTier(input.requestedPlanTier),
-        currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
-        currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
-        ...(usageSnapshot ? { usageSnapshot } : {}),
-        notes: this.normalizeOptionalText(input.notes, 1000),
-        source: this.normalizeSource(input.source),
-      },
+    const db = this.prisma.tenant(tenantKey);
+    // Concurrency guard: without a transaction-scoped lock, two concurrent calls
+    // (e.g. an admin double-clicking "Request upgrade", or two requests racing
+    // during a plan-limit check) can both pass the "no existing open request"
+    // check before either INSERT commits, creating duplicate open upgrade
+    // requests for the same tenant. No unique DB constraint exists on
+    // (tenantKey, requestType, status) to catch this at the DB level — see
+    // createOrReuseOverageFlag()'s identical guard for the same reasoning.
+    // Mirrors the pg_advisory_xact_lock pattern already used for the same
+    // "check-then-create must be atomic" problem in stripe.service.ts and
+    // connector-framework/connector-webhook-ingestion.service.ts.
+    const lockKey = `commercial-request:${tenantKey}:upgrade`;
+    const { record: existingRecord, created: createdRecord } = await db.$transaction(async (tx) => {
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
+      // $executeRaw, which discards the result set, to take the lock.
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)::bigint)`);
+
+      const existing = await tx.tenantCommercialRequest.findFirst({
+        where: {
+          tenantKey,
+          requestType: "upgrade",
+          status: {
+            in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
+      if (existing) {
+        return { record: existing, created: false as const };
+      }
+
+      const created = await tx.tenantCommercialRequest.create({
+        data: {
+          tenantKey,
+          requestType: "upgrade",
+          status: "open",
+          requestedBy: String(input.requestedBy ?? "").trim(),
+          requesterRole: String(input.requesterRole ?? "").trim() || "admin",
+          currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
+          requestedPlanTier: this.normalizeRequestedPlanTier(input.requestedPlanTier),
+          currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
+          currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
+          ...(usageSnapshot ? { usageSnapshot } : {}),
+          notes: this.normalizeOptionalText(input.notes, 1000),
+          source: this.normalizeSource(input.source),
+        },
+      });
+      return { record: created, created: true as const };
     });
-    return { item: await this.mapRequest(created), created: true };
+    return { item: await this.mapRequest(existingRecord), created: createdRecord };
   }
 
   /**
@@ -207,43 +236,64 @@ export class CommercialRequestsService {
   ): Promise<{ item: CommercialRequestSummary; created: boolean }> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
     const requestType = this.buildOverageRequestType(input.resource);
-
-    const existing = await this.prisma.tenant(tenantKey).tenantCommercialRequest.findFirst({
-      where: {
-        tenantKey,
-        requestType,
-        status: {
-          in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
-        },
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
-    if (existing) {
-      return { item: await this.mapRequest(existing), created: false };
-    }
-
     const usageSnapshot: Prisma.JsonObject = {
       resource: input.resource,
       current: input.current,
       limit: input.limit,
     };
-    const created = await this.prisma.tenant(tenantKey).tenantCommercialRequest.create({
-      data: {
-        tenantKey,
-        requestType,
-        status: "open",
-        requestedBy: "system",
-        requesterRole: "system",
-        currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
-        requestedPlanTier: null,
-        currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
-        currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
-        usageSnapshot,
-        notes: this.normalizeOptionalText(input.notes, 1000),
-        source: this.normalizeSource(input.source),
-      },
+    const db = this.prisma.tenant(tenantKey);
+    // Concurrency guard: this is called from SSO auto-provisioning
+    // (oidc-auth.service.ts) on every login, specifically to catch a plan
+    // limit silently exceeded by a non-blocking action. Two users completing
+    // SSO login for the same tenant at the same time can both pass the
+    // "no existing open flag" check before either INSERT commits — the exact
+    // scenario this function exists to detect in the first place — creating
+    // duplicate overage-flag rows that double-surface the same overage to
+    // commercial ops. No unique DB constraint exists on
+    // (tenantKey, requestType, status) to catch this at the DB level; mirrors
+    // the pg_advisory_xact_lock pattern already used for the same
+    // "check-then-create must be atomic" problem in stripe.service.ts and
+    // connector-framework/connector-webhook-ingestion.service.ts.
+    const lockKey = `commercial-request:${tenantKey}:${requestType}`;
+    const { record, created } = await db.$transaction(async (tx) => {
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
+      // $executeRaw, which discards the result set, to take the lock.
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)::bigint)`);
+
+      const existing = await tx.tenantCommercialRequest.findFirst({
+        where: {
+          tenantKey,
+          requestType,
+          status: {
+            in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
+      if (existing) {
+        return { record: existing, created: false as const };
+      }
+
+      const inserted = await tx.tenantCommercialRequest.create({
+        data: {
+          tenantKey,
+          requestType,
+          status: "open",
+          requestedBy: "system",
+          requesterRole: "system",
+          currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
+          requestedPlanTier: null,
+          currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
+          currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
+          usageSnapshot,
+          notes: this.normalizeOptionalText(input.notes, 1000),
+          source: this.normalizeSource(input.source),
+        },
+      });
+      return { record: inserted, created: true as const };
     });
-    return { item: await this.mapRequest(created), created: true };
+    return { item: await this.mapRequest(record), created };
   }
 
   private buildOverageRequestType(resource: string): string {
