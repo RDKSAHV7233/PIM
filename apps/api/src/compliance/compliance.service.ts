@@ -29,6 +29,13 @@ type IssueInboxCursor = {
 const INDIA_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Cap on distinct productIds fetched for an installation-scoped issue-inbox
+// filter — prevents OOM on large installations (e.g. 10k+ Amazon submissions).
+// See listIssueInbox()'s installationProductIds block for why this can't yet
+// be a real SQL subquery (ConnectorSubmission has no Prisma relation to
+// Product), and how ISSUE_INBOX_INSTALLATION_SCOPE_TRUNCATED is derived from it.
+const ISSUE_INBOX_INSTALLATION_PRODUCT_CAP = 10_000;
+
 const ISSUE_INBOX_ORDER_BY = [
   { severity: "asc" },
   { createdAt: "asc" },
@@ -157,6 +164,12 @@ export class ComplianceService {
     const limit = resolveCursorLimit(query.limit);
     const cursor = this.decodeIssueInboxCursor(query.cursor);
     let installationProductIds: Array<{ productId: string }> = [];
+    // True when the distinct-productId fetch below found MORE than
+    // ISSUE_INBOX_INSTALLATION_PRODUCT_CAP rows — see the CAP+1 fetch just
+    // below for why. Threaded through to every return path so API consumers
+    // can tell an incomplete result from a genuinely complete one, instead
+    // of the cap being invisible.
+    let installationScopeTruncated = false;
     if (query.installationId) {
       const installation = await this.loadInstallationScopeCandidate(tenantKey, query.installationId);
       if (!installation) {
@@ -170,13 +183,25 @@ export class ComplianceService {
       });
       // TODO: replace this IN-clause approach with a SQL subquery once
       // ConnectorSubmission gains a Prisma relation to Product (schema migration required).
-      // Current cap prevents OOM for large installations (e.g. 10k+ Amazon submissions).
-      installationProductIds = await this.prisma.tenant(tenantKey).connectorSubmission.findMany({
+      // Until then, orderBy(productId) makes which rows are kept under the cap
+      // deterministic across calls (not the DB's unspecified default row order).
+      // Fetch CAP+1 rows: a plain `take: CAP` can't tell "exactly CAP matching
+      // rows" apart from "more than CAP, silently cut off here" — an
+      // installation with precisely CAP distinct products would otherwise be
+      // reported as truncated when nothing was actually cut off (the same
+      // false-positive the audit-export truncation fix avoids by fetching
+      // CAP+1 rather than inferring truncation from `length === CAP`).
+      const fetchedProductIds = await this.prisma.tenant(tenantKey).connectorSubmission.findMany({
         where: { installationId: query.installationId },
         select: { productId: true },
         distinct: ["productId"],
-        take: 10_000,
+        orderBy: { productId: "asc" },
+        take: ISSUE_INBOX_INSTALLATION_PRODUCT_CAP + 1,
       });
+      installationScopeTruncated = fetchedProductIds.length > ISSUE_INBOX_INSTALLATION_PRODUCT_CAP;
+      installationProductIds = installationScopeTruncated
+        ? fetchedProductIds.slice(0, ISSUE_INBOX_INSTALLATION_PRODUCT_CAP)
+        : fetchedProductIds;
     }
     const productScopeWhere = await this.accessPolicy.buildProductScopeWhere(actor ?? {}, "view");
 
@@ -208,7 +233,7 @@ export class ComplianceService {
     if (query.installationId) {
       const productIds = installationProductIds.map((row) => row.productId);
       if (productIds.length === 0) {
-        return this.buildEmptyIssueInboxResult(tenantKey, limit);
+        return this.buildEmptyIssueInboxResult(tenantKey, limit, installationScopeTruncated);
       }
       filters.push({ productId: { in: productIds } });
     }
@@ -247,6 +272,7 @@ export class ComplianceService {
       resolvedToday: summary.resolvedToday,
       resolvedYesterday: summary.resolvedYesterday,
       trend: this.resolveTrend(summary.resolvedToday, summary.resolvedYesterday),
+      installationScopeTruncated,
     };
   }
 
@@ -947,7 +973,7 @@ export class ComplianceService {
     ).toString("base64url");
   }
 
-  private async buildEmptyIssueInboxResult(tenantKey: string, limit: number) {
+  private async buildEmptyIssueInboxResult(tenantKey: string, limit: number, installationScopeTruncated = false) {
     const summary = await this.buildIssueInboxSummary(tenantKey);
     return {
       items: [],
@@ -956,6 +982,7 @@ export class ComplianceService {
       resolvedToday: summary.resolvedToday,
       resolvedYesterday: summary.resolvedYesterday,
       trend: this.resolveTrend(summary.resolvedToday, summary.resolvedYesterday),
+      installationScopeTruncated,
     };
   }
 

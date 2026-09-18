@@ -23,6 +23,7 @@ module.exports = {
     "**/marketplace/publish-remediation.spec.ts",
     "**/marketplace/publish-remediation.integration.spec.ts",
     "**/marketplace/export-job-reconciliation.service.spec.ts",
+    "**/marketplace/price-resolution.service.spec.ts",
     "**/connectors/amazon/amazon-validation.spec.ts",
     "**/connectors/amazon/amazon-marketplace-registry.spec.ts",
     "**/connectors/amazon/amazon.connector.spec.ts",

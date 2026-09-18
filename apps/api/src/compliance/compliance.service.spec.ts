@@ -551,3 +551,168 @@ describe("ComplianceService — pricing checks", () => {
     expect(persistedCodes).toContain("PRICING_NO_DEFAULT_PRICES");
   });
 });
+
+// ---------------------------------------------------------------------------
+// listIssueInbox — installation-scope product cap (silent-truncation fix)
+// ---------------------------------------------------------------------------
+//
+// installationId-scoped queries resolve distinct productIds via an IN-clause
+// capped at 10,000 rows (a real Prisma relation from ConnectorSubmission to
+// Product doesn't exist yet — see the TODO in listIssueInbox()). Before this
+// fix, an installation with MORE than 10,000 distinct products would silently
+// return an incomplete issue list with no indication anything was cut off.
+// These tests cover: the cap is surfaced via installationScopeTruncated,
+// results below the cap are correctly reported as NOT truncated, and the
+// fetch is now deterministically ordered.
+
+type ValidationIssueRowStub = {
+  id: string;
+  productId: string;
+  fieldPath: string | null;
+  severity: "error" | "warning";
+  message: string;
+  createdAt: Date;
+  product: {
+    title: string;
+    status: string;
+    categoryId: string;
+    category: { name: string } | null;
+    variants: { skuCode: string }[];
+  };
+};
+
+function makeIssueRow(overrides: Partial<ValidationIssueRowStub> = {}): ValidationIssueRowStub {
+  return {
+    id: "issue_1",
+    productId: "prod_1",
+    fieldPath: "title",
+    severity: "error",
+    message: "Title is required.",
+    createdAt: new Date("2026-09-16T00:00:00.000Z"),
+    product: {
+      title: "Test Product",
+      status: "draft",
+      categoryId: "cat_1",
+      category: { name: "Test Category" },
+      variants: [{ skuCode: "SKU-1" }],
+    },
+    ...overrides,
+  };
+}
+
+function makeIssueInboxService(options: {
+  installation?: { id: string; accountAlias: string; connectorSlug: string | null } | null;
+  connectorSubmissionRows?: Array<{ productId: string }>;
+  validationIssueRows?: ValidationIssueRowStub[];
+}) {
+  const installation = "installation" in options ? options.installation : { id: "inst_1", accountAlias: "acme-store", connectorSlug: "woocommerce" };
+  const queryRawMock = jest.fn().mockResolvedValue(installation ? [installation] : []);
+  const connectorSubmissionFindMany = jest.fn().mockResolvedValue(options.connectorSubmissionRows ?? []);
+  const validationIssueFindMany = jest.fn().mockResolvedValue(options.validationIssueRows ?? []);
+  const validationIssueCount = jest.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+
+  const prisma = {
+    tenant: jest.fn().mockReturnValue({
+      $queryRaw: queryRawMock,
+      connectorSubmission: { findMany: connectorSubmissionFindMany },
+      validationIssue: { findMany: validationIssueFindMany, count: validationIssueCount },
+    }),
+  };
+
+  const accessPolicy = {
+    assertConnectorInstallationAccess: jest.fn().mockResolvedValue(undefined),
+    buildProductScopeWhere: jest.fn().mockResolvedValue(null),
+  };
+
+  const cache = { getOrSet: jest.fn() };
+
+  const service = new ComplianceService(prisma as never, accessPolicy as never, cache as never);
+  return { service, connectorSubmissionFindMany, validationIssueFindMany, accessPolicy };
+}
+
+describe("ComplianceService.listIssueInbox — installation-scope product cap", () => {
+  it("reports installationScopeTruncated: false when the installation has fewer products than the cap", async () => {
+    const { service } = makeIssueInboxService({
+      connectorSubmissionRows: [{ productId: "prod_1" }, { productId: "prod_2" }],
+      validationIssueRows: [makeIssueRow()],
+    });
+
+    const result = await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(result.installationScopeTruncated).toBe(false);
+  });
+
+  it("does NOT false-positive truncation when the installation has EXACTLY the cap's worth of distinct products", async () => {
+    // Regression guard: a plain `take: CAP` can't distinguish "exactly CAP
+    // matching rows" from "more than CAP, silently cut off here" — this must
+    // fetch CAP+1 and only report truncated when it actually gets more than
+    // CAP rows back, mirroring the audit-export truncation fix's CAP+1
+    // pattern (fixed here after review found the original `length === CAP`
+    // check would flag a real, complete, exactly-10,000-product installation
+    // as truncated when nothing was actually cut off).
+    const exactlyCappedRows = Array.from({ length: 10_000 }, (_, i) => ({ productId: `prod_${i}` }));
+    const { service } = makeIssueInboxService({
+      connectorSubmissionRows: exactlyCappedRows,
+      validationIssueRows: [makeIssueRow()],
+    });
+
+    const result = await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(result.installationScopeTruncated).toBe(false);
+  });
+
+  it("reports installationScopeTruncated: true, and caps the productId filter at exactly 10,000, when the fetch finds more than 10,000 distinct products", async () => {
+    const overCappedRows = Array.from({ length: 10_001 }, (_, i) => ({ productId: `prod_${i}` }));
+    const { service, validationIssueFindMany } = makeIssueInboxService({
+      connectorSubmissionRows: overCappedRows,
+      validationIssueRows: [makeIssueRow()],
+    });
+
+    const result = await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(result.installationScopeTruncated).toBe(true);
+    const passedFilter = validationIssueFindMany.mock.calls[0][0];
+    const andClauses: Array<{ productId?: { in: string[] } }> = passedFilter.where.AND;
+    const productIdFilter = andClauses.find((clause) => Boolean(clause.productId));
+    expect(productIdFilter?.productId?.in).toHaveLength(10_000);
+  });
+
+  it("fetches CAP+1 distinct productIds with a deterministic orderBy, not the DB's unspecified default order", async () => {
+    const { service, connectorSubmissionFindMany } = makeIssueInboxService({
+      connectorSubmissionRows: [{ productId: "prod_1" }],
+      validationIssueRows: [makeIssueRow()],
+    });
+
+    await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(connectorSubmissionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { productId: "asc" }, take: 10_001 }),
+    );
+  });
+
+  it("reports installationScopeTruncated: false on the empty-result path (installation not found)", async () => {
+    const { service } = makeIssueInboxService({ installation: null });
+
+    const result = await service.listIssueInbox({ installationId: "inst_missing" } as never);
+
+    expect(result.items).toEqual([]);
+    expect(result.installationScopeTruncated).toBe(false);
+  });
+
+  it("reports installationScopeTruncated: false on the empty-result path (installation has zero products)", async () => {
+    const { service } = makeIssueInboxService({ connectorSubmissionRows: [] });
+
+    const result = await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(result.items).toEqual([]);
+    expect(result.installationScopeTruncated).toBe(false);
+  });
+
+  it("reports installationScopeTruncated: false when no installationId filter is given at all", async () => {
+    const { service } = makeIssueInboxService({ validationIssueRows: [makeIssueRow()] });
+
+    const result = await service.listIssueInbox({} as never);
+
+    expect(result.installationScopeTruncated).toBe(false);
+  });
+});
