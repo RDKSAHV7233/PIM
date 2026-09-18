@@ -63,7 +63,7 @@ jobs:
           RAILWAY_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
           RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
-          RAILWAY_ENVIRONMENT_NAME: Staging
+          RAILWAY_ENVIRONMENT_NAME: Production
           FALLBACK_STAGING_API_URL: ${{ secrets.STAGING_BASE_URL }}
         run: |
           resolved_api_url="$(node scripts/resolve-railway-service-url.cjs 2>/dev/null || true)"
@@ -86,7 +86,7 @@ jobs:
           RAILWAY_WEB_SERVICE: ${{ secrets.RAILWAY_WEB_SERVICE || 'App Vexa' }}
           RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
-          RAILWAY_ENVIRONMENT_NAME: Staging
+          RAILWAY_ENVIRONMENT_NAME: Production
           FALLBACK_STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
         run: |
           resolved_web_url="$(node scripts/resolve-railway-service-url.cjs 2>/dev/null || true)"

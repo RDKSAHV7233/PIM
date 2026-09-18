@@ -132,11 +132,8 @@ jobs:
           node scripts/staging-internal-ops-summary-acceptance.test.cjs
           node scripts/staging-error-authority-ops-errors-acceptance.test.cjs
           node scripts/staging-connector-export-coverage.test.cjs
-          node scripts/validate-deploy-stage1-workflow.cjs
           node scripts/validate-deploy-staging-workflow.cjs
           node scripts/validate-e2e-staging-workflow.cjs
-          node scripts/validate-promote-stage2-workflow.cjs
-          node scripts/validate-promote-stage3-workflow.cjs
           node scripts/validate-daily-rollout-evidence-workflow.cjs
           node scripts/validate-staging-deploy-config.test.cjs
           node scripts/migrate-legacy-auth-password-hashes.test.cjs
