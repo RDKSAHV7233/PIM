@@ -59,12 +59,16 @@ function run() {
       source.includes("const claims = await getServerSessionClaims();"),
     "Admin users must derive shared auth, actor role, and session claims before loading workspace access data.",
   );
-  // Status/invite normalization is in the client content component; write-access gate is in page.tsx
+  // Status/invite normalization is in the client content component; write-access gate is in page.tsx.
+  // showInvite is client-side state (not a direct query read) so toggling it never re-navigates and
+  // re-streams the whole page's RSC payload -- see the F-016 fix note inline in the component -- but
+  // its initial value still honors a deep-linked ?showInvite=true for shareable URLs.
   assert(
     contentSource.includes('const status = String(query.status ?? "").trim();') &&
-      contentSource.includes('const showInvite = String(query.showInvite ?? "").trim() === "true";') &&
+      contentSource.includes("const [showInvite, setShowInvite] = useState(") &&
+      contentSource.includes('() => String(query.showInvite ?? "").trim() === "true",') &&
       source.includes('const canManageUsers = actorRole === "admin";'),
-    "Admin users must normalize page status and invite query state while deriving write access from shared role capabilities.",
+    "Admin users must normalize page status and derive invite query state as client-side toggle state (deep-link-initialized, not re-fetched on every toggle) while deriving write access from shared role capabilities.",
   );
   // Parallel data fetch is in the server component
   assert(
@@ -113,11 +117,12 @@ function run() {
     "Admin users must treat auth-policy read failures as explicit unavailability instead of defaulting MFA to optional.",
   );
   assert(
-    contentSource.includes('href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}') &&
+    contentSource.includes('const url = next ? "/admin/users?showInvite=true" : "/admin/users";') &&
+      contentSource.includes('window.history.replaceState(window.history.state, "", url);') &&
       contentSource.includes("form action={createWorkspaceUserAction}") &&
       contentSource.includes("capabilities.availableRoles.map(") &&
       contentSource.includes("describeRole(role)"),
-    "Admin users must render invite role options dynamically from the tenant's plan-gated availableRoles.",
+    "Admin users must keep the invite toggle's URL deep-linkable (via history.replaceState, not a page navigation) and render invite role options dynamically from the tenant's plan-gated availableRoles.",
   );
   assert(
     actionsSource.includes("ROLE_NOT_AVAILABLE_IN_PLAN") &&

@@ -32,12 +32,41 @@ export function AppDialog({ dialogId, open, title, description, onClose, childre
     if (open) {
       previousFocusRef.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      if (!dialog.open) dialog.showModal();
-      const timer = window.setTimeout(() => {
-        focusFirstElement(dialog);
-      }, 0);
+
+      // showModal() throws InvalidStateError if the <dialog> (or an ancestor)
+      // isn't actually being rendered yet — e.g. it's still sitting inside a
+      // Next.js streaming placeholder that hasn't been spliced into the live
+      // DOM. That's a transient state, not a real failure, so retry across a
+      // few animation frames instead of leaving the dialog silently unopened.
+      let cancelled = false;
+      let rafId: number | null = null;
+      let cleanupFocusTimer: number | null = null;
+      let attempt = 0;
+      const maxAttempts = 30; // ~0.5s at 60fps, generous for a transient stream delay
+
+      const tryOpen = () => {
+        if (cancelled) return;
+        if (dialog.open) return;
+        try {
+          dialog.showModal();
+        } catch {
+          attempt += 1;
+          if (attempt < maxAttempts) {
+            rafId = window.requestAnimationFrame(tryOpen);
+          }
+          return;
+        }
+        cleanupFocusTimer = window.setTimeout(() => {
+          focusFirstElement(dialog);
+        }, 0);
+      };
+
+      tryOpen();
+
       return () => {
-        window.clearTimeout(timer);
+        cancelled = true;
+        if (rafId !== null) window.cancelAnimationFrame(rafId);
+        if (cleanupFocusTimer !== null) window.clearTimeout(cleanupFocusTimer);
       };
     } else {
       if (dialog.open) dialog.close();

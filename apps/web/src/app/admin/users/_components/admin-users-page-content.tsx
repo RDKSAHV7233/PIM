@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import {
   createAccessScopeAssignmentAction,
   createWorkspaceUserAction,
@@ -134,7 +135,16 @@ export function AdminUsersPageContent({
 }: AdminUsersPageContentProps) {
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
-  const showInvite = String(query.showInvite ?? "").trim() === "true";
+  // Deliberately client-side state rather than reading query.showInvite directly:
+  // toggling this used to go through a <Link> that re-navigated the whole page,
+  // which re-streams the entire RSC payload on every open/close. That re-stream
+  // intermittently got stuck mid-reveal (a Next.js streaming-placeholder race —
+  // see F-016), permanently hiding the invite form. Local state sidesteps that
+  // by never triggering a fresh navigation for a simple show/hide toggle; the
+  // initial value still honors a deep-linked ?showInvite=true for shareable URLs.
+  const [showInvite, setShowInvite] = useState(
+    () => String(query.showInvite ?? "").trim() === "true",
+  );
   const confirmDeactivateUserId = String(query.confirmDeactivate ?? "").trim();
   const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
   const hasAuthPolicy = authPolicy !== null && !authPolicyUnavailable;
@@ -160,12 +170,20 @@ export function AdminUsersPageContent({
                   Invite User
                 </span>
               ) : (
-                <Link
-                  href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !showInvite;
+                    setShowInvite(next);
+                    // Keep the URL shareable/deep-linkable without triggering a
+                    // Next.js navigation (see the note above showInvite's useState).
+                    const url = next ? "/admin/users?showInvite=true" : "/admin/users";
+                    window.history.replaceState(window.history.state, "", url);
+                  }}
                   className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
                 >
                   {showInvite ? "Close Invite" : "Invite User"}
-                </Link>
+                </button>
               )
             ) : null}
             <Link
