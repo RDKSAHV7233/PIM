@@ -38,6 +38,11 @@ function run() {
       source.includes("onClose();"),
     "AppDialog must route native Escape/cancel behavior through the shared close handler.",
   );
+  assert(
+    source.includes('error instanceof DOMException && error.name === "InvalidStateError"') &&
+      source.includes("console.error(\"AppDialog: showModal() failed\", error);"),
+    "AppDialog's showModal() retry must only retry the documented transient streaming-placeholder race (InvalidStateError), and must surface any other failure immediately instead of silently retrying it.",
+  );
 
   console.log(
     JSON.stringify(
@@ -48,6 +53,7 @@ function run() {
           "app_dialog_uses_native_modal_focus_landing",
           "app_dialog_exposes_aria_labelling",
           "app_dialog_routes_native_cancel_to_onClose",
+          "app_dialog_retry_scoped_to_invalidstateerror",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -49,7 +49,15 @@ export function AppDialog({ dialogId, open, title, description, onClose, childre
         if (dialog.open) return;
         try {
           dialog.showModal();
-        } catch {
+        } catch (error) {
+          // Only the documented transient case is worth retrying. Any other
+          // failure retrying 30x would just delay the same outcome by ~0.5s
+          // while hiding a real bug — surface it immediately instead.
+          const isTransientStreamingRace = error instanceof DOMException && error.name === "InvalidStateError";
+          if (!isTransientStreamingRace) {
+            console.error("AppDialog: showModal() failed", error);
+            return;
+          }
           attempt += 1;
           if (attempt < maxAttempts) {
             rafId = window.requestAnimationFrame(tryOpen);
