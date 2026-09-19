@@ -16,6 +16,7 @@ import {
   type Variant,
 } from "@/lib/api";
 import { ActivityTab } from "./activity-tab";
+import { AttributesTab } from "./attributes-tab";
 import { RelationshipsTab } from "./relationships-tab";
 import { ChannelsTab } from "./channels-tab";
 import { ContentTab } from "./content-tab";
@@ -221,6 +222,7 @@ export async function ProductDetailDeferredSection({
       <div className="space-y-5">
         {activeTab === "overview" && <OverviewTab data={pageData} />}
         {(activeTab === "content" || activeTab === "attributes") && <ContentTab data={pageData} />}
+        {activeTab === "attributes" && <AttributesTab data={pageData} />}
         {activeTab === "variants" && <VariantsTab data={pageData} />}
         {activeTab === "pricing" && (
           <PricingTab
