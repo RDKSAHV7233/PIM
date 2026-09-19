@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { isCustomerVisibleStage, resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
 import {
   isMarketplaceChannel,
   mapMarketplaceChannelToConnectorSlug,
@@ -313,6 +314,7 @@ export class MetricsService {
     }
 
     return Array.from(totals.values())
+      .filter((row) => this.isCustomerVisibleConnectorSlug(row.connectorSlug))
       .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
       .map((row) => ({
         date: row.date,
@@ -371,7 +373,7 @@ export class MetricsService {
     }
 
     return Array.from(aggregates.values())
-      .filter((row) => row.total > 0)
+      .filter((row) => row.total > 0 && this.isCustomerVisibleConnectorSlug(row.connectorSlug))
       .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
       .map((row) => ({
         date: row.date,
@@ -428,6 +430,7 @@ export class MetricsService {
     }
 
     return Array.from(aggregates.values())
+      .filter((row) => this.isCustomerVisibleConnectorSlug(row.connectorSlug))
       .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
       .map((row) => ({
         date: row.date,
@@ -553,6 +556,18 @@ export class MetricsService {
   private normalizeConnectorSlug(connectorSlug: string | null | undefined): string {
     const normalized = String(connectorSlug ?? "").trim().toLowerCase();
     return normalized || "unknown";
+  }
+
+  // Connector performance trends (mapping completion, first-publish success,
+  // setup-to-first-publish) surface directly on the Dashboard as if every
+  // connector shown is a live, customer-cleared channel. A connector can be
+  // technically installed and emitting real metric events while still being
+  // internal-only per its own governance record (e.g. "under_development",
+  // "p1_blocker_hold") — without this check the Dashboard has no way to tell
+  // the difference, and an un-cleared connector's numbers can silently occupy
+  // the slot a real customer-facing connector's numbers should be shown in.
+  private isCustomerVisibleConnectorSlug(connectorSlug: string): boolean {
+    return isCustomerVisibleStage(resolveConnectorLaunchPolicy(connectorSlug, []).launchStage);
   }
 
   private toDateKey(value: Date): string {

@@ -356,6 +356,27 @@ describe("DashboardService — computeOperationsSummary CONNECTOR_STUB_SLUGS hid
     expect(result.deadLetterJobs).toBe(2);
     expect(result.jobsNeedingRetry).toBe(4);
   });
+
+  // Regression test for the Dashboard reporting internal-only connectors
+  // (e.g. amazon-in, woocommerce) as if they were cleared, customer-facing
+  // channels — CONNECTOR_STUB_SLUGS never caught this because it's an
+  // unrelated, manually-maintained hide-list, not the real governance data.
+  it("excludes an installed connector that isn't customer-visible per its launch-stage policy, even without a CONNECTOR_STUB_SLUGS entry", async () => {
+    const { service, mocks } = createService();
+    mocks.connectorDefinitionFindMany.mockResolvedValue([
+      { id: "def-live", slug: "shopify" },
+      { id: "def-internal", slug: "amazon-in" },
+    ]);
+    mocks.connectorInstallationFindMany.mockResolvedValue([
+      { connectorId: "def-live", status: "ACTIVE" },
+      { connectorId: "def-internal", status: "ACTIVE" },
+    ]);
+
+    const result = await service.getOperationsSummary();
+
+    expect(result.activeConnectors).toBe(1);
+    expect(result.installedConnectors).toBe(1);
+  });
 });
 
 describe("DashboardService — computeDashboardHealth snapshot/trend fallback", () => {

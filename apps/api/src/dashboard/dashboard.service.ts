@@ -4,6 +4,7 @@ import { Prisma, RecordStatus } from "@prisma/client";
 import { createClient } from "redis";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { isCustomerVisibleStage, resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
 import { MetricsService } from "../metrics/metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -772,7 +773,14 @@ export class DashboardService implements OnModuleDestroy {
     const connectorSlugById = new Map(definitions.map((definition) => [definition.id, definition.slug]));
     const visibleInstallations = installations.filter((installation) => {
       const slug = connectorSlugById.get(installation.connectorId) ?? "";
-      return !hiddenStubSlugs.has(slug.toLowerCase());
+      if (hiddenStubSlugs.has(slug.toLowerCase())) return false;
+      // A connector can be technically installed while still being internal-only
+      // per its own governance record (e.g. "under_development", "p1_blocker_hold")
+      // — CONNECTOR_STUB_SLUGS is an unrelated, manually-maintained hide-list and
+      // doesn't track that. Gate on the real launch-stage policy so the Dashboard's
+      // "active/installed connectors" figure never counts a connector the team's
+      // own process hasn't cleared for customer use.
+      return isCustomerVisibleStage(resolveConnectorLaunchPolicy(slug, []).launchStage);
     });
 
     const activeConnectors = visibleInstallations.filter((installation) => installation.status === "ACTIVE").length;
