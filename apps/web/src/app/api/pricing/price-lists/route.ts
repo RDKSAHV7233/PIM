@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiHttpError, getPriceLists } from "@/lib/api";
+import { createPriceList, type CreatePriceListDto } from "@/lib/api/pricing";
 import { getServerActorRole } from "@/lib/server-session";
-import { resolveBearerToken } from "../../_auth";
+import { resolveBearerToken, validateCsrf } from "../../_auth";
 
 function pricingErrorResponse(error: unknown) {
   if (error instanceof ApiHttpError) {
@@ -35,6 +36,27 @@ export async function GET(request: NextRequest) {
   try {
     const priceLists = await getPriceLists({ role, authHeader });
     return NextResponse.json(priceLists);
+  } catch (error: unknown) {
+    return pricingErrorResponse(error);
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const csrfError = validateCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  const role = await getServerActorRole();
+  const authHeader = resolveBearerToken(request) ?? undefined;
+  const dto = (await request.json().catch(() => null)) as CreatePriceListDto | null;
+  if (!dto) {
+    return NextResponse.json({ error: "INVALID_BODY", message: "Request body must be JSON." }, { status: 400 });
+  }
+
+  try {
+    const priceList = await createPriceList(dto, { role, authHeader });
+    return NextResponse.json(priceList);
   } catch (error: unknown) {
     return pricingErrorResponse(error);
   }

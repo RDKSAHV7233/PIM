@@ -164,14 +164,30 @@ export async function getMarkets(options?: ApiRequestOptions): Promise<Market[]>
 }
 
 export async function createMarket(dto: CreateMarketDto, options?: ApiRequestOptions): Promise<Market> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<Market>("/pricing/markets", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
   return postJson<Market>("/pricing/markets", dto, options);
 }
 
 export async function updateMarket(id: string, dto: UpdateMarketDto, options?: ApiRequestOptions): Promise<Market> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<Market>(`/pricing/markets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+  }
   return patchJson<Market>(`/pricing/markets/${id}`, dto, options);
 }
 
 export async function deleteMarket(id: string, options?: ApiRequestOptions): Promise<void> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    await fetchBrowserPricingJson<void>(`/pricing/markets/${id}`, { method: "DELETE" });
+    return;
+  }
   return deleteJson(`/pricing/markets/${id}`, options);
 }
 
@@ -182,14 +198,30 @@ export async function getCurrencies(options?: ApiRequestOptions): Promise<Curren
 }
 
 export async function createCurrency(dto: CreateCurrencyDto, options?: ApiRequestOptions): Promise<Currency> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<Currency>("/pricing/currencies", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
   return postJson<Currency>("/pricing/currencies", dto, options);
 }
 
 export async function updateCurrency(id: string, dto: UpdateCurrencyDto, options?: ApiRequestOptions): Promise<Currency> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<Currency>(`/pricing/currencies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+  }
   return patchJson<Currency>(`/pricing/currencies/${id}`, dto, options);
 }
 
 export async function deleteCurrency(id: string, options?: ApiRequestOptions): Promise<void> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    await fetchBrowserPricingJson<void>(`/pricing/currencies/${id}`, { method: "DELETE" });
+    return;
+  }
   return deleteJson(`/pricing/currencies/${id}`, options);
 }
 
@@ -203,14 +235,30 @@ export async function getPriceLists(options?: ApiRequestOptions): Promise<PriceL
 }
 
 export async function createPriceList(dto: CreatePriceListDto, options?: ApiRequestOptions): Promise<PriceList> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<PriceList>("/pricing/price-lists", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
   return postJson<PriceList>("/pricing/price-lists", dto, options);
 }
 
 export async function updatePriceList(id: string, dto: UpdatePriceListDto, options?: ApiRequestOptions): Promise<PriceList> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    return fetchBrowserPricingJson<PriceList>(`/pricing/price-lists/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+  }
   return patchJson<PriceList>(`/pricing/price-lists/${id}`, dto, options);
 }
 
 export async function deletePriceList(id: string, options?: ApiRequestOptions): Promise<void> {
+  if (shouldUseBrowserPricingProxy(options)) {
+    await fetchBrowserPricingJson<void>(`/pricing/price-lists/${id}`, { method: "DELETE" });
+    return;
+  }
   return deleteJson(`/pricing/price-lists/${id}`, options);
 }
 
