@@ -1428,13 +1428,17 @@ export class ConnectorInstallerService {
   // outage during validation surfaces as a non-exempt 503 (captured by Error Authority)
   // rather than the plain 400 both flows used unconditionally before this fix.
   //
-  // Only Flipkart and Amazon implement validateStoredCredentialsDetailed() so far —
-  // every other connector falls back to the original validateCredentials() boolean
-  // and the original plain-400-on-false behavior, completely unchanged. WooCommerce and
-  // Shopify are deliberately NOT included yet: WooCommerce's validateCredentials() has
-  // its own prior, deliberate design (#472/BUG-WOO-HEALTH-001) around what a network
-  // failure should mean that needs its own explicit review before being folded into
-  // this pattern, not a blind uniform retrofit.
+  // As of 2026-09-19 all four connectors with a live credential check implement
+  // validateStoredCredentialsDetailed() (Flipkart, Amazon, then Shopify and WooCommerce
+  // added later, each with its own explicit review rather than a blind uniform
+  // retrofit — WooCommerce in particular deliberately leaves its original
+  // validateCredentials() heartbeat behavior untouched per #472/BUG-WOO-HEALTH-001,
+  // and only the new one-shot install/reconnect path is honest about "couldn't verify
+  // right now"). Any connector without a live check falls back to the original
+  // validateCredentials() boolean and plain-400-on-false behavior below, unchanged —
+  // this is a duck-typed dispatch on the connector's own interface, not a slug allowlist,
+  // so a connector gains the detailed outcome automatically the day it implements the
+  // method, without this file needing an update.
   private async validateStoredCredentialsOrThrow(
     connector: ConnectorInterface,
     ctx: ConnectorContext,
