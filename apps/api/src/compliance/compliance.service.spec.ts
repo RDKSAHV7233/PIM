@@ -627,7 +627,7 @@ function makeIssueInboxService(options: {
   const cache = { getOrSet: jest.fn() };
 
   const service = new ComplianceService(prisma as never, accessPolicy as never, cache as never);
-  return { service, connectorSubmissionFindMany, validationIssueFindMany, accessPolicy };
+  return { service, connectorSubmissionFindMany, validationIssueFindMany, accessPolicy, queryRawMock, tenantMock: prisma.tenant };
 }
 
 describe("ComplianceService.listIssueInbox — installation-scope product cap", () => {
@@ -714,5 +714,44 @@ describe("ComplianceService.listIssueInbox — installation-scope product cap", 
     const result = await service.listIssueInbox({} as never);
 
     expect(result.installationScopeTruncated).toBe(false);
+  });
+});
+
+// Regression test for a real cross-tenant information-disclosure bug found 2026-09-20:
+// loadInstallationScopeCandidate()'s raw SQL never carried a tenant_key filter at all,
+// despite taking tenantKey as a parameter — an installationId belonging to a DIFFERENT
+// tenant would resolve successfully instead of correctly returning null. For an admin
+// actor, the caller's own assertConnectorInstallationAccess() check is a no-op
+// (`if (this.isAdmin(actor)) return;`), so the leak reached the caller unfiltered:
+// the OTHER tenant's installation id/accountAlias/connectorSlug were disclosable.
+// The mocked $queryRaw in the tests above can't prove this fix — it just returns
+// whatever `installation` stub was handed to it regardless of the real SQL text — so
+// this describe block instead asserts on the actual Prisma.sql object the code sends.
+describe("ComplianceService.listIssueInbox — installation-scope raw query must be tenant-scoped (no prior coverage)", () => {
+  it("sends a tenant_key filter to $queryRaw when resolving the installation-scope candidate", async () => {
+    const { service, queryRawMock } = makeIssueInboxService({
+      installation: { id: "inst_1", accountAlias: "acme-store", connectorSlug: "woocommerce" },
+      validationIssueRows: [],
+    });
+
+    await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    const sqlArg = queryRawMock.mock.calls[0][0] as { sql: string; values: unknown[] };
+    expect(sqlArg.sql).toContain("tenant_key");
+    // "default" is what getTenantKeyFromContext() normalizes to outside a real request
+    // context — same convention every other raw-SQL regression test in this session uses.
+    expect(sqlArg.values).toContain("default");
+  });
+
+  it("resolves the tenant client for the current tenant before issuing the raw query", async () => {
+    const { service, tenantMock } = makeIssueInboxService({
+      installation: { id: "inst_1", accountAlias: "acme-store", connectorSlug: "woocommerce" },
+      validationIssueRows: [],
+    });
+
+    await service.listIssueInbox({ installationId: "inst_1" } as never);
+
+    expect(tenantMock).toHaveBeenCalledWith("default");
   });
 });
