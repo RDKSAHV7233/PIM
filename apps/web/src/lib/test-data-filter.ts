@@ -21,6 +21,7 @@ const TEST_PREFIXES = [
   "version ",
   "xlsx ",
   "e2e-",
+  "e2e test category",
   "qa flow ",
   "pim1 qa flow ",
   "ui-reality-",
@@ -36,6 +37,10 @@ interface TestDataShape {
   title?: string;
   name?: string;
   path?: string;
+  // The real identifying label on BulkImportJob/BulkImportRun — the uploaded
+  // file name (e.g. "e2e-fixture.csv") — is carried in `sourceName`, not
+  // `title`/`name`, which those API shapes don't have.
+  sourceName?: string | null;
   categoryName?: string;
   categoryPath?: string;
   category?: {
@@ -49,6 +54,7 @@ function getCandidateLabels(item: TestDataShape): string[] {
     item.title,
     item.name,
     item.path,
+    item.sourceName,
     item.categoryName,
     item.categoryPath,
     item.category?.name,

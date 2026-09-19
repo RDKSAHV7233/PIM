@@ -1429,3 +1429,118 @@ describe("BulkImportService.requeueDlq — reprocessing after reset", () => {
     expect(getJobSpy).toHaveBeenCalledWith("job-1", expect.objectContaining({ actorId: "u1" }));
   });
 });
+// Regression tests for the preflight-vs-processing validation gap found in
+// production QA: a GST rate outside the standard slabs, and malformed JSON in
+// `attributes`, both used to pass preflight with zero warnings and only
+// surface downstream (a post-creation compliance warning for GST; silent data
+// loss for attributes). See compliance.service.ts's GST_RATE_UNCOMMON check
+// for the allowed-rate list this preflight check mirrors.
+describe("BulkImportService.validateCanonicalRowForImport — GST rate and attributes JSON", () => {
+  it("flags a GST rate outside the standard slabs as a non-blocking warning", () => {
+    const svc = makeService();
+    const issues = svc.validateCanonicalRowForImport({
+      title: "T-Shirt",
+      skuCode: "SKU-1",
+      gstRate: 40,
+      attributes: {},
+    });
+    const gstIssue = issues.find((issue) => issue.code === "GST_RATE_UNCOMMON");
+    expect(gstIssue).toBeDefined();
+    expect(gstIssue?.severity).toBe("warning");
+    // A warning must not block preflight — only "blocking"-severity issues do.
+    expect(issues.some((issue) => issue.severity === "blocking")).toBe(false);
+  });
+
+  it("does not flag a GST rate that is on the standard slab list", () => {
+    const svc = makeService();
+    for (const rate of [0, 3, 5, 12, 18, 28]) {
+      const issues = svc.validateCanonicalRowForImport({
+        title: "T-Shirt",
+        skuCode: "SKU-1",
+        gstRate: rate,
+        attributes: {},
+      });
+      expect(issues.some((issue) => issue.code === "GST_RATE_UNCOMMON")).toBe(false);
+    }
+  });
+
+  it("still blocks a genuinely invalid (negative/non-finite) GST rate, and does not also raise GST_RATE_UNCOMMON for it", () => {
+    const svc = makeService();
+    const issues = svc.validateCanonicalRowForImport({
+      title: "T-Shirt",
+      skuCode: "SKU-1",
+      gstRate: -5,
+      attributes: {},
+    });
+    expect(issues.some((issue) => issue.code === "GST_RATE_INVALID" && issue.severity === "blocking")).toBe(true);
+    expect(issues.some((issue) => issue.code === "GST_RATE_UNCOMMON")).toBe(false);
+  });
+
+  it("blocks a row whose attributes cell failed to parse as JSON, via normalizeCanonicalPayloadForImport's attributesParseError flag", () => {
+    const svc = makeService();
+    const row = svc.normalizeCanonicalPayloadForImport(
+      { title: "T-Shirt", skuCode: "SKU-1", attributes: "{not valid json here}" },
+      { title: "title", skuCode: "skuCode", attributes: "attributes" },
+    );
+    // Previously this silently became {} with no trace it had ever been invalid.
+    expect(row.attributes).toEqual({});
+    expect(row.attributesParseError).toBe(true);
+
+    const issues = svc.validateCanonicalRowForImport(row);
+    const attrIssue = issues.find((issue) => issue.code === "ATTRIBUTES_INVALID_JSON");
+    expect(attrIssue).toBeDefined();
+    expect(attrIssue?.severity).toBe("blocking");
+  });
+
+  it("does not flag valid JSON attributes", () => {
+    const svc = makeService();
+    const row = svc.normalizeCanonicalPayloadForImport(
+      { title: "T-Shirt", skuCode: "SKU-1", attributes: '{"material":"cotton"}' },
+      { title: "title", skuCode: "skuCode", attributes: "attributes" },
+    );
+    expect(row.attributes).toEqual({ material: "cotton" });
+    expect(row.attributesParseError).toBe(false);
+    const issues = svc.validateCanonicalRowForImport(row);
+    expect(issues.some((issue) => issue.code === "ATTRIBUTES_INVALID_JSON")).toBe(false);
+  });
+});
+
+// Regression test for the CSV embedded-newline parsing bug found in production
+// QA: a single row with a quoted, multi-line description (a very common export
+// pattern from Excel/Sheets/Shopify) was previously split into two malformed
+// rows because parsing split on raw `\n` before honoring CSV quoting.
+describe("BulkImportService.parseCsvForImport — embedded newline inside a quoted field", () => {
+  it("keeps a quoted multi-line field as a single row, not two", () => {
+    const svc = makeService();
+    const csv = [
+      "title,description,skuCode",
+      '"Classic Tee","Line one\nLine two, with a comma",SKU-1',
+    ].join("\n");
+
+    const { headers, rows } = svc.parseCsvForImport(csv);
+
+    expect(headers).toEqual(["title", "description", "skuCode"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      title: "Classic Tee",
+      description: "Line one\nLine two, with a comma",
+      skuCode: "SKU-1",
+    });
+  });
+
+  it("still parses multiple ordinary (non-quoted-newline) rows correctly", () => {
+    const svc = makeService();
+    const csv = ["title,skuCode", "Tee A,SKU-1", "Tee B,SKU-2"].join("\n");
+    const { rows } = svc.parseCsvForImport(csv);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].skuCode).toBe("SKU-1");
+    expect(rows[1].skuCode).toBe("SKU-2");
+  });
+
+  it("handles CRLF line endings without introducing blank rows", () => {
+    const svc = makeService();
+    const csv = ["title,skuCode", "Tee A,SKU-1", "Tee B,SKU-2"].join("\r\n");
+    const { rows } = svc.parseCsvForImport(csv);
+    expect(rows).toHaveLength(2);
+  });
+});

@@ -1,7 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { createInterface } from "node:readline";
-import { Readable } from "node:stream";
 import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus, TaxCodeKey } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { getCorrelationContext } from "../common/logging/correlation-context";
@@ -95,6 +93,8 @@ type CanonicalRowPayload = {
   gstRate?: number;
   status?: string;
   attributes?: Record<string, unknown>;
+  /** Set when the source `attributes` cell was non-empty but not valid JSON — see parseAttributes(). Surfaced as a blocking preflight issue rather than silently importing `{}`. */
+  attributesParseError?: boolean;
   /** Structured international tax codes; collected from flat CSV columns (gb_commodity_code etc.) or JSON taxCodes array. */
   taxCodes?: TaxCodeEntry[];
   /** Variant fields — one Variant is created per imported row alongside its Product. */
@@ -224,9 +224,11 @@ const SOURCE_DATA_FAILURE_CODES = new Set([
   "ROW_LIMIT_EXCEEDED",
   "TITLE_REQUIRED",
   "GST_RATE_INVALID",
+  "GST_RATE_UNCOMMON",
   "HSN_CODE_RECOMMENDED",
   "BRAND_RECOMMENDED",
   "ATTRIBUTES_INVALID",
+  "ATTRIBUTES_INVALID_JSON",
   "WORKFLOW_ENTRY_INVALID",
   "INVALID_JSON_SOURCE",
   "INVALID_CSV_SOURCE",
@@ -270,12 +272,16 @@ export function resolveBulkImportIssueRemediation(code: string, fieldPath?: stri
       return "Add a brand value to improve marketplace readiness for the affected rows.";
     case "GST_RATE_INVALID":
       return "Use a non-negative numeric GST rate for the affected rows.";
+    case "GST_RATE_UNCOMMON":
+      return "Double-check this GST rate — it's outside the standard slabs (0, 3, 5, 12, 18, 28). The row can still be imported, but confirm the value is intentional.";
     case "HSN_CODE_RECOMMENDED":
       return "Provide an HSN code so downstream tax and marketplace exports stay complete.";
     case "WORKFLOW_ENTRY_INVALID":
       return "Set status to draft or leave it blank so imported rows enter the workflow correctly.";
     case "ATTRIBUTES_INVALID":
       return "Convert attributes into a JSON object with key/value pairs before importing.";
+    case "ATTRIBUTES_INVALID_JSON":
+      return "Fix the JSON syntax in the attributes cell for the affected rows (e.g. quote keys/values, remove trailing commas) before importing.";
     case "INVALID_JSON_SOURCE":
       return "Upload valid JSON containing an array of row objects and validate again.";
     case "INVALID_CSV_SOURCE":
@@ -359,6 +365,12 @@ type BulkImportValidationFailureDetails = {
 
 @Injectable()
 export class BulkImportService {
+  // Kept in sync with compliance.service.ts's applyGstHsnChecks allowedRates —
+  // duplicated here (rather than imported) because ComplianceService checks are
+  // deliberately post-creation product-level rules, while this is a preflight-time
+  // check with no dependency on a persisted product.
+  private static readonly ALLOWED_GST_RATES = [0, 3, 5, 12, 18, 28];
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
@@ -376,6 +388,10 @@ export class BulkImportService {
 
   parseCsvLineForImport(line: string) {
     return this.parseCsvLine(line);
+  }
+
+  splitCsvRecordsForImport(content: string) {
+    return this.splitCsvRecords(content);
   }
 
   parseCsvForImport(content: string): BulkImportPreparedSourceRows {
@@ -1666,8 +1682,7 @@ export class BulkImportService {
   }
 
   private parseCsv(content: string) {
-    const lines = content
-      .split(/\r?\n/)
+    const lines = this.splitCsvRecords(content)
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
     if (lines.length < 2) {
@@ -1742,6 +1757,7 @@ export class BulkImportService {
     const mrpRaw = this.pickMappedValue(input, mapping.mrp);
     const sellingPriceRaw = this.pickMappedValue(input, mapping.sellingPrice);
     const inventoryQtyRaw = this.pickMappedValue(input, mapping.inventoryQty);
+    const attributesResult = this.parseAttributes(attributesRaw);
 
     return {
       title: this.asTrimmedString(title),
@@ -1750,7 +1766,8 @@ export class BulkImportService {
       hsnCode: this.asTrimmedString(hsnCode),
       gstRate: this.asOptionalNumber(gstRateRaw),
       status: this.asTrimmedString(status),
-      attributes: this.parseAttributes(attributesRaw),
+      attributes: attributesResult.value,
+      attributesParseError: attributesResult.parseError,
       ...(taxCodes !== undefined ? { taxCodes } : {}),
       skuCode: this.asTrimmedString(skuCode),
       mrp: this.asOptionalNumber(mrpRaw),
@@ -1897,25 +1914,23 @@ export class BulkImportService {
       const rows = parsed as Record<string, unknown>[];
       return { headers: this.inferHeadersFromRows(rows), rows };
     }
-    const rl = createInterface({
-      input: Readable.from(raw),
-      crlfDelay: Infinity,
-    });
+    // Quote-aware record splitting (see splitCsvRecords) rather than a plain
+    // readline/physical-line iteration — the file is already fully buffered in
+    // `raw` above, so there's no streaming benefit to line-by-line reading here,
+    // and readline has no way to know a `\n` sits inside an open quoted field.
+    const lines = this.splitCsvRecords(raw)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
     let headers: string[] = [];
     const rows: Record<string, unknown>[] = [];
-    let isHeader = true;
-    for await (const line of rl) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (isHeader) {
-        headers = this.parseCsvLine(trimmed);
-        isHeader = false;
-        continue;
+    if (lines.length > 0) {
+      headers = this.parseCsvLine(lines[0]);
+      for (let i = 1; i < lines.length; i += 1) {
+        const values = this.parseCsvLine(lines[i]);
+        const row: Record<string, unknown> = {};
+        headers.forEach((h, idx) => { row[h] = values[idx] ?? ""; });
+        rows.push(row);
       }
-      const values = this.parseCsvLine(trimmed);
-      const row: Record<string, unknown> = {};
-      headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
-      rows.push(row);
     }
     return { headers, rows };
   }
@@ -1926,6 +1941,50 @@ export class BulkImportService {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
     }
     return Buffer.concat(chunks).toString("utf8");
+  }
+
+  /**
+   * Splits raw CSV file content into logical records (one per import row, header
+   * included), honoring RFC4180 quoting — a `\n`/`\r\n` inside an open quoted
+   * field (e.g. a multi-line description) does NOT start a new record.
+   *
+   * Previously, every call site split on `/\r?\n/` (or iterated physical lines
+   * via `readline`) before any quote-awareness applied, so a single row with an
+   * embedded newline in a quoted field was silently split into two malformed
+   * rows with misaligned fields. `parseCsvLine` itself is already newline-agnostic
+   * (it only special-cases `"` and `,`), so feeding it a full, possibly multi-line
+   * logical record — instead of a pre-split physical line — is sufficient to fix
+   * this; no change to `parseCsvLine` is needed.
+   *
+   * Quote-parity tracking (toggle `inQuotes` on every `"`, including both halves
+   * of an escaped `""`) is standard for record-boundary detection: two toggles
+   * from an escaped quote cancel out, leaving the correct open/closed state.
+   */
+  private splitCsvRecords(content: string): string[] {
+    const records: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < content.length; i += 1) {
+      const char = content[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        current += char;
+        continue;
+      }
+      if ((char === "\n" || char === "\r") && !inQuotes) {
+        if (char === "\r" && content[i + 1] === "\n") {
+          continue; // fold \r\n into a single record break
+        }
+        records.push(current);
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    if (current.length > 0) {
+      records.push(current);
+    }
+    return records;
   }
 
   private parseCsvLine(line: string) {
@@ -1971,24 +2030,34 @@ export class BulkImportService {
     return found ? found[1] : undefined;
   }
 
-  private parseAttributes(input: unknown) {
+  /**
+   * Parses the `attributes` cell. Returns `parseError: true` when the input was a
+   * non-empty string that failed to parse as a JSON object — previously this was
+   * silently swallowed into `{}`, so malformed attributes data was dropped with no
+   * preflight warning and no trace once the row was imported. Callers must surface
+   * `parseError` as a validation issue rather than discarding it again.
+   */
+  private parseAttributes(input: unknown): { value: Record<string, unknown>; parseError: boolean } {
     if (!input) {
-      return {};
+      return { value: {}, parseError: false };
     }
     if (typeof input === "object" && !Array.isArray(input)) {
-      return input as Record<string, unknown>;
+      return { value: input as Record<string, unknown>, parseError: false };
     }
     const text = String(input).trim();
     if (!text) {
-      return {};
+      return { value: {}, parseError: false };
     }
     try {
       const parsed = JSON.parse(text);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return { value: parsed as Record<string, unknown>, parseError: false };
+      }
+      // Valid JSON, but not an object (e.g. a bare number or array) — same
+      // "not usable as attributes" outcome as a parse failure.
+      return { value: {}, parseError: true };
     } catch {
-      return {};
+      return { value: {}, parseError: true };
     }
   }
 
@@ -2040,6 +2109,18 @@ export class BulkImportService {
         message: "GST rate must be a non-negative number.",
         fieldPath: "gstRate",
       });
+    } else if (row.gstRate !== undefined && !BulkImportService.ALLOWED_GST_RATES.includes(row.gstRate)) {
+      // Same allowed set and severity as compliance.service.ts's GST_RATE_UNCOMMON
+      // check — that check only ever ran post-creation (Quality tab), so an
+      // out-of-range rate previously reached preflight with zero warnings. This
+      // mirrors it at preflight time so operators see it before committing rows.
+      issues.push({
+        rowNumber: 0,
+        severity: "warning",
+        code: "GST_RATE_UNCOMMON",
+        message: `GST rate should typically be one of: ${BulkImportService.ALLOWED_GST_RATES.join(", ")}.`,
+        fieldPath: "gstRate",
+      });
     }
     if (row.hsnCode !== undefined && String(row.hsnCode).trim().length === 0) {
       issues.push({
@@ -2068,6 +2149,19 @@ export class BulkImportService {
         severity: "blocking",
         code: "ATTRIBUTES_INVALID",
         message: "Attributes must be a JSON object.",
+        fieldPath: "attributes",
+      });
+    }
+    if (row.attributesParseError) {
+      // parseAttributes() already reduced the unparseable value to `{}` by the
+      // time it reaches here, so the check above can never catch this case —
+      // without this, malformed attributes JSON silently imported as empty,
+      // with no warning at preflight or any point afterward.
+      issues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "ATTRIBUTES_INVALID_JSON",
+        message: "Attributes could not be parsed as JSON and would be imported as empty. Fix the JSON syntax in this cell.",
         fieldPath: "attributes",
       });
     }

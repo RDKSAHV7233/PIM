@@ -1,8 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { BulkImportRunStatus, BulkImportRunMode, BulkImportRowStatus, BulkImportJobStatus, Prisma } from "@prisma/client";
-import { createInterface } from "node:readline";
-import { Readable } from "node:stream";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
@@ -1204,27 +1202,27 @@ export class BulkImportRunService implements OnModuleInit {
     if (sourceFormat === "json") {
       return this.parseJsonSourceRows(raw);
     }
-    const rl = createInterface({
-      input: Readable.from(raw),
-      crlfDelay: Infinity,
-    });
+    // Quote-aware record splitting rather than a plain readline/physical-line
+    // iteration — `raw` is already fully buffered above, and readline has no way
+    // to know a `\n` sits inside an open quoted field (see splitCsvRecords in
+    // BulkImportService for the full rationale; this mirrors readRowsFromStagedSource
+    // there, which the large-run path historically diverged from).
+    const lines = this.bulkImportService
+      .splitCsvRecordsForImport(raw)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
     let headers: string[] = [];
     const rows: Record<string, unknown>[] = [];
-    let isHeader = true;
-    for await (const line of rl) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (isHeader) {
-        headers = this.bulkImportService.parseCsvLineForImport(trimmed);
-        isHeader = false;
-        continue;
+    if (lines.length > 0) {
+      headers = this.bulkImportService.parseCsvLineForImport(lines[0]);
+      for (let i = 1; i < lines.length; i += 1) {
+        const values = this.bulkImportService.parseCsvLineForImport(lines[i]);
+        const row: Record<string, unknown> = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index] ?? "";
+        });
+        rows.push(row);
       }
-      const values = this.bulkImportService.parseCsvLineForImport(trimmed);
-      const row: Record<string, unknown> = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index] ?? "";
-      });
-      rows.push(row);
     }
     return { headers, rows };
   }

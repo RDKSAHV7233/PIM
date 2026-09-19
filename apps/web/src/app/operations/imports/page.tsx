@@ -244,10 +244,13 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     }
     const jobs = jobsResult.status === "fulfilled" ? jobsResult.value : [];
     const categories = categoriesResult.status === "fulfilled" ? categoriesResult.value : [];
+    // Feeds the Category dropdown on the import form, respecting the same
+    // hideTestData toggle as the jobs/runs lists below.
+    const visibleCategories = filterTestData(categories, hideTestData);
     const runs = normalizeCollection<BulkImportRun>(
       runsResult.status === "fulfilled" ? runsResult.value : [],
     );
-    const largeRuns = runs;
+    const largeRuns = filterTestData(runs, hideTestData);
     const filteredByData = filterTestData(jobs, hideTestData);
     const visibleJobs =
       selectedStatus.length > 0
@@ -301,7 +304,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       accumulator[key] = (accumulator[key] ?? 0) + 1;
       return accumulator;
     }, {});
-    for (const run of runs) {
+    for (const run of largeRuns) {
       const raw = String(run.status ?? "").toLowerCase();
       const key = raw === "repair_required" ? "dead_letter"
         : raw === "processing" ? "retrying"
@@ -444,7 +447,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Total Jobs" value={filteredByData.length + runs.length} />
+          <KpiCard label="Total Jobs" value={filteredByData.length + largeRuns.length} />
           <KpiCard
             label="Needs Attention"
             value={(statusCounts.dead_letter ?? 0) + (statusCounts.failed ?? 0)}
@@ -466,7 +469,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           <Card>
             <CardTitle>Upload, validate, and start</CardTitle>
             <ImportPreflightForm
-              categories={categories}
+              categories={visibleCategories}
               canWrite={canWrite}
               initialRun={selectedRun}
               submitAction={createBulkImportJobAction}

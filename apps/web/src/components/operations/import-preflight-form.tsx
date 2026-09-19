@@ -115,12 +115,20 @@ export function ImportPreflightForm({ categories, canWrite, initialRun = null, s
   const warningOnlyPreflight = Boolean(canImport && (stagedRun?.warningCount ?? 0) > 0);
   const malformedFileState = /json|csv|array|file|format|parse/i.test(validationError);
 
+  // Stable primitive derived from `categories`: the array reference changes on
+  // every server round-trip (e.g. router.replace from resetValidationState),
+  // but this string only changes when the actual first category differs. Using
+  // it (instead of the array itself) as an effect dependency below prevents the
+  // reset effect from firing on unrelated re-renders and clobbering in-flight
+  // user state (a just-set validation error, a just-picked category).
+  const firstCategoryId = useMemo(() => categories[0]?.id ?? "", [categories]);
+
   useEffect(() => {
     setStagedRun(initialRun);
     setValidationError("");
     setFieldErrors({});
-    setSelectedCategoryId(initialRun?.categoryId ?? categories[0]?.id ?? "");
-  }, [categories, initialRun?.categoryId, initialRun?.id, initialRun?.status, initialRun?.updatedAt]);
+    setSelectedCategoryId(initialRun?.categoryId ?? firstCategoryId);
+  }, [firstCategoryId, initialRun?.categoryId, initialRun?.id, initialRun?.status, initialRun?.updatedAt]);
 
   useEffect(() => {
     if (stagedRun || validationError) {

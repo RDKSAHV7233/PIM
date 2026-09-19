@@ -52,6 +52,7 @@ function makeService(options: {
 
   const bulkImportService = {
     parseCsvLineForImport: jest.fn().mockImplementation((line: string) => line.split(",")),
+    splitCsvRecordsForImport: jest.fn().mockImplementation((content: string) => content.split(/\r?\n/)),
     inferHeadersForImportRows: jest.fn().mockImplementation((rows: Record<string, unknown>[]) =>
       Array.from(new Set(rows.flatMap((row) => Object.keys(row)))),
     ),
