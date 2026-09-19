@@ -1513,7 +1513,8 @@ export class BulkImportService {
       success: 0,
       failed: 0,
       deadLetter: 0,
-      pending: 0,
+      retrying: 0,
+      inProgress: 0,
     };
     for (const group of statusGroups) {
       const count = group._count.status;
@@ -1523,15 +1524,24 @@ export class BulkImportService {
         counters.failed = count;
       } else if (group.status === BulkImportRowStatus.dead_letter) {
         counters.deadLetter = count;
+      } else if (group.status === BulkImportRowStatus.retrying) {
+        counters.retrying = count;
       } else {
-        // queued / processing / retrying all count as "pending"
-        counters.pending += count;
+        // queued / processing — never failed, nothing to retry yet.
+        counters.inProgress += count;
       }
     }
 
+    // A row merely queued/processing is normal, healthy progress, not a retry — collapsing
+    // it into the same bucket as genuinely-retrying rows mislabeled every job "Retrying
+    // failed rows" for its entire run (any job with >1 row has unstarted rows until the
+    // last one finishes). Only rows that have actually failed-and-are-being-retried should
+    // produce the "retrying" label; plain in-progress rows keep the job at "processing".
     let status: BulkImportJobStatus;
-    if (counters.pending > 0) {
+    if (counters.retrying > 0) {
       status = BulkImportJobStatus.retrying;
+    } else if (counters.inProgress > 0) {
+      status = BulkImportJobStatus.processing;
     } else if (counters.deadLetter > 0 || counters.failed > 0) {
       status = BulkImportJobStatus.dead_letter;
     } else {

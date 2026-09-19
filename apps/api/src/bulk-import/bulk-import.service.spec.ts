@@ -1544,3 +1544,95 @@ describe("BulkImportService.parseCsvForImport — embedded newline inside a quot
     expect(rows).toHaveLength(2);
   });
 });
+
+// Regression tests for QA-10 (github.com/VBPIM/PIM#875): refreshJobCounters bucketed
+// queued/processing rows together with genuinely-retrying ones under a single "pending"
+// count, so any job with even one untouched row (e.g. after an operator manually retries
+// a single row via processRowById while hundreds of others are still queued) was labeled
+// "Retrying failed rows" -- indistinguishable from a job where something had actually
+// failed. This asserts the fixed derivation keeps "retrying" reserved for rows that have
+// actually failed at least once.
+describe("BulkImportService.processRowById -- job status must reflect reality, not merely 'not finished'", () => {
+  function makeService(rowStatusGroups: Array<{ status: string; count: number }>) {
+    const jobRecord = { id: "job-1", categoryId: "cat1", status: "processing", totalRows: 500, maxRetries: 3, runId: null };
+    const rowRecord = { id: "row-1", jobId: "job-1", status: "retrying", retryCount: 1, productId: null, payload: {} };
+    const groupByMock = jest.fn().mockResolvedValue(
+      rowStatusGroups.map((g) => ({ status: g.status, _count: { status: g.count } })),
+    );
+    const jobUpdateMock = jest.fn().mockImplementation((args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: "job-1", runId: null, ...args.data }),
+    );
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportJob: {
+          findUnique: jest.fn().mockResolvedValue(jobRecord),
+          update: jobUpdateMock,
+        },
+        bulkImportRow: {
+          findFirst: jest.fn().mockResolvedValue(rowRecord),
+          groupBy: groupByMock,
+        },
+      }),
+    };
+    const accessPolicy = {
+      assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
+      applyBulkImportRowVisibility: jest.fn().mockImplementation((_a: unknown, r: unknown) => r),
+    };
+    const svc = new BulkImportService(
+      prisma as never,
+      {} as never,
+      { emitImportStatus: jest.fn().mockResolvedValue(undefined) } as never,
+      accessPolicy as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+    );
+    // processRow itself is exercised by other describe blocks above; stub it here so
+    // this test is purely about refreshJobCounters' status derivation from row counts.
+    jest
+      .spyOn(svc as unknown as { processRow: (...args: unknown[]) => Promise<void> }, "processRow")
+      .mockResolvedValue(undefined);
+    return { svc, jobUpdateMock };
+  }
+
+  it("does NOT label the job 'retrying' when the only non-terminal rows are still queued/processing", async () => {
+    const { svc, jobUpdateMock } = makeService([
+      { status: "success", count: 1 },
+      { status: "queued", count: 498 }, // untouched, never attempted -- not a retry
+    ]);
+
+    await svc.processRowById("job-1", "row-1", { actorId: "u1", actorRole: "admin" as never });
+
+    expect(jobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "processing" }) }),
+    );
+  });
+
+  it("DOES label the job 'retrying' when at least one row has actually failed and is queued for retry", async () => {
+    const { svc, jobUpdateMock } = makeService([
+      { status: "success", count: 1 },
+      { status: "retrying", count: 2 },
+      { status: "queued", count: 100 },
+    ]);
+
+    await svc.processRowById("job-1", "row-1", { actorId: "u1", actorRole: "admin" as never });
+
+    expect(jobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "retrying" }) }),
+    );
+  });
+
+  it("still labels the job 'dead_letter' once nothing is left in progress and something failed permanently", async () => {
+    const { svc, jobUpdateMock } = makeService([
+      { status: "success", count: 498 },
+      { status: "dead_letter", count: 2 },
+    ]);
+
+    await svc.processRowById("job-1", "row-1", { actorId: "u1", actorRole: "admin" as never });
+
+    expect(jobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "dead_letter" }) }),
+    );
+  });
+});

@@ -1036,21 +1036,29 @@ export class BulkImportRunService implements OnModuleInit {
     let success = 0;
     let failed = 0;
     let deadLetter = 0;
-    let pending = 0;
+    let retrying = 0;
+    let inProgress = 0;
     for (const group of statusGroups) {
       const count = group._count.status;
       if (group.status === BulkImportRowStatus.success) success = count;
       else if (group.status === BulkImportRowStatus.failed) failed = count;
       else if (group.status === BulkImportRowStatus.dead_letter) deadLetter = count;
-      else pending += count; // queued / processing / retrying
+      else if (group.status === BulkImportRowStatus.retrying) retrying = count;
+      else inProgress += count; // queued / processing — never failed, nothing to retry yet
     }
 
+    // See the matching comment in BulkImportService.refreshJobCounters: a row that is
+    // merely queued/processing (e.g. still untouched while an operator manually retries
+    // one other row via processRowById) is not a retry, and must not mislabel the whole
+    // job "Retrying failed rows".
     const status =
-      pending > 0
+      retrying > 0
         ? BulkImportJobStatus.retrying
-        : deadLetter > 0 || failed > 0
-          ? BulkImportJobStatus.dead_letter
-          : BulkImportJobStatus.completed;
+        : inProgress > 0
+          ? BulkImportJobStatus.processing
+          : deadLetter > 0 || failed > 0
+            ? BulkImportJobStatus.dead_letter
+            : BulkImportJobStatus.completed;
 
     await this.prisma.tenant().bulkImportJob.update({
       where: { id: jobId },

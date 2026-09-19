@@ -239,3 +239,80 @@ describe("BulkImportRunService.startRun — concurrent import guard", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+// Regression tests for QA-10 (github.com/VBPIM/PIM#875): refreshLargeJobCounters
+// bucketed queued/processing rows together with genuinely-retrying ones under a single
+// "pending" count, so any large-run batch job with even one untouched row was labeled
+// "Retrying failed rows" — indistinguishable from a job where something had actually
+// failed. This asserts the fixed derivation keeps "retrying" reserved for rows that have
+// actually failed at least once, mirroring the identical fix in
+// BulkImportService.refreshJobCounters (see bulk-import.service.spec.ts).
+describe("BulkImportRunService.refreshLargeJobCounters — job status must reflect reality, not merely 'not finished'", () => {
+  function createService(rowStatusGroups: Array<{ status: string; count: number }>) {
+    const groupByMock = jest.fn().mockResolvedValue(
+      rowStatusGroups.map((g) => ({ status: g.status, _count: { status: g.count } })),
+    );
+    const jobUpdateMock = jest.fn().mockResolvedValue({});
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        bulkImportRow: { groupBy: groupByMock },
+        bulkImportJob: { update: jobUpdateMock },
+      }),
+    };
+    const service = new BulkImportRunService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, jobUpdateMock };
+  }
+
+  it("does NOT label the job 'retrying' when the only non-terminal rows are still queued/processing", async () => {
+    const { service, jobUpdateMock } = createService([
+      { status: "success", count: 1 },
+      { status: "queued", count: 498 }, // untouched, never attempted — not a retry
+    ]);
+
+    await (service as unknown as { refreshLargeJobCounters: (jobId: string) => Promise<void> }).refreshLargeJobCounters(
+      "job_1",
+    );
+
+    expect(jobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: BulkImportJobStatus.processing }) }),
+    );
+  });
+
+  it("DOES label the job 'retrying' when at least one row has actually failed and is queued for retry", async () => {
+    const { service, jobUpdateMock } = createService([
+      { status: "success", count: 1 },
+      { status: "retrying", count: 2 },
+      { status: "queued", count: 100 },
+    ]);
+
+    await (service as unknown as { refreshLargeJobCounters: (jobId: string) => Promise<void> }).refreshLargeJobCounters(
+      "job_1",
+    );
+
+    expect(jobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: BulkImportJobStatus.retrying }) }),
+    );
+  });
+
+  it("still labels the job 'dead_letter' once nothing is left in progress and something failed permanently", async () => {
+    const { service, jobUpdateMock } = createService([
+      { status: "success", count: 498 },
+      { status: "dead_letter", count: 2 },
+    ]);
+
+    await (service as unknown as { refreshLargeJobCounters: (jobId: string) => Promise<void> }).refreshLargeJobCounters(
+      "job_1",
+    );
+
+    expect(jobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: BulkImportJobStatus.dead_letter }) }),
+    );
+  });
+});
