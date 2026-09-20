@@ -61,6 +61,7 @@ module.exports = {
     "**/compliance/compliance.service.spec.ts",
     "**/workspace-users/workspace-users.service.spec.ts",
     "**/common/tenant/tenant-directory.service.spec.ts",
+    "**/common/observability/observability.service.spec.ts",
     "**/platform-admin/platform-admin.controller.spec.ts",
     "**/pricing/pricing.service.spec.ts",
     "**/prisma/extensions/tenant-scope.spec.ts",

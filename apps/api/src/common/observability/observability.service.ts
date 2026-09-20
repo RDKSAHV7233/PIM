@@ -76,10 +76,13 @@ export class ObservabilityService implements OnModuleInit {
       if (metric.type === "counter" || metric.type === "gauge") {
         lines.push(`${name} ${metric.value}`);
       } else {
-        let cumulative = 0;
+        // metric.counts[i] is already the cumulative count for that boundary —
+        // observe() increments every bucket the value is <= to, not just the
+        // smallest qualifying one — so summing again here double-cumulates on
+        // top of an already-cumulative value, inflating every bucket beyond
+        // the first (worse for larger buckets) in the real Prometheus output.
         for (let i = 0; i < metric.buckets.length; i++) {
-          cumulative += metric.counts[i];
-          lines.push(`${name}_bucket{le="${metric.buckets[i]}"} ${cumulative}`);
+          lines.push(`${name}_bucket{le="${metric.buckets[i]}"} ${metric.counts[i]}`);
         }
         lines.push(`${name}_bucket{le="+Inf"} ${metric.total}`);
         lines.push(`${name}_sum ${metric.sum}`);
