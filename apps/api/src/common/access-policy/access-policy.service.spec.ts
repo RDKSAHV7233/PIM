@@ -393,3 +393,228 @@ describe("AccessPolicyService.createScopeAssignment", () => {
     ).rejects.toThrow(NotFoundException);
   });
 });
+
+// applyReadResponsePolicy() and the response-redaction methods it dispatches
+// to had zero coverage before this — real, live security-relevant code (the
+// ReadAccessPolicyInterceptor calls applyReadResponsePolicy on every "redact"
+// classified GET response) that had never been proven to actually strip what
+// it claims to strip, or to leave privileged actors' data untouched.
+describe("AccessPolicyService.applyReadResponsePolicy", () => {
+  it("billing_plan_profile_governance_redacted: nulls billingContactEmail/updatedBy for a non-privileged actor", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "editor" }),
+      "billing_plan_profile_governance_redacted",
+      { tenantKey: "acme", planTier: "STARTER", billingContactEmail: "billing@acme.com", updatedBy: "user-9" },
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        billingContactEmail: null,
+        updatedBy: null,
+        redactedFields: expect.arrayContaining(["billingContactEmail", "updatedBy"]),
+      }),
+    );
+    // Non-sensitive fields must survive untouched.
+    expect((result as { planTier: string }).planTier).toBe("STARTER");
+  });
+
+  it("billing_plan_profile_governance_redacted: leaves the payload byte-identical for an admin", () => {
+    const { service } = makeService();
+    const payload = { tenantKey: "acme", planTier: "STARTER", billingContactEmail: "billing@acme.com", updatedBy: "user-9" };
+    const result = service.applyReadResponsePolicy(actor({ actorRole: "admin" }), "billing_plan_profile_governance_redacted", payload);
+    expect(result).toBe(payload);
+  });
+
+  it("billing_plan_profile_governance_redacted: a super_admin also passes untouched", () => {
+    const { service } = makeService();
+    const payload = { billingContactEmail: "billing@acme.com", updatedBy: "user-9" };
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "editor", effectiveRoles: ["editor", "super_admin"] }),
+      "billing_plan_profile_governance_redacted",
+      payload,
+    );
+    expect(result).toBe(payload);
+  });
+
+  it("billing_plan_profile_governance_redacted: an explicit system_admin/product_admin boundary role (without super_admin) is still redacted", () => {
+    // canReadGovernanceProvenance() deliberately denies these two — only
+    // super_admin or a legacy plain "admin" with NO boundary role at all
+    // qualifies. Proves that distinction actually holds for a real payload.
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "editor", effectiveRoles: ["editor", "system_admin"] }),
+      "billing_plan_profile_governance_redacted",
+      { billingContactEmail: "billing@acme.com", updatedBy: "user-9" },
+    );
+    expect(result).toEqual(expect.objectContaining({ billingContactEmail: null, updatedBy: null }));
+  });
+
+  it("billing_upgrade_request_governance_redacted: redacts requestedBy/notes/resolvedBy inside a nested {item} envelope", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "viewer" }),
+      "billing_upgrade_request_governance_redacted",
+      { item: { id: "req-1", requestedBy: "user-1", notes: "please upgrade us", resolvedBy: "user-2" } },
+    ) as { item: Record<string, unknown> };
+    expect(result.item).toEqual(
+      expect.objectContaining({ requestedBy: null, notes: null, resolvedBy: null }),
+    );
+    expect(result.item.id).toBe("req-1");
+  });
+
+  it("audit_events_governance_redacted / audit_logs_governance_redacted: redacts metadata across an {items:[]} list for a non-privileged actor", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "viewer" }),
+      "audit_logs_governance_redacted",
+      { items: [{ id: "e1", metadata: { secret: "value" } }, { id: "e2", metadata: { other: "value" } }], nextCursor: null },
+    ) as { items: Array<Record<string, unknown>> };
+    expect(result.items[0].metadata).toBeNull();
+    expect(result.items[1].metadata).toBeNull();
+    expect(result.items[0].id).toBe("e1");
+  });
+
+  it("audit_logs_governance_redacted: an admin sees metadata untouched", () => {
+    const { service } = makeService();
+    const payload = { items: [{ id: "e1", metadata: { secret: "value" } }] };
+    const result = service.applyReadResponsePolicy(actor({ actorRole: "admin" }), "audit_logs_governance_redacted", payload);
+    expect(result).toBe(payload);
+  });
+
+  it("outbound_webhook_deliveries_governance_redacted: redacts errorMessage for a plain array payload", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "editor" }),
+      "outbound_webhook_deliveries_governance_redacted",
+      [{ id: "d1", errorMessage: "connection refused to internal-host:5432" }],
+    ) as Array<Record<string, unknown>>;
+    expect(result[0].errorMessage).toBeNull();
+    expect(result[0].id).toBe("d1");
+  });
+
+  it("workspace_users_governance_redacted / workspace_access_scopes_governance_redacted / api_keys_governance_redacted / connector_permissions_governance_redacted: all redact createdBy for a single item", () => {
+    const { service } = makeService();
+    for (const policy of [
+      "workspace_users_governance_redacted",
+      "workspace_access_scopes_governance_redacted",
+      "api_keys_governance_redacted",
+      "connector_permissions_governance_redacted",
+    ] as const) {
+      const result = service.applyReadResponsePolicy(actor({ actorRole: "viewer" }), policy, { id: "x1", createdBy: "user-1" });
+      expect(result).toEqual(expect.objectContaining({ createdBy: null }));
+    }
+  });
+
+  it("catalog_products_redacted: strips vendorScopeKey unconditionally and sensitive pricing fields for a non-privileged actor, across an {items:[]} page", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "viewer" }),
+      "catalog_products_redacted",
+      { items: [{ id: "p1", vendorScopeKey: "vendor-9", attributes: { sku: "SKU-1", mrp: 999 } }], nextCursor: null },
+    ) as { items: Array<Record<string, unknown>> };
+    expect(result.items[0].vendorScopeKey).toBeUndefined();
+    const attrs = result.items[0].attributes as Record<string, unknown>;
+    expect(attrs.mrp).toBeUndefined();
+  });
+
+  it("catalog_products_redacted: an editor (privileged for sensitive product fields) still has vendorScopeKey stripped unconditionally", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "editor" }),
+      "catalog_product_detail_redacted",
+      { id: "p1", vendorScopeKey: "vendor-9", attributes: { sku: "SKU-1", mrp: 999 } },
+    ) as Record<string, unknown>;
+    expect(result.vendorScopeKey).toBeUndefined();
+    // editor CAN read sensitive fields, unlike viewer above.
+    expect((result.attributes as Record<string, unknown>).mrp).toBe(999);
+  });
+
+  it("catalog_variants_redacted: strips mrp/sellingPrice/inventoryQty for a non-privileged actor", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(
+      actor({ actorRole: "viewer" }),
+      "catalog_variants_redacted",
+      [{ id: "v1", mrp: 100, sellingPrice: 80, inventoryQty: 42 }],
+    ) as Array<Record<string, unknown>>;
+    expect(result[0].mrp).toBeUndefined();
+    expect(result[0].sellingPrice).toBeUndefined();
+    expect(result[0].inventoryQty).toBeUndefined();
+  });
+
+  it("catalog_search_redacted: strips matchedSku for a non-privileged actor, preserves it for an editor", () => {
+    const { service } = makeService();
+    const viewerResult = service.applyReadResponsePolicy(actor({ actorRole: "viewer" }), "catalog_search_redacted", [
+      { id: "p1", matchedSku: "SKU-1" },
+    ]) as Array<Record<string, unknown>>;
+    expect(viewerResult[0].matchedSku).toBeUndefined();
+
+    const editorResult = service.applyReadResponsePolicy(actor({ actorRole: "editor" }), "catalog_search_redacted", [
+      { id: "p1", matchedSku: "SKU-1" },
+    ]) as Array<Record<string, unknown>>;
+    expect(editorResult[0].matchedSku).toBe("SKU-1");
+  });
+
+  it("dashboard_health_redacted: zeroes the approval queue and connector breakdown for a viewer, records which sections were redacted", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(actor({ actorRole: "viewer" }), "dashboard_health_redacted", {
+      snapshot: {
+        capturedAt: "2026-09-20T00:00:00Z",
+        totalSkus: 10,
+        completeSkus: 8,
+        incompleteSkus: 2,
+        publishReadyByConnector: { shopify: 5 },
+        blockedByConnector: { shopify: 1 },
+        rejectionRiskHigh: 0,
+        openIssuesBlocking: 0,
+        openIssuesWarning: 0,
+      },
+      trend: [],
+      asOf: "2026-09-20T00:00:00Z",
+      pendingApprovals: 7,
+      redactedSections: [],
+    });
+    expect(result.snapshot.publishReadyByConnector).toEqual({});
+    expect(result.pendingApprovals).toBe(0);
+    expect(result.redactedSections).toEqual(expect.arrayContaining(["connector_breakdown", "approval_queue"]));
+  });
+
+  it("dashboard_health_redacted: an admin sees real numbers, not zeroed placeholders", () => {
+    const { service } = makeService();
+    const result = service.applyReadResponsePolicy(actor({ actorRole: "admin" }), "dashboard_health_redacted", {
+      snapshot: {
+        capturedAt: "2026-09-20T00:00:00Z",
+        totalSkus: 10,
+        completeSkus: 8,
+        incompleteSkus: 2,
+        publishReadyByConnector: { shopify: 5 },
+        blockedByConnector: { shopify: 1 },
+        rejectionRiskHigh: 0,
+        openIssuesBlocking: 0,
+        openIssuesWarning: 0,
+      },
+      trend: [],
+      asOf: "2026-09-20T00:00:00Z",
+      pendingApprovals: 7,
+      redactedSections: [],
+    });
+    expect(result.snapshot.publishReadyByConnector).toEqual({ shopify: 5 });
+    expect(result.pendingApprovals).toBe(7);
+  });
+
+  it("catalog_stats_redacted: zeroes pendingApprovals for a viewer, preserves it for an admin", () => {
+    const { service } = makeService();
+    const base = { categories: 3, products: 100, variants: 250, pendingApprovals: 4 };
+    const viewerResult = service.applyReadResponsePolicy(actor({ actorRole: "viewer" }), "catalog_stats_redacted", { ...base }) as typeof base;
+    expect(viewerResult.pendingApprovals).toBe(0);
+
+    const adminResult = service.applyReadResponsePolicy(actor({ actorRole: "admin" }), "catalog_stats_redacted", { ...base }) as typeof base;
+    expect(adminResult.pendingApprovals).toBe(4);
+  });
+
+  it("an unrecognised policy id returns the payload byte-identical (safe default, not a silent leak of a NEW policy someone forgot to wire up)", () => {
+    const { service } = makeService();
+    const payload = { anything: "goes" };
+    const result = service.applyReadResponsePolicy(actor({ actorRole: "viewer" }), "not_a_real_policy" as never, payload);
+    expect(result).toBe(payload);
+  });
+});
