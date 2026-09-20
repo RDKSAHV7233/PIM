@@ -86,6 +86,21 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.ETSY) {
+    // Same "under_development, not in isInstallableStage()'s list" reasoning
+    // as Odoo below: validateCredentials() is proven live against real Etsy
+    // sandbox data, but publishProduct() has never been exercised — the
+    // sandbox account has no Etsy shop open yet, a real seller-onboarding
+    // step, not an API/OAuth gap. Shipping this as installable would let a
+    // real tenant hit an untested write path on their first publish attempt.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "Etsy Open API v3 connector: OAuth2 authorization-code + PKCE flow and credential validation (GET /seller-taxonomy/nodes) verified live against real Etsy sandbox data. publishProduct()/updateProduct() are implemented but not yet exercised against a real listing — blocked on an Etsy shop being opened on the sandbox account (a seller-onboarding step, separate from API/OAuth setup). Not installable until a real publish is proven. Install requires client_id, shared_secret, and refresh_token — Etsy's x-api-key header rejects a bare client_id and needs \"client_id:shared_secret\".",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.MEESHO) {
     return {
       launchStage: "manual",
@@ -227,6 +242,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   }
   if (s === CONNECTOR_SLUGS.AMAZON) {
     return { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." };
+  }
+  if (s === CONNECTOR_SLUGS.ETSY) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: ["real publish test (needs an Etsy shop opened on the account)", "QA validation", "PO review"],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during the port: x-api-key needs \"client_id:shared_secret\" (a bare client_id 403s), and validateCredentials() called a nonexistent endpoint (/taxonomy/seller, fixed to /seller-taxonomy/nodes). Both verified live against real Etsy sandbox data. publishProduct() implemented but never exercised — blocked on the sandbox account having no shop open yet.",
+    };
   }
   if (s === CONNECTOR_SLUGS.ODOO) {
     return {

@@ -75,6 +75,13 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth uses /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design. Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase; not yet re-verified against this codebase's own CI/staging.",
   },
+  etsy: {
+    owner: "Platform",
+    milestone: null,
+    blockers: ["real publish test (needs an Etsy shop opened on the account)", "QA validation", "PO review"],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during the port: x-api-key needs \"client_id:shared_secret\" (a bare client_id 403s), and validateCredentials() called a nonexistent endpoint (/taxonomy/seller, fixed to /seller-taxonomy/nodes). Both verified live against real Etsy sandbox data. publishProduct() implemented but never exercised — blocked on the sandbox account having no shop open yet.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

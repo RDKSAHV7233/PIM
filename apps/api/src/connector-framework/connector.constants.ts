@@ -6,6 +6,7 @@
  */
 export const CONNECTOR_SLUGS = {
   AMAZON: "amazon-in",
+  ETSY: "etsy",
   FLIPKART: "flipkart",
   MEESHO: "meesho",
   MYNTRA: "myntra",

@@ -413,6 +413,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "etsy") {
+        try {
+          await this.captureAndStoreEtsyCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1125,6 +1137,11 @@ export class ConnectorInstallerService {
       if (has(dto.clientId)) types.push("username");
       if (has(dto.clientSecret)) types.push("password");
       if (has(dto.refreshToken)) types.push("database");
+    } else if (slug === "etsy") {
+      if (has(dto.externalAccountRef)) types.push("shop_id");
+      if (has(dto.clientId)) types.push("client_id");
+      if (has(dto.clientSecret)) types.push("shared_secret");
+      if (has(dto.refreshToken)) types.push("refresh_token");
     }
     return types;
   }
@@ -1177,6 +1194,8 @@ export class ConnectorInstallerService {
         return this.updateOAuthTokenExchangeCredentials(tenantKey, installation, dto);
       case "odoo":
         return this.updateOdooCredentials(tenantKey, installation, dto);
+      case "etsy":
+        return this.updateEtsyCredentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1318,6 +1337,96 @@ export class ConnectorInstallerService {
         data: { status: "ACTIVE", externalAccountRef: suppliedOdooUrl, updatedAt: new Date() },
       });
     });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  // Etsy rotates refresh_token on every exchange (verified live 2026-09-20) —
+  // same commitExtra-sourced persistence as updateOAuthTokenExchangeCredentials,
+  // since the value the provider now considers valid may differ from what the
+  // operator submitted.
+  private async updateEtsyCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "clientSecret", "refreshToken"], "etsy");
+
+    const shopId = dto.externalAccountRef?.trim();
+    const clientId = dto.clientId?.trim();
+    const sharedSecret = dto.clientSecret;
+    const refreshToken = dto.refreshToken;
+
+    const missing = [
+      !shopId && "Shop ID",
+      !clientId && "Client ID (Keystring)",
+      !(sharedSecret && sharedSecret.trim()) && "Shared Secret",
+      !(refreshToken && refreshToken.trim()) && "Refresh Token",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "ETSY_CREDENTIALS_INCOMPLETE",
+        message: `Etsy credentials require Shop ID, Client ID, Shared Secret, and Refresh Token. Missing: ${missing}.`,
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("etsy");
+    const verification = await connector.verifyCandidateCredentials!({
+      client_id: clientId!,
+      shared_secret: sharedSecret!,
+      refresh_token: refreshToken!,
+    });
+
+    this.throwOnUnverified("ETSY", verification);
+
+    // Narrowed by throwOnUnverified: only "valid" reaches here.
+    const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
+    const rotatedRefreshToken = commitExtra?.refreshToken;
+    const refreshTokenToStore = rotatedRefreshToken?.value ?? refreshToken!;
+    const refreshTokenExpiry = rotatedRefreshToken?.expiresAt ?? null;
+
+    const now = new Date();
+    try {
+      await this.credentialEncryptionService.transaction(async (tx) => {
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "shop_id", plainValue: shopId!, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "client_id", plainValue: clientId!, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "shared_secret", plainValue: sharedSecret!, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "refresh_token", plainValue: refreshTokenToStore, expiresAt: refreshTokenExpiry, metadata: { source: "credentials_update" } },
+          tx, { lastValidatedAt: now, failureReason: null },
+        );
+        if (commitExtra?.accessToken) {
+          await this.credentialEncryptionService.storeCredential(
+            { tenantKey, installationId: installation.id, credentialType: "access_token", plainValue: commitExtra.accessToken.value, expiresAt: commitExtra.accessToken.expiresAt, metadata: { source: "credentials_update" } },
+            tx,
+          );
+        }
+        await tx.connectorInstallation.updateMany({
+          where: { id: installation.id, tenantKey },
+          data: { status: "ACTIVE", externalAccountRef: shopId, updatedAt: new Date() },
+        });
+      });
+    } catch (txError) {
+      if (rotatedRefreshToken) {
+        // The provider already rotated the refresh token server-side before this
+        // transaction failed — that's not "nothing changed," it needs to be
+        // operationally visible so it can be manually reconciled.
+        this.logger.error("connector_credentials_rotation_commit_failed", {
+          installationId: installation.id,
+          connectorSlug: "etsy",
+        });
+      }
+      throw txError;
+    }
 
     return { id: installation.id, status: "ACTIVE", verification };
   }
@@ -2477,6 +2586,74 @@ export class ConnectorInstallerService {
     });
     // Live preflight (HTTPS + common.authenticate reachability) deferred to
     // validateCredentials heartbeat, matching the WooCommerce install path above.
+  }
+
+  // Etsy install-time capture. DTO field reuse (matching the Odoo convention
+  // above):
+  //   externalAccountRef -> shop_id         (numeric Etsy shop ID)
+  //   clientId           -> client_id       (Etsy Keystring)
+  //   clientSecret       -> shared_secret   (Etsy Shared Secret — required for
+  //                                          x-api-key alongside client_id;
+  //                                          verified live 2026-09-20 that a
+  //                                          bare client_id 403s)
+  //   refreshToken       -> refresh_token   (obtained via the OAuth2/PKCE
+  //                                          authorization-code flow before
+  //                                          install; Etsy rotates this value
+  //                                          on every use)
+  private async captureAndStoreEtsyCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const shopId = String(input.externalAccountRef ?? "").trim();
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const sharedSecret = String(input.dto.clientSecret ?? "").trim();
+    const refreshToken = String(input.dto.refreshToken ?? "").trim();
+
+    if (!shopId || !clientId || !sharedSecret || !refreshToken) {
+      const missing = [
+        !shopId && "Shop ID",
+        !clientId && "Client ID (Keystring)",
+        !sharedSecret && "Shared Secret",
+        !refreshToken && "Refresh Token",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "ETSY_CREDENTIALS_INCOMPLETE",
+        message: `Etsy installation requires Shop ID, Client ID, Shared Secret, and Refresh Token. Missing: ${missing}.`,
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "shop_id",
+      plainValue: shopId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "shared_secret",
+      plainValue: sharedSecret,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "refresh_token",
+      plainValue: refreshToken,
+      metadata: { source: "install_form" },
+    });
+    // Live preflight (token exchange + x-api-key reachability) deferred to
+    // validateCredentials heartbeat, matching the Odoo install path above.
   }
 
   /**

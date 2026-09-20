@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { AmazonConnector } from "../connectors/amazon/amazon.connector";
+import { EtsyConnector } from "../connectors/etsy/etsy.connector";
 import { FlipkartConnector } from "../connectors/flipkart/flipkart.connector";
 import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
 import { MyntraConnector } from "../connectors/myntra/myntra.connector";
@@ -22,6 +23,7 @@ export class ConnectorRegistry implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
     amazonConnector: AmazonConnector,
+    etsyConnector: EtsyConnector,
     flipkartConnector: FlipkartConnector,
     meeshoConnector: MeeshoConnector,
     myntraConnector: MyntraConnector,
@@ -31,6 +33,7 @@ export class ConnectorRegistry implements OnModuleInit {
     wooCommerceConnector: WooCommerceConnector,
   ) {
     this.implementationMap.set(amazonConnector.slug, amazonConnector);
+    this.implementationMap.set(etsyConnector.slug, etsyConnector);
     this.implementationMap.set(flipkartConnector.slug, flipkartConnector);
     this.implementationMap.set(meeshoConnector.slug, meeshoConnector);
     this.implementationMap.set(myntraConnector.slug, myntraConnector);

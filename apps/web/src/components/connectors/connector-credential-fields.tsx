@@ -7,6 +7,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "myntra") return "Merchant ID";
   if (slug === "woocommerce") return "Site URL";
   if (slug === "odoo") return "Odoo URL";
+  if (slug === "etsy") return "Shop ID";
   return "External Account Ref";
 }
 
@@ -15,18 +16,19 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "myntra") return "Enter Myntra merchant ID";
   if (slug === "woocommerce") return "https://store.example.com";
   if (slug === "odoo") return "https://odoo.example.com";
+  if (slug === "etsy") return "Enter the numeric Etsy shop ID";
   return "Optional";
 }
 
 /**
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
- * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url) — matches
- * the backend's per-connector field allowlist in
+ * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id)
+ * — matches the backend's per-connector field allowlist in
  * ConnectorInstallerService.updateCredentials() exactly. Flipkart/Amazon/Meesho
  * reject a non-empty externalAccountRef there.
  */
 export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
-  return slug === "woocommerce" || slug === "myntra" || slug === "odoo";
+  return slug === "woocommerce" || slug === "myntra" || slug === "odoo" || slug === "etsy";
 }
 
 /**
@@ -338,6 +340,48 @@ export function ConnectorCredentialFields({
             type="password"
             autoComplete="new-password"
             placeholder="Enter the Odoo user's password or an API key"
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === "etsy") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "Etsy uses OAuth2 (authorization-code + PKCE). Complete the OAuth flow first to get a refresh token, then enter the Shop ID (above), Client ID (Keystring), Shared Secret, and Refresh Token here. Etsy's x-api-key requires both the Client ID and Shared Secret together — a Client ID alone is rejected."
+            : "Stored secrets cannot be displayed. Re-enter all fields to replace this installation's credential set — Vexa verifies them with Etsy before saving. Etsy issues a new refresh token on every use, so the value shown after saving may differ from what you entered."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID (Keystring)
+          </label>
+          <Input id={`${idPrefix}-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="Enter your Etsy app's Keystring" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Shared Secret
+          </label>
+          <Input
+            id={`${idPrefix}-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter your Etsy app's Shared Secret"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Refresh Token
+          </label>
+          <Input
+            id={`${idPrefix}-refresh-token-${definitionId}`}
+            name="refreshToken"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the refresh token from the OAuth flow"
           />
         </div>
       </>

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AmazonConnector } from "../connectors/amazon/amazon.connector";
+import { EtsyConnector } from "../connectors/etsy/etsy.connector";
 import { FlipkartConnector } from "../connectors/flipkart/flipkart.connector";
 import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
 import { MyntraConnector } from "../connectors/myntra/myntra.connector";
@@ -30,6 +31,7 @@ import { ConnectorRegistry } from "./connector.registry";
   controllers: [ConnectorWebhookRelayController],
   providers: [
     AmazonConnector,
+    EtsyConnector,
     FlipkartConnector,
     MeeshoConnector,
     MyntraConnector,
