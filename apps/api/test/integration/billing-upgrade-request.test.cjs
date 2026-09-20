@@ -540,6 +540,17 @@ async function run() {
       `expected resolved request metadata payload=${JSON.stringify(resolved.payload)}`,
     );
 
+    // Bug regression check: resolving used to only flip this row's own status
+    // without ever applying the tenant's requested plan tier anywhere, leaving
+    // the tenant silently stuck on their old tier. Confirm the tenant's actual
+    // billing usage now reflects the requested tier, not just the request row.
+    const usageAfterResolved = await apiRequest(baseUrl, "GET", "/billing/usage", adminToken);
+    assertStatus(usageAfterResolved, 200, "billing usage after resolve");
+    assert(
+      String(usageAfterResolved.payload?.profile?.planTier ?? "") === "GROWTH",
+      `expected tenant plan tier to be upgraded to GROWTH after resolving the request, got payload=${JSON.stringify(usageAfterResolved.payload)}`,
+    );
+
     const overviewAfterResolved = await apiRequest(
       baseUrl,
       "GET",
@@ -718,6 +729,7 @@ async function run() {
             "internal_ops_can_update_upgrade_request_status",
             "workspace_admin_can_view_request_audit_followup_after_status_change",
             "resolved_requests_clear_customer_pending_state",
+            "resolving_an_upgrade_request_applies_the_requested_plan_tier",
             "internal_ops_can_list_upgrade_requests",
             "internal_ops_can_export_upgrade_requests_as_csv",
             "internal_ops_overview_reflects_request_lifecycle",

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { PlanUsageService } from "./plan-usage.service";
 
 const COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged", "resolved", "cancelled"] as const;
 const ACTIVE_COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged"] as const;
@@ -138,6 +139,7 @@ export class CommercialRequestsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaDirect: PrismaDirectService,
+    private readonly planUsageService: PlanUsageService,
   ) {}
 
   async getOpenUpgradeRequestForTenant(tenantKeyInput: string): Promise<CommercialRequestSummary | null> {
@@ -371,7 +373,7 @@ export class CommercialRequestsService {
     requestIdInput: string,
     statusInput: string,
     actorId: string,
-  ): Promise<CommercialRequestSummary> {
+  ): Promise<{ item: CommercialRequestSummary; appliedPlanTier: string | null }> {
     const requestId = String(requestIdInput ?? "").trim();
     if (!requestId) {
       throw new Error("COMMERCIAL_REQUEST_ID_REQUIRED");
@@ -382,8 +384,50 @@ export class CommercialRequestsService {
     if (!current) {
       throw new Error("COMMERCIAL_REQUEST_NOT_FOUND");
     }
+    if (current.requestType !== "upgrade") {
+      // Overage flags (see createOrReuseOverageFlag) share this table/status
+      // lifecycle but must never trigger a plan-tier change -- they're
+      // system-detected, not a tenant-approved upgrade.
+      throw new Error("COMMERCIAL_REQUEST_NOT_AN_UPGRADE_REQUEST");
+    }
 
     const tenantKey = normalizeTenantKey(current.tenantKey);
+    const requestedPlanTier = this.normalizeRequestedPlanTier(current.requestedPlanTier);
+
+    // Resolving an upgrade request means approving it -- apply the tenant's
+    // requested plan tier before marking the request resolved, so "Resolve"
+    // actually upgrades the tenant instead of just closing the request while
+    // leaving them on their old tier. Sequenced tier-change-first: if this
+    // throws, the request stays open/acknowledged (safe to retry) rather than
+    // silently marking "resolved" with no tier change ever applied -- which is
+    // the exact bug this fixes. setTenantPlanTierForTenant is an idempotent
+    // upsert, so a retry (or an accidental double-click) is harmless.
+    // No tier is applied when the tenant didn't specify one (requestedPlanTier
+    // is null) -- ops still uses the separate "Change tier" control for that
+    // case, same as today.
+    let appliedPlanTier: string | null = null;
+    if (status === "resolved" && requestedPlanTier) {
+      // Guard against clobbering a tier ops already changed by hand in between
+      // the request being filed and being resolved (e.g. ops used the separate
+      // "Change tier" control to set a different/negotiated tier, then came
+      // back to close out the original request) -- only auto-apply the
+      // requested tier if the tenant's live tier still matches what it was
+      // when this request was captured (currentPlanTier), i.e. nothing else
+      // has touched it since. If it's already diverged, respect whatever is
+      // live now and just resolve the request without overwriting it.
+      const live = await this.planUsageService.getTenantPlanProfile(tenantKey);
+      // Plain normalize, not normalizeRequestedPlanTier: currentPlanTier can
+      // legitimately be "TRIAL" (the most common case -- a trial tenant
+      // requesting their first paid tier), which normalizeRequestedPlanTier's
+      // 4-tier allowlist would reject to null, breaking the comparison below
+      // for exactly the most common upgrade scenario.
+      const snapshotPlanTier = String(current.currentPlanTier ?? "").trim().toUpperCase();
+      if (live.planTier === snapshotPlanTier && live.planTier !== requestedPlanTier) {
+        await this.planUsageService.setTenantPlanTierForTenant(tenantKey, requestedPlanTier, actorId);
+        appliedPlanTier = requestedPlanTier;
+      }
+    }
+
     const nextResolvedAt = status === "resolved" || status === "cancelled" ? new Date() : null;
     const nextResolvedBy = status === "resolved" || status === "cancelled" ? actorId : null;
 
@@ -398,7 +442,7 @@ export class CommercialRequestsService {
       },
     });
 
-    return this.mapRequest(updated);
+    return { item: await this.mapRequest(updated), appliedPlanTier };
   }
 
   async getUpgradeRequestOverviewInternal(): Promise<UpgradeRequestOverview> {

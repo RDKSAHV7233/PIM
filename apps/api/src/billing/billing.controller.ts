@@ -431,12 +431,13 @@ export class BillingController {
     );
 
     let item;
+    let appliedPlanTier: string | null = null;
     try {
-      item = await this.commercialRequestsService.updateUpgradeRequestStatusInternal(
+      ({ item, appliedPlanTier } = await this.commercialRequestsService.updateUpgradeRequestStatusInternal(
         dto.requestId,
         dto.status,
         actorId,
-      );
+      ));
     } catch (error: unknown) {
       // Log full error server-side; return a generic code so internal DB details are not leaked in HTTP responses.
       this.logger.error(`updateUpgradeRequestStatusInternal failed for request ${dto.requestId}`, error instanceof Error ? error.stack : String(error));
@@ -456,12 +457,42 @@ export class BillingController {
         status: item.status,
         resolvedAt: item.resolvedAt,
         resolvedBy: item.resolvedBy,
+        appliedPlanTier,
       },
     });
     await this.commercialNotificationsService.notifyTenantAdminsUpgradeRequestStatus({
       tenantKey: item.tenantKey,
       request: item,
     });
+    if (appliedPlanTier) {
+      // Resolving the request just changed the tenant's plan tier as a side
+      // effect -- give it the same audit trail + notification as the
+      // dedicated "Change tier" endpoint (setPlanTierInternal above), so an
+      // ops/support person searching PLAN_TIER_CHANGE audit history finds
+      // this path too, and the tenant gets the same "Plan updated" email
+      // they'd get from a direct tier change.
+      const profile = await this.planUsageService.getTenantPlanProfile(item.tenantKey);
+      await this.auditService.record({
+        actorId,
+        actorRole,
+        action: "PLAN_TIER_CHANGE",
+        resource: "TENANT_PLAN_PROFILE",
+        resourceId: item.tenantKey,
+        tenantKey: item.tenantKey,
+        metadata: {
+          event: "plan_tier_changed",
+          planTier: profile.planTier,
+          effectiveFrom: profile.effectiveFrom,
+          source: "upgrade_request_resolved",
+          upgradeRequestId: item.id,
+        },
+      });
+      await this.commercialNotificationsService.notifyTenantAdmins({
+        tenantKey: item.tenantKey,
+        event: "plan_tier_changed",
+        profile,
+      });
+    }
     return { item };
   }
 
