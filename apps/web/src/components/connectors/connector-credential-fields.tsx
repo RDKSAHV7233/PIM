@@ -6,6 +6,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "amazon-in") return "Seller ID";
   if (slug === "myntra") return "Merchant ID";
   if (slug === "woocommerce") return "Site URL";
+  if (slug === "odoo") return "Odoo URL";
   return "External Account Ref";
 }
 
@@ -13,17 +14,19 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "amazon-in") return "Enter Amazon seller ID";
   if (slug === "myntra") return "Enter Myntra merchant ID";
   if (slug === "woocommerce") return "https://store.example.com";
+  if (slug === "odoo") return "https://odoo.example.com";
   return "Optional";
 }
 
 /**
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
- * change (WooCommerce site_url, Myntra merchant_id) — matches the backend's
- * per-connector field allowlist in ConnectorInstallerService.updateCredentials()
- * exactly. Flipkart/Amazon/Meesho reject a non-empty externalAccountRef there.
+ * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url) — matches
+ * the backend's per-connector field allowlist in
+ * ConnectorInstallerService.updateCredentials() exactly. Flipkart/Amazon/Meesho
+ * reject a non-empty externalAccountRef there.
  */
 export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
-  return slug === "woocommerce" || slug === "myntra";
+  return slug === "woocommerce" || slug === "myntra" || slug === "odoo";
 }
 
 /**
@@ -301,6 +304,42 @@ export function ConnectorCredentialFields({
             <p className="text-xs text-slate-500">Leave blank to keep the existing webhook secret.</p>
           </div>
         ) : null}
+      </>
+    );
+  }
+
+  if (slug === "odoo") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "Odoo authenticates via its JSON-RPC external API. Enter an HTTPS Odoo URL (above), the database name, a username, and either that user's password or an API key (Settings > Users > API Keys). Values are encrypted on save and never shown again."
+            : "Stored secrets cannot be displayed. Re-enter all fields to replace this installation's credential set — Vexa verifies them with Odoo before saving."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Database
+          </label>
+          <Input id={`${idPrefix}-refresh-token-${definitionId}`} name="refreshToken" autoComplete="off" placeholder="odoo" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Username
+          </label>
+          <Input id={`${idPrefix}-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="admin" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Password or API Key
+          </label>
+          <Input
+            id={`${idPrefix}-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the Odoo user's password or an API key"
+          />
+        </div>
       </>
     );
   }

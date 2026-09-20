@@ -283,6 +283,34 @@ describe("resolveConnectorLaunchPolicy", () => {
       expect(policy.launchStage).toBe("manual");
     });
   });
+
+  // CTO review (PIM#889): originally shipped as "code_complete", which
+  // isInstallableStage() treats as installable — making this brand-new,
+  // only prototype-verified connector installable by every real tenant
+  // against their live Odoo ERP immediately on merge, despite its own
+  // launchNote and pipeline metadata saying QA validation, PO review, and a
+  // customer pilot haven't happened. "under_development" matches Amazon's
+  // equivalent experimental/not-customer-validated precedent and is
+  // correctly excluded from isInstallableStage()'s allowed list.
+  describe("odoo", () => {
+    it("is under_development (prototype-verified only, not yet QA/PO/pilot-cleared) and therefore not installable", () => {
+      const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
+      expect(policy.launchStage).toBe("under_development");
+      expect(isInstallableStage(policy.launchStage)).toBe(false);
+    });
+
+    it("surfaces all capabilities", () => {
+      const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
+      expect(policy.surfacedCapabilities).toEqual(allCaps);
+    });
+
+    it("launchNote explains it is not yet installable and why", () => {
+      const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
+      expect(policy.launchNote).toMatch(/not.*installable/i);
+      expect(policy.launchNote).toMatch(/QA validation/i);
+      expect(policy.launchNote).toMatch(/customer pilot/i);
+    });
+  });
 });
 
 describe("isCustomerVisibleStage", () => {
@@ -382,6 +410,13 @@ describe("resolveConnectorPipelineMetadata", () => {
     const amazon = resolveConnectorPipelineMetadata("amazon-in");
     expect(amazon.blockers.length).toBeGreaterThan(0);
     expect(amazon.milestone).toBe("Sprint F");
+  });
+
+  it("returns QA/PO/pilot blockers for Odoo, matching its under_development launch stage", () => {
+    const odoo = resolveConnectorPipelineMetadata("odoo");
+    expect(odoo.blockers).toContain("QA validation");
+    expect(odoo.blockers).toContain("PO review");
+    expect(odoo.blockers).toContain("customer pilot");
   });
 
   it("returns P1 blockers for held WooCommerce connectors", () => {

@@ -68,6 +68,13 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "W1-W10 code-complete and historical P0 remediation evidence exists, but WooCommerce is not customer-installable while P1-1/P1-2 are open.",
   },
+  odoo: {
+    owner: "Platform",
+    milestone: null,
+    blockers: ["QA validation", "PO review", "customer pilot"],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth uses /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design. Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase; not yet re-verified against this codebase's own CI/staging.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

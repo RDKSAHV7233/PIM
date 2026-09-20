@@ -113,6 +113,25 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.ODOO) {
+    // CTO review (PIM#889): "code_complete" is in isInstallableStage()'s allowed
+    // list, so it made this connector installable by every real tenant against
+    // their live Odoo ERP immediately on merge — despite this same launchNote
+    // (and the pipeline metadata below) saying QA validation, PO review, and a
+    // customer pilot haven't happened yet. Odoo writes directly to a tenant's
+    // real product.template records (business inventory), the same "an
+    // unvalidated integration must not be broadly available" reasoning already
+    // applied to WooCommerce's P1 hold. "under_development" is NOT in
+    // isInstallableStage()'s list, matching Amazon's equivalent
+    // experimental/not-customer-validated precedent above.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "Odoo ERP connector: publish, update, and status-sync verified against a real Odoo 17 instance via the /jsonrpc external API (common/object services). Not yet through QA validation or a customer pilot — not installable until those clear. Install (once unblocked) requires odoo_url (HTTPS), database name, username, and a password or API key.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.SHOPIFY) {
     return {
       launchStage: "live",
@@ -208,6 +227,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   }
   if (s === CONNECTOR_SLUGS.AMAZON) {
     return { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." };
+  }
+  if (s === CONNECTOR_SLUGS.ODOO) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: ["QA validation", "PO review", "customer pilot"],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase; not yet re-verified against this codebase's own CI/staging.",
+    };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
     if (isWoocommerceStagingProofEnabled()) {

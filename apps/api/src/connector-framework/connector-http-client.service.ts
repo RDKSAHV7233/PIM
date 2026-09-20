@@ -14,6 +14,7 @@ const RATE_LIMIT_DEFAULTS: Record<string, { capacity: number; refillMs: number }
   "shopify":   { capacity: 10, refillMs: 500  }, // 10 burst, 2 req/sec sustained
   "flipkart":  { capacity: 3,  refillMs: 1000 }, // 3 burst, 1 req/sec sustained
   "meesho":    { capacity: 2,  refillMs: 1000 }, // 2 burst, 1 req/sec sustained
+  "odoo":      { capacity: 4,  refillMs: 500  }, // 4 burst, 2 req/sec sustained — self-hosted, tenant sets their own server's real ceiling
 };
 const DEFAULT_RATE_LIMIT = { capacity: 5, refillMs: 500 };
 

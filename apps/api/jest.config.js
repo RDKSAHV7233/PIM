@@ -30,6 +30,7 @@ module.exports = {
     "**/connectors/shopify/shopify.connector.spec.ts",
     "**/connectors/shopify/shopify-api-client.spec.ts",
     "**/connectors/woocommerce/woocommerce.connector.spec.ts",
+    "**/connectors/odoo/odoo.connector.spec.ts",
     "**/connectors/myntra/myntra.connector.spec.ts",
     "**/connectors/flipkart/flipkart-category-rules.spec.ts",
     "**/connectors/flipkart/flipkart.connector.spec.ts",

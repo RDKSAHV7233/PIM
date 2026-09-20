@@ -4,6 +4,7 @@ import { FlipkartConnector } from "../connectors/flipkart/flipkart.connector";
 import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
 import { MyntraConnector } from "../connectors/myntra/myntra.connector";
 import { NykaaConnector } from "../connectors/nykaa/nykaa.connector";
+import { OdooConnector } from "../connectors/odoo/odoo.connector";
 import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
 import { WooCommerceConnector } from "../connectors/woocommerce/woocommerce.connector";
 import { LoggerService } from "../common/logging/logger.service";
@@ -25,6 +26,7 @@ export class ConnectorRegistry implements OnModuleInit {
     meeshoConnector: MeeshoConnector,
     myntraConnector: MyntraConnector,
     nykaaConnector: NykaaConnector,
+    odooConnector: OdooConnector,
     shopifyConnector: ShopifyConnector,
     wooCommerceConnector: WooCommerceConnector,
   ) {
@@ -33,6 +35,7 @@ export class ConnectorRegistry implements OnModuleInit {
     this.implementationMap.set(meeshoConnector.slug, meeshoConnector);
     this.implementationMap.set(myntraConnector.slug, myntraConnector);
     this.implementationMap.set(nykaaConnector.slug, nykaaConnector);
+    this.implementationMap.set(odooConnector.slug, odooConnector);
     this.implementationMap.set(shopifyConnector.slug, shopifyConnector);
     this.implementationMap.set(wooCommerceConnector.slug, wooCommerceConnector);
   }

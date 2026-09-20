@@ -401,6 +401,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "odoo") {
+        try {
+          await this.captureAndStoreOdooCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1108,6 +1120,11 @@ export class ConnectorInstallerService {
       if (has(dto.clientId)) types.push("client_id");
       if (has(dto.clientSecret)) types.push("client_secret");
       if (has(dto.refreshToken)) types.push("refresh_token");
+    } else if (slug === "odoo") {
+      if (has(dto.externalAccountRef)) types.push("odoo_url");
+      if (has(dto.clientId)) types.push("username");
+      if (has(dto.clientSecret)) types.push("password");
+      if (has(dto.refreshToken)) types.push("database");
     }
     return types;
   }
@@ -1158,6 +1175,8 @@ export class ConnectorInstallerService {
       case "flipkart":
       case "amazon-in":
         return this.updateOAuthTokenExchangeCredentials(tenantKey, installation, dto);
+      case "odoo":
+        return this.updateOdooCredentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1229,6 +1248,74 @@ export class ConnectorInstallerService {
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
         data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  private async updateOdooCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "clientSecret", "refreshToken"], "odoo");
+
+    const suppliedOdooUrl = dto.externalAccountRef?.trim();
+    const username = dto.clientId?.trim();
+    const password = dto.clientSecret;
+    const database = dto.refreshToken?.trim();
+
+    const missing = [
+      !suppliedOdooUrl && "Odoo URL",
+      !database && "Database",
+      !username && "Username",
+      !(password && password.trim()) && "Password or API Key",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "ODOO_CREDENTIALS_INCOMPLETE",
+        message: `Odoo credentials require Odoo URL, Database, Username, and Password/API Key. Missing: ${missing}.`,
+      });
+    }
+    if (!suppliedOdooUrl!.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "ODOO_URL_NOT_HTTPS",
+        message: "Odoo URL must use HTTPS.",
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("odoo");
+    const verification = await connector.verifyCandidateCredentials!({
+      odoo_url: suppliedOdooUrl!,
+      database: database!,
+      username: username!,
+      password: password!,
+    });
+
+    this.throwOnUnverified("ODOO", verification);
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "odoo_url", plainValue: suppliedOdooUrl!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "database", plainValue: database!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "username", plainValue: username!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "password", plainValue: password!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: suppliedOdooUrl, updatedAt: new Date() },
       });
     });
 
@@ -2317,6 +2404,79 @@ export class ConnectorInstallerService {
     }
     // Live preflight (HTTPS + /wp-json/wc/v3 reachability) deferred to
     // validateCredentials heartbeat — Docker WooCommerce CI fixture required.
+  }
+
+  /**
+   * Odoo install-time credential capture. DTO field reuse (matching the
+   * existing WooCommerce/Myntra convention of repurposing the generic
+   * clientId/clientSecret/refreshToken slots per connector):
+   *   externalAccountRef -> odoo_url   (e.g. https://odoo.example.com, HTTPS required)
+   *   clientId           -> username
+   *   clientSecret       -> password   (a real user password OR an Odoo API key —
+   *                                     both authenticate via /jsonrpc's common.authenticate)
+   *   refreshToken       -> database   (the Odoo database name, e.g. "odoo")
+   */
+  private async captureAndStoreOdooCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const odooUrl  = String(input.externalAccountRef ?? "").trim();
+    const username = String(input.dto.clientId       ?? "").trim();
+    const password = String(input.dto.clientSecret   ?? "").trim();
+    const database = String(input.dto.refreshToken   ?? "").trim();
+
+    if (!odooUrl || !username || !password || !database) {
+      const missing = [
+        !odooUrl   && "Odoo URL",
+        !database  && "Database",
+        !username  && "Username",
+        !password  && "Password or API Key",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "ODOO_CREDENTIALS_INCOMPLETE",
+        message: `Odoo installation requires Odoo URL, Database, Username, and Password/API Key. Missing: ${missing}.`,
+      });
+    }
+
+    if (!odooUrl.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "ODOO_URL_NOT_HTTPS",
+        message: "Odoo URL must use HTTPS.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "odoo_url",
+      plainValue: odooUrl,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "database",
+      plainValue: database,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "username",
+      plainValue: username,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "password",
+      plainValue: password,
+      metadata: { source: "install_form" },
+    });
+    // Live preflight (HTTPS + common.authenticate reachability) deferred to
+    // validateCredentials heartbeat, matching the WooCommerce install path above.
   }
 
   /**
