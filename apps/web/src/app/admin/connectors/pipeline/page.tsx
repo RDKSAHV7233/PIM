@@ -94,6 +94,13 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "Ported from the Vexa Connector Hub prototype (2026-09-20). Less verified than Etsy/Odoo at port time: only the Azure AD client_credentials token exchange was proven live against a real vexapim.com Entra app registration — the Business Central data-API call itself was not successfully re-verified after fixing a missing Automation.ReadWrite.All permission (the verification attempt was blocked mid-session before a second live check completed). Do not treat validateCredentials() as proven until that gap closes.",
   },
+  prestashop: {
+    owner: "Platform",
+    milestone: null,
+    blockers: ["re-verify live against a real PrestaShop instance from within PIM1", "QA validation", "PO review"],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs already found and fixed during the prototype phase, carried into this port from the start: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. Also found: PrestaShop's webservice enforces neither reference uniqueness nor the category foreign key — validateProduct() adds proactive live checks for both. Full publish/update/status-sync round trip was verified live against a real local PrestaShop 9.1.5 Docker instance in the prototype; this TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

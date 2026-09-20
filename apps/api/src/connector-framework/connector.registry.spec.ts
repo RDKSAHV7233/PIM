@@ -29,6 +29,7 @@ describe("ConnectorRegistry — safe-fallback boot gating", () => {
       fakeConnector("myntra"),
       fakeConnector("nykaa"),
       fakeConnector("odoo"),
+      fakeConnector("prestashop"),
       fakeConnector("shopify"),
       fakeConnector("woocommerce"),
     );

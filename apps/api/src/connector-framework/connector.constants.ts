@@ -13,6 +13,7 @@ export const CONNECTOR_SLUGS = {
   MYNTRA: "myntra",
   NYKAA: "nykaa",
   ODOO: "odoo",
+  PRESTASHOP: "prestashop",
   SHOPIFY: "shopify",
   WOOCOMMERCE: "woocommerce",
 } as const;

@@ -437,6 +437,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "prestashop") {
+        try {
+          await this.captureAndStorePrestaShopCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1159,6 +1171,10 @@ export class ConnectorInstallerService {
       if (has(dto.clientId)) types.push("client_id");
       if (has(dto.clientSecret)) types.push("client_secret");
       if (has(dto.refreshToken)) types.push("environment_company");
+    } else if (slug === "prestashop") {
+      if (has(dto.externalAccountRef)) types.push("store_url");
+      if (has(dto.clientId)) types.push("api_key");
+      if (has(dto.refreshToken)) types.push("lang_id");
     }
     return types;
   }
@@ -1215,6 +1231,8 @@ export class ConnectorInstallerService {
         return this.updateEtsyCredentials(tenantKey, installation, dto);
       case "dynamics-365":
         return this.updateDynamics365Credentials(tenantKey, installation, dto);
+      case "prestashop":
+        return this.updatePrestaShopCredentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1354,6 +1372,65 @@ export class ConnectorInstallerService {
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
         data: { status: "ACTIVE", externalAccountRef: suppliedOdooUrl, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  // lang_id (repurposing the refreshToken slot) is optional and defaults to
+  // "1" — unlike Odoo's four required fields, PrestaShop only strictly needs
+  // store_url + api_key.
+  private async updatePrestaShopCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "refreshToken"], "prestashop");
+
+    const suppliedStoreUrl = dto.externalAccountRef?.trim();
+    const apiKey = dto.clientId?.trim();
+    const langId = dto.refreshToken?.trim() || "1";
+
+    const missing = [!suppliedStoreUrl && "Store URL", !apiKey && "Webservice API Key"].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "PRESTASHOP_CREDENTIALS_INCOMPLETE",
+        message: `PrestaShop credentials require Store URL and Webservice API Key. Missing: ${missing}.`,
+      });
+    }
+    if (!suppliedStoreUrl!.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "PRESTASHOP_URL_NOT_HTTPS",
+        message: "PrestaShop store URL must use HTTPS.",
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("prestashop");
+    const verification = await connector.verifyCandidateCredentials!({
+      store_url: suppliedStoreUrl!,
+      api_key: apiKey!,
+    });
+
+    this.throwOnUnverified("PRESTASHOP", verification);
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "store_url", plainValue: suppliedStoreUrl!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "api_key", plainValue: apiKey!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "lang_id", plainValue: langId, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: suppliedStoreUrl, updatedAt: new Date() },
       });
     });
 
@@ -2679,6 +2756,62 @@ export class ConnectorInstallerService {
     });
     // Live preflight (HTTPS + common.authenticate reachability) deferred to
     // validateCredentials heartbeat, matching the WooCommerce install path above.
+  }
+
+  // PrestaShop install-time capture. DTO field reuse (matching the Odoo
+  // convention above):
+  //   externalAccountRef -> store_url   (e.g. https://shop.example.com, HTTPS required)
+  //   clientId           -> api_key     (Webservice API key, Basic-auth username with
+  //                                      an empty password — PrestaShop's own convention)
+  //   refreshToken       -> lang_id     (optional; defaults to "1" if not supplied)
+  private async captureAndStorePrestaShopCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const storeUrl = String(input.externalAccountRef ?? "").trim();
+    const apiKey = String(input.dto.clientId ?? "").trim();
+    const langId = String(input.dto.refreshToken ?? "").trim() || "1";
+
+    if (!storeUrl || !apiKey) {
+      const missing = [!storeUrl && "Store URL", !apiKey && "Webservice API Key"].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "PRESTASHOP_CREDENTIALS_INCOMPLETE",
+        message: `PrestaShop installation requires Store URL and Webservice API Key. Missing: ${missing}.`,
+      });
+    }
+
+    if (!storeUrl.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "PRESTASHOP_URL_NOT_HTTPS",
+        message: "PrestaShop store URL must use HTTPS.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "store_url",
+      plainValue: storeUrl,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "api_key",
+      plainValue: apiKey,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "lang_id",
+      plainValue: langId,
+      metadata: { source: "install_form" },
+    });
+    // Live preflight (HTTPS + /api/ reachability) deferred to the
+    // validateCredentials heartbeat, matching the Odoo install path above.
   }
 
   // Etsy install-time capture. DTO field reuse (matching the Odoo convention

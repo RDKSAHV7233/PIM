@@ -165,6 +165,22 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.PRESTASHOP) {
+    // Same "under_development, not installable" reasoning as Odoo above: the
+    // Python prototype's PrestaShop connector was verified live end-to-end
+    // against a real PrestaShop 9.1.5 instance (publish, update, status sync,
+    // plus two real bugs fixed — a stale error-code table and an XML error
+    // envelope that was never actually parsed). This TypeScript port has NOT
+    // yet been re-verified live in PIM1 itself, only unit-tested — the same
+    // gap Odoo had before its own re-verification pass.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "PrestaShop Webservice API connector (XML over REST, HTTP Basic auth with the webservice key). Publish, update, and status-sync were verified live against a real PrestaShop 9.1.5 instance in the pre-port prototype; this PIM1 port has not yet been re-verified live. Not installable until that clears. Install requires store_url (HTTPS), a Webservice API key with products + categories (+ languages) read permission, and a language id. Note: PrestaShop's webservice enforces neither reference (SKU) uniqueness nor the category foreign key — validateProduct() adds proactive checks for both since the platform itself won't catch them.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.SHOPIFY) {
     return {
       launchStage: "live",
@@ -291,6 +307,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       blockers: ["QA validation", "PO review", "customer pilot"],
       internalNotes:
         "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase; not yet re-verified against this codebase's own CI/staging.",
+    };
+  }
+  if (s === CONNECTOR_SLUGS.PRESTASHOP) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: ["re-verify live against a real PrestaShop instance from within PIM1", "QA validation", "PO review"],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs already found and fixed during the prototype phase, carried into this port from the start: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope (every failure hit a hardcoded placeholder). Also found: PrestaShop's webservice enforces neither reference uniqueness nor the category foreign key — validateProduct() adds proactive live checks for both. Full publish/update/status-sync round trip was verified live against a real local PrestaShop 9.1.5 Docker instance in the prototype; this TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
     };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {

@@ -9,6 +9,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "odoo") return "Odoo URL";
   if (slug === "etsy") return "Shop ID";
   if (slug === "dynamics-365") return "Azure AD Tenant";
+  if (slug === "prestashop") return "Store URL";
   return "External Account Ref";
 }
 
@@ -19,18 +20,26 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "odoo") return "https://odoo.example.com";
   if (slug === "etsy") return "Enter the numeric Etsy shop ID";
   if (slug === "dynamics-365") return "Azure AD tenant ID or domain (e.g. contoso.onmicrosoft.com)";
+  if (slug === "prestashop") return "https://shop.example.com";
   return "Optional";
 }
 
 /**
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
  * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id,
- * Dynamics 365 aad_tenant) — matches the backend's per-connector field
- * allowlist in ConnectorInstallerService.updateCredentials() exactly.
- * Flipkart/Amazon/Meesho reject a non-empty externalAccountRef there.
+ * Dynamics 365 aad_tenant, PrestaShop store_url) — matches the backend's
+ * per-connector field allowlist in ConnectorInstallerService.updateCredentials()
+ * exactly. Flipkart/Amazon/Meesho reject a non-empty externalAccountRef there.
  */
 export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
-  return slug === "woocommerce" || slug === "myntra" || slug === "odoo" || slug === "etsy" || slug === "dynamics-365";
+  return (
+    slug === "woocommerce" ||
+    slug === "myntra" ||
+    slug === "odoo" ||
+    slug === "etsy" ||
+    slug === "dynamics-365" ||
+    slug === "prestashop"
+  );
 }
 
 /**
@@ -427,6 +436,36 @@ export function ConnectorCredentialFields({
             placeholder='e.g. "Production|CRONUS IN"'
           />
           <p className="text-xs text-slate-500">Environment name and company name, separated by a pipe (|).</p>
+        </div>
+      </>
+    );
+  }
+
+  if (slug === "prestashop") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "PrestaShop authenticates via its Webservice API key (Advanced Parameters > Webservice). Enter an HTTPS Store URL (above), the Webservice API Key, and the language id used for product name/description (defaults to 1 if left blank). The key needs products, categories, and languages read/write permission."
+            : "Stored secrets cannot be displayed. Re-enter the Store URL (above) and Webservice API Key to replace this installation's credential set — Vexa verifies them with PrestaShop before saving."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Webservice API Key
+          </label>
+          <Input
+            id={`${idPrefix}-client-id-${definitionId}`}
+            name="clientId"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the PrestaShop Webservice API key"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Language ID <span className="font-normal text-slate-400">(optional, defaults to 1)</span>
+          </label>
+          <Input id={`${idPrefix}-refresh-token-${definitionId}`} name="refreshToken" autoComplete="off" placeholder="1" />
         </div>
       </>
     );
