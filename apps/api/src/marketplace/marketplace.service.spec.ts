@@ -313,6 +313,23 @@ describe("MarketplaceService.triggerConnectorExport", () => {
       [fakePayload, fakePayload],
     );
   });
+
+  // Regression for the tenant-leak found during the 2026-09-20 raw-SQL coverage sweep
+  // (VBPIM/PIM#886 follow-up): resolveInstallationWithSlug's $queryRaw originally had no
+  // tenant_key filter at all, so an installationId belonging to a DIFFERENT tenant would
+  // resolve successfully instead of throwing NotFoundException.
+  it("sends a tenant_key filter to $queryRaw when resolving the installation", async () => {
+    const { svc, tenantDb } = makeExportService();
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
+      .mockResolvedValue({ sku: "SKU-001", title: "Test Kurti", mrp: 999, sellingPrice: 799, productType: "kurtis" });
+
+    await svc.triggerConnectorExport("inst_1", ["p1"]);
+
+    expect(tenantDb.$queryRaw).toHaveBeenCalledTimes(1);
+    const sqlArg = tenantDb.$queryRaw.mock.calls[0][0] as { sql: string; values: unknown[] };
+    expect(sqlArg.sql).toContain("tenant_key");
+    expect(sqlArg.values).toContain("tenant1");
+  });
 });
 
 // ─── MarketplaceService.triggerBulkPublish — F-4 approval/readiness gate ──────

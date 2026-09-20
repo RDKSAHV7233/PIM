@@ -4523,7 +4523,8 @@ export class MarketplaceService implements OnModuleInit {
 
   async importShopifyConfig(installationId: string): Promise<ShopifyConfigResult> {
     const db = this.prisma.tenant();
-    const installation = await this.resolveInstallationWithSlug(installationId, db);
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const installation = await this.resolveInstallationWithSlug(installationId, db, tenantKey);
     if (!installation) {
       throw new NotFoundException("Connector installation not found.");
     }
@@ -4545,7 +4546,8 @@ export class MarketplaceService implements OnModuleInit {
 
   async getShopifyConfig(installationId: string): Promise<ShopifyConfigResult | null> {
     const db = this.prisma.tenant();
-    const installation = await this.resolveInstallationWithSlug(installationId, db);
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const installation = await this.resolveInstallationWithSlug(installationId, db, tenantKey);
     if (!installation) {
       throw new NotFoundException("Connector installation not found.");
     }
@@ -4776,7 +4778,7 @@ export class MarketplaceService implements OnModuleInit {
   ): Promise<{ queued: number; skipped: number }> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const db = this.prisma.tenant(tenantKey);
-    const installation = await this.resolveInstallationWithSlug(installationId, db);
+    const installation = await this.resolveInstallationWithSlug(installationId, db, tenantKey);
     if (!installation) throw new NotFoundException("Installation not found.");
 
     if (!installation.capabilities.includes("PUBLISH")) {
@@ -5156,7 +5158,7 @@ export class MarketplaceService implements OnModuleInit {
     const db = this.prisma.tenant();
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
 
-    const installationRow = await this.resolveInstallationWithSlug(installationId, db);
+    const installationRow = await this.resolveInstallationWithSlug(installationId, db, tenantKey);
     if (!installationRow) {
       throw new NotFoundException("Connector installation not found.");
     }
@@ -5864,7 +5866,7 @@ export class MarketplaceService implements OnModuleInit {
     const db = this.prisma.tenant();
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
 
-    const installationRow = await this.resolveInstallationWithSlug(installationId, db);
+    const installationRow = await this.resolveInstallationWithSlug(installationId, db, tenantKey);
     if (!installationRow) {
       throw new NotFoundException("Connector installation not found.");
     }
@@ -5892,7 +5894,7 @@ export class MarketplaceService implements OnModuleInit {
    * Single-query JOIN: ConnectorInstallation + ConnectorDefinition.
    *
    * Prisma has no @relation between these two models (connector_id is an
-   * untyped FK in the schema), so we use $queryRaw for a proper LEFT JOIN.
+   * untyped FK in the schema), so we use queryRaw for a proper LEFT JOIN.
    * This collapses the repeated findFirst(installation) → findUnique(definition)
    * pattern that appears across several methods into one round-trip.
    *
@@ -5901,6 +5903,7 @@ export class MarketplaceService implements OnModuleInit {
   private async resolveInstallationWithSlug(
     installationId: string,
     db: ReturnType<typeof this.prisma.tenant>,
+    tenantKey: string,
   ): Promise<{
     id: string;
     connectorId: string;
@@ -5908,6 +5911,14 @@ export class MarketplaceService implements OnModuleInit {
     connectorSlug: string;
     capabilities: string[];
   } | null> {
+    // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below.
+    // Found during the 2026-09-20 raw-SQL coverage sweep (VBPIM/PIM#886 follow-up):
+    // this query originally had no tenant_key filter at all, so an installationId
+    // belonging to a DIFFERENT tenant would resolve successfully instead of
+    // returning null — and importShopifyConfig()/getShopifyConfig() then acted on
+    // the WRONG tenant's installation (installation.tenantKey flows straight into
+    // the connector ctx), since the only gate on these endpoints is @Roles(),
+    // not tenant ownership of the installationId path param.
     const rows = await db.$queryRaw<
       Array<{
         id: string;
@@ -5926,12 +5937,13 @@ export class MarketplaceService implements OnModuleInit {
       FROM connector_installations ci
       LEFT JOIN connector_definitions cd ON cd.id = ci.connector_id
       WHERE ci.id = ${installationId}
+        AND ci.tenant_key = ${tenantKey}
       LIMIT 1
     `);
     const row = rows[0];
     if (!row) return null;
 
-    // Prisma's $queryRaw may return a PostgreSQL text[] as a JS array or as
+    // Prisma's queryRaw may return a PostgreSQL text[] as a JS array or as
     // the "{val1,val2}" string literal — handle both forms defensively.
     let capabilities: string[] = [];
     if (Array.isArray(row.capabilities)) {
