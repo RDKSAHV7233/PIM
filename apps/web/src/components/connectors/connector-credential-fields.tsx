@@ -8,6 +8,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "woocommerce") return "Site URL";
   if (slug === "odoo") return "Odoo URL";
   if (slug === "etsy") return "Shop ID";
+  if (slug === "dynamics-365") return "Azure AD Tenant";
   return "External Account Ref";
 }
 
@@ -17,18 +18,19 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "woocommerce") return "https://store.example.com";
   if (slug === "odoo") return "https://odoo.example.com";
   if (slug === "etsy") return "Enter the numeric Etsy shop ID";
+  if (slug === "dynamics-365") return "Azure AD tenant ID or domain (e.g. contoso.onmicrosoft.com)";
   return "Optional";
 }
 
 /**
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
- * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id)
- * — matches the backend's per-connector field allowlist in
- * ConnectorInstallerService.updateCredentials() exactly. Flipkart/Amazon/Meesho
- * reject a non-empty externalAccountRef there.
+ * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id,
+ * Dynamics 365 aad_tenant) — matches the backend's per-connector field
+ * allowlist in ConnectorInstallerService.updateCredentials() exactly.
+ * Flipkart/Amazon/Meesho reject a non-empty externalAccountRef there.
  */
 export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
-  return slug === "woocommerce" || slug === "myntra" || slug === "odoo" || slug === "etsy";
+  return slug === "woocommerce" || slug === "myntra" || slug === "odoo" || slug === "etsy" || slug === "dynamics-365";
 }
 
 /**
@@ -383,6 +385,48 @@ export function ConnectorCredentialFields({
             autoComplete="new-password"
             placeholder="Enter the refresh token from the OAuth flow"
           />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === "dynamics-365") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "Dynamics 365 Business Central authenticates via an Azure AD app registration (client_credentials grant). Enter the Azure AD Tenant (above), Client ID, Client Secret, and the target Environment/Company below. Business Central addresses companies by an internal ID, not their display name, so enter the environment and company name exactly as shown in the Business Central admin center — Vexa resolves the id automatically."
+            : "Stored secrets cannot be displayed. Re-enter all fields to replace this installation's credential set — Vexa verifies them with Azure AD and Business Central before saving."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID
+          </label>
+          <Input id={`${idPrefix}-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="Enter the Azure AD app registration's Application (client) ID" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client Secret
+          </label>
+          <Input
+            id={`${idPrefix}-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the Azure AD app registration's client secret"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Environment / Company
+          </label>
+          <Input
+            id={`${idPrefix}-refresh-token-${definitionId}`}
+            name="refreshToken"
+            autoComplete="off"
+            placeholder='e.g. "Production|CRONUS IN"'
+          />
+          <p className="text-xs text-slate-500">Environment name and company name, separated by a pipe (|).</p>
         </div>
       </>
     );

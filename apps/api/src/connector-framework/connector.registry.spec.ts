@@ -22,6 +22,7 @@ describe("ConnectorRegistry — safe-fallback boot gating", () => {
       prisma as never,
       logger as never,
       fakeConnector("amazon"),
+      fakeConnector("dynamics-365"),
       fakeConnector("etsy"),
       fakeConnector("flipkart"),
       fakeConnector("meesho"),

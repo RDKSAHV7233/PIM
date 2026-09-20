@@ -82,6 +82,18 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during the port: x-api-key needs \"client_id:shared_secret\" (a bare client_id 403s), and validateCredentials() called a nonexistent endpoint (/taxonomy/seller, fixed to /seller-taxonomy/nodes). Both verified live against real Etsy sandbox data. publishProduct() implemented but never exercised — blocked on the sandbox account having no shop open yet.",
   },
+  "dynamics-365": {
+    owner: "Platform",
+    milestone: null,
+    blockers: [
+      "re-verify Business Central data-API call after the Automation.ReadWrite.All permission fix",
+      "real publish test",
+      "QA validation",
+      "PO review",
+    ],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-20). Less verified than Etsy/Odoo at port time: only the Azure AD client_credentials token exchange was proven live against a real vexapim.com Entra app registration — the Business Central data-API call itself was not successfully re-verified after fixing a missing Automation.ReadWrite.All permission (the verification attempt was blocked mid-session before a second live check completed). Do not treat validateCredentials() as proven until that gap closes.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

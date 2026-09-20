@@ -425,6 +425,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "dynamics-365") {
+        try {
+          await this.captureAndStoreDynamics365Credentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1142,6 +1154,11 @@ export class ConnectorInstallerService {
       if (has(dto.clientId)) types.push("client_id");
       if (has(dto.clientSecret)) types.push("shared_secret");
       if (has(dto.refreshToken)) types.push("refresh_token");
+    } else if (slug === "dynamics-365") {
+      if (has(dto.externalAccountRef)) types.push("aad_tenant");
+      if (has(dto.clientId)) types.push("client_id");
+      if (has(dto.clientSecret)) types.push("client_secret");
+      if (has(dto.refreshToken)) types.push("environment_company");
     }
     return types;
   }
@@ -1196,6 +1213,8 @@ export class ConnectorInstallerService {
         return this.updateOdooCredentials(tenantKey, installation, dto);
       case "etsy":
         return this.updateEtsyCredentials(tenantKey, installation, dto);
+      case "dynamics-365":
+        return this.updateDynamics365Credentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1427,6 +1446,80 @@ export class ConnectorInstallerService {
       }
       throw txError;
     }
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  // Dynamics 365 uses client_credentials — there's no refresh_token to rotate,
+  // client_credentials always mints a fresh access_token, so this is simpler
+  // than updateEtsyCredentials' rotation handling.
+  private async updateDynamics365Credentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "clientSecret", "refreshToken"], "dynamics-365");
+
+    const aadTenant = dto.externalAccountRef?.trim();
+    const clientId = dto.clientId?.trim();
+    const clientSecret = dto.clientSecret;
+    const environmentCompany = dto.refreshToken?.trim();
+
+    const missing = [
+      !aadTenant && "Azure AD Tenant",
+      !clientId && "Client ID",
+      !(clientSecret && clientSecret.trim()) && "Client Secret",
+      !environmentCompany && "Environment/Company (e.g. \"Production|CRONUS IN\")",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "DYNAMICS_365_CREDENTIALS_INCOMPLETE",
+        message: `Dynamics 365 credentials require Azure AD Tenant, Client ID, Client Secret, and Environment/Company. Missing: ${missing}.`,
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("dynamics-365");
+    const verification = await connector.verifyCandidateCredentials!({
+      aad_tenant: aadTenant!,
+      client_id: clientId!,
+      client_secret: clientSecret!,
+      environment_company: environmentCompany!,
+    });
+
+    this.throwOnUnverified("DYNAMICS_365", verification);
+
+    // Narrowed by throwOnUnverified: only "valid" reaches here.
+    const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "aad_tenant", plainValue: aadTenant!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "client_id", plainValue: clientId!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "client_secret", plainValue: clientSecret!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "environment_company", plainValue: environmentCompany!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      if (commitExtra?.accessToken) {
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "access_token", plainValue: commitExtra.accessToken.value, expiresAt: commitExtra.accessToken.expiresAt, metadata: { source: "credentials_update" } },
+          tx,
+        );
+      }
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: aadTenant, updatedAt: new Date() },
+      });
+    });
 
     return { id: installation.id, status: "ACTIVE", verification };
   }
@@ -2654,6 +2747,73 @@ export class ConnectorInstallerService {
     });
     // Live preflight (token exchange + x-api-key reachability) deferred to
     // validateCredentials heartbeat, matching the Odoo install path above.
+  }
+
+  // Dynamics 365 install-time capture. DTO field reuse (matching the
+  // Odoo/Etsy convention above):
+  //   externalAccountRef -> aad_tenant         (Azure AD tenant ID or domain)
+  //   clientId           -> client_id          (Azure AD app registration's Application ID)
+  //   clientSecret       -> client_secret      (Azure AD app registration's client secret)
+  //   refreshToken       -> environment_company (pipe-separated "{environment}|{companyName}",
+  //                                              e.g. "Production|CRONUS IN" — see
+  //                                              dynamics365.connector.ts's resolveApiBase()
+  //                                              for why this resolves to a company GUID via
+  //                                              a live lookup rather than asking for one)
+  private async captureAndStoreDynamics365Credentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const aadTenant = String(input.externalAccountRef ?? "").trim();
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const clientSecret = String(input.dto.clientSecret ?? "").trim();
+    const environmentCompany = String(input.dto.refreshToken ?? "").trim();
+
+    if (!aadTenant || !clientId || !clientSecret || !environmentCompany) {
+      const missing = [
+        !aadTenant && "Azure AD Tenant",
+        !clientId && "Client ID",
+        !clientSecret && "Client Secret",
+        !environmentCompany && "Environment/Company",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "DYNAMICS_365_CREDENTIALS_INCOMPLETE",
+        message: `Dynamics 365 installation requires Azure AD Tenant, Client ID, Client Secret, and Environment/Company. Missing: ${missing}.`,
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "aad_tenant",
+      plainValue: aadTenant,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_secret",
+      plainValue: clientSecret,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "environment_company",
+      plainValue: environmentCompany,
+      metadata: { source: "install_form" },
+    });
+    // Live preflight (token exchange + Business Central API reachability)
+    // deferred to validateCredentials heartbeat, matching the Odoo/Etsy
+    // install paths above.
   }
 
   /**

@@ -86,6 +86,24 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.DYNAMICS_365) {
+    // Deliberately more cautious than Etsy/Odoo's under_development notes:
+    // only the Azure AD client_credentials token exchange was proven live
+    // (real 200, real access_token, against a real vexapim.com Entra app
+    // registration). The Business Central data-API call itself
+    // (validateCredentials' GET /items) was never successfully re-verified
+    // after the Automation.ReadWrite.All permission fix — the verification
+    // was blocked by this environment's own credential-handling safety
+    // controls before a second live attempt completed. Treat this as one
+    // rung less proven than Etsy/Odoo, not equivalently verified.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "Microsoft Dynamics 365 Business Central connector (API v2.0/OData, Azure AD client_credentials). Only the Azure AD token exchange has been proven live — the Business Central data-API call itself (GET /items) has not been re-verified after fixing a missing Automation.ReadWrite.All permission. Not installable until that gap closes and a real publish is proven. Install requires an Azure AD tenant, app registration client_id/client_secret, and the target environment + company name (Business Central addresses companies by GUID, not name, so the connector resolves the id via a live lookup).",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.ETSY) {
     // Same "under_development, not in isInstallableStage()'s list" reasoning
     // as Odoo below: validateCredentials() is proven live against real Etsy
@@ -242,6 +260,20 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   }
   if (s === CONNECTOR_SLUGS.AMAZON) {
     return { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." };
+  }
+  if (s === CONNECTOR_SLUGS.DYNAMICS_365) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: [
+        "re-verify Business Central data-API call after the Automation.ReadWrite.All permission fix",
+        "real publish test",
+        "QA validation",
+        "PO review",
+      ],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Less verified than Etsy/Odoo at port time: only the Azure AD client_credentials token exchange was proven live against a real vexapim.com Entra app registration — the Business Central data-API call itself was not successfully re-verified after fixing a missing Automation.ReadWrite.All permission (the verification attempt was blocked mid-session before a second live check completed). Do not treat validateCredentials() as proven until that gap closes.",
+    };
   }
   if (s === CONNECTOR_SLUGS.ETSY) {
     return {
