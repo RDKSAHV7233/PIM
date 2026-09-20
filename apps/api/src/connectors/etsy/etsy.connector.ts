@@ -261,8 +261,8 @@ export class EtsyConnector implements ConnectorInterface {
     this.logger.info("Etsy publish request started", { installationId: ctx.installationId, sku: product.sku });
     const response = await this.fetchWithTokenRetry(ctx, `${API_BASE}/shops/${shopId}/listings`, {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(this.buildListingPayload(product)),
+      headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+      body: this.encodeFormBody(this.buildListingPayload(product)),
     });
     const body = await this.parseJsonResponse<Record<string, unknown>>(response);
     this.logger.info("Etsy publish request completed", {
@@ -273,7 +273,11 @@ export class EtsyConnector implements ConnectorInterface {
     if (!response.ok) {
       throw new Error(this.describeFailure(body, response.status));
     }
-    return { externalRef: String(body.listing_id ?? ""), status: "PENDING", isAsync: false };
+    const listingId = String(body.listing_id ?? "");
+    if (listingId) {
+      await this.uploadListingImages(ctx, shopId, listingId, product);
+    }
+    return { externalRef: listingId, status: "PENDING", isAsync: false };
   }
 
   async updateProduct(ctx: ConnectorContext, product: ProductPayload, externalRef: string): Promise<SubmissionRef> {
@@ -286,13 +290,14 @@ export class EtsyConnector implements ConnectorInterface {
 
     const response = await this.fetchWithTokenRetry(ctx, `${API_BASE}/shops/${shopId}/listings/${externalRef}`, {
       method: "PATCH",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(this.buildListingPayload(product)),
+      headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+      body: this.encodeFormBody(this.buildListingPayload(product)),
     });
     const body = await this.parseJsonResponse<Record<string, unknown>>(response);
     if (!response.ok) {
       throw new Error(this.describeFailure(body, response.status));
     }
+    await this.uploadListingImages(ctx, shopId, externalRef, product);
     return { externalRef, status: "PENDING", isAsync: false };
   }
 
@@ -364,11 +369,16 @@ export class EtsyConnector implements ConnectorInterface {
 
   // ─── payload building ───────────────────────────────────────────────────────
 
+  // Etsy's createListing/updateListing endpoints take numeric, already-uploaded
+  // Etsy image IDs here — never URLs. Images are attached afterwards via
+  // uploadListingImages(), a separate per-image multipart call keyed off the
+  // listing_id this payload's response returns (verified against Etsy's Open
+  // API v3 spec 2026-09-20: the only requestBody content type for both
+  // createListing and updateListing is application/x-www-form-urlencoded, so
+  // this must be form-encoded, not JSON — a second bug found alongside the
+  // image_ids one, since the previous JSON body was silently unparseable).
   private buildListingPayload(product: ProductPayload): Record<string, unknown> {
     const attrs = product.attributes ?? {};
-    const images = [product.mainImageUrl, ...(product.additionalImageUrls ?? [])].filter(
-      (url): url is string => typeof url === "string" && url.trim().length > 0,
-    );
     return {
       title: product.title,
       description: product.description || product.title,
@@ -382,8 +392,98 @@ export class EtsyConnector implements ConnectorInterface {
       tags: (product.tags ?? [product.productType, product.brand].filter(Boolean)).slice(0, 13),
       materials: attrs["material"] ? [String(attrs["material"])] : [],
       sku: [product.sku],
-      image_ids: images,
     };
+  }
+
+  // Etsy's form-urlencoded write endpoints take array fields as a single
+  // comma-separated value (confirmed in the spec's `tags` field description),
+  // not repeated keys.
+  private encodeFormBody(payload: Record<string, unknown>): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(payload)) {
+      if (value === undefined || value === null) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          continue;
+        }
+        params.set(key, value.join(","));
+      } else {
+        params.set(key, String(value));
+      }
+    }
+    return params.toString();
+  }
+
+  private collectImageUrls(product: ProductPayload): string[] {
+    return [product.mainImageUrl, ...(product.additionalImageUrls ?? [])].filter(
+      (url): url is string => typeof url === "string" && url.trim().length > 0,
+    );
+  }
+
+  // Uploads each image individually via Etsy's per-image multipart endpoint.
+  // A single image failing to upload shouldn't fail the whole publish/update —
+  // the listing already exists and is editable, so log and move on.
+  private async uploadListingImages(
+    ctx: ConnectorContext,
+    shopId: string,
+    listingId: string,
+    product: ProductPayload,
+  ): Promise<void> {
+    const urls = this.collectImageUrls(product);
+    for (let index = 0; index < urls.length; index += 1) {
+      try {
+        await this.uploadSingleListingImage(ctx, shopId, listingId, urls[index], index + 1);
+      } catch (error) {
+        this.logger.warn("Etsy image upload failed", {
+          installationId: ctx.installationId,
+          listingId,
+          imageUrl: urls[index],
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  private async fetchImageBytes(imageUrl: string): Promise<ArrayBuffer> {
+    const response = await this.fetchWithTimeout(imageUrl, {});
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image from ${imageUrl}: HTTP ${response.status}`);
+    }
+    return response.arrayBuffer();
+  }
+
+  private async uploadSingleListingImage(
+    ctx: ConnectorContext,
+    shopId: string,
+    listingId: string,
+    imageUrl: string,
+    rank: number,
+  ): Promise<void> {
+    const imageBytes = await this.fetchImageBytes(imageUrl);
+    const attempt = async (): Promise<Response> => {
+      const headers = await this.buildApiHeaders(ctx);
+      const form = new FormData();
+      form.set("image", new Blob([imageBytes]), `image-${rank}.jpg`);
+      form.set("rank", String(rank));
+      // No explicit Content-Type — fetch derives the multipart boundary from
+      // the FormData body itself; setting it manually breaks the boundary.
+      return this.fetchWithTimeout(`${API_BASE}/shops/${shopId}/listings/${listingId}/images`, {
+        method: "POST",
+        headers,
+        body: form,
+      });
+    };
+    let response = await attempt();
+    if (response.status === 401) {
+      await this.invalidateAccessToken(ctx);
+      response = await attempt();
+    }
+    if (!response.ok) {
+      const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+      throw new Error(this.describeFailure(body, response.status));
+    }
   }
 
   // ─── credential + transport plumbing ────────────────────────────────────────

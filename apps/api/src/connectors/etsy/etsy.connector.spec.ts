@@ -84,23 +84,44 @@ describe("EtsyConnector.buildListingPayload", () => {
     expect(payload.taxonomy_id).toBe(1234);
   });
 
-  it("collects mainImageUrl + additionalImageUrls into image_ids", () => {
+  it("never includes image_ids — Etsy's create/update endpoints require already-uploaded numeric image IDs, not URLs", () => {
+    // Regression test for the real bug found in review: the original payload
+    // sent raw image URLs as image_ids, but Etsy's v3 API expects numeric IDs
+    // of images already uploaded via a separate per-image call. Images are
+    // attached afterwards by uploadListingImages(), not in this payload.
     const connector = makeConnector();
     const payload = (connector as any).buildListingPayload({
       ...baseProduct,
       additionalImageUrls: ["https://cdn.example.com/2.jpg", "https://cdn.example.com/3.jpg"],
     });
-    expect(payload.image_ids).toEqual([
-      "https://cdn.example.com/etsy.jpg",
-      "https://cdn.example.com/2.jpg",
-      "https://cdn.example.com/3.jpg",
-    ]);
+    expect(payload).not.toHaveProperty("image_ids");
   });
 
   it("reads a single material from attributes.material", () => {
     const connector = makeConnector();
     const payload = (connector as any).buildListingPayload({ ...baseProduct, attributes: { ...baseProduct.attributes, material: "clay" } });
     expect(payload.materials).toEqual(["clay"]);
+  });
+});
+
+describe("EtsyConnector.encodeFormBody", () => {
+  it("joins array fields with commas rather than repeating the key", () => {
+    // Etsy's spec documents `tags` as "a comma-separated list of tag strings"
+    // for the form-urlencoded body — not repeated `tags=a&tags=b` pairs.
+    const connector = makeConnector();
+    const encoded = (connector as any).encodeFormBody({ tags: ["a", "b", "c"], title: "hello world" });
+    const params = new URLSearchParams(encoded);
+    expect(params.get("tags")).toBe("a,b,c");
+    expect(params.get("title")).toBe("hello world");
+  });
+
+  it("omits null/undefined fields and empty arrays", () => {
+    const connector = makeConnector();
+    const encoded = (connector as any).encodeFormBody({ materials: [], missing: undefined, price: 12.5 });
+    const params = new URLSearchParams(encoded);
+    expect(params.has("materials")).toBe(false);
+    expect(params.has("missing")).toBe(false);
+    expect(params.get("price")).toBe("12.5");
   });
 });
 
@@ -265,5 +286,111 @@ describe("EtsyConnector auth transport", () => {
 
     expect(token).toBe("new-access-token");
     expect(storeCalls.map((c) => c.type)).toEqual(expect.arrayContaining(["access_token", "refresh_token"]));
+  });
+});
+
+describe("EtsyConnector.publishProduct / updateProduct — form encoding + image upload", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (global as any).fetch = undefined;
+  });
+
+  function dbWithCreds() {
+    return {
+      connectorCredential: {
+        findFirst: findFirstByType({
+          shop_id: credRow("shop_id", "98765"),
+          client_id: credRow("client_id", "qckxiqackm1rdz09u3kzu1po"),
+          shared_secret: credRow("shared_secret", "1ba80bcg6f"),
+        }),
+        updateMany: jest.fn().mockResolvedValue({}),
+      },
+    };
+  }
+
+  it("sends the listing body as form-urlencoded (not JSON) and uploads images per-file afterwards", async () => {
+    // Regression test for the second real bug found alongside image_ids:
+    // Etsy's create/update listing endpoints only accept
+    // application/x-www-form-urlencoded per its Open API v3 spec — a JSON
+    // body with a JSON content-type is silently unparseable there.
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithCreds());
+    const calls: Array<{ url: string; init: any }> = [];
+    const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+      calls.push({ url, init });
+      if (url.endsWith("/listings")) {
+        return { ok: true, status: 201, text: async () => JSON.stringify({ listing_id: 555 }) };
+      }
+      if (url === "https://cdn.example.com/etsy.jpg") {
+        return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(4) };
+      }
+      if (url.includes("/images")) {
+        return { ok: true, status: 201, text: async () => JSON.stringify({ listing_image_id: 1 }) };
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    (global as any).fetch = fetchMock;
+
+    const ref = await connector.publishProduct(fakeCtx(), baseProduct);
+
+    expect(ref.externalRef).toBe("555");
+    const listingCall = calls.find((c) => c.url.endsWith("/listings"));
+    expect(listingCall!.init.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    expect(typeof listingCall!.init.body).toBe("string");
+    expect(listingCall!.init.body.trim().startsWith("{")).toBe(false);
+    const bodyParams = new URLSearchParams(listingCall!.init.body);
+    expect(bodyParams.get("title")).toBe(baseProduct.title);
+    expect(bodyParams.has("image_ids")).toBe(false);
+
+    const imageCall = calls.find((c) => c.url.includes("/images"));
+    expect(imageCall).toBeDefined();
+    expect(imageCall!.url).toBe("https://openapi.etsy.com/v3/application/shops/98765/listings/555/images");
+    expect(imageCall!.init.body).toBeInstanceOf(FormData);
+  });
+
+  it("does not fail the publish when a single image fails to upload — the listing already exists and is editable", async () => {
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithCreds());
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/listings")) {
+        return { ok: true, status: 201, text: async () => JSON.stringify({ listing_id: 555 }) };
+      }
+      if (url === "https://cdn.example.com/etsy.jpg") {
+        return { ok: false, status: 404 };
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    (global as any).fetch = fetchMock;
+
+    const ref = await connector.publishProduct(fakeCtx(), baseProduct);
+    expect(ref.externalRef).toBe("555");
+  });
+
+  it("updateProduct also form-encodes the body and re-uploads images against the existing externalRef", async () => {
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithCreds());
+    const calls: Array<{ url: string; init: any }> = [];
+    const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+      calls.push({ url, init });
+      if (url.endsWith("/listings/555") && init?.method === "PATCH") {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ listing_id: 555 }) };
+      }
+      if (url === "https://cdn.example.com/etsy.jpg") {
+        return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(4) };
+      }
+      if (url.includes("/images")) {
+        return { ok: true, status: 201, text: async () => JSON.stringify({ listing_image_id: 1 }) };
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    (global as any).fetch = fetchMock;
+
+    const ref = await connector.updateProduct(fakeCtx(), baseProduct, "555");
+
+    expect(ref.externalRef).toBe("555");
+    const listingCall = calls.find((c) => c.url.endsWith("/listings/555") && c.init.method === "PATCH");
+    expect(listingCall!.init.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    const imageCall = calls.find((c) => c.url.includes("/images"));
+    expect(imageCall).toBeDefined();
   });
 });
