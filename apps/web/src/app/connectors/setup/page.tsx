@@ -181,8 +181,13 @@ function connectorStatusNote(
   return null;
 }
 
+// Mirrors apps/api/src/connector-framework/connector-launch-policy.ts's
+// isInstallableStage() — kept in sync manually since this page has no
+// access to the backend module. "manual" (Meesho, Nykaa: Excel-export-only,
+// no live publish) was missing here, so those two customer-visible,
+// backend-installable connectors never appeared in this setup wizard.
 function isSetupLaneStage(stage: string): boolean {
-  return stage === "live" || stage === "code_complete" || stage === "qa_validation" || stage === "po_review" || stage === "early_access";
+  return stage === "live" || stage === "manual" || stage === "early_access";
 }
 
 function formatCapabilityLabel(capability: string): string {
@@ -396,7 +401,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">1. Choose channel</p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Filter to the exact connector lane you want to install so the rest of the page stays focused. This setup workspace exposes live and early-access setup lanes.
+                  Filter to the exact connector lane you want to install so the rest of the page stays focused. This setup workspace exposes live, manual/export, and early-access setup lanes.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">

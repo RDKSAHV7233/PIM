@@ -114,8 +114,10 @@ function run() {
   );
   assert(
     setupSource.includes("isSetupLaneStage") &&
-      setupSource.includes('stage === "code_complete"'),
-    "Connector setup page must expose code-complete setup lanes such as WooCommerce, not only live connectors.",
+      setupSource.includes('stage === "manual"'),
+    "Connector setup page must expose manual-stage lanes (Meesho, Nykaa: Excel-export-only), matching apps/api's isInstallableStage(). " +
+      "It previously allowed only 'code_complete'/'qa_validation'/'po_review' — stage names no connector has produced since the " +
+      "under_development rename (PIM#889) — which silently dropped manual-stage connectors from this page entirely.",
   );
 
   // ── Myntra status note (AM-gated Beta) ────────────────────────────────────
@@ -126,7 +128,9 @@ function run() {
     "Setup page must include an account-manager-gated Beta status note for Myntra.",
   );
 
-  // Nykaa has launchStage "manual" and is not shown in the setup page.
+  // Nykaa has launchStage "manual" and, since isSetupLaneStage() now covers
+  // "manual", IS shown in the setup page (no dedicated credential-field case
+  // needed — same no-live-API-credentials shape as Meesho's install mode).
   // Its portal-upload / QC-wait note is on connectors/page.tsx — verified below.
 
   // ── connector/page.tsx error labels ───────────────────────────────────────
@@ -241,7 +245,7 @@ function run() {
           "woocommerce_credential_form_renders_site_url_consumer_key_and_secret",
           "woocommerce_form_fields_wired_to_expected_dto_names",
           "woocommerce_error_codes_present_in_setup_page",
-          "setup_page_exposes_code_complete_connector_lanes",
+          "setup_page_exposes_manual_stage_connector_lanes",
           "installer_service_has_woocommerce_branch",
           "woocommerce_connector_definition_seeded",
         ],

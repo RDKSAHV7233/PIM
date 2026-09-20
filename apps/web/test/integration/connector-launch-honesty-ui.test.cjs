@@ -32,7 +32,7 @@ function run() {
   );
 
   assert(
-    setupSource.includes("This setup workspace exposes live and early-access setup lanes.") &&
+    setupSource.includes("This setup workspace exposes live, manual/export, and early-access setup lanes.") &&
       setupSource.includes("Supported operations"),
     "Connector setup page must describe the setup-lane boundary and show supported operations in plain language.",
   );
