@@ -15,6 +15,14 @@ import { createClient } from "redis";
  */
 
 const REDIS_RETRY_BACKOFF_MS = 30_000;
+// A live TCP connection with a stalled/unresponsive Redis server (a "zombie"
+// connection — the socket never errors or closes, it just never answers) isn't
+// caught by connectTimeout, which only bounds the initial connect(). Every
+// command below is wrapped in this same class of fix already applied to
+// quit() at shutdown (see onModuleDestroy()'s own comment, PIM#817-outage-proof)
+// so a zombie connection degrades every request to REDIS_COMMAND_TIMEOUT_MS
+// instead of hanging it forever.
+const REDIS_COMMAND_TIMEOUT_MS = 2_000;
 
 type FallbackEntry = { value: unknown; expiresAt: number };
 
@@ -74,7 +82,7 @@ export class CacheService implements OnModuleDestroy {
       return;
     }
     try {
-      await this.redisClient.del(key);
+      await this.withCommandTimeout(this.redisClient.del(key));
     } catch (err) {
       this.markRedisUnavailable(err);
     }
@@ -98,13 +106,19 @@ export class CacheService implements OnModuleDestroy {
       return;
     }
     try {
-      const keysToDelete: string[] = [];
-      for await (const keys of this.redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
-        keysToDelete.push(...keys);
-      }
-      if (keysToDelete.length > 0) {
-        await this.redisClient.del(keysToDelete);
-      }
+      const client = this.redisClient;
+      await this.withCommandTimeout(
+        (async () => {
+          const keysToDelete: string[] = [];
+          for await (const keys of client.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+            keysToDelete.push(...keys);
+          }
+          if (keysToDelete.length > 0) {
+            await client.del(keysToDelete);
+          }
+        })(),
+        REDIS_COMMAND_TIMEOUT_MS * 5, // multiple round trips (SCAN cursor + DEL), not a single command
+      );
     } catch (err) {
       this.markRedisUnavailable(err);
     }
@@ -120,7 +134,7 @@ export class CacheService implements OnModuleDestroy {
     }
 
     try {
-      const info = await this.redisClient.info();
+      const info = await this.withCommandTimeout(this.redisClient.info());
       return parseRedisHealthInfo(info);
     } catch (err) {
       this.markRedisUnavailable(err);
@@ -184,7 +198,7 @@ export class CacheService implements OnModuleDestroy {
       return null;
     }
     try {
-      const raw = await this.redisClient.get(key);
+      const raw = await this.withCommandTimeout(this.redisClient.get(key));
       if (!raw) return null;
       const parsed = JSON.parse(String(raw)) as T;
       // Warm the in-memory fallback so the next call within the same process is free
@@ -202,7 +216,7 @@ export class CacheService implements OnModuleDestroy {
       return;
     }
     try {
-      await this.redisClient.setEx(key, ttlSeconds, JSON.stringify(value));
+      await this.withCommandTimeout(this.redisClient.setEx(key, ttlSeconds, JSON.stringify(value)));
     } catch (err) {
       this.markRedisUnavailable(err);
     }
@@ -243,6 +257,29 @@ export class CacheService implements OnModuleDestroy {
 
     await this.redisConnecting;
     return this.redisAvailable;
+  }
+
+  /**
+   * Bound a single Redis command so a zombie connection (alive socket, no
+   * response) degrades to "unavailable" after REDIS_COMMAND_TIMEOUT_MS
+   * instead of hanging the caller forever. Rejects on timeout so every call
+   * site's existing try/catch → markRedisUnavailable() path handles it the
+   * same way as any other Redis error.
+   */
+  private withCommandTimeout<T>(command: Promise<T>, timeoutMs = REDIS_COMMAND_TIMEOUT_MS): Promise<T> {
+    // If the timeout wins the race, `command` keeps running in the background
+    // (Promise.race can't cancel it) and may reject later — e.g. the zombie
+    // connection finally errors out. Without this, that's an unhandled
+    // rejection. Same diligence as onModuleDestroy()'s quit().catch(() => undefined).
+    command.catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Redis command timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+    return Promise.race([command, timeout]).finally(() => clearTimeout(timer));
   }
 
   private markRedisUnavailable(err?: unknown): void {

@@ -76,6 +76,108 @@ describe("CacheService.getHealthSnapshot", () => {
   });
 });
 
+// A live TCP connection with a stalled/unresponsive Redis server (a "zombie"
+// connection — never errors, never closes, just never answers) isn't caught by
+// connectTimeout, which only bounds the initial connect(). Every command that
+// touches an already-established client must degrade to the in-memory
+// fallback within REDIS_COMMAND_TIMEOUT_MS instead of hanging the caller
+// forever — the same class of bug already fixed for onModuleDestroy()'s
+// quit() (PIM#817-outage-proof), now closing the gap for the read/write path
+// that's actually on every request.
+describe("CacheService — bounded Redis commands so a zombie connection can't hang a request", () => {
+  function seedZombieClient(service: CacheService, overrides: Record<string, unknown> = {}) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- seeding private connection state for the test
+    const svc = service as any;
+    svc.redisClient = {
+      get: jest.fn(() => new Promise(() => {})),
+      setEx: jest.fn(() => new Promise(() => {})),
+      del: jest.fn(() => new Promise(() => {})),
+      info: jest.fn(() => new Promise(() => {})),
+      scanIterator: jest.fn(() => ({
+        [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }),
+      })),
+      ...overrides,
+    };
+    svc.redisAvailable = true;
+  }
+
+  it("getOrSet falls through to the producer when get() never resolves", async () => {
+    const service = new CacheService();
+    seedZombieClient(service);
+    const producer = jest.fn().mockResolvedValue("fresh-value");
+
+    const start = Date.now();
+    const result = await service.getOrSet("k", 60, producer);
+    const elapsedMs = Date.now() - start;
+
+    expect(result).toBe("fresh-value");
+    expect(producer).toHaveBeenCalledTimes(1);
+    expect(elapsedMs).toBeLessThan(5_000);
+  });
+
+  it("getOrSet still returns the fresh value even when the follow-up setEx() also never resolves", async () => {
+    const service = new CacheService();
+    seedZombieClient(service);
+    const producer = jest.fn().mockResolvedValue("fresh-value");
+
+    await expect(service.getOrSet("k", 60, producer)).resolves.toBe("fresh-value");
+  });
+
+  it("a zombie get() marks Redis unavailable so the very next call skips straight to in-memory", async () => {
+    const service = new CacheService();
+    seedZombieClient(service);
+    const producer = jest.fn().mockResolvedValue("fresh-value");
+
+    await service.getOrSet("k", 60, producer);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((service as any).redisAvailable).toBe(false);
+  });
+
+  it("invalidate() resolves within the timeout bound when del() never settles", async () => {
+    const service = new CacheService();
+    seedZombieClient(service);
+
+    const start = Date.now();
+    await service.invalidate("k");
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("invalidateByPrefix() resolves within its (longer, multi-round-trip) bound when scanIterator never yields", async () => {
+    const service = new CacheService();
+    seedZombieClient(service);
+
+    const start = Date.now();
+    await service.invalidateByPrefix("prefix");
+    expect(Date.now() - start).toBeLessThan(15_000);
+  }, 20_000);
+
+  it("getHealthSnapshot() returns unavailable within the timeout bound when info() never resolves", async () => {
+    const service = new CacheService();
+    seedZombieClient(service);
+
+    const start = Date.now();
+    await expect(service.getHealthSnapshot()).resolves.toEqual({ available: false });
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("a healthy (fast) Redis client is unaffected — getOrSet still reads through cache normally", async () => {
+    const service = new CacheService();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = service as any;
+    svc.redisClient = {
+      get: jest.fn().mockResolvedValue(JSON.stringify("cached-value")),
+      setEx: jest.fn().mockResolvedValue("OK"),
+    };
+    svc.redisAvailable = true;
+    const producer = jest.fn().mockResolvedValue("fresh-value");
+
+    const result = await service.getOrSet("k", 60, producer);
+
+    expect(result).toBe("cached-value");
+    expect(producer).not.toHaveBeenCalled();
+  });
+});
+
 // PIM#817-outage-proof follow-up: quit() on an already-established client can
 // hang indefinitely if Redis becomes unreachable mid-shutdown (half-open
 // socket, no QUIT response), blocking process exit. Bounded with the same
