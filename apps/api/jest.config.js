@@ -76,6 +76,7 @@ module.exports = {
     "**/common/env-validation.spec.ts",
     "**/common/app.controller.spec.ts",
     "**/common/cache/cache.service.spec.ts",
+    "**/common/prisma-soft-delete.middleware.spec.ts",
     "**/bulk-edit/bulk-edit.service.spec.ts",
     "**/queue/queue.service.spec.ts",
     "**/error-authority/api-exception-capture.filter.spec.ts",
