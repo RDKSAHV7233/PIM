@@ -470,9 +470,18 @@ export class RbacGuard implements CanActivate {
     if (access.allowLegacyAdminFallback === false) {
       return "ADMIN_BOUNDARY_FORBIDDEN";
     }
-    if (request.pimRole !== "admin") {
-      return null;
-    }
+    // Legacy fallback: an actor with no explicit admin-boundary role at all is
+    // treated as satisfying this check only if their legacy pimRole is
+    // literally "admin" — never for any other role. This was inverted: the
+    // two branches below were swapped, so this returned `null` (allowed) for
+    // EVERY role once fallback wasn't explicitly disabled, not just "admin".
+    // For routes gated only by @AdminBoundaryAccess() with no separate
+    // @Roles() (e.g. GET /health/internal), that meant any authenticated
+    // user of any role passed regardless of the configured allowedRoles/
+    // capability. For routes that also carry a broader @Roles() check, the
+    // practical effect was that this second, narrower layer (e.g.
+    // allowedRoles: ["system_admin","super_admin"]) provided zero additional
+    // restriction beyond whatever the looser @Roles() already allowed.
     return request.pimRole === "admin" ? null : "ADMIN_BOUNDARY_FORBIDDEN";
   }
 
