@@ -201,6 +201,11 @@ export class StripeService implements OnModuleInit {
   }
 
   async resolveTenantKeyFromCustomerId(customerId: string): Promise<string | null> {
+    // RLS-BYPASS: cross-tenant by necessity — this function's entire purpose is to
+    // resolve WHICH tenant owns a given Stripe customer id (called from webhook
+    // handling before any tenant context is known), so it cannot itself be scoped
+    // to a tenant. customerId is Stripe's own globally-unique id, not caller-supplied
+    // tenant data.
     const rows = await this.prisma.tenant().$queryRaw<{ tenantKey: string }[]>(Prisma.sql`
       SELECT "tenantKey" FROM "TenantPlanProfile"
       WHERE "externalCustomerId" = ${customerId}
@@ -225,11 +230,18 @@ export class StripeService implements OnModuleInit {
     }
     const now = new Date();
     const leaseUntil = new Date(now.getTime() + STRIPE_WEBHOOK_PROCESSING_LEASE_MS);
+    // RLS-BYPASS: intentional cross-tenant — stripe_webhook_events is keyed on
+    // Stripe's own globally-unique external_event_id, not per-tenant, and this
+    // whole reservation step runs *before* the event's tenant is even determined
+    // (a webhook can arrive for a customer this process hasn't resolved yet).
     return this.prisma.tenant().$transaction(async (tx) => {
-      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's queryRaw
       // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
-      // $executeRaw, which discards the result set, to take the lock.
+      // executeRaw, which discards the result set, to take the lock.
+      // RLS-BYPASS: advisory lock, not a tenant-table query — no rows read or written.
       await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${normalizedEventId}, 0)::bigint)`);
+      // RLS-BYPASS: intentional cross-tenant — see reserveWebhookEvent's comment above;
+      // stripe_webhook_events is keyed on Stripe's globally-unique external_event_id.
       const existing = await tx.$queryRaw<
         Array<{ id: string; processingStatus: string; processedAt: Date | null; processingLeaseUntil: Date | null }>
       >(Prisma.sql`
@@ -254,6 +266,8 @@ export class StripeService implements OnModuleInit {
         return { accepted: false, reason: "in_progress" };
       }
       if (row) {
+        // RLS-BYPASS: intentional cross-tenant — stripe_webhook_events row, see
+        // reserveWebhookEvent's comment above.
         await tx.$executeRaw(Prisma.sql`
           UPDATE stripe_webhook_events
           SET
@@ -266,6 +280,8 @@ export class StripeService implements OnModuleInit {
           WHERE id = ${row.id}
         `);
       } else {
+        // RLS-BYPASS: intentional cross-tenant — stripe_webhook_events row, see
+        // reserveWebhookEvent's comment above.
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO stripe_webhook_events (
             id,
@@ -295,6 +311,9 @@ export class StripeService implements OnModuleInit {
   }
 
   async markWebhookEventProcessed(eventId: string, tenantKey: string | null): Promise<void> {
+    // RLS-BYPASS: intentional cross-tenant — WHERE targets stripe_webhook_events by
+    // Stripe's globally-unique external_event_id, see reserveWebhookEvent's comment.
+    // tenantKey here is the value being WRITTEN (resolved elsewhere), not a filter.
     await this.prisma.tenant().$executeRaw(Prisma.sql`
       UPDATE stripe_webhook_events
       SET
@@ -310,6 +329,9 @@ export class StripeService implements OnModuleInit {
 
   async markWebhookEventFailed(eventId: string, error: unknown, tenantKey: string | null = null): Promise<void> {
     const message = (error instanceof Error ? error.message : String(error ?? "unknown")).slice(0, STRIPE_WEBHOOK_ERROR_LIMIT);
+    // RLS-BYPASS: intentional cross-tenant — WHERE targets stripe_webhook_events by
+    // Stripe's globally-unique external_event_id, see reserveWebhookEvent's comment.
+    // tenantKey here is the value being WRITTEN (resolved elsewhere), not a filter.
     await this.prisma.tenant().$executeRaw(Prisma.sql`
       UPDATE stripe_webhook_events
       SET
@@ -325,6 +347,7 @@ export class StripeService implements OnModuleInit {
   private async getStoredIds(
     tenantKey: string,
   ): Promise<{ externalCustomerId: string | null; externalSubscriptionId: string | null }> {
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<
       { externalCustomerId: string | null; externalSubscriptionId: string | null }[]
     >(Prisma.sql`
@@ -341,6 +364,7 @@ export class StripeService implements OnModuleInit {
     customerId: string | null,
     subscriptionId: string | null,
   ): Promise<void> {
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       UPDATE "TenantPlanProfile"
       SET

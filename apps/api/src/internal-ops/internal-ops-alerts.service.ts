@@ -427,6 +427,11 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async reserveNewIssueAlert(alertKey: string, observedAt: Date): Promise<boolean> {
+    // RLS-BYPASS: ops_alert_states is a global platform-ops table by design, keyed on
+    // alert_key (not per-tenant) — it dedupes/cooldowns internal alerting across the
+    // whole deployment, same reasoning as tenant-directory.service.ts's deliberate
+    // unscoped-client use during provisioning. Every raw call in this file targets
+    // this same table for this same reason.
     const rows = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       INSERT INTO ops_alert_states (
         id,
@@ -457,6 +462,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async reserveStuckJobAlert(observedAt: Date, cooldownUntil: Date): Promise<boolean> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     const inserted = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       INSERT INTO ops_alert_states (
         id,
@@ -487,6 +493,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       return true;
     }
 
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     const updated = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       UPDATE ops_alert_states
       SET
@@ -502,6 +509,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async reserveMediaIntegrityAlert(observedAt: Date, cooldownUntil: Date): Promise<boolean> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     const inserted = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       INSERT INTO ops_alert_states (
         id,
@@ -532,6 +540,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       return true;
     }
 
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     const updated = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       UPDATE ops_alert_states
       SET
@@ -547,6 +556,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async reserveAuthEmailJobFailureAlert(observedAt: Date, cooldownUntil: Date): Promise<boolean> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     const inserted = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       INSERT INTO ops_alert_states (
         id,
@@ -577,6 +587,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       return true;
     }
 
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     const updated = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
       UPDATE ops_alert_states
       SET
@@ -592,6 +603,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async resetAuthEmailJobFailureBreach(observedAt: Date): Promise<void> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
       UPDATE ops_alert_states
       SET
@@ -605,6 +617,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async touchAlertState(alertKey: string, observedAt: Date): Promise<void> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
       UPDATE ops_alert_states
       SET last_observed_at = ${observedAt}, updated_at = ${observedAt}
@@ -613,6 +626,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async resetStuckJobBreach(observedAt: Date): Promise<void> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
       UPDATE ops_alert_states
       SET
@@ -626,6 +640,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async resetMediaIntegrityBreach(observedAt: Date): Promise<void> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
     await this.prismaDirect.getClient().$executeRaw(Prisma.sql`
       UPDATE ops_alert_states
       SET

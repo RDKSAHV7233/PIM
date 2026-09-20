@@ -986,18 +986,19 @@ export class ComplianceService {
     };
   }
 
-  // RLS-BYPASS: manual tenant filter — this.prisma.tenant(tenantKey) selects the right
-  // per-tenant Prisma Client *instance*, but that instance's tenant-scope extension only
-  // instruments ORM query methods (findMany/findUnique/etc.), not $queryRaw. Found during
-  // a QA-plan sprint (2026-09-20) that this WHERE clause never carried a tenant_key filter
-  // at all — an installationId belonging to a DIFFERENT tenant would resolve successfully
-  // here instead of correctly returning null, and for an admin actor the caller's own
-  // assertConnectorInstallationAccess() check is a no-op (`if (this.isAdmin(actor)) return;`),
-  // so the leak reached the caller unfiltered. Contained from leaking actual product/issue
-  // DATA only because the *separate* connectorSubmission.findMany() call a few lines up in
-  // listIssueInbox() goes through the ORM extension and is correctly tenant-scoped — but the
-  // installation's own id/accountAlias/connectorSlug were disclosable cross-tenant on their own.
   private async loadInstallationScopeCandidate(tenantKey: string, installationId: string) {
+    // RLS-BYPASS: manual tenant filter — this.prisma.tenant(tenantKey) selects the right
+    // per-tenant Prisma Client *instance*, but that instance's tenant-scope extension only
+    // instruments ORM query methods (findMany/findUnique/etc.), never a raw query. Found
+    // during a QA-plan sprint (2026-09-20) that this WHERE clause never carried a tenant_key
+    // filter at all — an installationId belonging to a DIFFERENT tenant would resolve
+    // successfully here instead of correctly returning null, and for an admin actor the
+    // caller's own assertConnectorInstallationAccess() check is a no-op
+    // (`if (this.isAdmin(actor)) return;`), so the leak reached the caller unfiltered.
+    // Contained from leaking actual product/issue DATA only because the *separate*
+    // connectorSubmission.findMany() call a few lines up in listIssueInbox() goes through
+    // the ORM extension and is correctly tenant-scoped — but the installation's own
+    // id/accountAlias/connectorSlug were disclosable cross-tenant on their own.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<
       Array<{ id: string; accountAlias: string; connectorSlug: string | null }>
     >(Prisma.sql`

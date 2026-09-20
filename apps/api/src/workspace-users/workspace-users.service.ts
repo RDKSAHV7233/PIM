@@ -270,6 +270,8 @@ export class WorkspaceUsersService {
    */
   async getUserStats(tenantId: string): Promise<{ activeUsers: number; lockedUsers: number; mfaEnrolledCount: number }> {
     const normalizedTenantId = normalizeTenantKey(tenantId);
+    // RLS-BYPASS: manual tenant filter — WHERE ai."tenantKey" = ${normalizedTenantId}
+    // below (me joined on me."tenantKey" = ai."tenantKey", so both sides are scoped).
     const rows = await this.prisma.tenant(normalizedTenantId).$queryRaw<
       Array<{ activeUsers: bigint | number; lockedUsers: bigint | number; mfaEnrolledCount: bigint | number }>
     >`
@@ -669,6 +671,7 @@ export class WorkspaceUsersService {
     // last-admin-guard-real-service-proof.cjs in the PR).
     const updated = await this.prisma.tenant(normalizedTenantId).$transaction(async (tx) => {
       if (existing.role === "admin") {
+        // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${normalizedTenantId} below.
         const lockedActiveAdmins = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT "id" FROM "AuthIdentity"
           WHERE "tenantKey" = ${normalizedTenantId} AND "role" = 'admin' AND "isActive" = true

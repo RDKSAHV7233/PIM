@@ -77,6 +77,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async getPoolStats(): Promise<DbPoolStats> {
     const rows = await this.tenant()
+      // RLS-BYPASS: pg_stat_activity is a Postgres-internal diagnostic view, not tenant
+      // data — this reports connection-pool health for the whole process, filtered only
+      // by this process's own application_name.
       .$queryRaw<DbPoolRow[]>`SELECT
         COUNT(*) FILTER (WHERE state = 'active') AS active,
         COUNT(*) FILTER (WHERE state = 'idle') AS idle,

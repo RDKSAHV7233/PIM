@@ -178,9 +178,11 @@ export class CommercialRequestsService {
     // connector-framework/connector-webhook-ingestion.service.ts.
     const lockKey = `commercial-request:${tenantKey}:upgrade`;
     const { record: existingRecord, created: createdRecord } = await db.$transaction(async (tx) => {
-      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's queryRaw
       // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
-      // $executeRaw, which discards the result set, to take the lock.
+      // executeRaw, which discards the result set, to take the lock.
+      // RLS-BYPASS: advisory lock, not a tenant-table query — no rows read or
+      // written, lockKey is already tenant-namespaced above, nothing to disclose.
       await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)::bigint)`);
 
       const existing = await tx.tenantCommercialRequest.findFirst({
@@ -256,9 +258,11 @@ export class CommercialRequestsService {
     // connector-framework/connector-webhook-ingestion.service.ts.
     const lockKey = `commercial-request:${tenantKey}:${requestType}`;
     const { record, created } = await db.$transaction(async (tx) => {
-      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's queryRaw
       // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
-      // $executeRaw, which discards the result set, to take the lock.
+      // executeRaw, which discards the result set, to take the lock.
+      // RLS-BYPASS: advisory lock, not a tenant-table query — no rows read or
+      // written, lockKey is already tenant-namespaced above, nothing to disclose.
       await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)::bigint)`);
 
       const existing = await tx.tenantCommercialRequest.findFirst({

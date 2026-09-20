@@ -480,6 +480,9 @@ export class InternalOpsSummaryService {
   }
 
   private async countReadinessBlockedProducts(db: Prisma.TransactionClient): Promise<number> {
+    // RLS-BYPASS: intentional cross-tenant — this whole service computes platform-wide
+    // internal-ops readiness counts across every tenant by design, not a single
+    // tenant's view. Every raw call in this file shares that reasoning.
     const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
       SELECT COUNT(DISTINCT "productId")::bigint AS "count"
       FROM "ValidationIssue"
@@ -490,6 +493,7 @@ export class InternalOpsSummaryService {
   }
 
   private async countReadinessProductDataTenants(db: Prisma.TransactionClient): Promise<number> {
+    // RLS-BYPASS: intentional cross-tenant — see countReadinessBlockedProducts above.
     const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
       SELECT COUNT(DISTINCT "tenantKey")::bigint AS "count"
       FROM "ValidationIssue"
@@ -499,6 +503,7 @@ export class InternalOpsSummaryService {
   }
 
   private async countReadinessMappingTenants(db: Prisma.TransactionClient): Promise<number> {
+    // RLS-BYPASS: intentional cross-tenant — see countReadinessBlockedProducts above.
     const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
       SELECT COUNT(DISTINCT tenant_key)::bigint AS "count"
       FROM connector_mapping_versions
@@ -512,6 +517,7 @@ export class InternalOpsSummaryService {
   }
 
   private async countReadinessConnectorTenants(db: Prisma.TransactionClient): Promise<number> {
+    // RLS-BYPASS: intentional cross-tenant — see countReadinessBlockedProducts above.
     const rows = await db.$queryRaw<CountDistinctRow[]>(Prisma.sql`
       SELECT COUNT(DISTINCT tenant_key)::bigint AS "count"
       FROM connector_installations

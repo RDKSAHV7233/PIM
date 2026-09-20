@@ -544,6 +544,7 @@ export class BulkImportService {
     const snapshot = await this.buildTemplateSchemaSnapshot(dto.categoryId);
     const now = new Date();
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const [versionRow] = await this.prisma.tenant().$queryRaw<Array<{ nextVersion: number }>>(
       Prisma.sql`
         SELECT COALESCE(MAX("version"), 0) + 1 AS "nextVersion"
@@ -556,6 +557,7 @@ export class BulkImportService {
     const nextVersion = Number(versionRow?.nextVersion ?? 1);
 
     const templateId = randomUUID();
+    // RLS-BYPASS: manual tenant filter — tenantKey is an explicit INSERT column below.
     await this.prisma.tenant().$executeRaw(
       Prisma.sql`
         INSERT INTO "BulkImportTemplate"
@@ -657,6 +659,7 @@ export class BulkImportService {
           : null,
       };
     }
+    // RLS-BYPASS: manual tenant filter — WHERE t."tenantKey" = ${normalizedTenant} below.
     const templates = await this.prisma.tenant().$queryRaw<BulkImportTemplateRow[]>(
       Prisma.sql`
         SELECT
@@ -692,6 +695,7 @@ export class BulkImportService {
 
   async getTemplate(templateId: string, tenantKey?: string, actor?: PolicyActor) {
     const normalizedTenant = this.resolveRequestTenantKey(tenantKey);
+    // RLS-BYPASS: manual tenant filter — WHERE t."tenantKey" = ${normalizedTenant} below.
     const templates = await this.prisma.tenant().$queryRaw<BulkImportTemplateRow[]>(
       Prisma.sql`
         SELECT

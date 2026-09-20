@@ -35,6 +35,7 @@ function resolveLockDatabaseUrl(): string {
 export async function runWithAdvisoryLock(lockName: string, fn: () => Promise<void>): Promise<boolean> {
   const client = new PrismaClient({ datasources: { db: { url: resolveLockDatabaseUrl() } } });
   try {
+    // RLS-BYPASS: advisory lock, not a tenant-table query — no rows read or written.
     const rows = await client.$queryRaw<{ locked: boolean }[]>`
       SELECT pg_try_advisory_lock(hashtext(${lockName})) AS locked
     `;
@@ -44,6 +45,7 @@ export async function runWithAdvisoryLock(lockName: string, fn: () => Promise<vo
     try {
       await fn();
     } finally {
+      // RLS-BYPASS: advisory lock, not a tenant-table query — no rows read or written.
       await client.$queryRaw`SELECT pg_advisory_unlock(hashtext(${lockName}))`;
     }
     return true;

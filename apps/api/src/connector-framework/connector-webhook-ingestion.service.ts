@@ -203,9 +203,11 @@ export class ConnectorWebhookIngestionService {
     const rawBodySha256 = createHash("sha256").update(rawBody).digest("hex");
 
     return db.$transaction(async (tx) => {
-      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's $queryRaw
+      // pg_advisory_xact_lock() returns SQL void, which @prisma/client's queryRaw
       // cannot deserialize ("Failed to deserialize column of type 'void'"). Use
-      // $executeRaw, which discards the result set, to take the lock.
+      // executeRaw, which discards the result set, to take the lock.
+      // RLS-BYPASS: advisory lock, not a tenant-table query — lockKey is already
+      // tenant-namespaced above, no rows read or written.
       await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)::bigint)`);
 
       const existing = await tx.connectorWebhookEvent.findFirst({

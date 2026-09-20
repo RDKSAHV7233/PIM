@@ -428,6 +428,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   async seedPlanLimits(): Promise<void> {
     for (const item of PLAN_LIMITS) {
+      // RLS-BYPASS: PlanLimits is a global config table by design (one row per plan
+      // tier, shared across every tenant) — not tenant-scoped data.
       await this.prisma.tenant().$executeRaw(Prisma.sql`
         INSERT INTO "PlanLimits" (
           "id",
@@ -741,6 +743,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
     const trialEndsAt = this.buildTrialEndsAt();
 
+    // RLS-BYPASS: manual tenant filter — tenantKey is an explicit INSERT column
+    // and the ON CONFLICT target, so this write can only ever affect this tenant's row.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "TenantPlanProfile"
         ("id", "tenantKey", "planTier", "billingStatus", "accessStatus", "effectiveFrom", "trialEndsAt", "billingContactEmail", "createdAt", "updatedAt")
@@ -781,6 +785,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           : this.buildTrialEndsAt()
         : null;
 
+    // RLS-BYPASS: manual tenant filter — tenantKey is an explicit INSERT column
+    // and the ON CONFLICT target, so this write can only ever affect this tenant's row.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "TenantPlanProfile"
         ("id", "tenantKey", "planTier", "billingStatus", "accessStatus", "effectiveFrom", "trialEndsAt", "billingContactEmail", "updatedBy", "createdAt", "updatedAt")
@@ -885,6 +891,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
             : new Date()
           : null;
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" below scopes the UPDATE.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       UPDATE "TenantPlanProfile"
       SET
@@ -1089,6 +1096,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           storageGb: true, connectorInstallationsCount: true,
         },
       }),
+      // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ANY(${tenantKeys})
+      // below scopes this to exactly the tenant set already resolved in Step 1/2 above.
+      // db is the direct (unscoped) client deliberately, since this admin/commercial-ops
+      // enrichment view spans many tenants at once by design, not a single tenant.
       db.$queryRaw<
         Array<{ tenantKey: string; slug: string; displayName: string; accountCount: number }>
       >`
@@ -1240,6 +1251,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         take: USER_LIMIT,
       }),
       db.authIdentity.count({ where: { tenantKey } }),
+      // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below.
       db.$queryRaw<Array<{
         installationId: string;
         connectorName: string;
@@ -1259,6 +1271,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         ORDER BY ci.created_at DESC
         LIMIT ${CONNECTOR_LIMIT}
       `,
+      // RLS-BYPASS: manual tenant filter — WHERE tenant_key = ${tenantKey} below.
       db.$queryRaw<Array<{ count: number }>>`
         SELECT COUNT(*)::int AS "count"
         FROM connector_installations
@@ -1455,11 +1468,13 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           },
         },
       }),
+      // RLS-BYPASS: manual tenant filter — WHERE tenant_key = ${tenantKey} below.
       this.prisma.tenant(tenantKey).$queryRaw<BytesRow[]>(Prisma.sql`
         SELECT COALESCE(SUM(size_bytes), 0)::double precision AS bytes
         FROM media_assets
         WHERE tenant_key = ${tenantKey}
       `),
+      // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below.
       this.prisma.tenant(tenantKey).$queryRaw<ConnectorCountsRow[]>(Prisma.sql`
         SELECT
           COUNT(*)::int AS "installationCount",
@@ -1490,6 +1505,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       maxAccountsPerConnector: 0,
     };
 
+    // RLS-BYPASS: manual tenant filter — tenantKey is an explicit INSERT column
+    // and part of the ON CONFLICT target, so this write can only ever affect this tenant's row.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "PlanUsage"
         (
@@ -1538,6 +1555,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   async rollupAllTenantsUsage(): Promise<void> {
+    // RLS-BYPASS: intentional cross-tenant scan — this is the scheduled nightly
+    // rollup itself; it must discover every tenant with any usage-relevant data
+    // across all six tables to recompute PlanUsage for each of them below.
     const rows = await this.prisma.tenant().$queryRaw<Array<{ tenantKey: string }>>(Prisma.sql`
       SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "Product"
       UNION
@@ -1574,6 +1594,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   private async getPlanLimits(planTierInput: string): Promise<PlanLimitsRow> {
     const planTier = this.normalizePlanTier(planTierInput);
+    // RLS-BYPASS: PlanLimits is a global config table by design (see seedPlanLimits).
     const rows = await this.prisma.tenant().$queryRaw<PlanLimitsRow[]>(Prisma.sql`
       SELECT
         "planTier" AS "planTier",
@@ -1594,6 +1615,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       return rows[0];
     }
 
+    // RLS-BYPASS: PlanLimits is a global config table by design (see seedPlanLimits).
     const fallback = await this.prisma.tenant().$queryRaw<PlanLimitsRow[]>(Prisma.sql`
       SELECT
         "planTier" AS "planTier",
@@ -1615,6 +1637,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.seedPlanLimits();
+    // RLS-BYPASS: PlanLimits is a global config table by design (see seedPlanLimits).
     const seeded = await this.prisma.tenant().$queryRaw<PlanLimitsRow[]>(Prisma.sql`
       SELECT
         "planTier" AS "planTier",
@@ -1638,6 +1661,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async getConnectorAccountCount(tenantKey: string, connectorSlug: string): Promise<number> {
+    // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<Array<{ accountCount: number }>>(Prisma.sql`
       SELECT COALESCE(COUNT(*), 0)::int AS "accountCount"
       FROM connector_installations ci
@@ -1650,6 +1674,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async getOrCreateTenantPlanProfile(tenantKey: string): Promise<PlanProfileSummary> {
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<TenantPlanProfileRow[]>(Prisma.sql`
       SELECT
         "tenantKey" AS "tenantKey",
@@ -1677,6 +1702,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       return this.mapPlanProfileRow(row);
     }
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const latestUsageRows = await this.prisma.tenant(tenantKey).$queryRaw<LatestPlanUsageTierRow[]>(Prisma.sql`
       SELECT
         "planTier" AS "planTier"
@@ -1689,6 +1715,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const seedBillingStatus = this.normalizeBillingStatus(null, seedPlanTier);
     const seedTrialEndsAt = seedBillingStatus === "trial" ? this.buildTrialEndsAt() : null;
 
+    // RLS-BYPASS: manual tenant filter — tenantKey is an explicit INSERT column
+    // and the ON CONFLICT target, so this write can only ever affect this tenant's row.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "TenantPlanProfile"
         ("id", "tenantKey", "planTier", "billingStatus", "accessStatus", "effectiveFrom", "trialEndsAt", "billingContactEmail", "createdAt", "updatedAt")
@@ -1708,6 +1736,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       ON CONFLICT ("tenantKey") DO NOTHING
     `);
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const createdRows = await this.prisma.tenant(tenantKey).$queryRaw<TenantPlanProfileRow[]>(Prisma.sql`
       SELECT
         "tenantKey" AS "tenantKey",
@@ -2100,6 +2129,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async getUsageRow(tenantKey: string, month: string): Promise<UsageRow | null> {
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<UsageRow[]>(Prisma.sql`
       SELECT
         "tenantKey" AS "tenantKey",
@@ -2119,6 +2149,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async getUsageSummaryRow(tenantKey: string, month: string): Promise<UsageSummaryReadRow | null> {
+    // RLS-BYPASS: manual tenant filter — WHERE usage."tenantKey" = ${tenantKey} below
+    // (PlanLimits joined on planTier is the global config table, not tenant data).
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<UsageSummaryReadRow[]>(Prisma.sql`
       SELECT
         usage."tenantKey" AS "tenantKey",

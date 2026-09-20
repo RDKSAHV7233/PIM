@@ -519,6 +519,9 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
     let recovered = 0;
     let failed = 0;
     try {
+      // RLS-BYPASS: intentional cross-tenant scan — scheduled recovery job, must find
+      // every tenant's stuck queued deliveries, not just one; each row carries its own
+      // tenantKey for correctly-scoped per-row recovery below.
       const rows = await this.prisma.tenant().$queryRaw<
         Array<{ id: string; tenantKey: string; endpointId: string }>
       >(Prisma.sql`

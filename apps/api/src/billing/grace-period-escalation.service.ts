@@ -95,6 +95,10 @@ export class GracePeriodEscalationService implements OnModuleInit, OnModuleDestr
     const now = new Date();
 
     // Find tenants whose grace period has expired but are not yet suspended.
+    // RLS-BYPASS: intentional cross-tenant scan — scheduled job, no per-request tenant
+    // context, deliberately scans every tenant's TenantPlanProfile (no tenant_key filter)
+    // to find and escalate ALL expired grace periods system-wide, same pattern as
+    // commercial-reminders.service.ts's trial-ending scan.
     const rows = await this.prisma.tenant().$queryRaw<GraceExpiredRow[]>(Prisma.sql`
       SELECT "tenantKey", "graceEndsAt", "billingContactEmail"
       FROM "TenantPlanProfile"

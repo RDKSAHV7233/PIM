@@ -99,7 +99,7 @@ export const INTENTIONALLY_UNSCOPED_MODELS: Record<string, string> = {
     "cross-tenant directory table, queried via prisma.tenant(DEFAULT_TENANT_KEY) by design — see TenantDirectoryService",
   // Platform-level Stripe webhook dedup ledger. StripeService never goes through
   // the Prisma Client model API for this table (no prisma.stripeWebhookEvent.*
-  // call exists) — every access is $queryRaw/$executeRaw against
+  // call exists) — every access is queryRaw/executeRaw against
   // stripe_webhook_events directly, so this extension never intercepts it
   // either way. tenant_key itself is nullable and populated only after the
   // tenant is resolved (dedup must happen per Stripe event id across the whole

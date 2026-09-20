@@ -106,6 +106,7 @@ export class ConnectorPermissionService {
     const normalizedSlug = options.connectorSlug.trim().toLowerCase();
     const normalizedAlias = String(options.accountAlias ?? "*").trim() || "*";
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<ConnectorPermissionRow[]>(Prisma.sql`
       SELECT
         "id" AS "id",
@@ -237,6 +238,7 @@ export class ConnectorPermissionService {
   ): Promise<Set<string>> {
     if (normalizedSlugs.length === 0) return new Set();
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<Array<{ connectorSlug: string }>>(Prisma.sql`
       SELECT DISTINCT "connectorSlug" AS "connectorSlug"
       FROM "ConnectorPermission"
@@ -280,6 +282,7 @@ export class ConnectorPermissionService {
     const normalizedSlug = String(connectorSlug ?? "").trim().toLowerCase();
 
     if (normalizedSlug) {
+      // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
       return this.prisma.tenant(tenantKey).$queryRaw<ConnectorPermissionRow[]>(Prisma.sql`
         SELECT
           "id" AS "id",
@@ -299,6 +302,7 @@ export class ConnectorPermissionService {
       `);
     }
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     return this.prisma.tenant(tenantKey).$queryRaw<ConnectorPermissionRow[]>(Prisma.sql`
       SELECT
         "id" AS "id",
@@ -330,6 +334,8 @@ export class ConnectorPermissionService {
     const connectorSlug = input.connectorSlug.trim().toLowerCase();
     const accountAlias = String(input.accountAlias ?? "*").trim() || "*";
 
+    // RLS-BYPASS: manual tenant filter — tenantKey is an explicit INSERT column
+    // and part of the ON CONFLICT target below.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "ConnectorPermission"
         (
@@ -363,6 +369,7 @@ export class ConnectorPermissionService {
         "createdBy" = EXCLUDED."createdBy"
     `);
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<ConnectorPermissionRow[]>(Prisma.sql`
       SELECT
         "id" AS "id",
@@ -411,6 +418,7 @@ export class ConnectorPermissionService {
 
   async revokePermission(permissionId: string, actor: ConnectorActor): Promise<{ id: string; status: "DELETED" }> {
     const tenantKey = this.getTenantKey();
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     const rows = await this.prisma.tenant(tenantKey).$queryRaw<ConnectorPermissionRow[]>(Prisma.sql`
       SELECT
         "id" AS "id",
@@ -448,6 +456,7 @@ export class ConnectorPermissionService {
       },
     });
 
+    // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       DELETE FROM "ConnectorPermission"
       WHERE "tenantKey" = ${tenantKey} AND "id" = ${permissionId}
@@ -497,6 +506,7 @@ export class ConnectorPermissionService {
     const tenantKey = this.getTenantKey();
 
     if (this.isDbAuthMode()) {
+      // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
       const rows = await this.prisma.tenant().$queryRaw<Array<{ userId: string; isActive: boolean }>>(Prisma.sql`
         SELECT
           "userId" AS "userId",

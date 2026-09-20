@@ -78,6 +78,12 @@ export class CommercialRemindersService implements OnModuleInit, OnModuleDestroy
     const now = new Date();
     const windowEnd = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000);
 
+    // RLS-BYPASS: intentional cross-tenant scan — this runs on a schedule with no
+    // per-request tenant context, so `this.prisma.tenant()` (no arg) resolves to the
+    // "default" tenant client, but the query itself carries no tenant_key filter and
+    // SELECTs "tenantKey" as a result column on purpose: trial-ending reminders must
+    // be sent across every tenant, not just one. Not a leak — no caller-supplied
+    // tenantKey is involved, and results aren't returned to any single-tenant request.
     const rows = await this.prisma.tenant().$queryRaw<TrialReminderRow[]>(Prisma.sql`
       SELECT "tenantKey", "trialEndsAt", "billingContactEmail"
       FROM "TenantPlanProfile"
