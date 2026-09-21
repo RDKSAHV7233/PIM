@@ -449,6 +449,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "ebay") {
+        try {
+          await this.captureAndStoreEbayCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1175,6 +1187,10 @@ export class ConnectorInstallerService {
       if (has(dto.externalAccountRef)) types.push("store_url");
       if (has(dto.clientId)) types.push("api_key");
       if (has(dto.refreshToken)) types.push("lang_id");
+    } else if (slug === "ebay") {
+      if (has(dto.clientId)) types.push("client_id");
+      if (has(dto.clientSecret)) types.push("client_secret");
+      if (has(dto.refreshToken)) types.push("refresh_token");
     }
     return types;
   }
@@ -1224,6 +1240,7 @@ export class ConnectorInstallerService {
         return this.updateMeeshoCredentials(tenantKey, installation, dto);
       case "flipkart":
       case "amazon-in":
+      case "ebay":
         return this.updateOAuthTokenExchangeCredentials(tenantKey, installation, dto);
       case "odoo":
         return this.updateOdooCredentials(tenantKey, installation, dto);
@@ -1696,7 +1713,7 @@ export class ConnectorInstallerService {
     installation: { id: string; slug: string },
     dto: UpdateConnectorCredentialsDto,
   ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
-    const prefix = installation.slug === "flipkart" ? "FLIPKART" : "AMAZON";
+    const prefix = installation.slug === "flipkart" ? "FLIPKART" : installation.slug === "ebay" ? "EBAY" : "AMAZON";
     this.assertNoDisallowedFields(dto, ["clientId", "clientSecret", "refreshToken"], installation.slug);
 
     const clientId = dto.clientId?.trim();
@@ -2812,6 +2829,96 @@ export class ConnectorInstallerService {
     });
     // Live preflight (HTTPS + /api/ reachability) deferred to the
     // validateCredentials heartbeat, matching the Odoo install path above.
+  }
+
+  // eBay install-time capture. Uses the same generic client_id/client_secret/
+  // refresh_token OAuth-quad shape as Flipkart/Amazon (no externalAccountRef —
+  // eBay has no natural single "account reference" the way Etsy's shop_id or
+  // Odoo's odoo_url do). marketplaceId reuses Amazon's existing generic DTO
+  // field and is stored in installation.metadata, not as a credential — that
+  // path already populates ctx.marketplaceId for any slug. The three eBay
+  // Business Policy IDs are their own named DTO fields (ebayFulfillmentPolicyId
+  // etc.) and are optional here: a merchant may not have configured eBay
+  // Business Policies yet at install time. They're required only later, by
+  // publishProduct/updateProduct (see ebay.connector.ts's requirePolicyIds()).
+  private async captureAndStoreEbayCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const clientSecret = String(input.dto.clientSecret ?? "").trim();
+    const refreshToken = String(input.dto.refreshToken ?? "").trim();
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      const missing = [!clientId && "Client ID", !clientSecret && "Client Secret", !refreshToken && "Refresh Token"]
+        .filter(Boolean)
+        .join(", ");
+      throw new BadRequestException({
+        error: "EBAY_CREDENTIALS_INCOMPLETE",
+        message: `eBay installation requires Client ID, Client Secret, and Refresh Token (from a completed OAuth consent flow). Missing: ${missing}.`,
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_secret",
+      plainValue: clientSecret,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "refresh_token",
+      plainValue: refreshToken,
+      metadata: { source: "install_form" },
+    });
+
+    const fulfillmentPolicyId = String(input.dto.ebayFulfillmentPolicyId ?? "").trim();
+    const paymentPolicyId = String(input.dto.ebayPaymentPolicyId ?? "").trim();
+    const returnPolicyId = String(input.dto.ebayReturnPolicyId ?? "").trim();
+    if (fulfillmentPolicyId) {
+      await this.credentialEncryptionService.storeCredential({
+        tenantKey: input.tenantKey,
+        installationId: input.installationId,
+        credentialType: "fulfillment_policy_id",
+        plainValue: fulfillmentPolicyId,
+        metadata: { source: "install_form" },
+      });
+    }
+    if (paymentPolicyId) {
+      await this.credentialEncryptionService.storeCredential({
+        tenantKey: input.tenantKey,
+        installationId: input.installationId,
+        credentialType: "payment_policy_id",
+        plainValue: paymentPolicyId,
+        metadata: { source: "install_form" },
+      });
+    }
+    if (returnPolicyId) {
+      await this.credentialEncryptionService.storeCredential({
+        tenantKey: input.tenantKey,
+        installationId: input.installationId,
+        credentialType: "return_policy_id",
+        plainValue: returnPolicyId,
+        metadata: { source: "install_form" },
+      });
+    }
+
+    const marketplaceId = String(input.dto.marketplaceId ?? "").trim() || "EBAY_US";
+    await this.patchInstallationMetadata(input.tenantKey, input.installationId, { marketplaceId });
+    // Live preflight (token exchange + Sell Inventory API reachability)
+    // deferred to validateCredentials heartbeat, matching the Odoo/Etsy/
+    // Dynamics 365/PrestaShop install paths above.
   }
 
   // Etsy install-time capture. DTO field reuse (matching the Odoo convention

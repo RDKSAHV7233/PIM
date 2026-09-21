@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AmazonConnector } from "../connectors/amazon/amazon.connector";
 import { Dynamics365Connector } from "../connectors/dynamics365/dynamics365.connector";
+import { EbayConnector } from "../connectors/ebay/ebay.connector";
 import { EtsyConnector } from "../connectors/etsy/etsy.connector";
 import { FlipkartConnector } from "../connectors/flipkart/flipkart.connector";
 import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
@@ -34,6 +35,7 @@ import { ConnectorRegistry } from "./connector.registry";
   providers: [
     AmazonConnector,
     Dynamics365Connector,
+    EbayConnector,
     EtsyConnector,
     FlipkartConnector,
     MeeshoConnector,

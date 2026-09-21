@@ -101,6 +101,20 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs already found and fixed during the prototype phase, carried into this port from the start: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. Also found: PrestaShop's webservice enforces neither reference uniqueness nor the category foreign key — validateProduct() adds proactive live checks for both. Full publish/update/status-sync round trip was verified live against a real local PrestaShop 9.1.5 Docker instance in the prototype; this TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
   },
+  ebay: {
+    owner: "Platform",
+    milestone: null,
+    blockers: [
+      "regenerate an eBay sandbox keyset (the prior one was lost to a temp-directory cleanup)",
+      "any live credential validation at all",
+      "real publish test",
+      "QA validation",
+      "PO review",
+      "production support (deliberately not built yet — sandbox-only by design)",
+    ],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-21) — the least-verified connector this sprint, zero live checks of any kind (no credentials exist in this environment). One real bug found and fixed by API-semantics review (not live-tested): the prototype's updateProduct() called publishProduct() again, which would re-run create-offer + publish-offer against an already-published offer; fixed to only re-upsert the inventory item. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

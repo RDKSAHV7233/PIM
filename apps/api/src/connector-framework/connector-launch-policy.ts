@@ -104,6 +104,22 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.EBAY) {
+    // The least-verified connector ported this sprint: no eBay credentials
+    // of any kind exist in this environment (a prior sandbox keyset was
+    // lost to an unrelated temp-directory cleanup), so nothing here —
+    // not even a single token exchange — has ever been exercised live.
+    // Sandbox-only by design (see ebay.connector.ts's file header): there is
+    // no configuration value that can select production, so even a bypassed
+    // launch-policy gate could not reach a real eBay account.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "eBay Sell Inventory/Offer API connector (OAuth2 authorization_code + refresh_token). Hardcoded to eBay's sandbox environment only — there is no production option in this connector at all, by design. Zero live verification of any kind: no eBay credentials exist in this environment. Not installable. Install requires client_id, client_secret, refresh_token (from a completed 3-legged OAuth consent flow), a marketplace id (e.g. EBAY_US), and eBay Business Policies (fulfillment/payment/return policy IDs from Seller Hub) for publish to work.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.ETSY) {
     // Same "under_development, not in isInstallableStage()'s list" reasoning
     // as Odoo below: validateCredentials() is proven live against real Etsy
@@ -289,6 +305,22 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       ],
       internalNotes:
         "Ported from the Vexa Connector Hub prototype (2026-09-20). Less verified than Etsy/Odoo at port time: only the Azure AD client_credentials token exchange was proven live against a real vexapim.com Entra app registration — the Business Central data-API call itself was not successfully re-verified after fixing a missing Automation.ReadWrite.All permission (the verification attempt was blocked mid-session before a second live check completed). Do not treat validateCredentials() as proven until that gap closes.",
+    };
+  }
+  if (s === CONNECTOR_SLUGS.EBAY) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: [
+        "regenerate an eBay sandbox keyset (the prior one was lost to a temp-directory cleanup)",
+        "any live credential validation at all",
+        "real publish test",
+        "QA validation",
+        "PO review",
+        "production support (deliberately not built yet — sandbox-only by design)",
+      ],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-21) — the least-verified connector this sprint, zero live checks of any kind (no credentials exist in this environment). One real bug found and fixed by API-semantics review (not live-tested): the prototype's updateProduct() called publishProduct() again, which would re-run create-offer + publish-offer against an already-published offer; fixed to only re-upsert the inventory item, matching eBay's actual idempotent-PUT semantics. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all, since a live publish creates a real public listing.",
     };
   }
   if (s === CONNECTOR_SLUGS.ETSY) {

@@ -471,6 +471,78 @@ export function ConnectorCredentialFields({
     );
   }
 
+  if (slug === "ebay") {
+    return (
+      <>
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          eBay is sandbox-only in this connector — there is no production option. Complete eBay&apos;s OAuth2 consent flow first to get a refresh token, then enter Client ID, Client Secret, and Refresh Token below.
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID
+          </label>
+          <Input id={`${idPrefix}-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="Enter your eBay app's Client ID" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client Secret
+          </label>
+          <Input
+            id={`${idPrefix}-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter your eBay app's Client Secret"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Refresh Token
+          </label>
+          <Input
+            id={`${idPrefix}-refresh-token-${definitionId}`}
+            name="refreshToken"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the refresh token from the OAuth consent flow"
+          />
+        </div>
+        {mode === "install" ? (
+          <>
+            <div className="space-y-1">
+              <label htmlFor={`${idPrefix}-marketplace-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Marketplace ID
+              </label>
+              <Input id={`${idPrefix}-marketplace-${definitionId}`} name="marketplaceId" defaultValue="EBAY_US" placeholder="EBAY_US" autoComplete="off" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={`${idPrefix}-fulfillment-policy-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Fulfillment Policy ID <span className="font-normal text-slate-400">(optional — required before publishing)</span>
+              </label>
+              <Input id={`${idPrefix}-fulfillment-policy-${definitionId}`} name="ebayFulfillmentPolicyId" autoComplete="off" placeholder="From eBay Seller Hub > Business Policies" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={`${idPrefix}-payment-policy-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Payment Policy ID <span className="font-normal text-slate-400">(optional — required before publishing)</span>
+              </label>
+              <Input id={`${idPrefix}-payment-policy-${definitionId}`} name="ebayPaymentPolicyId" autoComplete="off" placeholder="From eBay Seller Hub > Business Policies" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={`${idPrefix}-return-policy-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Return Policy ID <span className="font-normal text-slate-400">(optional — required before publishing)</span>
+              </label>
+              <Input id={`${idPrefix}-return-policy-${definitionId}`} name="ebayReturnPolicyId" autoComplete="off" placeholder="From eBay Seller Hub > Business Policies" />
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Marketplace ID and Business Policy IDs are configured at install time and aren&apos;t changed here.
+          </p>
+        )}
+      </>
+    );
+  }
+
   if (slug === "meesho") {
     // Meesho has no live credential check (RD-MEESHO-1) — credentials are
     // stored unconditionally, so this is offered in credentials mode even

@@ -49,4 +49,25 @@ export class InstallConnectorDto {
   @IsString()
   @MaxLength(100)
   defaultProductType?: string;
+
+  // ── eBay-specific ────────────────────────────────────────────────────────────
+  // eBay Business Policy IDs from Seller Hub > Business Policies. Required
+  // only for publishProduct/updateProduct, not for credential validation — a
+  // merchant may not have configured these yet at install time. marketplaceId
+  // (above) is reused for eBay's marketplace id, e.g. "EBAY_US".
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ebayFulfillmentPolicyId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ebayPaymentPolicyId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ebayReturnPolicyId?: string;
 }
