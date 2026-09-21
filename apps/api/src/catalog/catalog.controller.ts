@@ -100,6 +100,7 @@ export class CatalogController {
         sort: dto.sort,
         sortDir: dto.sortDir,
         offset: dto.offset,
+        hideTestData: dto.hideTestData,
       },
       this.resolveActor(request),
     );

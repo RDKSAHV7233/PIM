@@ -40,7 +40,7 @@ function run() {
       source.includes("loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }))") &&
       source.includes("loadSharedRead(") &&
       source.includes("getAdvancedSearchProducts(") &&
-      source.includes("{ q: initialSearch || undefined, categoryId, brand, status: facetStatus, offset, limit }") &&
+      source.includes("{ q: initialSearch || undefined, categoryId, brand, status: facetStatus, offset, limit, hideTestData }") &&
       source.includes("loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader }))"),
     "Catalog products route must fetch stats, categories, paginated products, and connectors in parallel using shared-read wrappers and the shared server auth context.",
   );

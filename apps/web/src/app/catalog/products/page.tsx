@@ -108,7 +108,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
       loadSharedRead(getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 })),
       loadSharedRead(
         getAdvancedSearchProducts(
-          { q: initialSearch || undefined, categoryId, brand, status: facetStatus, offset, limit },
+          { q: initialSearch || undefined, categoryId, brand, status: facetStatus, offset, limit, hideTestData },
           { role: actorRole, authHeader },
         ).then((res) => ({
           items: res.items as ProductListItem[],
@@ -140,6 +140,15 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
                   : statsResult.value.categories,
             }
           : statsResult.value
+        : null;
+    // F-004: the search endpoint now applies hideTestData server-side (see
+    // getAdvancedSearchProducts above), so productWindow.totalCount is the real, filtered
+    // tenant-wide count. Surfaced separately from stats.products (which stays the always-
+    // unfiltered, un-searched tenant total ProductsTab's empty-state logic depends on) so the
+    // headline can show the true post-filter number without breaking that distinction.
+    const filteredProductsTotal =
+      hideTestData && productWindowResult.state === "available" && productWindow.totalCount !== null
+        ? productWindow.totalCount
         : null;
     const installedConnectors =
       installedConnectorsResult.state === "available" ? installedConnectorsResult.value : [];
@@ -200,6 +209,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           products={productWindow.items}
           categories={categories}
           stats={filteredStats}
+          filteredProductsTotal={filteredProductsTotal}
           productFeedState={productWindowResult.state}
           categoryFeedState={categoriesResult.state}
           statsFeedState={statsResult.state}

@@ -124,6 +124,9 @@ interface ProductsTabProps {
   products: ProductWorkbenchItem[];
   categories: Category[];
   stats: CatalogStats | null;
+  // F-004: the real, server-side-filtered product total when "Hide test data" is on
+  // (null when off, or when the search endpoint didn't return a totalCount).
+  filteredProductsTotal: number | null;
   productFeedState: "available" | "restricted" | "unavailable";
   categoryFeedState: "available" | "restricted" | "unavailable";
   statsFeedState: "available" | "restricted" | "unavailable";
@@ -277,6 +280,7 @@ export function ProductsTab({
   products,
   categories,
   stats,
+  filteredProductsTotal,
   productFeedState,
   categoryFeedState,
   statsFeedState,
@@ -1022,7 +1026,9 @@ export function ProductsTab({
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             {stats
-              ? `Categories: ${stats.categories} | Products: ${stats.products} | Variants: ${stats.variants}`
+              ? `Categories: ${stats.categories} | Products: ${stats.products}${
+                  filteredProductsTotal !== null ? ` (${filteredProductsTotal} after hiding test data)` : ""
+                } | Variants: ${stats.variants}`
               : statsFeedState === "restricted"
                 ? "Catalog totals are limited for your role."
                 : "Catalog totals are temporarily unavailable."}

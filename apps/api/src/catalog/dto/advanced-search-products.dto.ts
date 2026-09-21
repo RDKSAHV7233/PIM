@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsOptional, IsString, IsIn, IsArray, IsInt, Max, MaxLength, Min } from "class-validator";
+import { ArrayMaxSize, IsBoolean, IsOptional, IsString, IsIn, IsArray, IsInt, Max, MaxLength, Min } from "class-validator";
 import { Transform, Type } from "class-transformer";
 
 /**
@@ -101,4 +101,13 @@ export class AdvancedSearchProductsDto {
   @Min(0)
   @Max(100000)
   offset?: number;
+
+  /**
+   * F-004: exclude QA/E2E fixture products (see test-data-exclusion.ts) from results,
+   * totalCount, and pagination — not just from the client's own rendered page.
+   */
+  @IsOptional()
+  @Transform(({ value }) => value === "true" || value === true)
+  @IsBoolean()
+  hideTestData?: boolean;
 }

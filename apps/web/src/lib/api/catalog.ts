@@ -247,6 +247,7 @@ export interface AdvancedSearchQuery {
   sort?: string;
   sortDir?: "asc" | "desc";
   offset?: number;
+  hideTestData?: boolean;
 }
 
 export interface AdvancedSearchPage {
@@ -330,6 +331,7 @@ export async function getAdvancedSearchProducts(
   if (typeof query.offset === "number") params.set("offset", String(query.offset));
   if (query.sort) params.set("sort", query.sort);
   if (query.sortDir) params.set("sortDir", query.sortDir);
+  if (typeof query.hideTestData === "boolean") params.set("hideTestData", String(query.hideTestData));
   const qs = params.size > 0 ? `?${params.toString()}` : "";
   const response = await fetchJson<AdvancedSearchPage | ProductListItem[]>(
     `/catalog/products/advanced-search${qs}`,

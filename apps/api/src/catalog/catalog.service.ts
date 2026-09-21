@@ -26,6 +26,7 @@ import {
 } from "../common/pagination/cursor-pagination";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { buildTestDataExclusionWhere } from "./test-data-exclusion";
 import { CreateApprovalCommentDto } from "./dto/create-approval-comment.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
@@ -561,6 +562,7 @@ export class CatalogService {
       sort?: "updatedAt" | "createdAt" | "title";
       sortDir?: "asc" | "desc";
       offset?: number;
+      hideTestData?: boolean;
     },
     actor?: ActorContext,
   ) {
@@ -621,6 +623,13 @@ export class CatalogService {
       if (brandTrimmed) {
         filterClauses.push({ brand: { contains: brandTrimmed, mode: "insensitive" } });
       }
+    }
+
+    // F-004: exclude QA/E2E fixture products at the query level (see test-data-exclusion.ts)
+    // so totalCount and pagination reflect the filter, not just the current page's rows.
+    const testDataExclusion = buildTestDataExclusionWhere(params.hideTestData ?? false);
+    if (testDataExclusion) {
+      filterClauses.push(testDataExclusion);
     }
 
     // Channel/connector submission filter — resolves slug → definition → installations → product IDs
