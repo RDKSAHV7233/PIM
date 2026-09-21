@@ -301,7 +301,11 @@ export class PrestaShopConnector implements ConnectorInterface {
 
   // ─── build_payload equivalent ─────────────────────────────────────────────
 
-  private buildProductXml(product: ProductPayload, langId: string): string {
+  // externalRef is required for PUT (update) — verified live against a real
+  // PrestaShop 9.1.5 instance 2026-09-21: omitting <id> from the body (only
+  // having it in the URL) fails with "id is required when modifying a
+  // resource". Create (POST) must NOT send an id — PrestaShop assigns one.
+  private buildProductXml(product: ProductPayload, langId: string, externalRef?: string): string {
     const categoryId = (product.attributes ?? {})["prestashop_category_id"] ?? DEFAULT_CATEGORY_ID;
     const name = escapeXml(product.title);
     const description = escapeXml(product.description || product.title);
@@ -309,6 +313,7 @@ export class PrestaShopConnector implements ConnectorInterface {
     return (
       "<prestashop>" +
       "<product>" +
+      (externalRef ? `<id>${escapeXml(externalRef)}</id>` : "") +
       `<id_category_default>${categoryId}</id_category_default>` +
       "<active>1</active>" +
       "<show_price>1</show_price>" +
@@ -348,7 +353,7 @@ export class PrestaShopConnector implements ConnectorInterface {
     const response = await this.fetchWithTimeout(`${storeUrl}/api/products/${externalRef}`, {
       method: "PUT",
       headers: { Authorization: this.buildAuthHeader(apiKey), "Content-Type": "application/xml" },
-      body: this.buildProductXml(product, langId),
+      body: this.buildProductXml(product, langId, externalRef),
     });
     const text = await response.text();
     if (response.status !== 200) {

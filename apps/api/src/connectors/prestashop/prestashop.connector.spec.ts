@@ -90,6 +90,22 @@ describe("PrestaShopConnector.buildProductXml", () => {
     expect(xml).not.toContain("<Test>");
   });
 
+  it("omits the top-level product <id> for a create payload (no externalRef given)", () => {
+    const connector = makeConnector();
+    const xml = (connector as any).buildProductXml(baseProduct, "1");
+    expect(xml).not.toContain("<product><id>");
+  });
+
+  it("includes <id> for an update payload — PrestaShop rejects a PUT without it", () => {
+    // Regression test for a real bug found via live verification 2026-09-21:
+    // updateProduct() sent the id only in the URL, but PrestaShop's
+    // webservice also requires it in the XML body for a PUT, rejecting
+    // otherwise with "id is required when modifying a resource".
+    const connector = makeConnector();
+    const xml = (connector as any).buildProductXml(baseProduct, "1", "77");
+    expect(xml).toContain("<id>77</id>");
+  });
+
   it("falls back to the default category id when none is set", () => {
     const connector = makeConnector();
     const xml = (connector as any).buildProductXml({ ...baseProduct, attributes: {} }, "1");
@@ -314,6 +330,7 @@ describe("PrestaShopConnector.publishProduct / updateProduct", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://shop.example.com/api/products/77");
     expect(init.method).toBe("PUT");
+    expect(init.body).toContain("<id>77</id>");
   });
 });
 
