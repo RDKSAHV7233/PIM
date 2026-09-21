@@ -1376,6 +1376,9 @@ export class CatalogService {
       },
     });
     await this.notificationsService.retargetProductNotifications(productId);
+    // F-018: without this, an open ValidationIssue for this product lingers in
+    // the Issue Inbox forever with a "Fix Now" link to a now-404ing product page.
+    await this.complianceService.resolveOpenIssuesForDeletedProduct(productId);
   }
 
   async purgeProduct(productId: string, actor: ActorContext) {

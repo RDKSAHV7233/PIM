@@ -58,6 +58,7 @@ function makeService(productOverride?: Partial<typeof BASE_PRODUCT>) {
 
   const complianceService = {
     validateAndPersistProduct: jest.fn().mockResolvedValue(undefined),
+    resolveOpenIssuesForDeletedProduct: jest.fn().mockResolvedValue({ resolved: 0 }),
   };
 
   // Default: never blocks. Tests that need to exercise the SKU-limit rejection path

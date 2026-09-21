@@ -276,6 +276,39 @@ export class ComplianceService {
     };
   }
 
+  /**
+   * F-018: soft-deleting a product (Product.deletedAt) doesn't cascade to its
+   * ValidationIssue rows the way a hard purge does (that relation is
+   * onDelete: Cascade at the DB level, but a soft-delete is just an UPDATE,
+   * so cascade never fires). Left alone, an open issue for a soft-deleted
+   * product sits in the Issue Inbox forever with a "Fix Now" link to a
+   * product page that 404s (getProduct's soft-delete scope excludes it).
+   * Mirrors NotificationsService.retargetProductNotifications(), called
+   * alongside this from CatalogService.deleteProduct() — same moment,
+   * same "this product is gone, stop pointing at it" intent, applied to
+   * the record type that actually fits: there's no live page left to fix,
+   * so the issue is resolved (or the closest available status; the
+   * ValidationIssue enum has no separate "obsolete"/"cancelled" state).
+   */
+  async resolveOpenIssuesForDeletedProduct(productId: string) {
+    const normalizedProductId = String(productId ?? "").trim();
+    if (normalizedProductId.length === 0) {
+      return { resolved: 0 };
+    }
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const updateResult = await this.prisma.tenant(tenantKey).validationIssue.updateMany({
+      where: {
+        tenantKey,
+        productId: normalizedProductId,
+        status: ValidationIssueStatus.open,
+      },
+      data: {
+        status: ValidationIssueStatus.resolved,
+      },
+    });
+    return { resolved: updateResult.count };
+  }
+
   async resolveIssueInboxWarnings(issueIds: string[], actor?: PolicyActor) {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const uniqueIssueIds = Array.from(
