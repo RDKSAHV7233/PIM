@@ -248,6 +248,15 @@ async function deactivateUser(apiBase, adminToken, userId) {
     headers: { authorization: `Bearer ${adminToken}` },
     retries: 1,
   }).catch(() => null);
+  // F-002: deactivating alone leaves a permanent "inactive" AuthIdentity row behind.
+  // This script runs on every push to main (deploy-staging.yml), so those rows
+  // accumulated indefinitely with no cleanup. Purge requires deactivate-before-purge
+  // (already satisfied above) — see workspace-users.service.ts.
+  await requestJson(`${apiBase}/api/v1/admin/workspace/users/${encodeURIComponent(userId)}/purge`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${adminToken}` },
+    retries: 1,
+  }).catch(() => null);
 }
 
 async function main() {
