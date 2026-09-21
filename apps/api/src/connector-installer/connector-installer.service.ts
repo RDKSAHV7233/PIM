@@ -461,6 +461,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "bigcommerce") {
+        try {
+          await this.captureAndStoreBigCommerceCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1191,6 +1203,9 @@ export class ConnectorInstallerService {
       if (has(dto.clientId)) types.push("client_id");
       if (has(dto.clientSecret)) types.push("client_secret");
       if (has(dto.refreshToken)) types.push("refresh_token");
+    } else if (slug === "bigcommerce") {
+      if (has(dto.externalAccountRef)) types.push("store_hash");
+      if (has(dto.clientId)) types.push("api_key");
     }
     return types;
   }
@@ -1250,6 +1265,8 @@ export class ConnectorInstallerService {
         return this.updateDynamics365Credentials(tenantKey, installation, dto);
       case "prestashop":
         return this.updatePrestaShopCredentials(tenantKey, installation, dto);
+      case "bigcommerce":
+        return this.updateBigCommerceCredentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1448,6 +1465,54 @@ export class ConnectorInstallerService {
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
         data: { status: "ACTIVE", externalAccountRef: suppliedStoreUrl, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  // BigCommerce only needs two fields — no HTTPS enforcement here since the
+  // store_hash isn't a URL (it's a bare identifier used to build the fixed
+  // api.bigcommerce.com host, which is always HTTPS).
+  private async updateBigCommerceCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId"], "bigcommerce");
+
+    const suppliedStoreHash = dto.externalAccountRef?.trim();
+    const apiKey = dto.clientId?.trim();
+
+    const missing = [!suppliedStoreHash && "Store Hash", !apiKey && "API Access Token"].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "BIGCOMMERCE_CREDENTIALS_INCOMPLETE",
+        message: `BigCommerce credentials require Store Hash and API Access Token. Missing: ${missing}.`,
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("bigcommerce");
+    const verification = await connector.verifyCandidateCredentials!({
+      store_hash: suppliedStoreHash!,
+      api_key: apiKey!,
+    });
+
+    this.throwOnUnverified("BIGCOMMERCE", verification);
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "store_hash", plainValue: suppliedStoreHash!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "api_key", plainValue: apiKey!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: suppliedStoreHash, updatedAt: new Date() },
       });
     });
 
@@ -2829,6 +2894,46 @@ export class ConnectorInstallerService {
     });
     // Live preflight (HTTPS + /api/ reachability) deferred to the
     // validateCredentials heartbeat, matching the Odoo install path above.
+  }
+
+  // BigCommerce install-time capture. DTO field reuse:
+  //   externalAccountRef -> store_hash  (e.g. "abc123", from the store's Store
+  //                                      API Accounts URL)
+  //   clientId           -> api_key     (Store API account's Access Token,
+  //                                      sent as the X-Auth-Token header)
+  private async captureAndStoreBigCommerceCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const storeHash = String(input.externalAccountRef ?? "").trim();
+    const apiKey = String(input.dto.clientId ?? "").trim();
+
+    if (!storeHash || !apiKey) {
+      const missing = [!storeHash && "Store Hash", !apiKey && "API Access Token"].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "BIGCOMMERCE_CREDENTIALS_INCOMPLETE",
+        message: `BigCommerce installation requires Store Hash and API Access Token. Missing: ${missing}.`,
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "store_hash",
+      plainValue: storeHash,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "api_key",
+      plainValue: apiKey,
+      metadata: { source: "install_form" },
+    });
+    // Live preflight (X-Auth-Token + /catalog/summary reachability) deferred
+    // to the validateCredentials heartbeat, matching the Odoo install path above.
   }
 
   // eBay install-time capture. Uses the same generic client_id/client_secret/

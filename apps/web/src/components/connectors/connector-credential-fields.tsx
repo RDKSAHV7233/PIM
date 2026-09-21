@@ -10,6 +10,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "etsy") return "Shop ID";
   if (slug === "dynamics-365") return "Azure AD Tenant";
   if (slug === "prestashop") return "Store URL";
+  if (slug === "bigcommerce") return "Store Hash";
   return "External Account Ref";
 }
 
@@ -21,15 +22,17 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "etsy") return "Enter the numeric Etsy shop ID";
   if (slug === "dynamics-365") return "Azure AD tenant ID or domain (e.g. contoso.onmicrosoft.com)";
   if (slug === "prestashop") return "https://shop.example.com";
+  if (slug === "bigcommerce") return "Enter the store hash (e.g. abc123)";
   return "Optional";
 }
 
 /**
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
  * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id,
- * Dynamics 365 aad_tenant, PrestaShop store_url) — matches the backend's
- * per-connector field allowlist in ConnectorInstallerService.updateCredentials()
- * exactly. Flipkart/Amazon/Meesho reject a non-empty externalAccountRef there.
+ * Dynamics 365 aad_tenant, PrestaShop store_url, BigCommerce store_hash) —
+ * matches the backend's per-connector field allowlist in
+ * ConnectorInstallerService.updateCredentials() exactly. Flipkart/Amazon/
+ * Meesho/eBay reject a non-empty externalAccountRef there.
  */
 export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
   return (
@@ -38,7 +41,8 @@ export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
     slug === "odoo" ||
     slug === "etsy" ||
     slug === "dynamics-365" ||
-    slug === "prestashop"
+    slug === "prestashop" ||
+    slug === "bigcommerce"
   );
 }
 
@@ -539,6 +543,30 @@ export function ConnectorCredentialFields({
             Marketplace ID and Business Policy IDs are configured at install time and aren&apos;t changed here.
           </p>
         )}
+      </>
+    );
+  }
+
+  if (slug === "bigcommerce") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "BigCommerce authenticates via a Store API account (Settings > API > Store API Accounts). Enter the Store Hash (above, from the account's API path) and its Access Token below. Values are encrypted on save and never shown again."
+            : "Stored secrets cannot be displayed. Re-enter the Store Hash (above) and Access Token to replace this installation's credential set — Vexa verifies them with BigCommerce before saving."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            API Access Token
+          </label>
+          <Input
+            id={`${idPrefix}-client-id-${definitionId}`}
+            name="clientId"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the Store API account's Access Token"
+          />
+        </div>
       </>
     );
   }

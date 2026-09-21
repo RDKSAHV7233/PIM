@@ -6,6 +6,7 @@
  */
 export const CONNECTOR_SLUGS = {
   AMAZON: "amazon-in",
+  BIGCOMMERCE: "bigcommerce",
   DYNAMICS_365: "dynamics-365",
   EBAY: "ebay",
   ETSY: "etsy",

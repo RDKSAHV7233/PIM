@@ -86,6 +86,20 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.BIGCOMMERCE) {
+    // Same "under_development, not installable" reasoning as Odoo/PrestaShop:
+    // the Python prototype's BigCommerce connector was sandbox-verified
+    // against a real BigCommerce trial store with no bugs found — but no
+    // live credentials exist in this environment to re-verify this
+    // TypeScript port, only unit tests.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "BigCommerce V3 Catalog API connector (static store API account token via X-Auth-Token). Sandbox-verified in the pre-port prototype with no bugs found; this PIM1 port has only been unit-tested, not yet re-verified live. Not installable until that clears. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.DYNAMICS_365) {
     // Deliberately more cautious than Etsy/Odoo's under_development notes:
     // only the Azure AD client_credentials token exchange was proven live
@@ -105,17 +119,20 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.EBAY) {
-    // The least-verified connector ported this sprint: no eBay credentials
-    // of any kind exist in this environment (a prior sandbox keyset was
-    // lost to an unrelated temp-directory cleanup), so nothing here —
-    // not even a single token exchange — has ever been exercised live.
-    // Sandbox-only by design (see ebay.connector.ts's file header): there is
-    // no configuration value that can select production, so even a bypassed
+    // Fully live-verified (2026-09-22): completed a real 3-legged OAuth
+    // consent flow against an eBay sandbox account and confirmed
+    // validateCredentials() against the real Sell Inventory API (after
+    // fixing a real endpoint bug — see connector.ts's file header). Still
+    // under_development / not installable since publishProduct() has never
+    // been exercised (no eBay Business Policies configured for the test
+    // account yet) and QA/PO review haven't happened. Sandbox-only by
+    // design (see ebay.connector.ts's file header): there is no
+    // configuration value that can select production, so even a bypassed
     // launch-policy gate could not reach a real eBay account.
     return {
       launchStage: "under_development",
       launchNote:
-        "eBay Sell Inventory/Offer API connector (OAuth2 authorization_code + refresh_token). Hardcoded to eBay's sandbox environment only — there is no production option in this connector at all, by design. Zero live verification of any kind: no eBay credentials exist in this environment. Not installable. Install requires client_id, client_secret, refresh_token (from a completed 3-legged OAuth consent flow), a marketplace id (e.g. EBAY_US), and eBay Business Policies (fulfillment/payment/return policy IDs from Seller Hub) for publish to work.",
+        "eBay Sell Inventory/Offer API connector (OAuth2 authorization_code + refresh_token). Hardcoded to eBay's sandbox environment only — there is no production option in this connector at all, by design. Credential validation is live-verified against a real eBay sandbox account; publishProduct()/updateProduct() are implemented but not yet exercised — blocked on eBay Business Policies (fulfillment/payment/return) not being configured for the test account yet. Install requires client_id, client_secret, refresh_token (from a completed 3-legged OAuth consent flow), a marketplace id (e.g. EBAY_US), and those Business Policy IDs for publish to work.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -182,17 +199,15 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.PRESTASHOP) {
-    // Same "under_development, not installable" reasoning as Odoo above: the
-    // Python prototype's PrestaShop connector was verified live end-to-end
-    // against a real PrestaShop 9.1.5 instance (publish, update, status sync,
-    // plus two real bugs fixed — a stale error-code table and an XML error
-    // envelope that was never actually parsed). This TypeScript port has NOT
-    // yet been re-verified live in PIM1 itself, only unit-tested — the same
-    // gap Odoo had before its own re-verification pass.
+    // Re-verified live from within PIM1 itself (2026-09-21) against a real
+    // local PrestaShop 9.1.5 Docker sandbox — full publish/validate/status-
+    // sync/update round trip confirmed working end-to-end. Still
+    // under_development / not installable: QA validation and PO review
+    // haven't happened yet, not because of unproven code.
     return {
       launchStage: "under_development",
       launchNote:
-        "PrestaShop Webservice API connector (XML over REST, HTTP Basic auth with the webservice key). Publish, update, and status-sync were verified live against a real PrestaShop 9.1.5 instance in the pre-port prototype; this PIM1 port has not yet been re-verified live. Not installable until that clears. Install requires store_url (HTTPS), a Webservice API key with products + categories (+ languages) read permission, and a language id. Note: PrestaShop's webservice enforces neither reference (SKU) uniqueness nor the category foreign key — validateProduct() adds proactive checks for both since the platform itself won't catch them.",
+        "PrestaShop Webservice API connector (XML over REST, HTTP Basic auth with the webservice key). Publish, update, status-sync, and live category/reference validation checks are all verified live from within PIM1 itself against a real PrestaShop 9.1.5 sandbox (9/9 checks passing, including a real bug found and fixed by that verification: updateProduct() needed <id> in the XML body). Not installable pending QA validation and PO review. Install requires store_url (HTTPS), a Webservice API key with products + categories (+ languages) read permission, and a language id. Note: PrestaShop's webservice enforces neither reference (SKU) uniqueness nor the category foreign key — validateProduct() adds proactive checks for both since the platform itself won't catch them.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -293,6 +308,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.AMAZON) {
     return { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." };
   }
+  if (s === CONNECTOR_SLUGS.BIGCOMMERCE) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: ["re-verify live against a real BigCommerce trial store from within PIM1", "QA validation", "PO review"],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-22). Sandbox-verified in the prototype phase against a real BigCommerce trial store with no bugs found. This TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
+    };
+  }
   if (s === CONNECTOR_SLUGS.DYNAMICS_365) {
     return {
       owner: "Platform",
@@ -312,15 +336,13 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       owner: "Platform",
       milestone: null,
       blockers: [
-        "regenerate an eBay sandbox keyset (the prior one was lost to a temp-directory cleanup)",
-        "any live credential validation at all",
-        "real publish test",
+        "real publish test (needs eBay Business Policies configured for the sandbox test account)",
         "QA validation",
         "PO review",
         "production support (deliberately not built yet — sandbox-only by design)",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-21) — the least-verified connector this sprint, zero live checks of any kind (no credentials exist in this environment). One real bug found and fixed by API-semantics review (not live-tested): the prototype's updateProduct() called publishProduct() again, which would re-run create-offer + publish-offer against an already-published offer; fixed to only re-upsert the inventory item, matching eBay's actual idempotent-PUT semantics. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all, since a live publish creates a real public listing.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-21), then fully live-verified (2026-09-22) against a real eBay sandbox account: registered a sandbox test user, completed the 3-legged OAuth consent flow, and obtained a genuine refresh_token. Two real bugs found and fixed: (1) updateProduct() originally re-ran create-offer + publish-offer against an already-published offer, matching eBay's actual idempotent-PUT semantics instead; (2) validateCredentials() called GET /inventory_item_group, which has no bulk-list route and 404s even with fully valid credentials — fixed to use GET /inventory_item, verified live. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all, since a live publish creates a real public listing.",
     };
   }
   if (s === CONNECTOR_SLUGS.ETSY) {
@@ -338,16 +360,16 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       milestone: null,
       blockers: ["QA validation", "PO review", "customer pilot"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase; not yet re-verified against this codebase's own CI/staging.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector.ts logic (raw JSON-RPC calls reproducing publishProduct/updateProduct/syncSubmissionStatus exactly) against a restored real Odoo 17 sandbox.",
     };
   }
   if (s === CONNECTOR_SLUGS.PRESTASHOP) {
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["re-verify live against a real PrestaShop instance from within PIM1", "QA validation", "PO review"],
+      blockers: ["QA validation", "PO review"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs already found and fixed during the prototype phase, carried into this port from the start: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope (every failure hit a hardcoded placeholder). Also found: PrestaShop's webservice enforces neither reference uniqueness nor the category foreign key — validateProduct() adds proactive live checks for both. Full publish/update/status-sync round trip was verified live against a real local PrestaShop 9.1.5 Docker instance in the prototype; this TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20), then fully live-verified from within PIM1 itself (2026-09-21) against a real local PrestaShop 9.1.5 Docker sandbox: publish, validate (live category/reference checks), status sync, and update all confirmed working end-to-end (9/9 checks). Two real bugs found and fixed during the port: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. A third real bug was found by the live-verification pass itself: updateProduct() omitted the required <id> field from the XML body, which PrestaShop's webservice rejects — fixed and re-verified live. This is the most-proven connector ported this sprint.",
     };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {

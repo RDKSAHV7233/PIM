@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AmazonConnector } from "../connectors/amazon/amazon.connector";
+import { BigCommerceConnector } from "../connectors/bigcommerce/bigcommerce.connector";
 import { Dynamics365Connector } from "../connectors/dynamics365/dynamics365.connector";
 import { EbayConnector } from "../connectors/ebay/ebay.connector";
 import { EtsyConnector } from "../connectors/etsy/etsy.connector";
@@ -34,6 +35,7 @@ import { ConnectorRegistry } from "./connector.registry";
   controllers: [ConnectorWebhookRelayController],
   providers: [
     AmazonConnector,
+    BigCommerceConnector,
     Dynamics365Connector,
     EbayConnector,
     EtsyConnector,

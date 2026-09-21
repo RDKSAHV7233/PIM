@@ -73,7 +73,7 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     milestone: null,
     blockers: ["QA validation", "PO review", "customer pilot"],
     internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth uses /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design. Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase; not yet re-verified against this codebase's own CI/staging.",
+      "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth uses /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design. Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector logic against a restored real Odoo 17 sandbox.",
   },
   etsy: {
     owner: "Platform",
@@ -97,23 +97,28 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
   prestashop: {
     owner: "Platform",
     milestone: null,
-    blockers: ["re-verify live against a real PrestaShop instance from within PIM1", "QA validation", "PO review"],
+    blockers: ["QA validation", "PO review"],
     internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs already found and fixed during the prototype phase, carried into this port from the start: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. Also found: PrestaShop's webservice enforces neither reference uniqueness nor the category foreign key — validateProduct() adds proactive live checks for both. Full publish/update/status-sync round trip was verified live against a real local PrestaShop 9.1.5 Docker instance in the prototype; this TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
+      "Ported from the Vexa Connector Hub prototype (2026-09-20), then fully live-verified from within PIM1 itself (2026-09-21) against a real local PrestaShop 9.1.5 Docker sandbox: publish, validate (live category/reference checks), status sync, and update all confirmed working end-to-end (9/9 checks). Two real bugs found and fixed during the port: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. A third real bug was found by the live-verification pass itself: updateProduct() omitted the required <id> field from the XML body, which PrestaShop's webservice rejects — fixed and re-verified live. This is the most-proven connector ported this sprint.",
   },
   ebay: {
     owner: "Platform",
     milestone: null,
     blockers: [
-      "regenerate an eBay sandbox keyset (the prior one was lost to a temp-directory cleanup)",
-      "any live credential validation at all",
-      "real publish test",
+      "real publish test (needs eBay Business Policies configured for the sandbox test account)",
       "QA validation",
       "PO review",
       "production support (deliberately not built yet — sandbox-only by design)",
     ],
     internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-21) — the least-verified connector this sprint, zero live checks of any kind (no credentials exist in this environment). One real bug found and fixed by API-semantics review (not live-tested): the prototype's updateProduct() called publishProduct() again, which would re-run create-offer + publish-offer against an already-published offer; fixed to only re-upsert the inventory item. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all.",
+      "Ported from the Vexa Connector Hub prototype (2026-09-21), then fully live-verified (2026-09-22) against a real eBay sandbox account: registered a sandbox test user, completed the 3-legged OAuth consent flow, and obtained a genuine refresh_token. Two real bugs found and fixed: (1) updateProduct() originally re-ran create-offer + publish-offer against an already-published offer — fixed to only re-upsert the inventory item; (2) validateCredentials() called GET /inventory_item_group, which has no bulk-list route and 404s even with fully valid credentials — fixed to use GET /inventory_item, verified live. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all.",
+  },
+  bigcommerce: {
+    owner: "Platform",
+    milestone: null,
+    blockers: ["re-verify live against a real BigCommerce trial store from within PIM1", "QA validation", "PO review"],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-22). Sandbox-verified in the prototype phase against a real BigCommerce trial store with no bugs found. This TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
   },
 };
 

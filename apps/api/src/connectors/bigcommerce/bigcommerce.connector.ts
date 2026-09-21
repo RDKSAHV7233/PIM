@@ -1,0 +1,315 @@
+// apps/api/src/connectors/bigcommerce/bigcommerce.connector.ts
+//
+// Capabilities: PUBLISH + VALIDATE + STATUS_SYNC
+// implementationStatus: full (code-complete); launch stage: under_development
+// (see connector-launch-policy.ts).
+//
+// Auth: BigCommerce V3 Catalog API — a static store API account token sent
+// as the X-Auth-Token header. No OAuth, no token refresh.
+//
+// Credential storage (ConnectorCredential rows per installationId):
+//   credentialType: 'store_hash'  — e.g. "abc123", the store identifier from
+//                                   the store's Store API Accounts URL
+//                                   (https://api.bigcommerce.com/stores/{store_hash}/v3)
+//   credentialType: 'api_key'     — the Store API account's Access Token
+//
+// Ported from the Vexa Connector Hub prototype (2026-09-22), which was
+// sandbox-verified against a real BigCommerce trial store with no bugs
+// found — but no live credentials exist in this environment to re-verify
+// this TypeScript port, so treat it the same as the other ported connectors
+// that haven't been re-proven from within PIM1 itself.
+
+import { Injectable } from "@nestjs/common";
+import { LoggerService } from "../../common/logging/logger.service";
+import {
+  decryptCredentialValue,
+  parseCredentialKeyVersion,
+  loadCredentialEncryptionKeys,
+} from "../../connector-installer/credential-encryption.util";
+import {
+  ConnectorCap,
+  ConnectorContext,
+  ConnectorImplementationStatus,
+  ConnectorInterface,
+  ConnectorIssue,
+  CredentialVerificationResult,
+  ProductPayload,
+  SubmissionRef,
+  SubmissionStatusUpdate,
+  ValidationResult,
+} from "../../connector-framework/connector.interface";
+import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+
+const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
+
+type ResolvedCredentials = { storeHash: string; apiKey: string };
+
+const ERROR_MESSAGES: Record<string, string> = {
+  DuplicateSKUError: "This SKU already exists in BigCommerce. Update the existing product instead.",
+  ProductValidationError: "BigCommerce validation failed. Check name, price and weight.",
+  InvalidCategoryIdError: "The mapped BigCommerce category id does not exist.",
+  TooManyOptionsError: "BigCommerce allows at most 600 variants / 5 options per product.",
+};
+
+export class BigCommercePublishError extends Error {
+  constructor(
+    public readonly issues: ConnectorIssue[],
+    message: string,
+  ) {
+    super(message);
+    this.name = "BigCommercePublishError";
+  }
+}
+
+@Injectable()
+export class BigCommerceConnector implements ConnectorInterface {
+  readonly slug = "bigcommerce";
+  readonly displayName = "BigCommerce";
+  readonly capabilities: ConnectorCap[] = ["PUBLISH", "VALIDATE", "STATUS_SYNC"];
+  readonly implementationStatus: ConnectorImplementationStatus = "full";
+
+  private readonly keys = loadCredentialEncryptionKeys(process.env);
+
+  constructor(
+    private readonly prismaDirect: PrismaDirectService,
+    private readonly logger: LoggerService,
+  ) {}
+
+  // ─── credential helpers ─────────────────────────────────────────────────
+
+  private async getPlainCredential(ctx: ConnectorContext, credentialType: string): Promise<string | null> {
+    const db = this.prismaDirect.getClient();
+    const row = await db.connectorCredential.findFirst({
+      where: { tenantKey: ctx.tenantId, installationId: ctx.installationId, credentialType },
+      select: { encryptedValue: true, keyVersion: true },
+    });
+    if (!row) {
+      return null;
+    }
+    const version = parseCredentialKeyVersion(row.keyVersion ?? "v1");
+    const key = this.keys.get(version);
+    if (!key) {
+      return null;
+    }
+    return decryptCredentialValue(row.encryptedValue, key);
+  }
+
+  private async resolveCredentials(ctx: ConnectorContext): Promise<ResolvedCredentials> {
+    const [storeHash, apiKey] = await Promise.all([
+      this.getPlainCredential(ctx, "store_hash"),
+      this.getPlainCredential(ctx, "api_key"),
+    ]);
+    if (!storeHash || !apiKey) {
+      throw new Error("BigCommerce credentials incomplete. Verify store_hash and api_key are stored.");
+    }
+    return { storeHash, apiKey };
+  }
+
+  private apiBase(storeHash: string): string {
+    return `https://api.bigcommerce.com/stores/${storeHash}/v3`;
+  }
+
+  private buildHeaders(apiKey: string): Record<string, string> {
+    return { "X-Auth-Token": apiKey, "Content-Type": "application/json", Accept: "application/json" };
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    return fetch(url, { ...init, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) });
+  }
+
+  // ─── required: validateCredentials ───────────────────────────────────────
+
+  async validateCredentials(ctx: ConnectorContext): Promise<boolean> {
+    const result = await this.validateStoredCredentialsDetailed(ctx);
+    return result.outcome === "valid";
+  }
+
+  async validateStoredCredentialsDetailed(ctx: ConnectorContext): Promise<CredentialVerificationResult> {
+    try {
+      const { storeHash, apiKey } = await this.resolveCredentials(ctx);
+      const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/summary`, {
+        headers: this.buildHeaders(apiKey),
+      });
+      if (response.status === 401 || response.status === 403) {
+        return { outcome: "invalid", reasonCode: `HTTP_${response.status}` };
+      }
+      if (!response.ok) {
+        return { outcome: "unavailable", reasonCode: `HTTP_${response.status}` };
+      }
+      return { outcome: "valid" };
+    } catch (error) {
+      this.logger.warn("BigCommerce credential validation failed", {
+        installationId: ctx.installationId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
+    }
+  }
+
+  // ─── optional: verifyCandidateCredentials ───────────────────────────────
+
+  async verifyCandidateCredentials(candidate: Record<string, string>): Promise<CredentialVerificationResult> {
+    const storeHash = String(candidate.store_hash ?? "").trim();
+    const apiKey = String(candidate.api_key ?? "").trim();
+    try {
+      const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/summary`, {
+        headers: this.buildHeaders(apiKey),
+      });
+      if (response.status === 401 || response.status === 403) {
+        return { outcome: "invalid", reasonCode: `HTTP_${response.status}` };
+      }
+      if (!response.ok) {
+        return { outcome: "unavailable", reasonCode: `HTTP_${response.status}` };
+      }
+      return { outcome: "valid" };
+    } catch {
+      return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
+    }
+  }
+
+  // ─── required: validateProduct ───────────────────────────────────────────
+
+  async validateProduct(_ctx: ConnectorContext, product: ProductPayload): Promise<ValidationResult> {
+    const errors: ConnectorIssue[] = [];
+    const warnings: ConnectorIssue[] = [];
+    const attrs = product.attributes ?? {};
+
+    if (!product.title || String(product.title).trim().length === 0) {
+      errors.push({ code: "MISSING_NAME", fieldPath: "title", sellerMessage: "name is required for BigCommerce.", severity: "error" });
+    } else if (product.title.length > 250) {
+      errors.push({ code: "NAME_TOO_LONG", fieldPath: "title", sellerMessage: "BigCommerce product names must be 250 characters or fewer.", severity: "error" });
+    }
+    if (product.sellingPrice == null || product.sellingPrice < 0) {
+      errors.push({ code: "MISSING_PRICE", fieldPath: "sellingPrice", sellerMessage: "price must be a non-negative number.", severity: "error" });
+    }
+    if (attrs["weight_kg"] == null) {
+      errors.push({
+        code: "MISSING_WEIGHT",
+        fieldPath: "attributes.weight_kg",
+        sellerMessage: "Physical products on BigCommerce require a weight (in the store's weight unit).",
+        severity: "error",
+      });
+    }
+
+    return { isValid: errors.length === 0, errors, warnings, source: "LOCAL_RULES" };
+  }
+
+  normaliseError(errorCode: string, rawMessage: string): ConnectorIssue {
+    const normalizedCode = String(errorCode ?? "").trim();
+    const entry = ERROR_MESSAGES[normalizedCode];
+    const fieldPath =
+      normalizedCode === "DuplicateSKUError" ? "sku"
+      : normalizedCode === "InvalidCategoryIdError" ? "attributes.bigcommerce_category_id"
+      : normalizedCode === "TooManyOptionsError" ? "attributes"
+      : "";
+    const sellerMessage = entry ?? (String(rawMessage ?? "").trim() || `BigCommerce returned an error: ${normalizedCode || "UNKNOWN"}.`);
+    return { code: normalizedCode || "BIGCOMMERCE_ERROR", fieldPath, sellerMessage, severity: "error" };
+  }
+
+  // ─── payload building ───────────────────────────────────────────────────
+
+  private buildProductPayload(product: ProductPayload): Record<string, unknown> {
+    const attrs = product.attributes ?? {};
+    const categoryId = attrs["bigcommerce_category_id"];
+    const images = [product.mainImageUrl, ...(product.additionalImageUrls ?? [])]
+      .filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+      .map((url, index) => ({ image_url: url, is_thumbnail: index === 0 }));
+    const customFields = Object.entries(attrs)
+      .filter(([key]) => !key.endsWith("_id"))
+      .map(([key, value]) => ({ name: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: String(value) }));
+
+    return {
+      name: product.title,
+      type: "physical",
+      weight: typeof attrs["weight_kg"] === "number" ? attrs["weight_kg"] : Number(attrs["weight_kg"] ?? 0.5) || 0.5,
+      price: product.sellingPrice ?? 0,
+      sku: product.sku,
+      description: product.description || product.title,
+      is_visible: true,
+      availability: "available",
+      brand_name: product.brand || "",
+      categories: /^\d+$/.test(String(categoryId ?? "")) ? [Number(categoryId)] : [],
+      images,
+      custom_fields: customFields,
+    };
+  }
+
+  // ─── optional: publishProduct ────────────────────────────────────────────
+
+  async publishProduct(ctx: ConnectorContext, product: ProductPayload): Promise<SubmissionRef> {
+    const { storeHash, apiKey } = await this.resolveCredentials(ctx);
+    const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/products`, {
+      method: "POST",
+      headers: this.buildHeaders(apiKey),
+      body: JSON.stringify(this.buildProductPayload(product)),
+    });
+    const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+    if (response.status !== 200 && response.status !== 201) {
+      throw this.toPublishError(body, response.status);
+    }
+    const data = (body.data ?? {}) as Record<string, unknown>;
+    return { externalRef: String(data.id ?? ""), status: "SUCCESS", isAsync: false };
+  }
+
+  // ─── optional: updateProduct ─────────────────────────────────────────────
+
+  async updateProduct(ctx: ConnectorContext, product: ProductPayload, externalRef: string): Promise<SubmissionRef> {
+    const { storeHash, apiKey } = await this.resolveCredentials(ctx);
+    const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/products/${externalRef}`, {
+      method: "PUT",
+      headers: this.buildHeaders(apiKey),
+      body: JSON.stringify(this.buildProductPayload(product)),
+    });
+    const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+    if (response.status !== 200 && response.status !== 201) {
+      throw this.toPublishError(body, response.status);
+    }
+    return { externalRef, status: "SUCCESS", isAsync: false };
+  }
+
+  // ─── optional: syncSubmissionStatus ──────────────────────────────────────
+
+  async syncSubmissionStatus(ctx: ConnectorContext, externalRef: string): Promise<SubmissionStatusUpdate> {
+    const { storeHash, apiKey } = await this.resolveCredentials(ctx);
+    const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/products/${externalRef}`, {
+      headers: this.buildHeaders(apiKey),
+    });
+    if (response.status === 404) {
+      return {
+        externalRef,
+        status: "ERROR",
+        channelErrors: [{ code: "PRODUCT_NOT_FOUND", fieldPath: "", sellerMessage: "Product not found in BigCommerce.", severity: "error" }],
+      };
+    }
+    const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+    if (!response.ok) {
+      return { externalRef, status: "ERROR", channelErrors: [this.toPublishError(body, response.status).issues[0]] };
+    }
+    const data = (body.data ?? {}) as Record<string, unknown>;
+    const status = data.is_visible ? "SUCCESS" : "SUPPRESSED";
+    return { externalRef, status, channelErrors: [], resolvedAt: new Date() };
+  }
+
+  // ─── error envelope parsing ───────────────────────────────────────────────
+
+  private toPublishError(body: Record<string, unknown>, statusCode: number): BigCommercePublishError {
+    const errors = (body?.errors ?? {}) as Record<string, unknown>;
+    const title = String(body?.title ?? "API_ERROR");
+    const detail = Object.values(errors)[0];
+    const message = detail != null ? String(detail) : title;
+    const issue = this.normaliseError(title, message.slice(0, 300));
+    return new BigCommercePublishError([issue], `BigCommerce request failed with status ${statusCode}: ${issue.sellerMessage}`);
+  }
+
+  private async parseJsonResponse<T>(response: Response): Promise<T> {
+    const text = await response.text();
+    if (!text.trim()) {
+      return {} as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+}
