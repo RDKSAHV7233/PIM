@@ -2591,6 +2591,18 @@ function buildChecks() {
           retries: 2,
         });
         assertStatus(deactivateResult, [200, 404], "POST /admin/workspace/users/:userId/deactivate during cleanup");
+        // F-002: deactivating alone leaves a permanent "inactive" AuthIdentity row behind.
+        // This script runs on every push to main (deploy-staging.yml), so those rows
+        // accumulated indefinitely with no cleanup. Purge requires deactivate-before-purge
+        // (already satisfied above) — see workspace-users.service.ts. Best-effort: a 404
+        // here just means deactivate above also 404'd (user already gone).
+        if (deactivateResult.status !== 404) {
+          const purgeResult = await api("DELETE", `/admin/workspace/users/${encodeUser(ctx.workspaceUserId)}/purge`, {
+            token: ctx.adminToken,
+            retries: 2,
+          });
+          assertStatus(purgeResult, [200, 204, 404], "DELETE /admin/workspace/users/:userId/purge during cleanup");
+        }
         ctx.workspaceUserId = null;
       }
       const result = await api("POST", "/auth/logout", {

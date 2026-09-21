@@ -81,6 +81,11 @@ try {
     "invalid-password smoke must accept a staging IP-rate-limit rejection without weakening the normal 401 INVALID_CREDENTIALS proof",
   );
   assert(
+    script.includes('const purgeResult = await api("DELETE", `/admin/workspace/users/${encodeUser(ctx.workspaceUserId)}/purge`') &&
+      script.includes('assertStatus(purgeResult, [200, 204, 404], "DELETE /admin/workspace/users/:userId/purge during cleanup")'),
+    "final_logout cleanup must hard-purge the journey's workspace user after deactivating it, not just deactivate it (F-002: this script runs on every push to main and previously left a permanent inactive AuthIdentity row behind each time)",
+  );
+  assert(
     script.includes('"operations:jobs_workspace_page_renders"') &&
       script.includes('add("operations", "jobs_workspace_page_renders"') &&
       script.includes('web("GET", "/operations/jobs"') &&
@@ -106,6 +111,7 @@ try {
           "admin_users_page_check_targets_non_admin_fallback",
           "variant_cleanup_normalizes_parent_product",
           "category_cleanup_purges_journey_products",
+          "final_logout_purges_journey_workspace_user",
           "workflow_approval_smoke_tolerates_already_approved_postcondition",
           "invalid_password_smoke_tolerates_staging_ip_rate_limit",
           "operations_jobs_workspace_authenticated_render_check",
