@@ -128,9 +128,16 @@ export async function getSubmissionIssues(submissionId: string, options?: ApiReq
   );
 }
 
+// The backend's non-cursor listing branch silently caps at 50 rows with no
+// indication a cap was hit. Requesting cursor pagination with an explicit
+// limit avoids that silent truncation for realistic tenant volumes; if a
+// tenant ever exceeds this, nextCursor on the raw response is still there
+// for a future "load more" affordance rather than being invisibly dropped.
+const BULK_IMPORT_LIST_LIMIT = 200;
+
 export async function getBulkImportJobs(options?: ApiRequestOptions) {
   const response = await fetchJson<BulkImportJob[] | { items: BulkImportJob[] }>(
-    "/bulk-import/jobs",
+    `/bulk-import/jobs?pagination=cursor&limit=${BULK_IMPORT_LIST_LIMIT}`,
     undefined,
     options,
   );
@@ -388,7 +395,11 @@ export async function getBulkImportRuns(
   cursor?: string,
   options?: ApiRequestOptions,
 ) {
+  // Always request cursor pagination — the non-cursor branch silently caps at
+  // 50 with no way to detect truncation. See BULK_IMPORT_LIST_LIMIT above.
   const params = new URLSearchParams();
+  params.set("pagination", "cursor");
+  params.set("limit", String(BULK_IMPORT_LIST_LIMIT));
   if (status) params.set("status", status);
   if (cursor) params.set("cursor", cursor);
   const qs = params.toString();

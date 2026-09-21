@@ -13,12 +13,7 @@ import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import type { BulkImportRun, BulkImportRunRow } from "@/lib/api/core";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCachedCategoryTree } from "@/lib/api";
-// validateImportPreflight is the import wizard preflight client — available for the wizard validation summary step
-import { validateImportPreflight } from "@/lib/api/imports";
 import { getBulkImportRun, getBulkImportRunRows, getBulkImportRuns } from "@/lib/api/operations";
-
-// Export the preflight client type for wizard client components
-export type ImportPreflightClient = typeof validateImportPreflight;
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
@@ -306,15 +301,31 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     }, {});
     for (const run of largeRuns) {
       const raw = String(run.status ?? "").toLowerCase();
-      const key = raw === "repair_required" ? "dead_letter"
-        : raw === "processing" ? "retrying"
-        : raw || "unknown";
+      // "processing" is a healthy, actively-running state — folding it into
+      // "retrying" made a normal in-flight import trigger the Retrying KPI's
+      // warning tone. Leave it under its own key; only the row-level "In
+      // progress" badge (see the Jobs table Actions column) represents it.
+      const key = raw === "repair_required" ? "dead_letter" : raw || "unknown";
       statusCounts[key] = (statusCounts[key] ?? 0) + 1;
     }
 
-    const hideToggleHref = hideTestData
-      ? "/operations/imports?hideTestData=false"
-      : "/operations/imports";
+    const hideToggleHref = (() => {
+      const search = new URLSearchParams();
+      if (selectedStatus) {
+        search.set("status", selectedStatus);
+      }
+      if (hideTestData) {
+        search.set("hideTestData", "false");
+      }
+      if (selectedBulkJobId) {
+        search.set("bulkJobId", selectedBulkJobId);
+      }
+      if (selectedBulkRunId) {
+        search.set("bulkRunId", selectedBulkRunId);
+      }
+      const queryString = search.toString();
+      return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
+    })();
     const buildImportsHref = (bulkJobId?: string) => {
       const search = new URLSearchParams();
       if (selectedStatus) {
@@ -476,7 +487,11 @@ export default async function OperationsImportsPage({ searchParams }: Operations
             />
           </Card>
 
-          <Card>
+          {/* With 3 cards in a 2-column grid, this one falls alone into row 2 —
+              span both columns so it doesn't leave an empty ~460px cell to
+              its right (confirmed via live DOM measurement: the grid row
+              otherwise renders that column empty, not "stretched"). */}
+          <Card className="xl:col-span-2">
             <CardTitle>Sample Files &amp; Format Guide</CardTitle>
             <div className="space-y-3 text-sm text-slate-600">
               <p>
@@ -542,7 +557,9 @@ export default async function OperationsImportsPage({ searchParams }: Operations
             <p className="mt-3 text-sm text-slate-600">
               {!canEditWorkspace(actorRole)
                 ? "No import jobs are visible for this scope."
-                : "No import jobs match this filter."}
+                : selectedStatus
+                  ? `No import jobs match the "${selectedStatus}" status filter.`
+                  : "No import jobs in the queue right now."}
             </p>
           ) : (
             <DataGrid columns={jobColumns} rows={visibleJobs} getRowKey={(job) => job.id} />

@@ -316,8 +316,11 @@ export function ImportPreflightForm({ categories, canWrite, initialRun = null, s
     downloadCsv(`bulk-import-validation-${stagedRun.id}.csv`, summaryDownloadRows);
   }
   function handleReplaceFile() {
-    resetValidationState();
-    setHasSelectedFile(false);
+    // Only clear the raw input value and reopen the picker here — do NOT
+    // reset validation state yet. Clearing `.value` programmatically doesn't
+    // fire a change event, so if the user cancels the native dialog, the
+    // staged run (and its URL) stays intact. The file input's own onChange
+    // handler already resets state, but only once a file is actually chosen.
     if (sourceFileRef.current) {
       sourceFileRef.current.value = "";
       sourceFileRef.current.click();
@@ -460,7 +463,14 @@ export function ImportPreflightForm({ categories, canWrite, initialRun = null, s
         <button
           type="button"
           onClick={handleValidate}
-          disabled={!hasCategories || validating}
+          // Once a run/error exists, the source file input has already been
+          // cleared (see handleValidate's success path and the file input's
+          // own onChange) — this button used to relabel itself "Revalidate
+          // file" and stay clickable in that state, then immediately fail
+          // with "Upload a CSV or JSON file before validating." Require a
+          // freshly-selected file in that case, matching the summary panel's
+          // own Revalidate button below.
+          disabled={!hasCategories || validating || ((Boolean(stagedRun) || Boolean(validationError)) && !hasSelectedFile)}
           className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {validating ? "Validating import..." : stagedRun || validationError ? "Revalidate file" : "Validate file"}

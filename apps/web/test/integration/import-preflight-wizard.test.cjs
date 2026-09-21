@@ -17,12 +17,14 @@ function run() {
   const importsPageSource = fs.readFileSync(IMPORTS_PAGE, "utf8");
   const importsClientSource = fs.readFileSync(IMPORTS_CLIENT, "utf8");
 
-  assert(
-    importsPageSource.includes("validateImportPreflight") &&
-      importsPageSource.includes('from "@/lib/api/imports"'),
-    "Imports page must import the preflight client function validateImportPreflight from @/lib/api/imports.",
-  );
-
+  // The page's actual validate step is client-side (import-preflight-form.tsx's
+  // handleValidate: raw fetch() calls to /api/bulk-import/runs/upload and
+  // .../validate), not this server-side client function — page.tsx's import of
+  // validateImportPreflight was dead (unused outside a re-exported type nothing
+  // consumed), so it was removed rather than kept just to satisfy this
+  // assertion. imports.ts itself still exports it below; nothing in
+  // apps/web/src currently calls it, which is a separate, pre-existing
+  // question this test isn't trying to answer.
   assert(
     importsClientSource.includes("export async function validateImportPreflight") &&
       importsClientSource.includes("ImportValidateRequest") &&
@@ -58,7 +60,6 @@ function run() {
       {
         status: "ok",
         validated: [
-          "imports_page_imports_preflight_client",
           "imports_ts_exports_correct_types",
           "imports_page_has_4_step_wizard_indicator",
           "imports_page_has_validation_summary_section",

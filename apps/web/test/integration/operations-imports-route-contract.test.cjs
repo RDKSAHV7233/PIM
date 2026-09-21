@@ -96,10 +96,11 @@ function run() {
   assert(
     source.includes('!canEditWorkspace(actorRole)') &&
       source.includes('"No import jobs are visible for this scope."') &&
-      source.includes('"No import jobs match this filter."') &&
+      source.includes('"No import jobs in the queue right now."') &&
+      source.includes('No import jobs match the "${selectedStatus}" status filter.') &&
       source.includes("Select an import job from Stage 3 to open the result summary") &&
       source.includes('redirect(buildLoginRedirect("/operations/imports", error));'),
-    "Operations imports must differentiate viewer/read-write empty states and redirect auth failures through the shared login helper.",
+    "Operations imports must differentiate viewer/read-write empty states (and, within read-write, an active status filter from a genuinely empty queue) and redirect auth failures through the shared login helper.",
   );
 
   console.log(
