@@ -59,6 +59,9 @@ jobs:
             echo "Missing DR_DRILL_TARGET_DATABASE_URL — cannot run drill." >&2
             exit 1
           fi
+          echo "DIAGNOSTIC: DR_DRILL_TARGET_DATABASE_URL length = ${#DR_DRILL_TARGET_DATABASE_URL}"
+          echo "DIAGNOSTIC: first 13 chars = ${DR_DRILL_TARGET_DATABASE_URL:0:13}"
+          echo "DIAGNOSTIC: last 20 chars = ${DR_DRILL_TARGET_DATABASE_URL: -20}"
           echo "RESTORE_START: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           # Plain-SQL restore, matching the actual backup format produced by
           # r2-backup-run.cjs (pg_dump --format=plain). db-restore.sh's
