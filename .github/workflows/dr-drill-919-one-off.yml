@@ -26,7 +26,8 @@ jobs:
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-18 awscli
+          sudo apt-get install -y postgresql-client-18
+          # aws CLI v2 is already preinstalled on GitHub-hosted ubuntu-latest runners.
           echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
 
       - name: Download the frozen backup object from R2
