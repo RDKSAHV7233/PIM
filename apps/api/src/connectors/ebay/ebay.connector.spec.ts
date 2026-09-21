@@ -174,6 +174,23 @@ describe("EbayConnector auth transport", () => {
     expect(calledUrl).toContain("api.sandbox.ebay.com");
   });
 
+  it("calls GET /inventory_item, NOT /inventory_item_group — the latter 404s live even with valid credentials", async () => {
+    // Regression test for a real bug found via live verification 2026-09-22:
+    // /inventory_item_group has no bulk-list route (getInventoryItemGroup
+    // requires a specific key) and returns a genuine HTTP 404 for a real,
+    // valid access token — which this connector's own status-code handling
+    // turns into "unavailable", meaning validateCredentials() would return
+    // false for entirely valid credentials. /inventory_item is the real,
+    // working bulk-list endpoint (verified live: HTTP 200 {"total":0,"size":0}).
+    const connector = makeConnector();
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    (global as any).fetch = fetchMock;
+    await connector.validateStoredCredentialsDetailed(fakeCtx());
+    const calledUrl = fetchMock.mock.calls[0][0];
+    expect(calledUrl).toContain("/inventory_item?limit=1");
+    expect(calledUrl).not.toContain("inventory_item_group");
+  });
+
   it("reports invalid on a 401", async () => {
     const connector = makeConnector();
     (global as any).fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });

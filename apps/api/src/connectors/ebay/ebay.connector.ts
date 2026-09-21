@@ -2,10 +2,10 @@
 //
 // Capabilities: PUBLISH + VALIDATE + STATUS_SYNC
 // implementationStatus: full (code-complete); launch stage: under_development
-// (see connector-launch-policy.ts — this is the least-verified connector
-// ported this sprint: no live credentials exist in this environment at all,
-// so nothing here has been exercised against a real eBay account, sandbox or
-// otherwise).
+// (see connector-launch-policy.ts). Credential validation is now live-verified
+// (2026-09-22) against a real eBay sandbox account — see the real-bug note
+// below. publishProduct/updateProduct remain unverified: no eBay Business
+// Policies exist yet for the test account those need.
 //
 // Auth: eBay Sell API OAuth2 — authorization_code (3-legged, user consent)
 // for the initial grant, then refresh_token for subsequent access tokens.
@@ -41,7 +41,7 @@
 //                                              these up yet at install time.
 //
 // Real bug found and fixed during the port (by API-semantics review, NOT
-// live-verified — no credentials exist to prove this live):
+// live-verified at the time — no credentials existed yet to prove it live):
 //   The prototype's update_product() just called publish_product() again,
 //   which re-runs create-offer + publish-offer against an offer that already
 //   exists. eBay's inventory-item PUT is itself an idempotent upsert — the
@@ -50,6 +50,21 @@
 //   would at best be redundant, at worst error or leave the listing in an
 //   inconsistent state. Fixed: updateProduct() now only upserts the
 //   inventory item.
+//
+// Real bug found and fixed via live verification (2026-09-22), against a
+// real eBay sandbox account with a genuine OAuth refresh_token:
+//   validateStoredCredentialsDetailed()/verifyCandidateCredentials() called
+//   GET /sell/inventory/v1/inventory_item_group?limit=1 to check API
+//   reachability — this is NOT a valid bulk-list endpoint. eBay's
+//   getInventoryItemGroup requires a specific inventoryItemGroupKey path
+//   segment; there is no "list all groups" route. A real, valid access token
+//   against this URL returns a genuine HTTP 404 (errorId 2002, "Resource not
+//   found"), which this connector's own logic (401/403 -> invalid, anything
+//   else non-2xx -> unavailable) turns into "unavailable" — meaning
+//   validateCredentials() would return false for entirely valid credentials.
+//   Fixed: use GET /sell/inventory/v1/inventory_item?limit=1 instead —
+//   verified live, returns HTTP 200 {"total":0,"size":0} with the exact same
+//   access token that 404'd on inventory_item_group.
 
 import { Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
@@ -157,7 +172,7 @@ export class EbayConnector implements ConnectorInterface {
   async validateStoredCredentialsDetailed(ctx: ConnectorContext): Promise<CredentialVerificationResult> {
     try {
       const token = await ctx.getAccessToken();
-      const response = await this.fetchWithTimeout(`${API_BASE}/inventory_item_group?limit=1`, {
+      const response = await this.fetchWithTimeout(`${API_BASE}/inventory_item?limit=1`, {
         headers: this.buildApiHeaders(token),
       });
       if (response.status === 401 || response.status === 403) {
@@ -200,7 +215,7 @@ export class EbayConnector implements ConnectorInterface {
       if (!token.access_token) {
         return { outcome: "unavailable", reasonCode: "EBAY_TOKEN_RESPONSE_INCOMPLETE" };
       }
-      const check = await this.fetchWithTimeout(`${API_BASE}/inventory_item_group?limit=1`, {
+      const check = await this.fetchWithTimeout(`${API_BASE}/inventory_item?limit=1`, {
         headers: this.buildApiHeaders(token.access_token),
       });
       if (check.status === 401 || check.status === 403) {
