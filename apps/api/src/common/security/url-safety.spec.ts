@@ -1,4 +1,4 @@
-import { validateWebhookTargetUrl } from "./url-safety";
+import { validateConnectorTargetUrl, validateWebhookTargetUrl } from "./url-safety";
 
 describe("validateWebhookTargetUrl", () => {
   it("allows valid HTTPS URLs", async () => {
@@ -99,6 +99,63 @@ describe("validateWebhookTargetUrl", () => {
       } else {
         process.env.PIM_UNSAFE_HTTP_WEBHOOK_TARGETS = old;
       }
+    }
+  });
+});
+
+// PIM#890: same SSRF logic, reused for self-hosted connector base URLs
+// (WooCommerce site_url, Odoo odoo_url, PrestaShop store_url) — only the
+// thrown message's field name differs from validateWebhookTargetUrl above.
+describe("validateConnectorTargetUrl", () => {
+  it("allows valid HTTPS URLs", async () => {
+    const result = await validateConnectorTargetUrl("https://shop.example.com", { requireResolvable: false });
+    expect(result).toBe("https://shop.example.com/");
+  });
+
+  it("rejects HTTP URLs", async () => {
+    await expect(validateConnectorTargetUrl("http://shop.example.com")).rejects.toThrow("HTTPS");
+  });
+
+  it("blocks localhost", async () => {
+    await expect(validateConnectorTargetUrl("https://localhost/xmlrpc")).rejects.toThrow("blocked host");
+  });
+
+  it("blocks .internal hostnames", async () => {
+    await expect(validateConnectorTargetUrl("https://evil.internal")).rejects.toThrow("blocked host");
+  });
+
+  it("blocks 127.0.0.1 IP literal", async () => {
+    await expect(validateConnectorTargetUrl("https://127.0.0.1")).rejects.toThrow("private or reserved IP");
+  });
+
+  it("blocks 169.254.169.254 (cloud metadata endpoint) IP literal", async () => {
+    await expect(validateConnectorTargetUrl("https://169.254.169.254/latest/meta-data")).rejects.toThrow(
+      "private or reserved IP",
+    );
+  });
+
+  it("blocks 10.x/172.16.x/192.168.x private IP literals", async () => {
+    await expect(validateConnectorTargetUrl("https://10.0.0.5")).rejects.toThrow("private or reserved IP");
+    await expect(validateConnectorTargetUrl("https://172.16.5.1")).rejects.toThrow("private or reserved IP");
+    await expect(validateConnectorTargetUrl("https://192.168.0.1")).rejects.toThrow("private or reserved IP");
+  });
+
+  it("still blocks a private IP even when requireResolvable is false", async () => {
+    await expect(
+      validateConnectorTargetUrl("https://10.0.0.1", { requireResolvable: false }),
+    ).rejects.toThrow("private or reserved IP");
+  });
+
+  it("soft-allows a non-resolving host when requireResolvable is false, matching how connectors call this", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const result = await validateConnectorTargetUrl("https://no-such-store.invalid", {
+        requireResolvable: false,
+      });
+      expect(result).toBe("https://no-such-store.invalid/");
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
     }
   });
 });

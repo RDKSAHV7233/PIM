@@ -38,7 +38,7 @@
 //     created per Odoo instance before it can be sent; omitted here rather
 //     than guessing a field name that won't exist on a fresh install.
 
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
 import {
@@ -60,6 +60,7 @@ import {
 } from '../../connector-framework/connector.interface';
 import { ConnectorHttpClient } from '../../connector-framework/connector-http-client.service';
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
+import { validateConnectorTargetUrl } from '../../common/security/url-safety';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 
@@ -202,7 +203,11 @@ export class OdooConnector implements ConnectorInterface {
     if (!odooUrl || !database || !username || !password) {
       throw new Error('Odoo credentials incomplete. Verify odoo_url, database, username, and password are stored.');
     }
-    return { odooUrl: normalizeOdooUrl(odooUrl), database, username, password };
+    const normalizedOdooUrl = normalizeOdooUrl(odooUrl);
+    // PIM#890: block a stored odoo_url that resolves to a private/internal/
+    // metadata-endpoint address before every dispatch call reaches it.
+    await validateConnectorTargetUrl(normalizedOdooUrl, { requireResolvable: false });
+    return { odooUrl: normalizedOdooUrl, database, username, password };
   }
 
   // ─── JSON-RPC transport ─────────────────────────────────────────────────────
@@ -320,6 +325,13 @@ export class OdooConnector implements ConnectorInterface {
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
       }
+      // PIM#890: resolveCredentials() above now throws before returning an
+      // odoo_url that's non-HTTPS or resolves to a private/blocked address —
+      // classify that as invalid, not an unavailable/transient failure.
+      if (err instanceof BadRequestException) {
+        const reasonCode = err.message.includes('HTTPS') ? 'ODOO_URL_NOT_HTTPS' : 'ODOO_URL_UNSAFE';
+        return { outcome: 'invalid', reasonCode };
+      }
       return { outcome: 'unavailable', reasonCode: 'UNKNOWN_NETWORK_ERROR' };
     }
   }
@@ -337,6 +349,13 @@ export class OdooConnector implements ConnectorInterface {
 
     if (!odooUrl.startsWith('https://')) {
       return { outcome: 'invalid', reasonCode: 'ODOO_URL_NOT_HTTPS' };
+    }
+    // PIM#890: reject a candidate odoo_url that points at a private/internal/
+    // metadata-endpoint address before this ever gets saved as a credential.
+    try {
+      await validateConnectorTargetUrl(odooUrl, { requireResolvable: false });
+    } catch {
+      return { outcome: 'invalid', reasonCode: 'ODOO_URL_UNSAFE' };
     }
     try {
       const uid = await this.authenticate(odooUrl, database, username, password);

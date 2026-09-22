@@ -37,7 +37,7 @@
 //     to work — a real seller's key will need the same scope added; worth
 //     calling out during onboarding.
 
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
 import {
   decryptCredentialValue,
@@ -57,6 +57,7 @@ import {
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { validateConnectorTargetUrl } from "../../common/security/url-safety";
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 const DEFAULT_LANG_ID = "1";
@@ -147,7 +148,11 @@ export class PrestaShopConnector implements ConnectorInterface {
     if (!storeUrl || !apiKey) {
       throw new Error("PrestaShop credentials incomplete. Verify store_url and api_key are stored.");
     }
-    return { storeUrl: normalizeStoreUrl(storeUrl), apiKey, langId: langId?.trim() || DEFAULT_LANG_ID };
+    const normalizedStoreUrl = normalizeStoreUrl(storeUrl);
+    // PIM#890: block a stored store_url that resolves to a private/internal/
+    // metadata-endpoint address before every dispatch call reaches it.
+    await validateConnectorTargetUrl(normalizedStoreUrl, { requireResolvable: false });
+    return { storeUrl: normalizedStoreUrl, apiKey, langId: langId?.trim() || DEFAULT_LANG_ID };
   }
 
   private buildAuthHeader(apiKey: string): string {
@@ -182,6 +187,15 @@ export class PrestaShopConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
+      // PIM#890: resolveCredentials() above now throws before returning a
+      // store_url that's non-HTTPS or resolves to a private/blocked address —
+      // classify that the same way the still-reachable explicit HTTPS check
+      // above does (invalid, not unavailable), instead of falling into the
+      // generic network-failure bucket below.
+      if (error instanceof BadRequestException) {
+        const reasonCode = error.message.includes("HTTPS") ? "PRESTASHOP_URL_NOT_HTTPS" : "PRESTASHOP_URL_UNSAFE";
+        return { outcome: "invalid", reasonCode };
+      }
       this.logger.warn("PrestaShop credential validation failed", {
         installationId: ctx.installationId,
         reason: error instanceof Error ? error.message : String(error),
@@ -197,6 +211,13 @@ export class PrestaShopConnector implements ConnectorInterface {
     const apiKey = String(candidate.api_key ?? "").trim();
     if (!storeUrl.startsWith("https://")) {
       return { outcome: "invalid", reasonCode: "PRESTASHOP_URL_NOT_HTTPS" };
+    }
+    // PIM#890: reject a candidate store_url that points at a private/internal/
+    // metadata-endpoint address before this ever gets saved as a credential.
+    try {
+      await validateConnectorTargetUrl(storeUrl, { requireResolvable: false });
+    } catch {
+      return { outcome: "invalid", reasonCode: "PRESTASHOP_URL_UNSAFE" };
     }
     try {
       const response = await this.fetchWithTimeout(`${storeUrl}/api/`, {
