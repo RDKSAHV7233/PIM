@@ -239,13 +239,14 @@ describe("EbayConnector.publishProduct", () => {
     await expect(connector.publishProduct(fakeCtx(), baseProduct)).rejects.toThrow(/Business Policy/);
   });
 
-  it("upserts the inventory item, creates the offer, then publishes it, in that order", async () => {
+  it("upserts the inventory item, looks up an existing offer, creates one, then publishes it, in that order", async () => {
     mockDecrypt();
     const connector = makeConnectorWithDb(dbWithPolicies());
     const calls: string[] = [];
     const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url.includes("/inventory_item/")) return { ok: true, status: 200 };
+      if (url.includes("/offer?sku=")) return { ok: true, status: 200, text: async () => JSON.stringify({ offers: [] }) };
       if (url.endsWith("/offer")) return { ok: true, status: 201, text: async () => JSON.stringify({ offerId: "OFFER-1" }) };
       if (url.includes("/offer/OFFER-1/publish")) return { ok: true, status: 200, text: async () => JSON.stringify({ listingId: "LISTING-1" }) };
       throw new Error(`unexpected fetch to ${url}`);
@@ -254,10 +255,13 @@ describe("EbayConnector.publishProduct", () => {
 
     const ref = await connector.publishProduct(fakeCtx(), baseProduct);
 
-    expect(ref.externalRef).toBe("LISTING-1");
+    // Regression: externalRef must be the offerId, not eBay's listingId —
+    // syncSubmissionStatus() looks submissions back up by offerId (see below).
+    expect(ref.externalRef).toBe("OFFER-1");
     expect(calls[0]).toMatch(/^PUT .*\/inventory_item\/EBAY-001$/);
-    expect(calls[1]).toMatch(/^POST .*\/offer$/);
-    expect(calls[2]).toMatch(/^POST .*\/offer\/OFFER-1\/publish$/);
+    expect(calls[1]).toMatch(/^GET .*\/offer\?sku=EBAY-001&marketplace_id=EBAY_US$/);
+    expect(calls[2]).toMatch(/^POST .*\/offer$/);
+    expect(calls[3]).toMatch(/^POST .*\/offer\/OFFER-1\/publish$/);
   });
 
   it("throws a parsed EbayPublishError when the offer creation step fails", async () => {
@@ -265,6 +269,7 @@ describe("EbayConnector.publishProduct", () => {
     const connector = makeConnectorWithDb(dbWithPolicies());
     const fetchMock = jest.fn().mockImplementation(async (url: string) => {
       if (url.includes("/inventory_item/")) return { ok: true, status: 200 };
+      if (url.includes("/offer?sku=")) return { ok: true, status: 200, text: async () => JSON.stringify({ offers: [] }) };
       if (url.endsWith("/offer")) {
         return {
           ok: false,
@@ -284,6 +289,70 @@ describe("EbayConnector.publishProduct", () => {
     }
     expect(caught).toBeInstanceOf(EbayPublishError);
     expect((caught as EbayPublishError).issues[0].code).toBe("25003");
+  });
+
+  it("reuses an existing unpublished offer instead of re-creating it (idempotent retry)", async () => {
+    // Regression test: eBay rejects a second createOffer for the same
+    // SKU+marketplace with errorId 25002 ("Offer entity already exists"), so a
+    // retried publish that lands after a prior offer-creation call succeeded
+    // (but the flow failed before/at the publish step) must reuse that offer
+    // rather than blindly re-POSTing /offer.
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithPolicies());
+    const calls: string[] = [];
+    const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.includes("/inventory_item/")) return { ok: true, status: 200 };
+      if (url.includes("/offer?sku=")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ offers: [{ offerId: "OFFER-EXISTING", format: "FIXED_PRICE" }] }),
+        };
+      }
+      if (url.includes("/offer/OFFER-EXISTING/publish")) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ listingId: "LISTING-1" }) };
+      }
+      throw new Error(`unexpected fetch to ${url} — must not re-create an offer that already exists`);
+    });
+    (global as any).fetch = fetchMock;
+
+    const ref = await connector.publishProduct(fakeCtx(), baseProduct);
+
+    expect(ref.externalRef).toBe("OFFER-EXISTING");
+    expect(calls.some((c) => c.startsWith("POST") && c.endsWith("/offer"))).toBe(false);
+    expect(calls.some((c) => c.includes("/offer/OFFER-EXISTING/publish"))).toBe(true);
+  });
+
+  it("treats an already-published offer as done without calling create-offer or publish-offer again", async () => {
+    // Regression test: eBay does not document publish-offer as safe to re-call
+    // on an already-published offer, so a retry landing after a prior full
+    // success must not touch create-offer or publish-offer at all.
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithPolicies());
+    const calls: string[] = [];
+    const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.includes("/inventory_item/")) return { ok: true, status: 200 };
+      if (url.includes("/offer?sku=")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              offers: [{ offerId: "OFFER-LIVE", format: "FIXED_PRICE", listing: { listingId: "LISTING-1" } }],
+            }),
+        };
+      }
+      throw new Error(`unexpected fetch to ${url} — must not re-create or re-publish an already-live offer`);
+    });
+    (global as any).fetch = fetchMock;
+
+    const ref = await connector.publishProduct(fakeCtx(), baseProduct);
+
+    expect(ref.externalRef).toBe("OFFER-LIVE");
+    expect(calls.some((c) => c.includes("/publish"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("POST") && c.endsWith("/offer"))).toBe(false);
   });
 });
 
@@ -329,18 +398,40 @@ describe("EbayConnector.syncSubmissionStatus", () => {
     expect(result.channelErrors[0].code).toBe("OFFER_NOT_FOUND");
   });
 
-  it("maps PUBLISHED to SUCCESS and ENDED to SUPPRESSED", async () => {
+  it("maps a published, still-active offer to SUCCESS", async () => {
     const connector = makeConnector();
-    const fetchMock = jest
+    (global as any).fetch = jest
       .fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ status: "PUBLISHED" }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ status: "ENDED" }) });
-    (global as any).fetch = fetchMock;
+      .mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ status: "PUBLISHED" }) });
 
     const published = await connector.syncSubmissionStatus!(fakeCtx(), "OFFER-1");
-    const ended = await connector.syncSubmissionStatus!(fakeCtx(), "OFFER-1");
     expect(published.status).toBe("SUCCESS");
+  });
+
+  it("maps a published offer whose listing has ended to SUPPRESSED", async () => {
+    // Regression test: eBay's offer-level `status` field is PUBLISHED/UNPUBLISHED
+    // only and never becomes "ENDED" — it stays PUBLISHED for the life of the
+    // listing. Whether the listing itself ended is the nested
+    // listing.listingStatus field, only present once the offer is published.
+    const connector = makeConnector();
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ status: "PUBLISHED", listing: { listingId: "LISTING-1", listingStatus: "ENDED" } }),
+    });
+
+    const ended = await connector.syncSubmissionStatus!(fakeCtx(), "OFFER-1");
     expect(ended.status).toBe("SUPPRESSED");
+  });
+
+  it("maps an unpublished offer to PENDING", async () => {
+    const connector = makeConnector();
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ status: "UNPUBLISHED" }) });
+
+    const pending = await connector.syncSubmissionStatus!(fakeCtx(), "OFFER-1");
+    expect(pending.status).toBe("PENDING");
   });
 });
 

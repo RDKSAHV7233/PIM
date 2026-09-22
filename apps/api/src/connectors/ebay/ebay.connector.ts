@@ -65,6 +65,32 @@
 //   Fixed: use GET /sell/inventory/v1/inventory_item?limit=1 instead —
 //   verified live, returns HTTP 200 {"total":0,"size":0} with the exact same
 //   access token that 404'd on inventory_item_group.
+//
+// Two real bugs found by a follow-up QA pass (2026-09-22, by API-semantics
+// review — NOT live-verified: still blocked on Business Policies, see above):
+//   1. publishProduct() returned externalRef as eBay's listingId, but
+//      syncSubmissionStatus() looks submissions back up via
+//      GET /offer/{externalRef}, which is keyed by offerId — a distinct eBay
+//      identifier. Every successful publish would therefore make every
+//      subsequent status sync 404 and report the listing as ERROR/
+//      OFFER_NOT_FOUND, even though it was live on eBay. Fixed: externalRef
+//      is now the offerId throughout.
+//   2. syncSubmissionStatus() treated the offer's top-level `status` field
+//      as if it could be "ENDED" — but that field is eBay's OfferStatusEnum
+//      (PUBLISHED/UNPUBLISHED only) and stays PUBLISHED for the life of the
+//      listing. Whether the listing itself has ended is a separate field,
+//      the nested `listing.listingStatus` (ListingStatusEnum), only present
+//      once published. The old check could never match, so an ended listing
+//      would keep reporting SUCCESS indefinitely. Fixed: SUPPRESSED is now
+//      derived from listing.listingStatus.
+//   Also closed: publishProduct() always called createOffer even when an
+//   offer for the SKU+marketplace already existed. eBay allows only one
+//   offer per SKU+marketplace and rejects a second createOffer with errorId
+//   25002 ("Offer entity already exists"), so a retried publish (e.g. after
+//   a dropped connection between offer creation and offer publish) would
+//   permanently fail instead of completing. Fixed: look the offer up by SKU
+//   first (getOffers) and reuse it — publish it if unpublished, or treat it
+//   as already done if it's already live — instead of blindly re-creating.
 
 import { Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
@@ -350,21 +376,41 @@ export class EbayConnector implements ConnectorInterface {
 
     await this.upsertInventoryItem(ctx, product, headers);
 
-    const offerResponse = await this.fetchWithTimeout(`${API_BASE}/offer`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(this.buildOfferPayload(product, marketplaceId, policyIds)),
-    });
-    const offerBody = await this.parseJsonResponse<Record<string, unknown>>(offerResponse);
-    if (offerResponse.status !== 200 && offerResponse.status !== 201) {
-      throw this.toPublishError(offerBody, offerResponse.status);
+    // eBay allows exactly one FIXED_PRICE offer per SKU+marketplace: a second
+    // createOffer for the same SKU fails with errorId 25002 ("Offer entity
+    // already exists"). Without this lookup, a retried publish (e.g. the
+    // create succeeded but the network dropped before the publish step, or
+    // the response was lost) would permanently fail here instead of
+    // completing — the tenant would see a confusing "offer already exists"
+    // error with no way to get the listing published. Look the offer up by
+    // SKU first and reuse it instead of blindly re-creating.
+    const existing = await this.findExistingOffer(product.sku, marketplaceId, headers);
+    if (existing?.listingId) {
+      // Already published under a prior attempt — nothing left to do. We
+      // deliberately do not call publish-offer again here: eBay does not
+      // document publish-offer as safe to re-call on an already-published
+      // offer, so the safe idempotent action is to just report success.
+      return { externalRef: existing.offerId, status: "PENDING", isAsync: false };
     }
-    const offerId = String(offerBody.offerId ?? "");
+
+    let offerId = existing?.offerId ?? "";
     if (!offerId) {
-      throw new EbayPublishError(
-        [this.normaliseError("EBAY_ERROR", "eBay did not return an offerId after creating the offer.")],
-        "eBay publish failed: no offerId returned.",
-      );
+      const offerResponse = await this.fetchWithTimeout(`${API_BASE}/offer`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(this.buildOfferPayload(product, marketplaceId, policyIds)),
+      });
+      const offerBody = await this.parseJsonResponse<Record<string, unknown>>(offerResponse);
+      if (offerResponse.status !== 200 && offerResponse.status !== 201) {
+        throw this.toPublishError(offerBody, offerResponse.status);
+      }
+      offerId = String(offerBody.offerId ?? "");
+      if (!offerId) {
+        throw new EbayPublishError(
+          [this.normaliseError("EBAY_ERROR", "eBay did not return an offerId after creating the offer.")],
+          "eBay publish failed: no offerId returned.",
+        );
+      }
     }
 
     const publishResponse = await this.fetchWithTimeout(`${API_BASE}/offer/${offerId}/publish`, {
@@ -375,8 +421,41 @@ export class EbayConnector implements ConnectorInterface {
     if (publishResponse.status !== 200 && publishResponse.status !== 201) {
       throw this.toPublishError(publishBody, publishResponse.status);
     }
-    const listingId = String(publishBody.listingId ?? offerId);
-    return { externalRef: listingId, status: "PENDING", isAsync: false };
+    // externalRef must be the offerId, not eBay's listingId: syncSubmissionStatus()
+    // below looks submissions back up via GET /offer/{externalRef}, which is keyed
+    // by offerId — listingId is a different eBay identifier and would 404 there.
+    return { externalRef: offerId, status: "PENDING", isAsync: false };
+  }
+
+  // eBay's getOffers is keyed by sku (+ optional marketplace_id/format) and
+  // returns every existing offer for that SKU, published or not. Used to make
+  // publishProduct's create-offer step idempotent — see the call site.
+  private async findExistingOffer(
+    sku: string,
+    marketplaceId: string,
+    headers: Record<string, string>,
+  ): Promise<{ offerId: string; listingId: string | null } | null> {
+    const response = await this.fetchWithTimeout(
+      `${API_BASE}/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${encodeURIComponent(marketplaceId)}`,
+      { headers },
+    );
+    if (!response.ok) {
+      // Fail open: a lookup failure isn't evidence an offer exists — fall through
+      // to createOffer as before, which itself surfaces a real 25002 conflict.
+      return null;
+    }
+    const body = await this.parseJsonResponse<{ offers?: Array<Record<string, unknown>> }>(response);
+    const offers = Array.isArray(body.offers) ? body.offers : [];
+    const match = offers.find((offer) => String(offer.format ?? "") === "FIXED_PRICE");
+    if (!match) {
+      return null;
+    }
+    const offerId = String(match.offerId ?? "");
+    if (!offerId) {
+      return null;
+    }
+    const listing = (match.listing ?? {}) as Record<string, unknown>;
+    return { offerId, listingId: listing.listingId ? String(listing.listingId) : null };
   }
 
   // ─── optional: updateProduct ─────────────────────────────────────────────
@@ -429,8 +508,24 @@ export class EbayConnector implements ConnectorInterface {
     if (!response.ok) {
       return { externalRef, status: "ERROR", channelErrors: [this.toPublishError(body, response.status).issues[0]] };
     }
-    const state = String(body.status ?? "").toUpperCase();
-    const status = state === "PUBLISHED" ? "SUCCESS" : state === "ENDED" ? "SUPPRESSED" : "PENDING";
+    // getOffer's top-level `status` is eBay's OfferStatusEnum — only ever
+    // PUBLISHED or UNPUBLISHED, and it stays PUBLISHED for the life of the
+    // listing even after the listing itself ends. Whether the *listing* has
+    // ended lives in the nested `listing` container's own listingStatus
+    // (ListingStatusEnum: ACTIVE/ENDED/EBAY_ENDED/...), which eBay only
+    // returns at all once the offer has been published. Checking top-level
+    // `status` for "ENDED" (as this used to) can never match — that value
+    // doesn't exist on this field — so an ended listing would incorrectly
+    // keep reporting SUCCESS forever instead of SUPPRESSED.
+    const offerStatus = String(body.status ?? "").toUpperCase();
+    const listing = (body.listing ?? {}) as Record<string, unknown>;
+    const listingStatus = String(listing.listingStatus ?? "").toUpperCase();
+    const status =
+      listingStatus === "ENDED" || listingStatus === "EBAY_ENDED"
+        ? "SUPPRESSED"
+        : offerStatus === "PUBLISHED"
+          ? "SUCCESS"
+          : "PENDING";
     return { externalRef, status, channelErrors: [], ...(status === "PENDING" ? {} : { resolvedAt: new Date() }) };
   }
 
