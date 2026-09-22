@@ -755,3 +755,45 @@ describe("ComplianceService.listIssueInbox — installation-scope raw query must
     expect(tenantMock).toHaveBeenCalledWith("default");
   });
 });
+
+// F-018: an open ValidationIssue for a soft-deleted product used to sit in the Issue
+// Inbox forever, its "Fix Now" link pointing at a product page that 404s (getProduct's
+// soft-delete scope excludes it). CatalogService.deleteProduct() now calls this right
+// alongside the existing NotificationsService.retargetProductNotifications() call.
+describe("ComplianceService.resolveOpenIssuesForDeletedProduct (F-018)", () => {
+  function makeResolveService() {
+    const updateManyMock = jest.fn().mockResolvedValue({ count: 2 });
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        validationIssue: { updateMany: updateManyMock },
+      }),
+    };
+    const accessPolicy = {};
+    const cache = {};
+    const service = new ComplianceService(prisma as never, accessPolicy as never, cache as never);
+    return { service, updateManyMock, tenantMock: prisma.tenant };
+  }
+
+  it("resolves only this product's open issues, scoped to the current tenant", async () => {
+    const { service, updateManyMock, tenantMock } = makeResolveService();
+
+    const result = await service.resolveOpenIssuesForDeletedProduct("prod_deleted_1");
+
+    expect(tenantMock).toHaveBeenCalledWith("default");
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: { tenantKey: "default", productId: "prod_deleted_1", status: ValidationIssueStatus.open },
+      data: { status: ValidationIssueStatus.resolved },
+    });
+    expect(result).toEqual({ resolved: 2 });
+  });
+
+  it("short-circuits on an empty productId without touching Prisma", async () => {
+    const { service, updateManyMock, tenantMock } = makeResolveService();
+
+    const result = await service.resolveOpenIssuesForDeletedProduct("   ");
+
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(tenantMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ resolved: 0 });
+  });
+});
