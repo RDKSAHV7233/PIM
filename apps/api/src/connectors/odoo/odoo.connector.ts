@@ -375,7 +375,7 @@ export class OdooConnector implements ConnectorInterface {
   //
   // Local rules — Odoo has no dry-run validation endpoint for product.template.
 
-  async validateProduct(_ctx: ConnectorContext, product: ProductPayload): Promise<ValidationResult> {
+  async validateProduct(ctx: ConnectorContext, product: ProductPayload): Promise<ValidationResult> {
     const errors: ConnectorIssue[] = [];
     const warnings: ConnectorIssue[] = [];
 
@@ -404,9 +404,44 @@ export class OdooConnector implements ConnectorInterface {
         severity: 'warning',
         sellerMessage: 'default_code (internal reference, mapped from sku) is recommended.',
       });
+    } else if (await this.referenceExists(ctx, product.sku)) {
+      // publishProduct() below always calls product.template.create — there is
+      // no upsert-by-default_code lookup, and Odoo does not enforce
+      // default_code uniqueness itself. Mirrors PrestaShop's identical
+      // referenceExists() warning (same underlying risk: create-only,
+      // platform doesn't enforce uniqueness) so an operator gets the same
+      // heads-up here that PrestaShop's connector already gives.
+      warnings.push({
+        code: 'ODOO_DUPLICATE_REFERENCE_RISK',
+        fieldPath: 'sku',
+        severity: 'warning',
+        sellerMessage:
+          'A product with this default_code (internal reference) already exists in Odoo. Publishing will create a duplicate rather than update it, since Odoo does not enforce default_code uniqueness and this connector always creates a new record on publish. If this is meant to update the existing product, use update instead.',
+      });
     }
 
     return { isValid: errors.length === 0, errors, warnings, source: 'LOCAL_RULES' };
+  }
+
+  private async referenceExists(ctx: ConnectorContext, sku: string): Promise<boolean> {
+    try {
+      const { odooUrl, database, username, password } = await this.resolveCredentials(ctx);
+      const uid = await this.authenticate(odooUrl, database, username, password);
+      if (uid == null) {
+        return false;
+      }
+      const rows = await this.executeKw<Array<{ id: number }>>(
+        odooUrl, database, uid, password,
+        'product.template', 'search_read',
+        [[['default_code', '=', sku]]],
+        { fields: ['id'], limit: 1 },
+      );
+      return Array.isArray(rows) && rows.length > 0;
+    } catch {
+      // Can't reach Odoo right now — don't block validation on a network
+      // blip; the live publish call surfaces a real error if it still matters.
+      return false;
+    }
   }
 
   // ─── build_payload equivalent ────────────────────────────────────────────────

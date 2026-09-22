@@ -221,4 +221,58 @@ describe("OdooConnector auth transport", () => {
       connector.publishProduct({ tenantId: "t1", installationId: "i1", connectorId: "odoo" } as any, baseProduct),
     ).rejects.toBeInstanceOf(OdooPublishError);
   });
+
+  it("validateProduct warns with ODOO_DUPLICATE_REFERENCE_RISK when default_code already exists", async () => {
+    // Regression test for the same platform gap PrestaShop's connector
+    // already warns about: publishProduct() always calls
+    // product.template.create — there is no upsert-by-default_code lookup,
+    // and Odoo does not enforce default_code uniqueness itself.
+    const db = {
+      connectorCredential: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(credRow("odoo_url", "https://odoo.example.com"))
+          .mockResolvedValueOnce(credRow("database", "odoo"))
+          .mockResolvedValueOnce(credRow("username", "admin"))
+          .mockResolvedValueOnce(credRow("password", "a-real-api-key")),
+      },
+    };
+    mockDecrypt({});
+    const connector = makeConnectorWithDb(db);
+
+    (global as any).fetch = jest.fn()
+      .mockResolvedValueOnce({ json: async () => ({ jsonrpc: "2.0", id: 1, result: 2 }) }) // authenticate
+      .mockResolvedValueOnce({ json: async () => ({ jsonrpc: "2.0", id: 1, result: [{ id: 99 }] }) }); // search_read match
+
+    const result = await connector.validateProduct(
+      { tenantId: "t1", installationId: "i1", connectorId: "odoo" } as any,
+      baseProduct,
+    );
+    expect(result.isValid).toBe(true);
+    expect(result.warnings.some((w) => w.code === "ODOO_DUPLICATE_REFERENCE_RISK")).toBe(true);
+  });
+
+  it("validateProduct does not warn when the default_code search returns no match", async () => {
+    const db = {
+      connectorCredential: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(credRow("odoo_url", "https://odoo.example.com"))
+          .mockResolvedValueOnce(credRow("database", "odoo"))
+          .mockResolvedValueOnce(credRow("username", "admin"))
+          .mockResolvedValueOnce(credRow("password", "a-real-api-key")),
+      },
+    };
+    mockDecrypt({});
+    const connector = makeConnectorWithDb(db);
+
+    (global as any).fetch = jest.fn()
+      .mockResolvedValueOnce({ json: async () => ({ jsonrpc: "2.0", id: 1, result: 2 }) }) // authenticate
+      .mockResolvedValueOnce({ json: async () => ({ jsonrpc: "2.0", id: 1, result: [] }) }); // search_read no match
+
+    const result = await connector.validateProduct(
+      { tenantId: "t1", installationId: "i1", connectorId: "odoo" } as any,
+      baseProduct,
+    );
+    expect(result.isValid).toBe(true);
+    expect(result.warnings.some((w) => w.code === "ODOO_DUPLICATE_REFERENCE_RISK")).toBe(false);
+  });
 });
