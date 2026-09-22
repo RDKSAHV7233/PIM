@@ -26,7 +26,7 @@
 //   _vexa_gst_rate        — GST rate percentage (0, 5, 12, 18, 28)
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
 import {
@@ -51,6 +51,7 @@ import {
 import { ConnectorHttpClient } from '../../connector-framework/connector-http-client.service';
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { tenantExecRaw } from '../../common/tenant/tenant-raw';
+import { validateConnectorTargetUrl } from '../../common/security/url-safety';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 
@@ -309,8 +310,16 @@ export class WooCommerceConnector implements ConnectorInterface {
     if (!siteUrl || !consumerKey || !consumerSecret) {
       throw new Error('WooCommerce credentials incomplete. Verify site_url, consumer_key, and consumer_secret are stored.');
     }
+    const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+    // PIM#890: block a stored site_url that resolves to a private/internal/
+    // metadata-endpoint address before every dispatch call reaches it. Uses
+    // the connector's own normalized string below (not the guard's
+    // parsed.toString() return), since URL re-serialization can append a
+    // trailing "/" that would double up against this file's own
+    // `${siteUrl}/wp-json/wc/v3${path}` concatenation.
+    await validateConnectorTargetUrl(normalizedSiteUrl, { requireResolvable: false });
     return {
-      siteUrl: normalizeSiteUrl(siteUrl),
+      siteUrl: normalizedSiteUrl,
       consumerKey,
       consumerSecret,
     };
@@ -878,6 +887,13 @@ export class WooCommerceConnector implements ConnectorInterface {
         });
         return { outcome: 'unavailable', reasonCode: err.category };
       }
+      // PIM#890: resolveCredentials() above now throws before returning a
+      // site_url that's non-HTTPS or resolves to a private/blocked address —
+      // classify that as invalid, not an unavailable/transient failure.
+      if (err instanceof BadRequestException) {
+        const reasonCode = err.message.includes('HTTPS') ? 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' : 'WOOCOMMERCE_SITE_URL_UNSAFE';
+        return { outcome: 'invalid', reasonCode };
+      }
       this.logger.warn('WooCommerce credential validation error', {
         installationId: ctx.installationId,
         reason: err instanceof Error ? err.message : String(err),
@@ -908,6 +924,14 @@ export class WooCommerceConnector implements ConnectorInterface {
 
     if (!siteUrl.startsWith('https://')) {
       return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' };
+    }
+
+    // PIM#890: reject a candidate site_url that points at a private/internal/
+    // metadata-endpoint address before this ever gets saved as a credential.
+    try {
+      await validateConnectorTargetUrl(siteUrl, { requireResolvable: false });
+    } catch {
+      return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_UNSAFE' };
     }
 
     try {
