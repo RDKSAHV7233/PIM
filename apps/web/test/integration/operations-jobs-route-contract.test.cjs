@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const JOBS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "jobs", "page.tsx");
+const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -12,8 +13,23 @@ function assert(condition, message) {
   }
 }
 
+function extractFunctionBody(source, signature) {
+  const start = source.indexOf(signature);
+  assert(start !== -1, `actions.ts: could not locate "${signature}"`);
+  let depth = 0;
+  for (let i = source.indexOf("{", start); i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    if (source[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`actions.ts: unterminated body for "${signature}"`);
+}
+
 function run() {
   const source = fs.readFileSync(JOBS_PAGE, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
       source.includes("await getServerSession();"),
@@ -158,6 +174,28 @@ function run() {
       "(otherwise two removed stores become indistinguishable again).",
   );
 
+  const returnParamsBody = extractFunctionBody(actionsSource, "function operationsJobsReturnParams(");
+  const retrySubmissionBody = extractFunctionBody(actionsSource, "export async function retrySubmissionAction(");
+  const retryBulkBody = extractFunctionBody(actionsSource, "export async function retryFailedBulkPublishRunAction(");
+  assert(
+    returnParamsBody.includes('keepToJobs("status", "submissionStatus")') &&
+      returnParamsBody.includes('keepToJobs("connectorSlug", "submissionConnector")') &&
+      returnParamsBody.includes('keepToJobs("submissionId", "jobsSubmissionId")') &&
+      returnParamsBody.includes('keepToJobs("installationId", "installationId")') &&
+      retrySubmissionBody.includes("operationsJobsReturnParams(formData)") &&
+      retryBulkBody.includes("operationsJobsReturnParams(formData)") &&
+      !retryBulkBody.includes('redirect("/operations/jobs")') &&
+      !retryBulkBody.includes('handleSessionExpired(error, "/operations/jobs")'),
+    "Both Jobs-page retry actions must return the operator to the same filtered view (status, connector, " +
+      "selected submission, store) on success, on failure and on session expiry, instead of a bare /operations/jobs.",
+  );
+
+  assert(
+    /<form action=\{retrySubmissionAction\}>[\s\S]{0,600}name="installationId" value=\{bulkPublishInstallationId\}/.test(source) &&
+      /<form action=\{retryFailedBulkPublishRunAction\}>[\s\S]{0,900}name="submissionStatus" value=\{statusFilter\}[\s\S]{0,200}name="submissionConnector" value=\{connectorSlug\}[\s\S]{0,200}name="jobsSubmissionId" value=\{selectedSubmissionId\}[\s\S]{0,200}name="installationId" value=\{bulkPublishInstallationId\}/.test(source),
+    "Both retry forms must post the current Jobs view state so the retry actions can restore it.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -180,6 +218,7 @@ function run() {
           "operations_jobs_route_degrades_installations_fetch_failures",
           "operations_jobs_route_preserves_store_filter_on_submission_links",
           "operations_jobs_route_never_applies_store_filter_invisibly",
+          "operations_jobs_route_retry_actions_preserve_view_state",
         ],
         checkedAt: new Date().toISOString(),
       },

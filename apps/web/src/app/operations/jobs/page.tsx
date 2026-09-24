@@ -510,6 +510,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
                 <input type="hidden" name="submissionId" value={submission.id} />
                 <input type="hidden" name="submissionStatus" value={statusFilter} />
                 <input type="hidden" name="submissionConnector" value={connectorSlug} />
+                <input type="hidden" name="installationId" value={bulkPublishInstallationId} />
                 <PendingSubmitButton
                   type="submit"
                   variant="secondary"
@@ -632,6 +633,10 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
           canPublishToChannels(actorRole) && bulkPublishRunHasRetryableFailures(run) ? (
             <form action={retryFailedBulkPublishRunAction}>
               <input type="hidden" name="runId" value={run.id} />
+              <input type="hidden" name="submissionStatus" value={statusFilter} />
+              <input type="hidden" name="submissionConnector" value={connectorSlug} />
+              <input type="hidden" name="jobsSubmissionId" value={selectedSubmissionId} />
+              <input type="hidden" name="installationId" value={bulkPublishInstallationId} />
               <PendingSubmitButton
                 type="submit"
                 variant="secondary"

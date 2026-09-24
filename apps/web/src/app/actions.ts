@@ -1880,22 +1880,35 @@ export async function requeueExportJobAction(formData: FormData) {
   );
 }
 
-export async function retrySubmissionAction(formData: FormData) {
-  const submissionId = String(formData.get("submissionId") ?? "").trim();
-  if (!submissionId) {
-    throw new Error("Submission id is required.");
-  }
-
+/**
+ * The Jobs page view state (status/connector filters, selected submission,
+ * Bulk Publish Runs store filter) that its retry forms post back, so a retry
+ * returns the operator to the same filtered view instead of a bare
+ * /operations/jobs.
+ */
+function operationsJobsReturnParams(formData: FormData): URLSearchParams {
   const jobsParams = new URLSearchParams();
-  jobsParams.set("submissionId", submissionId);
   const keepToJobs = (targetKey: string, formKey: string) => {
     const value = String(formData.get(formKey) ?? "").trim();
     if (value) {
       jobsParams.set(targetKey, value);
     }
   };
+  keepToJobs("submissionId", "jobsSubmissionId");
   keepToJobs("connectorSlug", "submissionConnector");
   keepToJobs("status", "submissionStatus");
+  keepToJobs("installationId", "installationId");
+  return jobsParams;
+}
+
+export async function retrySubmissionAction(formData: FormData) {
+  const submissionId = String(formData.get("submissionId") ?? "").trim();
+  if (!submissionId) {
+    throw new Error("Submission id is required.");
+  }
+
+  const jobsParams = operationsJobsReturnParams(formData);
+  jobsParams.set("submissionId", submissionId);
   try {
     await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
     revalidatePath("/dashboard");
@@ -1922,20 +1935,22 @@ export async function retryFailedBulkPublishRunAction(formData: FormData) {
     throw new Error("Bulk publish run id is required.");
   }
 
+  const jobsParams = operationsJobsReturnParams(formData);
+  const jobsQuery = jobsParams.toString();
+  const jobsHref = jobsQuery ? `/operations/jobs?${jobsQuery}` : "/operations/jobs";
   try {
     await postJsonForAction(formData, `/marketplace/bulk-publish-runs/${runId}/retry-failed`, {});
     revalidatePath("/operations/jobs");
   } catch (error: unknown) {
-    handleSessionExpired(error, "/operations/jobs");
+    handleSessionExpired(error, jobsHref);
     const rawMessage = error instanceof ApiHttpError
       ? extractApiErrorMessage(error)
       : error instanceof Error ? error.message : "Retry request failed.";
-    const jobsParams = new URLSearchParams();
     jobsParams.set("retryError", extractErrorCode(rawMessage));
     jobsParams.set("retryErrorMessage", rawMessage);
     redirect(`/operations/jobs?${jobsParams.toString()}`);
   }
-  redirect("/operations/jobs");
+  redirect(jobsHref);
 }
 
 /**
