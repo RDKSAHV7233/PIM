@@ -63,6 +63,7 @@ describe("InternalOpsAlertsService", () => {
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);
     const payload = queueService.enqueue.mock.calls[0][1];
     expect(alertKeys(payload)).toEqual([
+      "alertId",
       "alertType",
       "environment",
       "internalUrl",
@@ -81,6 +82,8 @@ describe("InternalOpsAlertsService", () => {
       internalUrl: "https://ops.vexa.test/internal/ops/errors",
       issueId: "iss_1",
     });
+    expect(typeof payload.envelope.alertId).toBe("string");
+    expect(payload.envelope.alertId.length).toBeGreaterThan(0);
     expect(queueService.enqueue.mock.calls[0][2].jobId).toBe("ops-alert-error-p0p1-iss_1");
     expect(JSON.stringify(payload)).not.toMatch(/tenant|product|connector|credential|headers|cookies|token|stack|payload/i);
   });
@@ -182,6 +185,7 @@ describe("InternalOpsAlertsService", () => {
 
     const payload = queueService.enqueue.mock.calls[0][1];
     expect(alertKeys(payload)).toEqual([
+      "alertId",
       "alertType",
       "environment",
       "internalUrl",
@@ -267,6 +271,7 @@ describe("InternalOpsAlertsService", () => {
 
     const payload = queueService.enqueue.mock.calls[0][1];
     expect(alertKeys(payload)).toEqual([
+      "alertId",
       "alertType",
       "authEmailFailureCount",
       "authEmailFailureThreshold",
@@ -365,6 +370,7 @@ describe("InternalOpsAlertsService", () => {
     const payload = queueService.enqueue.mock.calls[0][1];
     expect(alertKeys(payload)).toEqual([
       "affectedTenantCount",
+      "alertId",
       "alertType",
       "environment",
       "internalUrl",
@@ -470,7 +476,8 @@ describe("InternalOpsAlertsService", () => {
     }));
   });
 
-  it("delivers a safe payload and does not persist or log the destination URL", async () => {
+  it("delivers a safe payload (via Slack, the required human destination) and does not leak fields", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
     const { service, queueService } = makeService();
     const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
@@ -488,15 +495,20 @@ describe("InternalOpsAlertsService", () => {
         release: "test-sha",
         observedAt: "2026-08-23T10:00:00.000Z",
         internalUrl: "/internal/ops",
+        alertId: "alert-1",
         stuckCount: 2,
         stuckAgeThresholdHours: 6,
         tenantKey: "should-not-survive",
       },
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body ?? "{}"));
+    // Legacy sink is still attempted best-effort alongside the required Slack call.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const legacyCall = fetchMock.mock.calls.find(([url]) => url === "http://localhost:3999/ops-alerts");
+    expect(legacyCall).toBeDefined();
+    const body = JSON.parse(String(legacyCall?.[1]?.body ?? "{}"));
     expect(Object.keys(body).sort()).toEqual([
+      "alertId",
       "alertType",
       "environment",
       "internalUrl",
@@ -511,6 +523,7 @@ describe("InternalOpsAlertsService", () => {
   });
 
   it("delivers a safe media-integrity payload allowlist", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
     const { service, queueService } = makeService();
     const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
@@ -537,8 +550,9 @@ describe("InternalOpsAlertsService", () => {
       },
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body ?? "{}"));
+    const legacyCall = fetchMock.mock.calls.find(([url]) => url === "http://localhost:3999/ops-alerts");
+    expect(legacyCall).toBeDefined();
+    const body = JSON.parse(String(legacyCall?.[1]?.body ?? "{}"));
     expect(Object.keys(body).sort()).toEqual([
       "affectedTenantCount",
       "alertType",
@@ -554,8 +568,11 @@ describe("InternalOpsAlertsService", () => {
     expect(JSON.stringify(body)).not.toMatch(/should-not-survive|storage|object|tenantKey|private/i);
   });
 
-  it("throws from the queue handler on destination failure so QueueService applies bounded retry", async () => {
-    const { service, queueService } = makeService();
+  it("throws from the queue handler when no human destination is reachable, so QueueService applies bounded retry (AT-921-05/AT-921-04)", async () => {
+    // Default env has only the legacy sink configured (no Slack, no secondary) — a
+    // legacy-sink-only failure must still surface as "no human destination reachable",
+    // not the old legacy-sink-specific message.
+    const { service, queueService, logger } = makeService();
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 503,
@@ -576,7 +593,37 @@ describe("InternalOpsAlertsService", () => {
           issueId: "iss_1",
         },
       }),
-    ).rejects.toThrow("Internal ops alert destination returned 503");
+    ).rejects.toThrow(/no human destination reachable/);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "ALERT DELIVERY FAILURE: no independent human destination received this alert.",
+      expect.objectContaining({ alertType: "error_authority_new_p0p1_issue" }),
+    );
+  });
+
+  it("legacy sink alone reaching 200 is NOT human delivery — Slack unconfigured, legacy sink succeeds, still fails the job", async () => {
+    // This is the exact invariant #921 exists to fix: a working legacy sink must never
+    // be mistaken for a human having seen the alert.
+    const { service, queueService } = makeService();
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, status: 200 } as Response);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await expect(
+      handler({
+        envelope: {
+          version: 1,
+          alertType: "stuck_jobs_threshold_exceeded",
+          severity: "p1",
+          environment: "test",
+          release: null,
+          observedAt: "2026-08-23T10:00:00.000Z",
+          internalUrl: "/internal/ops",
+          stuckCount: 2,
+          stuckAgeThresholdHours: 6,
+        },
+      }),
+    ).rejects.toThrow(/no human destination reachable/);
   });
 
   it("also posts a human-readable Slack message when OPS_ALERT_SLACK_WEBHOOK_URL is configured", async () => {
@@ -608,7 +655,7 @@ describe("InternalOpsAlertsService", () => {
     expect(slackBody.text).toContain("https://ops.vexa.test/internal/ops");
   });
 
-  it("still delivers to Slack when the legacy sink destination is not configured", async () => {
+  it("still delivers to Slack when the legacy sink destination is not configured (AT-921-03)", async () => {
     process.env.OPS_ALERT_WEBHOOK_URL = "";
     process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
     const { service, queueService, logger } = makeService();
@@ -631,14 +678,60 @@ describe("InternalOpsAlertsService", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("https://hooks.slack.com/services/T000/B000/XXXX", expect.anything());
-    expect(logger.warn).toHaveBeenCalledWith(
-      "Internal ops alert delivery skipped because destination is not configured.",
-      { alertType: "error_authority_new_p0p1_issue" },
+    expect(logger.info).toHaveBeenCalledWith(
+      "Internal ops alert delivery attempted.",
+      expect.objectContaining({
+        alertType: "error_authority_new_p0p1_issue",
+        humanDelivered: true,
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ destination: "legacy_sink", result: "skipped_not_configured" }),
+        ]),
+      }),
     );
   });
 
-  it("does not fail the queue handler when Slack delivery fails — only the legacy sink result matters for retry", async () => {
+  it("fails the queue handler when Slack fails even though the legacy sink succeeds (AT-921-10: legacy sink alone never counts)", async () => {
     process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    const { service, queueService, logger } = makeService();
+    jest.spyOn(global, "fetch").mockImplementation((async (url: string) => {
+      if (url === "https://hooks.slack.com/services/T000/B000/XXXX") {
+        return { ok: false, status: 500 } as Response;
+      }
+      return { ok: true, status: 200 } as Response;
+    }) as typeof fetch);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await expect(
+      handler({
+        envelope: {
+          version: 1,
+          alertType: "error_authority_new_p0p1_issue",
+          severity: "p1",
+          environment: "test",
+          release: null,
+          observedAt: "2026-08-23T10:00:00.000Z",
+          internalUrl: "/internal/ops/errors",
+          issueId: "iss_1",
+        },
+      }),
+    ).rejects.toThrow(/no human destination reachable/);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "ALERT DELIVERY FAILURE: no independent human destination received this alert.",
+      expect.objectContaining({
+        alertType: "error_authority_new_p0p1_issue",
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ destination: "slack", result: "failure", statusCode: 500, errorClass: "http_5xx" }),
+          expect.objectContaining({ destination: "legacy_sink", result: "success" }),
+        ]),
+      }),
+    );
+  });
+
+  it("falls back to the secondary destination when Slack fails, and that counts as human delivery (AT-921 secondary-destination fallback)", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    process.env.OPS_ALERT_SECONDARY_WEBHOOK_URL = "https://example.com/secondary-ops-alerts";
     const { service, queueService, logger } = makeService();
     jest.spyOn(global, "fetch").mockImplementation((async (url: string) => {
       if (url === "https://hooks.slack.com/services/T000/B000/XXXX") {
@@ -664,10 +757,42 @@ describe("InternalOpsAlertsService", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(logger.warn).toHaveBeenCalledWith(
-      "Internal ops Slack alert delivery failed.",
-      expect.objectContaining({ alertType: "error_authority_new_p0p1_issue" }),
+    expect(logger.info).toHaveBeenCalledWith(
+      "Internal ops alert delivery attempted.",
+      expect.objectContaining({
+        humanDelivered: true,
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ destination: "slack", result: "failure" }),
+          expect.objectContaining({ destination: "secondary", result: "success" }),
+        ]),
+      }),
     );
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("does not attempt the secondary destination when Slack already succeeded (no duplicate human notification)", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+    process.env.OPS_ALERT_SECONDARY_WEBHOOK_URL = "https://example.com/secondary-ops-alerts";
+    const { service, queueService } = makeService();
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, status: 200 } as Response);
+
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    await handler({
+      envelope: {
+        version: 1,
+        alertType: "error_authority_new_p0p1_issue",
+        severity: "p1",
+        environment: "test",
+        release: null,
+        observedAt: "2026-08-23T10:00:00.000Z",
+        internalUrl: "/internal/ops/errors",
+        issueId: "iss_1",
+      },
+    });
+
+    const secondaryCall = fetchMock.mock.calls.find(([url]) => url === "https://example.com/secondary-ops-alerts");
+    expect(secondaryCall).toBeUndefined();
   });
 
   it("only one concurrent reservation for the same alert key queues delivery", async () => {

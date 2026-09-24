@@ -26,6 +26,7 @@ export type InternalOpsAlertEnvelope = {
   release: string | null;
   observedAt: string;
   internalUrl: string;
+  alertId?: string;
   issueId?: string;
   stuckCount?: number;
   stuckAgeThresholdHours?: number;
@@ -36,6 +37,37 @@ export type InternalOpsAlertEnvelope = {
   authEmailFailureThreshold?: number;
   authEmailFailureWindowMinutes?: number;
 };
+
+// #921: destinations a human might actually see this alert at. "legacy_sink" is the
+// pre-existing, unsourced Railway sink (see issue #921) — kept only as a temporary,
+// best-effort diagnostic while it's being decommissioned. It never counts toward
+// human-delivered status and its failure never triggers a retry.
+type OpsAlertDestination = "slack" | "secondary" | "legacy_sink";
+type OpsAlertDeliveryOutcome = "success" | "failure" | "skipped_not_configured";
+
+type OpsAlertDeliveryAttempt = {
+  destination: OpsAlertDestination;
+  result: OpsAlertDeliveryOutcome;
+  statusCode?: number;
+  errorClass?: string;
+  latencyMs: number;
+};
+
+class OpsAlertDeliveryHttpError extends Error {
+  constructor(public readonly statusCode: number) {
+    super(`destination returned ${statusCode}`);
+  }
+}
+
+function classifyDeliveryError(error: unknown): string {
+  if (error instanceof OpsAlertDeliveryHttpError) {
+    return error.statusCode >= 500 ? "http_5xx" : "http_4xx";
+  }
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    return "timeout";
+  }
+  return "network_or_unknown";
+}
 
 type OpsAlertQueuePayload = {
   envelope: InternalOpsAlertEnvelope;
@@ -654,12 +686,14 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   }
 
   private async enqueueAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
-    if (!this.resolveDestinationUrl() && !this.resolveSlackWebhookUrl()) {
+    if (!this.resolveSlackWebhookUrl() && !this.resolveSecondaryWebhookUrl() && !this.resolveDestinationUrl()) {
       this.logger.warn("Internal ops alert delivery skipped because no destination is configured.", {
         alertType: envelope.alertType,
       });
       return;
     }
+
+    const envelopeWithId: InternalOpsAlertEnvelope = { ...envelope, alertId: envelope.alertId ?? randomUUID() };
 
     try {
       const queueService = this.resolveQueueService();
@@ -672,8 +706,8 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
 
       await queueService.enqueue(
         QUEUE_NAMES.INTERNAL_OPS_ALERT,
-        { envelope },
-        { jobId: this.buildQueueJobId(envelope) },
+        { envelope: envelopeWithId },
+        { jobId: this.buildQueueJobId(envelopeWithId) },
       );
     } catch (error: unknown) {
       this.logger.warn("Internal ops alert enqueue failed open.", {
@@ -683,19 +717,115 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     }
   }
 
+  // #921 canonical delivery: Slack is the required human destination; an optional
+  // secondary human destination is attempted only if Slack fails (kept as a fallback,
+  // not a duplicate notification on every alert); the legacy sink is a temporary,
+  // best-effort diagnostic that never counts toward "a human saw this" and is safe to
+  // remove entirely (see issue #921's canonical invariant and acceptance criteria).
   private async deliverAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
-    // Slack delivery is best-effort and independent of the legacy sink below: it
-    // must never block or fail the primary delivery (which drives this queue
-    // consumer's retry/backpressure behavior), and it must still fire even when
-    // the legacy sink destination isn't configured at all.
-    await this.deliverSlackAlert(envelope);
+    const alertId = envelope.alertId ?? randomUUID();
+    const attempts: OpsAlertDeliveryAttempt[] = [];
 
+    const slackAttempt = await this.attemptDelivery("slack", () => this.deliverSlackAlert(envelope));
+    attempts.push(slackAttempt);
+    let humanDelivered = slackAttempt.result === "success";
+
+    const secondaryUrl = this.resolveSecondaryWebhookUrl();
+    if (!humanDelivered && secondaryUrl) {
+      const secondaryAttempt = await this.attemptDelivery("secondary", () =>
+        this.deliverSecondaryAlert(envelope, secondaryUrl),
+      );
+      attempts.push(secondaryAttempt);
+      humanDelivered = secondaryAttempt.result === "success";
+    }
+
+    const legacyAttempt = await this.attemptDelivery("legacy_sink", () => this.deliverLegacySinkAlert(envelope));
+    attempts.push(legacyAttempt);
+
+    const attemptSummaries = attempts.map((attempt) => ({
+      destination: attempt.destination,
+      result: attempt.result,
+      statusCode: attempt.statusCode,
+      errorClass: attempt.errorClass,
+      latencyMs: attempt.latencyMs,
+    }));
+
+    this.logger.info("Internal ops alert delivery attempted.", {
+      alertId,
+      alertType: envelope.alertType,
+      severity: envelope.severity,
+      humanDelivered,
+      attempts: attemptSummaries,
+    });
+
+    if (!humanDelivered) {
+      this.logger.error("ALERT DELIVERY FAILURE: no independent human destination received this alert.", {
+        alertId,
+        alertType: envelope.alertType,
+        severity: envelope.severity,
+        attempts: attemptSummaries,
+      });
+      throw new Error(`Internal ops alert delivery failed: no human destination reachable (alertId=${alertId})`);
+    }
+  }
+
+  private async attemptDelivery(
+    destination: OpsAlertDestination,
+    send: () => Promise<{ skipped: boolean; statusCode?: number }>,
+  ): Promise<OpsAlertDeliveryAttempt> {
+    const startedAt = Date.now();
+    try {
+      const outcome = await send();
+      const latencyMs = Date.now() - startedAt;
+      if (outcome.skipped) {
+        return { destination, result: "skipped_not_configured", latencyMs };
+      }
+      return { destination, result: "success", statusCode: outcome.statusCode, latencyMs };
+    } catch (error: unknown) {
+      const latencyMs = Date.now() - startedAt;
+      const statusCode = error instanceof OpsAlertDeliveryHttpError ? error.statusCode : undefined;
+      return { destination, result: "failure", statusCode, errorClass: classifyDeliveryError(error), latencyMs };
+    }
+  }
+
+  private async deliverSlackAlert(envelope: InternalOpsAlertEnvelope): Promise<{ skipped: boolean; statusCode?: number }> {
+    const slackWebhookUrl = this.resolveSlackWebhookUrl();
+    if (!slackWebhookUrl) {
+      return { skipped: true };
+    }
+
+    const response = await fetch(slackWebhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: this.buildSlackMessageText(envelope) }),
+      signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new OpsAlertDeliveryHttpError(response.status);
+    }
+    return { skipped: false, statusCode: response.status };
+  }
+
+  private async deliverSecondaryAlert(
+    envelope: InternalOpsAlertEnvelope,
+    secondaryUrl: string,
+  ): Promise<{ skipped: boolean; statusCode?: number }> {
+    const response = await fetch(secondaryUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(this.filterEnvelope(envelope)),
+      signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new OpsAlertDeliveryHttpError(response.status);
+    }
+    return { skipped: false, statusCode: response.status };
+  }
+
+  private async deliverLegacySinkAlert(envelope: InternalOpsAlertEnvelope): Promise<{ skipped: boolean; statusCode?: number }> {
     const destinationUrl = this.resolveDestinationUrl();
     if (!destinationUrl) {
-      this.logger.warn("Internal ops alert delivery skipped because destination is not configured.", {
-        alertType: envelope.alertType,
-      });
-      return;
+      return { skipped: true };
     }
 
     const response = await fetch(destinationUrl, {
@@ -708,34 +838,10 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       body: JSON.stringify(this.filterEnvelope(envelope)),
       signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),
     });
-
     if (!response.ok) {
-      throw new Error(`Internal ops alert destination returned ${response.status}`);
+      throw new OpsAlertDeliveryHttpError(response.status);
     }
-  }
-
-  private async deliverSlackAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
-    const slackWebhookUrl = this.resolveSlackWebhookUrl();
-    if (!slackWebhookUrl) {
-      return;
-    }
-
-    try {
-      const response = await fetch(slackWebhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: this.buildSlackMessageText(envelope) }),
-        signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),
-      });
-      if (!response.ok) {
-        throw new Error(`Slack webhook returned ${response.status}`);
-      }
-    } catch (error: unknown) {
-      this.logger.warn("Internal ops Slack alert delivery failed.", {
-        alertType: envelope.alertType,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-    }
+    return { skipped: false, statusCode: response.status };
   }
 
   private buildSlackMessageText(envelope: InternalOpsAlertEnvelope): string {
@@ -765,6 +871,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       release: envelope.release,
       observedAt: envelope.observedAt,
       internalUrl: envelope.internalUrl,
+      ...(envelope.alertId ? { alertId: envelope.alertId } : {}),
     };
     if (envelope.alertType === "error_authority_new_p0p1_issue" && envelope.issueId) {
       return { ...base, issueId: envelope.issueId };
@@ -831,6 +938,29 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       // fall through to the warning below
     }
     this.logger.warn("Internal ops Slack alert webhook is invalid; Slack delivery disabled.");
+    return null;
+  }
+
+  // #921: optional second human destination, attempted only if Slack fails. Deliberately
+  // NOT the auth-email/Resend/BullMQ pipeline — that pipeline can itself raise
+  // auth_email_job_failure_threshold_exceeded, which would make it a circular dependency
+  // for the exact failure case this exists to cover. Unset in production as of this PR;
+  // wiring a real destination here (PagerDuty, a directly-sent email, etc.) is a
+  // follow-up decision, not part of this change.
+  private resolveSecondaryWebhookUrl(): string | null {
+    const raw = String(process.env.OPS_ALERT_SECONDARY_WEBHOOK_URL ?? "").trim();
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol === "https:") {
+        return parsed.toString();
+      }
+    } catch {
+      // fall through to the warning below
+    }
+    this.logger.warn("Internal ops secondary alert webhook is invalid; secondary delivery disabled.");
     return null;
   }
 

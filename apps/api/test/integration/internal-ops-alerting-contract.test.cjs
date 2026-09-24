@@ -55,6 +55,25 @@ function run() {
     "Auth-email job-failure alert payload may expose only the aggregate failure count.",
   );
 
+  // #921: legacy sink is diagnostic-only and must never be the sole signal that a
+  // human was reached. Slack (or the optional secondary destination) is required.
+  assert(
+    service.includes('this.logger.error("ALERT DELIVERY FAILURE'),
+    "A failure to reach any human destination must be explicitly, loudly logged.",
+  );
+  assert(
+    service.includes("no human destination reachable"),
+    "Delivery failure must surface as a human-destination failure, not a legacy-sink-specific one.",
+  );
+  assert(
+    service.includes("OPS_ALERT_SECONDARY_WEBHOOK_URL"),
+    "An optional secondary human destination must exist independent of the legacy sink.",
+  );
+  assert(
+    !service.includes("Internal ops alert destination returned"),
+    "Legacy-sink-specific delivery-failure error text must not be the thing that gates retry.",
+  );
+
   const forbiddenPayloadFragments = [
     "tenantKey:",
     "productId:",
@@ -85,6 +104,8 @@ function run() {
           "media_integrity_defect_trigger",
           "auth_email_job_failure_threshold_alert",
           "safe_payload_allowlist",
+          "legacy_sink_is_diagnostic_only",
+          "secondary_human_destination_supported",
         ],
         checkedAt: new Date().toISOString(),
       },
