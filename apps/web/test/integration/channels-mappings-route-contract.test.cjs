@@ -76,6 +76,31 @@ function run() {
     "Mapping workbench must carry fallback acknowledgement state through the publish readiness and editor flows.",
   );
 
+  assert(
+    page.includes("!requestedInstallationId && matchingInstallations.length === 1"),
+    "The sole-matching-installation auto-select must only fire when no installationId was explicitly requested -- " +
+      "an explicit-but-invalid installationId must never be silently swapped for a different installation " +
+      "(regression: previously any single match was auto-selected even when the requested id didn't match it).",
+  );
+
+  assert(
+    page.includes("invalidInstallationAlert") &&
+      /<MappingStepUpAlert\s+message=\{invalidInstallationAlert\}\s*\/>/.test(page) &&
+      /currentStep === "scope"[\s\S]{0,80}invalidInstallationAlert/.test(page) === false,
+    "The 'connector account no longer valid' warning must render on every wizard step (via a top-level alert), " +
+      "not only be wired into the scope-step filter card " +
+      "(regression: an invalid installationId on Map/Review previously showed no warning at all).",
+  );
+
+  assert(
+    /const connectorAccountLabel = selectedInstallation[\s\S]{0,260}invalidInstallation/.test(page) &&
+      /const connectorAccountDetail = selectedInstallation[\s\S]{0,300}invalidInstallation/.test(page),
+    "The Current Scope 'Connector account' label and detail text must branch on invalidInstallation with distinct, " +
+      "accurate copy for the invalid-request case, not silently fall through to installation-count-only logic " +
+      "(regression: the scope pill kept showing the real installation, or falsely claimed none was installed, " +
+      "while the invalid-installation warning banner said otherwise).",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -88,6 +113,9 @@ function run() {
           "mappings_route_derives_connector_health_from_installation",
           "mappings_route_scopes_readiness_to_selected_installation",
           "mappings_route_carries_fallback_acknowledgement_state",
+          "mappings_route_does_not_auto_select_on_invalid_installation_id",
+          "mappings_route_surfaces_invalid_installation_warning_on_every_step",
+          "mappings_route_scope_pill_copy_is_accurate_for_invalid_installation",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -390,7 +390,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const requestedInstallationId = wizardQuery.installationId;
     const selectedInstallation =
       matchingInstallations.find((installation) => installation.id === requestedInstallationId) ??
-      (matchingInstallations.length === 1 ? matchingInstallations[0] : null);
+      (!requestedInstallationId && matchingInstallations.length === 1 ? matchingInstallations[0] : null);
     const invalidInstallation =
       requestedInstallationId && !matchingInstallations.some((installation) => installation.id === requestedInstallationId)
         ? "The selected connector account is no longer valid for this channel. Choose the correct connector account to continue."
@@ -506,6 +506,12 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       hasPublishCategory,
       hasDraftContext,
     });
+    // MappingsFilterCard already surfaces invalidInstallation inline on the scope step,
+    // so this alert only needs to carry it forward once the operator moves past scope.
+    const invalidInstallationAlert =
+      invalidInstallation && currentStep !== "scope"
+        ? { title: "Connector account no longer valid", description: invalidInstallation }
+        : null;
 
     const baseWizardState: Partial<MappingWizardState> = {
       step: currentStep,
@@ -530,16 +536,20 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       ? resolveInstallationLabel(selectedInstallation)
       : matchingInstallations.length > 1
         ? "Choose connector account"
-        : matchingInstallations.length === 1
-          ? resolveInstallationLabel(matchingInstallations[0]!)
-          : "No installed connector account";
+        : invalidInstallation
+          ? "Connector account not selected"
+          : matchingInstallations.length === 1
+            ? resolveInstallationLabel(matchingInstallations[0]!)
+            : "No installed connector account";
     const connectorAccountDetail = selectedInstallation
       ? resolveInstallationContextDetail(selectedInstallation)
       : matchingInstallations.length > 1
         ? `${matchingInstallations.length} installed accounts match this connector. Choose the exact account to keep mapping context aligned.`
-        : matchingInstallations.length === 0
-          ? "No installed connector account is linked to this channel yet."
-          : null;
+        : invalidInstallation
+          ? "The requested connector account is no longer valid for this channel. Choose a valid connector account to continue."
+          : matchingInstallations.length === 0
+            ? "No installed connector account is linked to this channel yet."
+            : null;
 
     const scopeComplete = Boolean(
       selectedChannel &&
@@ -622,6 +632,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           }
         />
         <MappingStepUpAlert message={stepUpMessage} />
+        <MappingStepUpAlert message={invalidInstallationAlert} />
         <MappingDirtyNavigationGuard />
         <div className="space-y-1.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operator flow</p>
