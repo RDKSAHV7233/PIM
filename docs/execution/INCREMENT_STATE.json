@@ -336,12 +336,14 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "f26e1a6e",
+          "commit": "a8b0bb7",
           "scope": [
             "apps/web/src/app/operations/page.tsx",
             "apps/web/src/app/operations/jobs/page.tsx",
             "apps/web/test/integration/operations-overview-route-contract.test.cjs",
             "apps/web/test/integration/operations-jobs-route-contract.test.cjs",
+            "apps/web/src/app/channels/submissions/page.tsx",
+            "apps/web/test/integration/channels-submissions-route-contract.test.cjs",
             "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
             "docs/execution/INCREMENT_STATE.json"
           ],
@@ -351,11 +353,18 @@
             "node apps/web/test/integration/operations-jobs-route-contract.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
-            "node apps/web/test/integration/operations-overview-route-contract.test.cjs"
+            "node apps/web/test/integration/operations-overview-route-contract.test.cjs",
+            "npx tsc --noEmit -p apps/web/tsconfig.json (clean after fix)",
+            "node apps/api/test/integration/bulk-publish-runs-installation-filter.test.cjs (run locally against Postgres/Redis only -- NOT wired into CI; CI coverage is apps/api/src/marketplace/marketplace.service.spec.ts + list-bulk-publish-runs-query.dto.spec.ts)",
+            "live Chromium/Playwright regression: Jobs page's Bulk Publish Runs table shows a Store column and filter; filtering to one installation shows only that installation's run and excludes the other's; unfiltered view shows both; zero console errors",
+            "node apps/web/test/integration/operations-jobs-route-contract.test.cjs (review round: slug-prefixed store options + removed-installation id fallback)",
+            "node apps/web/test/integration/channels-submissions-route-contract.test.cjs (review round 2: no invisible store filter)",
+            "node apps/web/test/integration/operations-jobs-route-contract.test.cjs (review round 2: fetch degradation, filter preserved on links, no invisible filter, Map lookup; new assertions fail against the round-1 source)",
+            "node scripts/run-web-integration-db-free.cjs --timeout=30 (183/183)"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "claude",
+          "reopened_reason": "Follow-up audit after PR #941 (mapping-wizard invalid-installation fix): the Bulk Publish Runs table on this page shows a 'Connector' column but no installation/store column or filter, even though the underlying MarketplaceBulkPublishRun model carries a required, indexed installationId. A tenant with two installations of the same connector (e.g. two Shopify stores) running bulk-publish jobs on both sees indistinguishable rows with no way to tell which store a run belongs to, or to filter to one. || [Review round, required-team + CTO] Pre-merge review of PR #942 found gaps the first pass missed; fixed in the same PR before merge. || [Review round 2, CTO gate] Scope expansion per AGENTS.md rule 3: apps/web/src/app/channels/submissions/page.tsx, apps/web/test/integration/channels-submissions-route-contract.test.cjs (added to ST-OPS-COCKPIT-001), apps/web/src/lib/api/operations.ts, apps/api/src/marketplace/list-bulk-publish-runs-query.dto.spec.ts (added to ST-PERF-API-CONTRACT-003) were edited by this PR but were in no story's scope.",
+          "regression_evidence": "Exact failing check: `grep -c \"installationId\" apps/web/src/app/operations/jobs/page.tsx` returned 0 prior to this fix, despite `MarketplaceBulkPublishRun.installationId` being a required column (packages/db/prisma/schema.prisma, model MarketplaceBulkPublishRun, indexed via @@index([tenantKey, installationId])) and already present on the web client's own MarketplaceBulkPublishRun TypeScript type (apps/web/src/lib/api/core.ts). The Bulk Publish Runs DataGrid's bulkPublishRunColumns array (apps/web/src/app/operations/jobs/page.tsx) had a 'Connector' column keyed on run.connectorSlug and no equivalent for run.installationId, and getBulkPublishRuns()/listBulkPublishRuns() accepted no installationId filter at any layer (web client, controller, or service). File paths responsible: apps/web/src/app/operations/jobs/page.tsx, apps/web/src/lib/api/operations.ts, apps/api/src/marketplace/marketplace.controller.ts, apps/api/src/marketplace/marketplace.service.ts. || [Review round] Jobs page store <select> listed every installation across all connector types with no connector prefix (same ambiguity the prior CTO gate fixed on the Submissions page), and runs whose installation was removed all rendered as an identical '—'. File: apps/web/src/app/operations/jobs/page.tsx. || [Review round 2] (a) the label-only installed-connectors fetch went through loadSharedRead, which rethrows 400/404, so a failure there would take down the whole Jobs page; (b) buildJobsHref dropped the store filter on submission links; (c) a URL store filter narrowed Bulk Publish Runs invisibly when the picker was hidden; (d) when installations failed to load, every run was falsely labelled 'Installation no longer connected'; (e) the Submissions page could silently empty its list with a store filter from another connector. Files: apps/web/src/app/operations/jobs/page.tsx, apps/web/src/app/channels/submissions/page.tsx."
         },
         {
           "storyId": "ST-OPS-READINESS-BATCH-002",
@@ -2106,12 +2115,14 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "fc1801a",
+          "commit": "a8b0bb7",
           "scope": [
             "apps/api/src/catalog/catalog.controller.ts",
             "apps/api/src/catalog/catalog.service.ts",
             "apps/api/src/marketplace/marketplace.controller.ts",
             "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/dto/list-bulk-publish-runs-query.dto.ts",
+            "apps/api/test/integration/bulk-publish-runs-installation-filter.test.cjs",
             "apps/api/src/taxonomy/taxonomy.controller.ts",
             "apps/api/src/taxonomy/taxonomy.service.ts",
             "apps/web/src/app/ai/page.tsx",
@@ -2142,6 +2153,12 @@
             "apps/api/test/integration/export-jobs-template-summary.test.cjs",
             "apps/web/test/integration/quality-reviewer-role-ui.test.cjs",
             "apps/api/test/integration/rls-isolation.test.cjs",
+            "apps/api/src/marketplace/marketplace.service.spec.ts",
+            "docs/openapi.yaml",
+            "docs/openapi.json",
+            "docs/vexa-pim.postman_collection.json",
+            "apps/web/src/lib/api/operations.ts",
+            "apps/api/src/marketplace/list-bulk-publish-runs-query.dto.spec.ts",
             "docs/execution/VEXA_SAFE_EXECUTION_TRACKS_2026-06-17.md",
             "docs/execution/INCREMENT_STATE.json"
           ],
@@ -2168,11 +2185,18 @@
             "node apps/web/test/integration/rejection-route-contract.test.cjs",
             "node apps/api/test/integration/submission-lifecycle-api.test.cjs",
             "npm run test:product",
-            "npx playwright test --config=playwright.config.cjs"
+            "npx playwright test --config=playwright.config.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit (clean after fix)",
+            "npx jest --config apps/api/jest.config.js apps/api/src/marketplace/marketplace.service.spec.ts (89/89 passing)",
+            "node apps/api/test/integration/bulk-publish-runs-installation-filter.test.cjs (run locally against Postgres/Redis only -- NOT wired into CI; CI coverage is apps/api/src/marketplace/marketplace.service.spec.ts + list-bulk-publish-runs-query.dto.spec.ts)",
+            "npm run openapi:check (clean after regenerating docs/openapi.* and the Postman collection)",
+            "npx jest --config apps/api/jest.config.js apps/api/src/marketplace/marketplace.service.spec.ts -t listBulkPublishRuns (7/7; the 2 installationId-filter tests fail when the filter is removed from the service)",
+            "(cd apps/api && npx jest --config jest.config.js src/marketplace/list-bulk-publish-runs-query.dto.spec.ts) (4/4; the 2 controller-wiring tests fail against the pre-fix controller)",
+            "(cd apps/api && npm run test:unit) (123 suites passed, 1 skipped; 2183 tests passed, 18 skipped)"
           ],
-          "reopened_by": "codex",
-          "reopened_reason": "Several consumers still rely on drifted or partial contracts after the pagination/slim rollout: category counts are inferred from a partial product slice, overdue shape is inconsistent, and submission count lacks a bounded contract for truth checks.",
-          "regression_evidence": "Exact failing command: rg -n 'getProductList\\(\\{ slim: true \\}\\)|overdueCount: count|OverdueCountResponse|/catalog/workflow/sla/overdue|/submissions/count' apps/web/src/app/catalog/categories/page.tsx apps/web/src/app/quality/approvals/page.tsx apps/web/src/lib/api/catalog.ts apps/api/src/catalog/catalog.service.ts apps/api/src/marketplace/submissions.controller.ts. Failing output snippet: categories derive counts from the first slim product page, overdue service returns overdueCount instead of count, and submissions count endpoint is absent. Likely files responsible: apps/web/src/app/catalog/categories/page.tsx, apps/web/src/app/quality/approvals/page.tsx, apps/web/src/lib/api/catalog.ts, apps/api/src/catalog/catalog.service.ts, apps/api/src/marketplace/submissions.controller.ts."
+          "reopened_by": "claude",
+          "reopened_reason": "[Prior cycle, resolved and re-locked before this reopen -- reopened_by: codex] Several consumers still rely on drifted or partial contracts after the pagination/slim rollout: category counts are inferred from a partial product slice, overdue shape is inconsistent, and submission count lacks a bounded contract for truth checks. || [This cycle] Follow-up audit after PR #941 (mapping-wizard invalid-installation fix): GET /marketplace/bulk-publish-runs (listBulkPublishRuns) accepts pagination only, with no installationId filter, even though the underlying MarketplaceBulkPublishRun rows are always installation-scoped. A tenant with two installations of the same connector cannot filter the Jobs page's bulk-publish-run list to one store. || [Review round, required-team + CTO] Pre-merge review of PR #942 found gaps the first pass missed; fixed in the same PR before merge. || [Review round 2, CTO gate] Scope expansion per AGENTS.md rule 3: apps/web/src/app/channels/submissions/page.tsx, apps/web/test/integration/channels-submissions-route-contract.test.cjs (added to ST-OPS-COCKPIT-001), apps/web/src/lib/api/operations.ts, apps/api/src/marketplace/list-bulk-publish-runs-query.dto.spec.ts (added to ST-PERF-API-CONTRACT-003) were edited by this PR but were in no story's scope.",
+          "regression_evidence": "[Prior cycle, resolved and re-locked before this reopen] Exact failing command: rg -n 'getProductList\\(\\{ slim: true \\}\\)|overdueCount: count|OverdueCountResponse|/catalog/workflow/sla/overdue|/submissions/count' apps/web/src/app/catalog/categories/page.tsx apps/web/src/app/quality/approvals/page.tsx apps/web/src/lib/api/catalog.ts apps/api/src/catalog/catalog.service.ts apps/api/src/marketplace/submissions.controller.ts. Failing output snippet: categories derive counts from the first slim product page, overdue service returns overdueCount instead of count, and submissions count endpoint is absent. Likely files responsible: apps/web/src/app/catalog/categories/page.tsx, apps/web/src/app/quality/approvals/page.tsx, apps/web/src/lib/api/catalog.ts, apps/api/src/catalog/catalog.service.ts, apps/api/src/marketplace/submissions.controller.ts. || [This cycle] Exact failing check: the listBulkPublishRuns controller method (apps/api/src/marketplace/marketplace.controller.ts) took only `@Query() pagination?: CursorPaginationDto` with no installationId parameter, and the service method listBulkPublishRuns(pagination?: CursorPaginationQuery) (apps/api/src/marketplace/marketplace.service.ts) built its `where` clause from cursor tokens only -- confirmed via `grep -n \"listBulkPublishRuns\" -A 15 apps/api/src/marketplace/marketplace.controller.ts apps/api/src/marketplace/marketplace.service.ts`, which showed zero occurrences of installationId in either method despite MarketplaceBulkPublishRun.installationId being a required, indexed column (packages/db/prisma/schema.prisma). File paths responsible: apps/api/src/marketplace/marketplace.controller.ts, apps/api/src/marketplace/marketplace.service.ts. || [Review round] Exact failing command: `npm run openapi:check`. Failing output: `git diff --exit-code` non-zero on docs/openapi.yaml, docs/openapi.json and docs/vexa-pim.postman_collection.json -- the committed spec still had `parameters: []` for GET /api/v1/marketplace/bulk-publish-runs while the generated spec adds the new optional `installationId` query parameter. Separately, the new apps/api/test/integration/bulk-publish-runs-installation-filter.test.cjs is not wired into any CI job (scripts/run-integration-parallel.cjs uses an explicit allow-list), so the filter had no CI-executed coverage. Files: docs/openapi.yaml, docs/openapi.json, docs/vexa-pim.postman_collection.json, apps/api/src/marketplace/marketplace.service.spec.ts. || [Review round 2] The only test exercising the DTO/controller binding (the integration test) is not run in CI, and the mocked service spec cannot catch a revert to `@Query() pagination?: CursorPaginationDto` -- the exact binding that made the global ValidationPipe (forbidNonWhitelisted) reject installationId during development. File: apps/api/src/marketplace/marketplace.controller.ts."
         }
       ]
     },

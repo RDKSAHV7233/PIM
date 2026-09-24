@@ -7,7 +7,6 @@ import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
-import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
@@ -27,6 +26,7 @@ import {
 } from "./dto/connector-mapping.dto";
 import { CreateExportJobAliasDto } from "./dto/create-export-job-alias.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
+import { ListBulkPublishRunsQueryDto } from "./dto/list-bulk-publish-runs-query.dto";
 import { ListExportJobsQueryDto } from "./dto/list-export-jobs-query.dto";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
 import { SimulateMarketplaceDto } from "./dto/simulate-marketplace.dto";
@@ -620,8 +620,8 @@ export class MarketplaceController {
   @Get("bulk-publish-runs")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin", "publisher", "channel_manager")
-  listBulkPublishRuns(@Query() pagination?: CursorPaginationDto) {
-    return this.marketplaceService.listBulkPublishRuns(pagination);
+  listBulkPublishRuns(@Query() query?: ListBulkPublishRunsQueryDto) {
+    return this.marketplaceService.listBulkPublishRuns(query, query?.installationId);
   }
 
   @Get("bulk-publish-runs/:runId")

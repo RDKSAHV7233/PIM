@@ -78,6 +78,31 @@ function run() {
     "Channels submissions must surface a truthful empty state and redirect auth failures through the shared login helper.",
   );
 
+  assert(
+    source.includes("const storeFilterInstallations = connectorSlug") &&
+      source.includes('allInstallations.filter((i) => i.slug === connectorSlug)') &&
+      source.includes("storeFilterInstallations.length > 1") &&
+      !source.includes('i.slug === "shopify"'),
+    "The Store filter must generalize to whichever connector is selected, not be hardcoded to Shopify " +
+      "(any connector type can have multiple installations under a high enough plan tier).",
+  );
+
+  assert(
+    source.includes("const hiddenStoreFilter =") &&
+      source.includes("!(storeFilterInstallations.length > 1 && storeFilterInstallations.some((i) => i.id === installationId))") &&
+      source.includes("Clear store filter") &&
+      source.includes("{hiddenStoreFilter ? ("),
+    "A store filter the picker cannot show (picker hidden, or an installation from another connector) must be " +
+      "surfaced with a clear link rather than silently emptying the submissions list.",
+  );
+
+  assert(
+    source.includes("connectorSlug ? resolveInstallationLabel(inst) : `${inst.slug} — ${resolveInstallationLabel(inst)}`"),
+    "Store options must be prefixed with the connector slug when no connector filter is active, " +
+      "since the option list can then span multiple connector types and would otherwise be ambiguous " +
+      "(e.g. a Shopify store and an Amazon installation with similar-looking labels).",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -92,6 +117,9 @@ function run() {
           "channels_submissions_route_preserves_operator_filters_and_links",
           "channels_submissions_route_keeps_product_drilldowns_and_timestamps",
           "channels_submissions_route_handles_empty_and_auth_redirect_states",
+          "channels_submissions_route_generalizes_store_filter_beyond_shopify",
+          "channels_submissions_route_disambiguates_store_options_across_connector_types",
+          "channels_submissions_route_never_applies_store_filter_invisibly",
         ],
         checkedAt: new Date().toISOString(),
       },

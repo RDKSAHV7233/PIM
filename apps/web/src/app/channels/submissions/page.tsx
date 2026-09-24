@@ -15,6 +15,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { canPublishToChannels } from "@/lib/role-capabilities";
+import { resolveInstallationLabel } from "@/lib/connector-utils";
 import { SubmissionsGrid } from "./_components/submissions-grid";
 
 export const dynamic = "force-dynamic";
@@ -122,7 +123,24 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
       ),
       getInstalledConnectors({ role: actorRole, authHeader }).catch(() => [] as import("@/lib/api").ConnectorInstallation[]),
     ]);
-    const shopifyInstallations = allInstallations.filter((i) => i.slug === "shopify");
+    // Scope the store picker to the active connector filter (if any) so it doesn't list
+    // unrelated stores from other connector types; any connector can have multiple
+    // installations under a high-enough plan tier, not just Shopify.
+    const storeFilterInstallations = connectorSlug
+      ? allInstallations.filter((i) => i.slug === connectorSlug)
+      : allInstallations;
+    // A store filter the picker can't show (picker hidden, or the id belongs to another
+    // connector) still narrows the results, so it must be surfaced with a way to clear it.
+    const hiddenStoreFilter =
+      installationId && !(storeFilterInstallations.length > 1 && storeFilterInstallations.some((i) => i.id === installationId))
+        ? installationId
+        : "";
+    const clearStoreFilterParams = new URLSearchParams();
+    if (statusFilter) clearStoreFilterParams.set("status", statusFilter);
+    if (connectorSlug) clearStoreFilterParams.set("connectorSlug", connectorSlug);
+    const clearStoreFilterHref = clearStoreFilterParams.toString()
+      ? `/channels/submissions?${clearStoreFilterParams.toString()}`
+      : "/channels/submissions";
     const submissions = toItems(submissionsResponse);
     const latestSubmission = submissions[0] ?? null;
     const statusCounts = submissions.reduce<Record<string, number>>((accumulator, submission) => {
@@ -242,16 +260,18 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
               </label>
               <Input id="channel-submissions-connector" name="connectorSlug" defaultValue={connectorSlug} placeholder="amazon-in / connector slug" />
             </div>
-            {shopifyInstallations.length > 1 ? (
+            {storeFilterInstallations.length > 1 ? (
               <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="channel-submissions-store">
                   Store
                 </label>
                 <Select id="channel-submissions-store" name="installationId" defaultValue={installationId}>
                   <option value="">All stores</option>
-                  {shopifyInstallations.map((inst) => (
+                  {storeFilterInstallations.map((inst) => (
                     <option key={inst.id} value={inst.id}>
-                      {(inst.metadata as { shopName?: string } | null)?.shopName ?? inst.accountAlias ?? inst.id}
+                      {/* Without an active connector filter, options can span multiple
+                          connector types -- prefix with the slug so they stay distinguishable. */}
+                      {connectorSlug ? resolveInstallationLabel(inst) : `${inst.slug} — ${resolveInstallationLabel(inst)}`}
                     </option>
                   ))}
                 </Select>
@@ -267,6 +287,15 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
             </div>
           </form>
         </FilterBar>
+
+        {hiddenStoreFilter ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Showing submissions for installation <span className="font-mono text-xs">{hiddenStoreFilter}</span> only.{" "}
+            <Link href={clearStoreFilterHref} className="font-medium underline">
+              Clear store filter
+            </Link>
+          </div>
+        ) : null}
 
         <Card>
           <CardTitle>Latest Channel Submissions</CardTitle>

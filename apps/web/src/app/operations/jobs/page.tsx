@@ -14,8 +14,10 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { ApiHttpError, getBulkPublishRuns, getDeadLetterSubmissions, getSubmissions } from "@/lib/api";
+import { getInstalledConnectors } from "@/lib/api/connectors";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace, canPublishToChannels } from "@/lib/role-capabilities";
+import { resolveInstallationLabel } from "@/lib/connector-utils";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { describeError } from "@/lib/errors";
@@ -33,6 +35,7 @@ interface OperationsJobsPageProps {
     status?: string;
     connectorSlug?: string;
     submissionId?: string;
+    installationId?: string;
     retryError?: string;
     retryErrorMessage?: string;
   }>;
@@ -332,13 +335,14 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
   const connectorSlug = String(query.connectorSlug ?? "").trim().toLowerCase();
   const selectedSubmissionId = String(query.submissionId ?? "").trim();
+  const bulkPublishInstallationId = String(query.installationId ?? "").trim();
   const retryError = String(query.retryError ?? "").trim();
   const retryErrorCopy = retryError ? describeError(retryError) : null;
   const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
   try {
-    const [submissionsResult, deadLetterResult, bulkPublishRunsResult] = await Promise.all([
+    const [submissionsResult, deadLetterResult, bulkPublishRunsResult, installationsResult] = await Promise.all([
       loadSharedRead(getSubmissions(
         {
           limit: visibleSubmissionLimit,
@@ -351,7 +355,16 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       // Bulk-Publish Goes Async, Story 7: recent async bulk-publish runs (Shopify,
       // WooCommerce, ...) — separate from the submissions/dead-letter data above since
       // a run isn't a ConnectorSubmission until the worker actually processes each item.
-      loadSharedRead(getBulkPublishRuns(20, { role: actorRole, authHeader })),
+      loadSharedRead(getBulkPublishRuns({ limit: 20, installationId: bulkPublishInstallationId || undefined }, { role: actorRole, authHeader })),
+      // Installed connector accounts only label/filter bulk-publish runs, so any failure
+      // other than an expired session degrades to "unavailable" instead of taking the
+      // whole Jobs page down (loadSharedRead rethrows e.g. 400/404).
+      loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader })).catch((error: unknown): SharedReadResult<never> => {
+        if (error instanceof ApiHttpError && error.status === 401) {
+          throw error;
+        }
+        return { state: "unavailable" };
+      }),
     ]);
 
     if (submissionsResult.state === "restricted") {
@@ -405,6 +418,9 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
       }
       if (submissionId) {
         params.set("submissionId", submissionId);
+      }
+      if (bulkPublishInstallationId) {
+        params.set("installationId", bulkPublishInstallationId);
       }
       const queryString = params.toString();
       return queryString ? `/operations/jobs?${queryString}` : "/operations/jobs";
@@ -543,6 +559,25 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
     // that silently defaulted to empty on a real API failure would read as "nothing is
     // running" when it might mean "we can't tell you."
     const bulkPublishRuns = bulkPublishRunsResult.state === "available" ? toItems(bulkPublishRunsResult.value) : [];
+    const installations = installationsResult.state === "available" ? installationsResult.value : [];
+    const installationById = new Map(installations.map((installation) => [installation.id, installation]));
+    // The store filter is only worth showing when there is more than one installation to
+    // pick between; the Store column always renders.
+    const showBulkPublishStoreFilter = installations.length > 1;
+    // A URL-supplied store filter must never apply invisibly (picker hidden, or the id
+    // isn't one of its options) -- surface it with a way to clear it.
+    const hiddenBulkPublishStoreFilter =
+      bulkPublishInstallationId && !(showBulkPublishStoreFilter && installationById.has(bulkPublishInstallationId))
+        ? bulkPublishInstallationId
+        : "";
+    const clearBulkPublishStoreFilterHref = (() => {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (connectorSlug) params.set("connectorSlug", connectorSlug);
+      if (selectedSubmissionId) params.set("submissionId", selectedSubmissionId);
+      const queryString = params.toString();
+      return queryString ? `/operations/jobs?${queryString}` : "/operations/jobs";
+    })();
     const bulkPublishRunColumns: Column<(typeof bulkPublishRuns)[number]>[] = [
       {
         key: "run",
@@ -550,6 +585,26 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         render: (run) => <span className="font-mono text-xs text-slate-700">{safeText(run.id)}</span>,
       },
       { key: "connector", header: "Connector", render: (run) => safeText(run.connectorSlug) },
+      {
+        key: "store",
+        header: "Store",
+        render: (run) => {
+          const installation = installationById.get(run.installationId);
+          if (installation) {
+            return <span className="text-xs text-slate-700">{resolveInstallationLabel(installation)}</span>;
+          }
+          // Fall back to the id so two unresolvable stores stay distinguishable. Only claim
+          // "no longer connected" when the installation list actually loaded.
+          return (
+            <span
+              className="font-mono text-xs text-slate-400"
+              title={installationsResult.state === "available" ? "Installation no longer connected" : "Store details unavailable"}
+            >
+              {safeText(run.installationId)}
+            </span>
+          );
+        },
+      },
       {
         key: "status",
         header: "Status",
@@ -769,7 +824,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         ) : null}
 
         <FilterBar>
-          <form method="get" className="grid gap-3 md:grid-cols-[200px_220px_140px_auto]">
+          <form method="get" className="grid gap-3 md:grid-cols-[200px_220px_140px_200px_auto]">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="jobs-status-filter">
                 Status
@@ -796,6 +851,22 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
               </label>
               <Input id="jobs-submission-filter" name="submissionId" defaultValue={selectedSubmissionId} placeholder="optional" />
             </div>
+            {showBulkPublishStoreFilter ? (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="jobs-installation-filter">
+                  Store (Bulk Publish Runs)
+                </label>
+                <Select id="jobs-installation-filter" name="installationId" defaultValue={bulkPublishInstallationId}>
+                  <option value="">All stores</option>
+                  {/* Bulk publish runs span every connector type, so prefix the slug to keep options unambiguous. */}
+                  {installations.map((installation) => (
+                    <option key={installation.id} value={installation.id}>
+                      {`${installation.slug} — ${resolveInstallationLabel(installation)}`}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
             <div className="flex items-end gap-2">
               <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
                 Apply
@@ -842,6 +913,14 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
             Connectors without a native batch-publish API (Shopify, WooCommerce, ...) queue an
             async run per bulk-publish request instead of publishing inline — track progress here.
           </p>
+          {hiddenBulkPublishStoreFilter ? (
+            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Showing runs for installation <span className="font-mono text-xs">{hiddenBulkPublishStoreFilter}</span> only.{" "}
+              <Link href={clearBulkPublishStoreFilterHref} className="font-medium underline">
+                Clear store filter
+              </Link>
+            </div>
+          ) : null}
           {bulkPublishRunsResult.state === "restricted" ? (
             <p className="mt-2 text-sm text-slate-600">Bulk publish run details are restricted for your role.</p>
           ) : bulkPublishRunsResult.state === "unavailable" ? (

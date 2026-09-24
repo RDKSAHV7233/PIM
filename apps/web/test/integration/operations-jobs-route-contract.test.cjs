@@ -28,13 +28,14 @@ function run() {
   assert(
     source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
       source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
-      source.includes("const [submissionsResult, deadLetterResult, bulkPublishRunsResult] = await Promise.all([") &&
+      source.includes("const [submissionsResult, deadLetterResult, bulkPublishRunsResult, installationsResult] = await Promise.all([") &&
       source.includes("loadSharedRead(getSubmissions(") &&
       source.includes("status: statusFilter || undefined,") &&
       source.includes("connectorSlug: connectorSlug || undefined,") &&
       source.includes("loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader }))") &&
-      source.includes("loadSharedRead(getBulkPublishRuns(20, { role: actorRole, authHeader }))"),
-    "Operations jobs must fetch submissions, dead-letter records, and bulk-publish runs together through explicit shared-read wrappers.",
+      source.includes("loadSharedRead(getBulkPublishRuns({ limit: 20, installationId: bulkPublishInstallationId || undefined }, { role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader })).catch("),
+    "Operations jobs must fetch submissions, dead-letter records, bulk-publish runs, and installed connectors together through explicit shared-read wrappers.",
   );
   assert(
     source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&
@@ -111,6 +112,52 @@ function run() {
     "Operations jobs must deep-link operators into repair/channel workspaces and redirect only expired sessions through the shared login helper.",
   );
 
+  assert(
+    source.includes('key: "store"') &&
+      source.includes('header: "Store"') &&
+      source.includes("installationById.get(run.installationId)") &&
+      source.includes("resolveInstallationLabel(installation)"),
+    "Bulk Publish Runs must show which installation/store each run belongs to, not just its connector slug " +
+      "(a tenant with two installations of the same connector would otherwise see indistinguishable rows).",
+  );
+
+  assert(
+    source.includes("const showBulkPublishStoreFilter = installations.length > 1;") &&
+      source.includes('id="jobs-installation-filter"') &&
+      source.includes('name="installationId"'),
+    "Bulk Publish Runs must expose a store filter once a tenant has more than one installation to disambiguate between.",
+  );
+
+  assert(
+    /getInstalledConnectors\(\{ role: actorRole, authHeader \}\)\)\.catch\([\s\S]{0,200}error\.status === 401[\s\S]{0,60}throw error;[\s\S]{0,40}return \{ state: "unavailable" \};/.test(source),
+    "The installed-connectors fetch only labels/filters bulk-publish runs, so any failure other than an expired " +
+      "session (401) must degrade to 'unavailable' instead of rethrowing and taking down the whole Jobs page.",
+  );
+
+  assert(
+    /const buildJobsHref = [\s\S]{0,500}params\.set\("installationId", bulkPublishInstallationId\)/.test(source),
+    "Submission detail links must preserve the Bulk Publish Runs store filter instead of silently clearing it.",
+  );
+
+  assert(
+    source.includes("const hiddenBulkPublishStoreFilter =") &&
+      source.includes("!(showBulkPublishStoreFilter && installationById.has(bulkPublishInstallationId))") &&
+      source.includes("Clear store filter") &&
+      !/installations\.find\(\(item\) => item\.id === run\.installationId\)/.test(source) &&
+      source.includes('installationsResult.state === "available" ? "Installation no longer connected" : "Store details unavailable"'),
+    "A URL store filter must never narrow Bulk Publish Runs invisibly, the Store column must use a single id->installation " +
+      "map, and it must not claim an installation is disconnected when the installation list simply failed to load.",
+  );
+
+  assert(
+    source.includes("{`${installation.slug} — ${resolveInstallationLabel(installation)}`}") &&
+      source.includes("{safeText(run.installationId)}") &&
+      !/<span className="text-xs text-slate-400">—<\/span>/.test(source),
+    "Bulk Publish Runs store options must carry the connector slug (the list spans every connector type), " +
+      "and a run whose installation was removed must still show its installation id instead of a generic dash " +
+      "(otherwise two removed stores become indistinguishable again).",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -127,6 +174,12 @@ function run() {
           "operations_jobs_route_surfaces_empty_state_with_repair_escalation",
           "operations_jobs_route_highlights_selected_submission_detail",
           "operations_jobs_route_links_to_repair_channels_and_redirects_auth_failures",
+          "operations_jobs_route_shows_installation_store_per_bulk_publish_run",
+          "operations_jobs_route_exposes_installation_filter_when_multiple_stores_exist",
+          "operations_jobs_route_disambiguates_store_options_and_removed_installations",
+          "operations_jobs_route_degrades_installations_fetch_failures",
+          "operations_jobs_route_preserves_store_filter_on_submission_links",
+          "operations_jobs_route_never_applies_store_filter_invisibly",
         ],
         checkedAt: new Date().toISOString(),
       },

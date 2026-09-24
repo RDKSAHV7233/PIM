@@ -5694,8 +5694,9 @@ export class MarketplaceService implements OnModuleInit {
    * (same tenant-scoped findMany + updatedAt/id cursor pattern) so the Jobs page can
    * page through history the same way it already does for dead-letter jobs.
    */
-  async listBulkPublishRuns(pagination?: CursorPaginationQuery) {
+  async listBulkPublishRuns(pagination?: CursorPaginationQuery, installationId?: string) {
     const db = this.prisma.tenant();
+    const installationFilter = installationId ? { installationId } : {};
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -5709,6 +5710,7 @@ export class MarketplaceService implements OnModuleInit {
 
       const runs = await db.marketplaceBulkPublishRun.findMany({
         where: {
+          ...installationFilter,
           ...(token && cursorDate
             ? {
                 OR: [
@@ -5739,6 +5741,7 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     return db.marketplaceBulkPublishRun.findMany({
+      where: installationFilter,
       orderBy: [{ updatedAt: "desc" }],
       take: resolveCollectionLimit(pagination?.limit),
     });

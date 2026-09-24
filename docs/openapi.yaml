@@ -2033,7 +2033,13 @@ paths:
   /api/v1/marketplace/bulk-publish-runs:
     get:
       operationId: MarketplaceController_listBulkPublishRuns
-      parameters: []
+      parameters:
+        - name: installationId
+          required: false
+          in: query
+          description: Filter bulk-publish runs to a single connector installation
+          schema:
+            type: string
       responses:
         "200":
           description: ""

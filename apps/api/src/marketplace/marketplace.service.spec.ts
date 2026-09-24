@@ -1226,11 +1226,13 @@ describe("MarketplaceService.getBulkPublishRun / listBulkPublishRuns", () => {
         findUnique: jest.fn(({ where: { id } }: { where: { id: string } }) =>
           Promise.resolve(runs.find((run) => run.id === id) ?? null),
         ),
-        findMany: jest.fn(({ where, orderBy, take }: { where?: { OR?: Array<Record<string, unknown>> }; orderBy: unknown; take: number }) => {
-          let filtered = runs;
+        findMany: jest.fn(({ where, orderBy, take }: { where?: { OR?: Array<Record<string, unknown>>; installationId?: string }; orderBy: unknown; take: number }) => {
+          let filtered = where?.installationId
+            ? runs.filter((run) => run.installationId === where.installationId)
+            : runs;
           const cursorClause = where?.OR;
           if (cursorClause) {
-            filtered = runs.filter((run) => {
+            filtered = filtered.filter((run) => {
               const updatedAtLt = cursorClause[0]?.updatedAt as { lt: Date } | undefined;
               const eqClause = cursorClause[1] as { updatedAt: Date; id: { lt: string } } | undefined;
               const runUpdatedAt = run.updatedAt as Date;
@@ -1315,6 +1317,43 @@ describe("MarketplaceService.getBulkPublishRun / listBulkPublishRuns", () => {
       cursor: "nextCursor" in page1 ? (page1.nextCursor ?? undefined) : undefined,
     });
     expect("items" in page2 ? page2.items.map((r) => r.id) : []).toEqual(["run_2", "run_1"]);
+  });
+
+  describe("installationId filter", () => {
+    // Two installations of the same connector interleaved by updatedAt, so a missing
+    // filter (or one applied on only one pagination path) leaks the other store's runs.
+    const runs = Array.from({ length: 6 }, (_, i) => ({
+      id: `run_${i}`,
+      installationId: i % 2 === 0 ? "inst_a" : "inst_b",
+      connectorSlug: "shopify",
+      status: "completed",
+      updatedAt: new Date(2026, 0, i + 1),
+    }));
+
+    it("without installationId returns runs from every installation", async () => {
+      const { svc } = makeReadOnlyService(runs);
+      const result = (await svc.listBulkPublishRuns()) as Array<{ installationId: string }>;
+      expect(new Set(result.map((r) => r.installationId))).toEqual(new Set(["inst_a", "inst_b"]));
+    });
+
+    it("scopes the non-cursor list to the requested installation", async () => {
+      const { svc } = makeReadOnlyService(runs);
+      const result = (await svc.listBulkPublishRuns(undefined, "inst_a")) as Array<{ id: string; installationId: string }>;
+      expect(result.map((r) => r.id)).toEqual(["run_4", "run_2", "run_0"]);
+      expect(result.every((r) => r.installationId === "inst_a")).toBe(true);
+    });
+
+    it("scopes every cursor page to the requested installation", async () => {
+      const { svc } = makeReadOnlyService(runs);
+      const page1 = await svc.listBulkPublishRuns({ pagination: "cursor", limit: 2 }, "inst_b");
+      expect("items" in page1 ? page1.items.map((r) => r.id) : []).toEqual(["run_5", "run_3"]);
+
+      const page2 = await svc.listBulkPublishRuns(
+        { pagination: "cursor", limit: 2, cursor: "nextCursor" in page1 ? (page1.nextCursor ?? undefined) : undefined },
+        "inst_b",
+      );
+      expect("items" in page2 ? page2.items.map((r) => r.id) : []).toEqual(["run_1"]);
+    });
   });
 });
 

@@ -95,9 +95,16 @@ export async function getDeadLetterSubmissions(
 // Bulk-Publish Goes Async, Story 7: recent async bulk-publish runs for the Jobs
 // workspace panel (createBulkPublishRun/processBulkPublishRun in
 // apps/api/src/marketplace/marketplace.service.ts).
-export async function getBulkPublishRuns(limit = 20, options?: ApiRequestOptions) {
+export async function getBulkPublishRuns(
+  { limit = 20, installationId }: { limit?: number; installationId?: string } = {},
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (installationId) {
+    params.set("installationId", installationId);
+  }
   const response = await fetchJson<PaginatedResponse<MarketplaceBulkPublishRun> | MarketplaceBulkPublishRun[]>(
-    `/marketplace/bulk-publish-runs?limit=${encodeURIComponent(String(limit))}`,
+    `/marketplace/bulk-publish-runs?${params.toString()}`,
     undefined,
     options,
   );
