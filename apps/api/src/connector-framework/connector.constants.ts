@@ -17,6 +17,7 @@ export const CONNECTOR_SLUGS = {
   ODOO: "odoo",
   PRESTASHOP: "prestashop",
   SHOPIFY: "shopify",
+  SHOPWARE: "shopware",
   WOOCOMMERCE: "woocommerce",
 } as const;
 

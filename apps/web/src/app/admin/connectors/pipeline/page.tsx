@@ -120,6 +120,13 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "Ported from the Vexa Connector Hub prototype (2026-09-22). Sandbox-verified in the prototype phase against a real BigCommerce trial store with no bugs found. This TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
   },
+  shopware: {
+    owner: "Platform",
+    milestone: null,
+    blockers: ["QA validation", "PO review"],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 itself (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). One real bug found and fixed during the port: the prototype hardcoded a 19% German VAT rate when computing net-from-gross price, which is wrong for any non-German store or non-standard tax class — fixed to read the product's own attributes.tax_rate_percent, defaulting to 19% only as a last resort.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

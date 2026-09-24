@@ -473,6 +473,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "shopware") {
+        try {
+          await this.captureAndStoreShopwareCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1206,6 +1218,10 @@ export class ConnectorInstallerService {
     } else if (slug === "bigcommerce") {
       if (has(dto.externalAccountRef)) types.push("store_hash");
       if (has(dto.clientId)) types.push("api_key");
+    } else if (slug === "shopware") {
+      if (has(dto.externalAccountRef)) types.push("store_url");
+      if (has(dto.clientId)) types.push("client_id");
+      if (has(dto.clientSecret)) types.push("client_secret");
     }
     return types;
   }
@@ -1267,6 +1283,8 @@ export class ConnectorInstallerService {
         return this.updatePrestaShopCredentials(tenantKey, installation, dto);
       case "bigcommerce":
         return this.updateBigCommerceCredentials(tenantKey, installation, dto);
+      case "shopware":
+        return this.updateShopwareCredentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1513,6 +1531,81 @@ export class ConnectorInstallerService {
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
         data: { status: "ACTIVE", externalAccountRef: suppliedStoreHash, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  // Shopware uses client_credentials — same "no refresh_token to rotate" shape
+  // as Dynamics 365 above, but the token exchange still yields a fresh
+  // access_token worth persisting immediately (commitExtra) so the first live
+  // call after a credentials update doesn't need a redundant token exchange.
+  private async updateShopwareCredentials(
+    tenantKey: string,
+    installation: { id: string },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "clientSecret"], "shopware");
+
+    const storeUrl = dto.externalAccountRef?.trim();
+    const clientId = dto.clientId?.trim();
+    const clientSecret = dto.clientSecret;
+
+    const missing = [
+      !storeUrl && "Store URL",
+      !clientId && "Integration Access ID",
+      !(clientSecret && clientSecret.trim()) && "Integration Secret Key",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "SHOPWARE_CREDENTIALS_INCOMPLETE",
+        message: `Shopware credentials require Store URL, Integration Access ID, and Integration Secret Key. Missing: ${missing}.`,
+      });
+    }
+
+    if (!storeUrl!.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "SHOPWARE_URL_NOT_HTTPS",
+        message: "Shopware store URL must use HTTPS.",
+      });
+    }
+
+    const connector = this.connectorRegistry.getConnector("shopware");
+    const verification = await connector.verifyCandidateCredentials!({
+      store_url: storeUrl!,
+      client_id: clientId!,
+      client_secret: clientSecret!,
+    });
+
+    this.throwOnUnverified("SHOPWARE", verification);
+
+    // Narrowed by throwOnUnverified: only "valid" reaches here.
+    const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "store_url", plainValue: storeUrl!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "client_id", plainValue: clientId!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "client_secret", plainValue: clientSecret!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      if (commitExtra?.accessToken) {
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "access_token", plainValue: commitExtra.accessToken.value, expiresAt: commitExtra.accessToken.expiresAt, metadata: { source: "credentials_update" } },
+          tx,
+        );
+      }
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: storeUrl, updatedAt: new Date() },
       });
     });
 
@@ -2934,6 +3027,65 @@ export class ConnectorInstallerService {
     });
     // Live preflight (X-Auth-Token + /catalog/summary reachability) deferred
     // to the validateCredentials heartbeat, matching the Odoo install path above.
+  }
+
+  // Shopware install-time capture. DTO field reuse:
+  //   externalAccountRef -> store_url     (HTTPS store base URL)
+  //   clientId            -> client_id     (Integration's Access ID)
+  //   clientSecret        -> client_secret (Integration's Secret Key)
+  private async captureAndStoreShopwareCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const storeUrl = String(input.externalAccountRef ?? "").trim();
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const clientSecret = String(input.dto.clientSecret ?? "").trim();
+
+    if (!storeUrl || !clientId || !clientSecret) {
+      const missing = [
+        !storeUrl && "Store URL",
+        !clientId && "Integration Access ID",
+        !clientSecret && "Integration Secret Key",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "SHOPWARE_CREDENTIALS_INCOMPLETE",
+        message: `Shopware installation requires Store URL, Integration Access ID, and Integration Secret Key. Missing: ${missing}.`,
+      });
+    }
+
+    if (!storeUrl.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "SHOPWARE_URL_NOT_HTTPS",
+        message: "Shopware store URL must use HTTPS.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "store_url",
+      plainValue: storeUrl,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_secret",
+      plainValue: clientSecret,
+      metadata: { source: "install_form" },
+    });
+    // Live preflight (client_credentials exchange + /api/_info/config
+    // reachability) deferred to the validateCredentials heartbeat, matching
+    // the Odoo/BigCommerce install paths above.
   }
 
   // eBay install-time capture. Uses the same generic client_id/client_secret/

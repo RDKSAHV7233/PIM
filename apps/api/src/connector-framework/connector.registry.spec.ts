@@ -33,6 +33,7 @@ describe("ConnectorRegistry — safe-fallback boot gating", () => {
       fakeConnector("odoo"),
       fakeConnector("prestashop"),
       fakeConnector("shopify"),
+      fakeConnector("shopware"),
       fakeConnector("woocommerce"),
     );
     return { registry, findMany, logger };

@@ -212,6 +212,20 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.SHOPWARE) {
+    // Re-verified live from within PIM1 itself (2026-09-24) against a real
+    // local dockware/dev Shopware sandbox — full auth/publish/status-sync/
+    // update round trip confirmed working end-to-end. Still under_development
+    // / not installable: QA validation and PO review haven't happened yet,
+    // not because of unproven code.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "Shopware 6 Admin API connector (OAuth2 client_credentials against /api/oauth/token). Ported from the prototype, which had a hardcoded 19% German VAT assumption when computing net-from-gross price — fixed in this port to read the product's own tax_rate_percent attribute, falling back to 19% only as a last resort. Auth (client_credentials + /api/_info/config reachability), publish, status-sync, and update are all verified live from within PIM1 itself against a real dockware/dev sandbox (6/6 checks passing). Not installable pending QA validation and PO review. Install requires store_url (HTTPS), an Integration client_id, and client_secret with Administrator API access.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.SHOPIFY) {
     return {
       launchStage: "live",
@@ -370,6 +384,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       blockers: ["QA validation", "PO review"],
       internalNotes:
         "Ported from the Vexa Connector Hub prototype (2026-09-20), then fully live-verified from within PIM1 itself (2026-09-21) against a real local PrestaShop 9.1.5 Docker sandbox: publish, validate (live category/reference checks), status sync, and update all confirmed working end-to-end (9/9 checks). Two real bugs found and fixed during the port: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. A third real bug was found by the live-verification pass itself: updateProduct() omitted the required <id> field from the XML body, which PrestaShop's webservice rejects — fixed and re-verified live. This is the most-proven connector ported this sprint.",
+    };
+  }
+  if (s === CONNECTOR_SLUGS.SHOPWARE) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: ["QA validation", "PO review"],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 itself (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). One real bug found and fixed during the port: the prototype hardcoded a 19% German VAT rate when computing net-from-gross price, which is wrong for any non-German store or non-standard tax class — fixed to read the product's own attributes.tax_rate_percent, defaulting to 19% only as a last resort.",
     };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {

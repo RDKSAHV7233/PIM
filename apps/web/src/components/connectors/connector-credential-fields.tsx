@@ -11,6 +11,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "dynamics-365") return "Azure AD Tenant";
   if (slug === "prestashop") return "Store URL";
   if (slug === "bigcommerce") return "Store Hash";
+  if (slug === "shopware") return "Store URL";
   return "External Account Ref";
 }
 
@@ -23,14 +24,15 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "dynamics-365") return "Azure AD tenant ID or domain (e.g. contoso.onmicrosoft.com)";
   if (slug === "prestashop") return "https://shop.example.com";
   if (slug === "bigcommerce") return "Enter the store hash (e.g. abc123)";
+  if (slug === "shopware") return "https://shop.example.com";
   return "Optional";
 }
 
 /**
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
  * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id,
- * Dynamics 365 aad_tenant, PrestaShop store_url, BigCommerce store_hash) —
- * matches the backend's per-connector field allowlist in
+ * Dynamics 365 aad_tenant, PrestaShop store_url, BigCommerce store_hash,
+ * Shopware store_url) — matches the backend's per-connector field allowlist in
  * ConnectorInstallerService.updateCredentials() exactly. Flipkart/Amazon/
  * Meesho/eBay reject a non-empty externalAccountRef there.
  */
@@ -42,7 +44,8 @@ export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
     slug === "etsy" ||
     slug === "dynamics-365" ||
     slug === "prestashop" ||
-    slug === "bigcommerce"
+    slug === "bigcommerce" ||
+    slug === "shopware"
   );
 }
 
@@ -565,6 +568,36 @@ export function ConnectorCredentialFields({
             type="password"
             autoComplete="new-password"
             placeholder="Enter the Store API account's Access Token"
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === "shopware") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "Shopware authenticates via an Admin API Integration (Settings > System > Integrations). Enter the Store URL (above, must be HTTPS) and the Integration's Access ID and Secret Key below. Values are encrypted on save and never shown again."
+            : "Stored secrets cannot be displayed. Re-enter the Store URL (above), Access ID, and Secret Key to replace this installation's credential set — Vexa verifies them with Shopware before saving."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Integration Access ID
+          </label>
+          <Input id={`${idPrefix}-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="Enter the Integration's Access ID" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Integration Secret Key
+          </label>
+          <Input
+            id={`${idPrefix}-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the Integration's Secret Key"
           />
         </div>
       </>

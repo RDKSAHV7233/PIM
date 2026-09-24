@@ -11,6 +11,7 @@ import { NykaaConnector } from "../connectors/nykaa/nykaa.connector";
 import { OdooConnector } from "../connectors/odoo/odoo.connector";
 import { PrestaShopConnector } from "../connectors/prestashop/prestashop.connector";
 import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
+import { ShopwareConnector } from "../connectors/shopware/shopware.connector";
 import { WooCommerceConnector } from "../connectors/woocommerce/woocommerce.connector";
 import { LoggerService } from "../common/logging/logger.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -38,6 +39,7 @@ export class ConnectorRegistry implements OnModuleInit {
     odooConnector: OdooConnector,
     prestashopConnector: PrestaShopConnector,
     shopifyConnector: ShopifyConnector,
+    shopwareConnector: ShopwareConnector,
     wooCommerceConnector: WooCommerceConnector,
   ) {
     this.implementationMap.set(amazonConnector.slug, amazonConnector);
@@ -52,6 +54,7 @@ export class ConnectorRegistry implements OnModuleInit {
     this.implementationMap.set(odooConnector.slug, odooConnector);
     this.implementationMap.set(prestashopConnector.slug, prestashopConnector);
     this.implementationMap.set(shopifyConnector.slug, shopifyConnector);
+    this.implementationMap.set(shopwareConnector.slug, shopwareConnector);
     this.implementationMap.set(wooCommerceConnector.slug, wooCommerceConnector);
   }
 

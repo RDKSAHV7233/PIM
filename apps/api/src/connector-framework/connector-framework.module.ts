@@ -13,6 +13,7 @@ import { OdooConnector } from "../connectors/odoo/odoo.connector";
 import { PrestaShopConnector } from "../connectors/prestashop/prestashop.connector";
 import { ShopifyApiClient } from "../connectors/shopify/shopify-api-client.service";
 import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
+import { ShopwareConnector } from "../connectors/shopware/shopware.connector";
 import { WooCommerceBrownfieldImportService } from "../connectors/woocommerce/woocommerce-brownfield-import.service";
 import { WooCommerceBulkPublishService } from "../connectors/woocommerce/woocommerce-bulk-publish.service";
 import { WooCommerceConnector } from "../connectors/woocommerce/woocommerce.connector";
@@ -47,6 +48,7 @@ import { ConnectorRegistry } from "./connector.registry";
     PrestaShopConnector,
     ShopifyApiClient,
     ShopifyConnector,
+    ShopwareConnector,
     WooCommerceBrownfieldImportService,
     WooCommerceBulkPublishService,
     WooCommerceConnector,
