@@ -1,0 +1,80 @@
+name: Daily R2 Observability DB Backup
+
+# #919 gate F: Postgres-MSwk (the observability DB backing Error Authority + the
+# auth-email-failure watchdog) previously had zero backup coverage of any kind.
+# This is a sibling workflow, not a second step in backup-r2-daily.yml, so a
+# failure on one database can never block or mask a failure on the other
+# (backup-r2-daily.yml has already failed once with no human alerting — see #921 —
+# so isolating blast radius here matters). Same script, same retention policy,
+# a distinct R2 prefix (backups-observability/) so the two backup sets are
+# independently listable/prunable (r2-backup-run.cjs's retention math is already
+# prefix-scoped via ListObjectsV2Command's Prefix filter).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 2 * * *"
+
+jobs:
+  r2-backup-observability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    concurrency:
+      group: r2-backup-daily-observability
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      APP_ENV: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install PostgreSQL 18 client (pg_dump, matching Postgres-MSwk's major version)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        # --ignore-scripts: this job only needs @aws-sdk/client-s3 (pure JS, no native
+        # build step) — same reasoning as backup-r2-daily.yml.
+        run: npm ci --ignore-scripts
+
+      - name: Run daily observability-DB backup
+        shell: bash
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.OBSERVABILITY_DATABASE_URL }}
+          R2_BACKUP_PREFIX: "backups-observability/"
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PRIVATE_BUCKET_NAME: ${{ secrets.R2_PRIVATE_BUCKET_NAME }}
+        run: |
+          if [ -z "${DATABASE_URL_DIRECT}" ]; then
+            echo "Missing OBSERVABILITY_DATABASE_URL secret — cannot run backup."
+            exit 1
+          fi
+          if [ -z "${R2_ACCOUNT_ID}" ] || [ -z "${R2_ACCESS_KEY_ID}" ] || [ -z "${R2_SECRET_ACCESS_KEY}" ] || [ -z "${R2_PRIVATE_BUCKET_NAME}" ]; then
+            echo "Missing one or more R2_* secrets — cannot run backup."
+            echo "Required: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PRIVATE_BUCKET_NAME."
+            exit 1
+          fi
+          node scripts/r2-backup-run.cjs
+
+      # Same known gap as backup-r2-daily.yml: no failure alert reaches a human yet.
+      # #921's canonical delivery service (once a real backup-failure alert type is
+      # added — a separate, small follow-up, not bundled here) is the intended target
+      # for both jobs' failure alerting, not something re-invented per-workflow.

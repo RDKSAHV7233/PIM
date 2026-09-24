@@ -6,12 +6,48 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { backupKey, selectKeysToPrune, RETENTION_DAYS, MIN_BACKUPS_TO_KEEP, BACKUP_PREFIX } = require("./r2-backup-run.cjs");
+const { backupKey, selectKeysToPrune, resolveBackupPrefix, RETENTION_DAYS, MIN_BACKUPS_TO_KEEP, BACKUP_PREFIX } = require("./r2-backup-run.cjs");
 
 test("backupKey produces a sortable, prefixed, filesystem-safe key", () => {
   const key = backupKey(new Date("2026-08-27T02:00:00.000Z"));
   assert.equal(key, "backups/2026-08-27T02-00-00-000Z.sql.gz");
   assert.ok(key.startsWith(BACKUP_PREFIX));
+});
+
+test("BACKUP_PREFIX defaults to backups/ when R2_BACKUP_PREFIX is unset (#919 gate F: primary job behavior unchanged)", () => {
+  assert.equal(BACKUP_PREFIX, "backups/");
+});
+
+test("resolveBackupPrefix falls back to backups/ when unset or blank", () => {
+  const original = process.env.R2_BACKUP_PREFIX;
+  try {
+    delete process.env.R2_BACKUP_PREFIX;
+    assert.equal(resolveBackupPrefix(), "backups/");
+    process.env.R2_BACKUP_PREFIX = "   ";
+    assert.equal(resolveBackupPrefix(), "backups/");
+  } finally {
+    if (original === undefined) {
+      delete process.env.R2_BACKUP_PREFIX;
+    } else {
+      process.env.R2_BACKUP_PREFIX = original;
+    }
+  }
+});
+
+test("resolveBackupPrefix honors an explicit override and normalizes a trailing slash", () => {
+  const original = process.env.R2_BACKUP_PREFIX;
+  try {
+    process.env.R2_BACKUP_PREFIX = "backups-observability";
+    assert.equal(resolveBackupPrefix(), "backups-observability/");
+    process.env.R2_BACKUP_PREFIX = "backups-observability/";
+    assert.equal(resolveBackupPrefix(), "backups-observability/");
+  } finally {
+    if (original === undefined) {
+      delete process.env.R2_BACKUP_PREFIX;
+    } else {
+      process.env.R2_BACKUP_PREFIX = original;
+    }
+  }
 });
 
 test("selectKeysToPrune leaves recent backups alone", () => {

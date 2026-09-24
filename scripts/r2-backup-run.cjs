@@ -12,6 +12,12 @@
 //
 // Required env: DATABASE_URL_DIRECT, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
 // R2_SECRET_ACCESS_KEY, R2_PRIVATE_BUCKET_NAME (falls back to R2_BUCKET_NAME).
+//
+// Optional env: R2_BACKUP_PREFIX — overrides the object-key prefix so this same
+// script can back up a second database (e.g. Postgres-MSwk) into its own
+// independently-listable/prunable namespace within the same bucket, without
+// touching the primary daily job's behavior (#919 gate F). Unset preserves the
+// exact prior "backups/" prefix.
 
 const { spawn } = require("node:child_process");
 const { createGzip } = require("node:zlib");
@@ -21,7 +27,16 @@ const os = require("node:os");
 
 const RETENTION_DAYS = 30;
 const MIN_BACKUPS_TO_KEEP = 7;
-const BACKUP_PREFIX = "backups/";
+
+function resolveBackupPrefix() {
+  const raw = String(process.env.R2_BACKUP_PREFIX ?? "").trim();
+  if (!raw) {
+    return "backups/";
+  }
+  return raw.endsWith("/") ? raw : `${raw}/`;
+}
+
+const BACKUP_PREFIX = resolveBackupPrefix();
 
 function requireEnv(name) {
   const value = String(process.env[name] ?? "").trim();
@@ -162,4 +177,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { backupKey, selectKeysToPrune, RETENTION_DAYS, MIN_BACKUPS_TO_KEEP, BACKUP_PREFIX };
+module.exports = { backupKey, selectKeysToPrune, resolveBackupPrefix, RETENTION_DAYS, MIN_BACKUPS_TO_KEEP, BACKUP_PREFIX };
