@@ -13,6 +13,7 @@ import { PrestaShopConnector } from "../connectors/prestashop/prestashop.connect
 import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
 import { ShopwareConnector } from "../connectors/shopware/shopware.connector";
 import { WooCommerceConnector } from "../connectors/woocommerce/woocommerce.connector";
+import { ZohoInventoryConnector } from "../connectors/zoho-inventory/zoho-inventory.connector";
 import { LoggerService } from "../common/logging/logger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { resolveSafeConnectorFallbackSlugs } from "./connector-launch-policy";
@@ -41,6 +42,7 @@ export class ConnectorRegistry implements OnModuleInit {
     shopifyConnector: ShopifyConnector,
     shopwareConnector: ShopwareConnector,
     wooCommerceConnector: WooCommerceConnector,
+    zohoInventoryConnector: ZohoInventoryConnector,
   ) {
     this.implementationMap.set(amazonConnector.slug, amazonConnector);
     this.implementationMap.set(bigcommerceConnector.slug, bigcommerceConnector);
@@ -56,6 +58,7 @@ export class ConnectorRegistry implements OnModuleInit {
     this.implementationMap.set(shopifyConnector.slug, shopifyConnector);
     this.implementationMap.set(shopwareConnector.slug, shopwareConnector);
     this.implementationMap.set(wooCommerceConnector.slug, wooCommerceConnector);
+    this.implementationMap.set(zohoInventoryConnector.slug, zohoInventoryConnector);
   }
 
   async onModuleInit() {

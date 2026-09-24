@@ -12,6 +12,7 @@ export function connectorAccountReferenceLabel(slug: string): string {
   if (slug === "prestashop") return "Store URL";
   if (slug === "bigcommerce") return "Store Hash";
   if (slug === "shopware") return "Store URL";
+  if (slug === "zoho-inventory") return "Organization ID";
   return "External Account Ref";
 }
 
@@ -25,6 +26,7 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
   if (slug === "prestashop") return "https://shop.example.com";
   if (slug === "bigcommerce") return "Enter the store hash (e.g. abc123)";
   if (slug === "shopware") return "https://shop.example.com";
+  if (slug === "zoho-inventory") return "Enter the numeric Zoho Inventory organization ID";
   return "Optional";
 }
 
@@ -32,9 +34,10 @@ export function connectorAccountReferencePlaceholder(slug: string): string {
  * true for connectors whose credentials-edit flow accepts an externalAccountRef
  * change (WooCommerce site_url, Myntra merchant_id, Odoo odoo_url, Etsy shop_id,
  * Dynamics 365 aad_tenant, PrestaShop store_url, BigCommerce store_hash,
- * Shopware store_url) — matches the backend's per-connector field allowlist in
- * ConnectorInstallerService.updateCredentials() exactly. Flipkart/Amazon/
- * Meesho/eBay reject a non-empty externalAccountRef there.
+ * Shopware store_url, Zoho Inventory organization_id) — matches the backend's
+ * per-connector field allowlist in ConnectorInstallerService.updateCredentials()
+ * exactly. Flipkart/Amazon/Meesho/eBay reject a non-empty externalAccountRef
+ * there.
  */
 export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
   return (
@@ -45,7 +48,8 @@ export function connectorCredentialsAcceptsAccountRef(slug: string): boolean {
     slug === "dynamics-365" ||
     slug === "prestashop" ||
     slug === "bigcommerce" ||
-    slug === "shopware"
+    slug === "shopware" ||
+    slug === "zoho-inventory"
   );
 }
 
@@ -545,6 +549,58 @@ export function ConnectorCredentialFields({
           <p className="text-xs text-slate-500">
             Marketplace ID and Business Policy IDs are configured at install time and aren&apos;t changed here.
           </p>
+        )}
+      </>
+    );
+  }
+
+  if (slug === "zoho-inventory") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          {mode === "install"
+            ? "Zoho Inventory authenticates via OAuth2 (Zoho API Console, refresh_token grant). Enter the Organization ID (above), Client ID, Client Secret, and Refresh Token from a completed OAuth consent flow. Unlike Etsy, Zoho does not rotate the refresh token. Values are encrypted on save and never shown again."
+            : "Stored secrets cannot be displayed. Re-enter all fields to replace this installation's credential set — Vexa verifies them with Zoho before saving."}
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID
+          </label>
+          <Input id={`${idPrefix}-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="Enter your Zoho API Console app's Client ID" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client Secret
+          </label>
+          <Input
+            id={`${idPrefix}-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter your Zoho API Console app's Client Secret"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`${idPrefix}-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Refresh Token
+          </label>
+          <Input
+            id={`${idPrefix}-refresh-token-${definitionId}`}
+            name="refreshToken"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter the refresh token from the OAuth consent flow"
+          />
+        </div>
+        {mode === "install" ? (
+          <div className="space-y-1">
+            <label htmlFor={`${idPrefix}-marketplace-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Data Center Region <span className="font-normal text-slate-400">(optional — defaults to com)</span>
+            </label>
+            <Input id={`${idPrefix}-marketplace-${definitionId}`} name="marketplaceId" defaultValue="com" placeholder="com, eu, in, com.au, jp, or com.cn" autoComplete="off" />
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">Data Center Region is configured at install time and isn&apos;t changed here.</p>
         )}
       </>
     );

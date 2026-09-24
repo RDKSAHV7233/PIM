@@ -19,6 +19,7 @@ export const CONNECTOR_SLUGS = {
   SHOPIFY: "shopify",
   SHOPWARE: "shopware",
   WOOCOMMERCE: "woocommerce",
+  ZOHO_INVENTORY: "zoho-inventory",
 } as const;
 
 export type ConnectorSlug = (typeof CONNECTOR_SLUGS)[keyof typeof CONNECTOR_SLUGS];

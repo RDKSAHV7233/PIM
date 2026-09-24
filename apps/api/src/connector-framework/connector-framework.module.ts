@@ -18,6 +18,7 @@ import { WooCommerceBrownfieldImportService } from "../connectors/woocommerce/wo
 import { WooCommerceBulkPublishService } from "../connectors/woocommerce/woocommerce-bulk-publish.service";
 import { WooCommerceConnector } from "../connectors/woocommerce/woocommerce.connector";
 import { WooCommerceReconciliationService } from "../connectors/woocommerce/woocommerce-reconciliation.service";
+import { ZohoInventoryConnector } from "../connectors/zoho-inventory/zoho-inventory.connector";
 import { LoggingModule } from "../common/logging/logging.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { ConnectorCredentialService } from "./connector-credential.service";
@@ -53,6 +54,7 @@ import { ConnectorRegistry } from "./connector.registry";
     WooCommerceBulkPublishService,
     WooCommerceConnector,
     WooCommerceReconciliationService,
+    ZohoInventoryConnector,
     ConnectorRegistry,
     ConnectorCredentialService,
     ConnectorHeartbeatService,

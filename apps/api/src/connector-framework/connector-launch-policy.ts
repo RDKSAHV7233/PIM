@@ -252,6 +252,20 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.ZOHO_INVENTORY) {
+    // Re-verified live from within PIM1 itself (2026-09-24) against a real
+    // Zoho Inventory trial org (India data center) — full auth/publish/
+    // status-sync/update round trip confirmed working end-to-end. Still
+    // under_development / not installable: QA validation and PO review
+    // haven't happened yet, not because of unproven code.
+    return {
+      launchStage: "under_development",
+      launchNote:
+        "Zoho Inventory connector (OAuth2 refresh_token grant against Zoho's regional accounts host, REST API v1). Ported from the prototype, which hardcoded Zoho's US data center for both the token exchange and the API base — wrong for any org registered outside the US (India, EU, Australia, Japan, China), and this platform's other connectors are clearly India-focused. Fixed to resolve the host pair from the installation's region (carried in the same generic marketplaceId field eBay already reuses), defaulting to the global \"com\" host when unset. Auth, publish, status-sync, and update are all verified live from within PIM1 itself against a real Zoho Inventory trial org on the India data center (6/6 checks passing) — that same live pass also caught two more real bugs in the prototype's item payload: it hardcoded taxability_type and is_taxable, both of which Zoho rejects outright on any organization that isn't GST-registered (the default for a fresh trial); fixed by dropping both and relying on hsn_or_sac for tax/HSN classification instead. Not installable pending QA validation and PO review. Install requires a Zoho API Console client_id/client_secret, a refresh_token from a completed OAuth consent flow, an organization_id, and optionally a data-center region code (com/eu/in/com.au/jp/com.cn, defaults to com).",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug.startsWith("diag-")) {
     return {
       launchStage: "internal_diagnostic",
@@ -419,6 +433,15 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       ],
       internalNotes:
         "W1-W10 code-complete and historical P0 remediation evidence exists, but the 2026-09-03 pilot approval is superseded for onboarding while P1-1/P1-2 are open. Not GA, not public-sellable, and not customer-installable until fresh signoff.",
+    };
+  }
+  if (s === CONNECTOR_SLUGS.ZOHO_INVENTORY) {
+    return {
+      owner: "Platform",
+      milestone: null,
+      blockers: ["QA validation", "PO review"],
+      internalNotes:
+        "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 itself (2026-09-24) against a real Zoho Inventory trial org on the India data center: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Three real bugs found and fixed: (1) the prototype hardcoded Zoho's US data center (accounts.zoho.com / www.zohoapis.com), which fails outright for any org registered outside the US — fixed to resolve the region-specific host pair from the installation's marketplaceId, defaulting to the global \"com\" host when unset; (2) and (3) the prototype hardcoded taxability_type and is_taxable on every item payload, both rejected outright by Zoho on any organization that isn't GST-registered (the default for a fresh trial) — fixed by dropping both, verified live.",
     };
   }
   return { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };

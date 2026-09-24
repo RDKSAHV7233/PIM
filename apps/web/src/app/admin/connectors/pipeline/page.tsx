@@ -127,6 +127,13 @@ const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
     internalNotes:
       "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 itself (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). One real bug found and fixed during the port: the prototype hardcoded a 19% German VAT rate when computing net-from-gross price, which is wrong for any non-German store or non-standard tax class — fixed to read the product's own attributes.tax_rate_percent, defaulting to 19% only as a last resort.",
   },
+  "zoho-inventory": {
+    owner: "Platform",
+    milestone: null,
+    blockers: ["QA validation", "PO review"],
+    internalNotes:
+      "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 itself (2026-09-24) against a real Zoho Inventory trial org on the India data center: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Three real bugs found and fixed: (1) the prototype hardcoded Zoho's US data center (accounts.zoho.com / www.zohoapis.com), which fails outright for any org registered outside the US — fixed to resolve the region-specific host pair from the installation's marketplaceId, defaulting to the global \"com\" host when unset; (2) and (3) the prototype hardcoded taxability_type and is_taxable on every item payload, both rejected outright by Zoho on any organization that isn't GST-registered (the default for a fresh trial) — fixed by dropping both, verified live.",
+  },
 };
 
 function getMetadata(slug: string): PipelineMetadata {

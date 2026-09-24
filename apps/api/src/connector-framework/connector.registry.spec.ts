@@ -35,6 +35,7 @@ describe("ConnectorRegistry — safe-fallback boot gating", () => {
       fakeConnector("shopify"),
       fakeConnector("shopware"),
       fakeConnector("woocommerce"),
+      fakeConnector("zoho-inventory"),
     );
     return { registry, findMany, logger };
   }

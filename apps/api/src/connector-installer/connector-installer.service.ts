@@ -485,6 +485,18 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "zoho-inventory") {
+        try {
+          await this.captureAndStoreZohoInventoryCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1222,6 +1234,11 @@ export class ConnectorInstallerService {
       if (has(dto.externalAccountRef)) types.push("store_url");
       if (has(dto.clientId)) types.push("client_id");
       if (has(dto.clientSecret)) types.push("client_secret");
+    } else if (slug === "zoho-inventory") {
+      if (has(dto.externalAccountRef)) types.push("organization_id");
+      if (has(dto.clientId)) types.push("client_id");
+      if (has(dto.clientSecret)) types.push("client_secret");
+      if (has(dto.refreshToken)) types.push("refresh_token");
     }
     return types;
   }
@@ -1285,6 +1302,8 @@ export class ConnectorInstallerService {
         return this.updateBigCommerceCredentials(tenantKey, installation, dto);
       case "shopware":
         return this.updateShopwareCredentials(tenantKey, installation, dto);
+      case "zoho-inventory":
+        return this.updateZohoInventoryCredentials(tenantKey, installation, dto);
       default:
         throw new BadRequestException({
           error: "CONNECTOR_CREDENTIALS_EDIT_UNSUPPORTED",
@@ -1606,6 +1625,86 @@ export class ConnectorInstallerService {
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
         data: { status: "ACTIVE", externalAccountRef: storeUrl, updatedAt: new Date() },
+      });
+    });
+
+    return { id: installation.id, status: "ACTIVE", verification };
+  }
+
+  // Zoho does NOT rotate the refresh_token on use (unlike Etsy) — the value
+  // the operator submits stays valid, so there's no commitExtra-sourced
+  // refresh_token to persist, only a fresh access_token. The data-center
+  // region isn't editable here (same precedent as eBay's marketplaceId): it's
+  // fixed at install time in installation.metadata.marketplaceId and reused
+  // as-is so the candidate is verified against the same host the connector
+  // will actually call afterward.
+  private async updateZohoInventoryCredentials(
+    tenantKey: string,
+    installation: { id: string; metadata?: Record<string, unknown> },
+    dto: UpdateConnectorCredentialsDto,
+  ): Promise<{ id: string; status: string; verification: CredentialVerificationResult }> {
+    this.assertNoDisallowedFields(dto, ["externalAccountRef", "clientId", "clientSecret", "refreshToken"], "zoho-inventory");
+
+    const organizationId = dto.externalAccountRef?.trim();
+    const clientId = dto.clientId?.trim();
+    const clientSecret = dto.clientSecret;
+    const refreshToken = dto.refreshToken;
+
+    const missing = [
+      !organizationId && "Organization ID",
+      !clientId && "Client ID",
+      !(clientSecret && clientSecret.trim()) && "Client Secret",
+      !(refreshToken && refreshToken.trim()) && "Refresh Token",
+    ].filter(Boolean).join(", ");
+    if (missing) {
+      throw new BadRequestException({
+        error: "ZOHO_INVENTORY_CREDENTIALS_INCOMPLETE",
+        message: `Zoho Inventory credentials require Organization ID, Client ID, Client Secret, and Refresh Token. Missing: ${missing}.`,
+      });
+    }
+
+    const dataCenter = String(installation.metadata?.marketplaceId ?? "").trim();
+    const connector = this.connectorRegistry.getConnector("zoho-inventory");
+    const verification = await connector.verifyCandidateCredentials!({
+      organization_id: organizationId!,
+      client_id: clientId!,
+      client_secret: clientSecret!,
+      refresh_token: refreshToken!,
+      data_center: dataCenter,
+    });
+
+    this.throwOnUnverified("ZOHO_INVENTORY", verification);
+
+    // Narrowed by throwOnUnverified: only "valid" reaches here.
+    const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
+
+    const now = new Date();
+    await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "organization_id", plainValue: organizationId!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "client_id", plainValue: clientId!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "client_secret", plainValue: clientSecret!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      await this.credentialEncryptionService.storeCredential(
+        { tenantKey, installationId: installation.id, credentialType: "refresh_token", plainValue: refreshToken!, metadata: { source: "credentials_update" } },
+        tx, { lastValidatedAt: now, failureReason: null },
+      );
+      if (commitExtra?.accessToken) {
+        await this.credentialEncryptionService.storeCredential(
+          { tenantKey, installationId: installation.id, credentialType: "access_token", plainValue: commitExtra.accessToken.value, expiresAt: commitExtra.accessToken.expiresAt, metadata: { source: "credentials_update" } },
+          tx,
+        );
+      }
+      await tx.connectorInstallation.updateMany({
+        where: { id: installation.id, tenantKey },
+        data: { status: "ACTIVE", externalAccountRef: organizationId, updatedAt: new Date() },
       });
     });
 
@@ -3086,6 +3185,78 @@ export class ConnectorInstallerService {
     // Live preflight (client_credentials exchange + /api/_info/config
     // reachability) deferred to the validateCredentials heartbeat, matching
     // the Odoo/BigCommerce install paths above.
+  }
+
+  // Zoho Inventory install-time capture. DTO field reuse (matching the
+  // Dynamics 365 convention — all four generic OAuth-quad fields, each
+  // repurposed to their real Zoho meaning):
+  //   externalAccountRef -> organization_id (Zoho Inventory org id, required
+  //                                           on every API call)
+  //   clientId            -> client_id       (Zoho API Console client id)
+  //   clientSecret        -> client_secret   (Zoho API Console client secret)
+  //   refreshToken        -> refresh_token   (from a completed OAuth consent
+  //                                           flow; Zoho does not rotate it)
+  // marketplaceId reuses eBay's existing generic DTO field/metadata path to
+  // carry the data-center region code (com/eu/in/com.au/jp/com.cn) — no new
+  // plumbing needed, defaults to "com" (Zoho's global host) when unset.
+  private async captureAndStoreZohoInventoryCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const organizationId = String(input.externalAccountRef ?? "").trim();
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const clientSecret = String(input.dto.clientSecret ?? "").trim();
+    const refreshToken = String(input.dto.refreshToken ?? "").trim();
+
+    if (!organizationId || !clientId || !clientSecret || !refreshToken) {
+      const missing = [
+        !organizationId && "Organization ID",
+        !clientId && "Client ID",
+        !clientSecret && "Client Secret",
+        !refreshToken && "Refresh Token",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "ZOHO_INVENTORY_CREDENTIALS_INCOMPLETE",
+        message: `Zoho Inventory installation requires Organization ID, Client ID, Client Secret, and Refresh Token (from a completed OAuth consent flow). Missing: ${missing}.`,
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "organization_id",
+      plainValue: organizationId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_secret",
+      plainValue: clientSecret,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "refresh_token",
+      plainValue: refreshToken,
+      metadata: { source: "install_form" },
+    });
+
+    const marketplaceId = String(input.dto.marketplaceId ?? "").trim() || "com";
+    await this.patchInstallationMetadata(input.tenantKey, input.installationId, { marketplaceId });
+    // Live preflight (refresh_token exchange + /inventory/v1/items
+    // reachability) deferred to the validateCredentials heartbeat, matching
+    // the Odoo/BigCommerce/Shopware install paths above.
   }
 
   // eBay install-time capture. Uses the same generic client_id/client_secret/
