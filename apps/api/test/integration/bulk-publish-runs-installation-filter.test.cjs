@@ -6,6 +6,7 @@
 // the API-side half of the Jobs-page installation-scoping fix (see
 // apps/web/test/integration/operations-jobs-route-contract.test.cjs for the UI half).
 const fs = require("node:fs");
+const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
@@ -69,6 +70,32 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Asks the OS for a free port instead of drawing from a fixed random range: this
+// test runs alongside the other scripts/run-integration-parallel.cjs tests, and a
+// fixed range overlapping theirs (e.g. category-delete's 6960-7079) could collide.
+async function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to acquire free TCP port")));
+        return;
+      }
+      const selectedPort = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(selectedPort);
+      });
+    });
+  });
+}
+
 async function waitForHealth(baseUrl, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -117,7 +144,7 @@ async function run() {
   }
 
   const runId = Date.now().toString();
-  const apiPort = 6900 + Math.floor(Math.random() * 120);
+  const apiPort = await getFreePort();
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `bulkpub-filter-${runId}`;
   const workspaceSlug = `bpf-${runId}`.slice(0, 24);
