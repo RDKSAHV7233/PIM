@@ -91,6 +91,38 @@ describe("BigCommerceConnector.validateProduct", () => {
     expect(result.isValid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
+
+  it("accepts a product with no bigcommerce_category_id at all (category is optional)", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct(fakeCtx(), baseProduct);
+    expect(result.errors.some((e) => e.code === "INVALID_CATEGORY_ID_FORMAT")).toBe(false);
+  });
+
+  it("rejects a non-numeric bigcommerce_category_id instead of letting it silently publish uncategorised", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct(fakeCtx(), {
+      ...baseProduct,
+      attributes: { weight_kg: 1.2, bigcommerce_category_id: "42abc" },
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.code === "INVALID_CATEGORY_ID_FORMAT" && e.fieldPath === "attributes.bigcommerce_category_id")).toBe(
+      true,
+    );
+  });
+
+  it("accepts a numeric (string or number) bigcommerce_category_id", async () => {
+    const connector = makeConnector();
+    const stringResult = await connector.validateProduct(fakeCtx(), {
+      ...baseProduct,
+      attributes: { weight_kg: 1.2, bigcommerce_category_id: "42" },
+    });
+    const numberResult = await connector.validateProduct(fakeCtx(), {
+      ...baseProduct,
+      attributes: { weight_kg: 1.2, bigcommerce_category_id: 42 },
+    });
+    expect(stringResult.errors.some((e) => e.code === "INVALID_CATEGORY_ID_FORMAT")).toBe(false);
+    expect(numberResult.errors.some((e) => e.code === "INVALID_CATEGORY_ID_FORMAT")).toBe(false);
+  });
 });
 
 describe("BigCommerceConnector.normaliseError", () => {
@@ -126,6 +158,19 @@ describe("BigCommerceConnector.buildProductPayload", () => {
     );
     expect(payload.custom_fields).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ name: expect.stringMatching(/category/i) })]),
+    );
+  });
+
+  it("excludes weight_kg from custom_fields since it is already sent as the structured weight field", () => {
+    const connector = makeConnector();
+    const payload = (connector as any).buildProductPayload({
+      ...baseProduct,
+      attributes: { weight_kg: 1.2, material: "Steel" },
+    }) as any;
+    expect(payload.weight).toBe(1.2);
+    expect(payload.custom_fields).toEqual([{ name: "Material", value: "Steel" }]);
+    expect(payload.custom_fields).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: expect.stringMatching(/weight/i) })]),
     );
   });
 
@@ -171,6 +216,49 @@ describe("BigCommerceConnector auth transport", () => {
     (global as any).fetch = jest.fn().mockRejectedValue(new Error("ECONNREFUSED"));
     const result = await connector.validateStoredCredentialsDetailed(fakeCtx());
     expect(result.outcome).toBe("unavailable");
+  });
+
+  it("classifies an abort/timeout failure as reasonCode TIMEOUT, not a generic error", async () => {
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithCreds());
+    const abortError = new Error("The operation was aborted");
+    abortError.name = "AbortError";
+    (global as any).fetch = jest.fn().mockRejectedValue(abortError);
+    const result = await connector.validateStoredCredentialsDetailed(fakeCtx());
+    expect(result.outcome).toBe("unavailable");
+    expect((result as { reasonCode?: string }).reasonCode).toBe("TIMEOUT");
+  });
+
+  it("classifies a DNS failure (ENOTFOUND cause) as reasonCode DNS", async () => {
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithCreds());
+    const dnsError = new Error("getaddrinfo ENOTFOUND api.bigcommerce.com");
+    (dnsError as any).cause = { code: "ENOTFOUND" };
+    (global as any).fetch = jest.fn().mockRejectedValue(dnsError);
+    const result = await connector.validateStoredCredentialsDetailed(fakeCtx());
+    expect(result.outcome).toBe("unavailable");
+    expect((result as { reasonCode?: string }).reasonCode).toBe("DNS");
+  });
+
+  it("classifies a TLS/certificate failure as reasonCode TLS", async () => {
+    mockDecrypt();
+    const connector = makeConnectorWithDb(dbWithCreds());
+    const tlsError = new Error("self-signed certificate");
+    (tlsError as any).cause = { code: "CERT_HAS_EXPIRED" };
+    (global as any).fetch = jest.fn().mockRejectedValue(tlsError);
+    const result = await connector.validateStoredCredentialsDetailed(fakeCtx());
+    expect(result.outcome).toBe("unavailable");
+    expect((result as { reasonCode?: string }).reasonCode).toBe("TLS");
+  });
+
+  it("verifyCandidateCredentials also classifies network failures by category", async () => {
+    const connector = makeConnector();
+    const dnsError = new Error("getaddrinfo ENOTFOUND api.bigcommerce.com");
+    (dnsError as any).cause = { code: "ENOTFOUND" };
+    (global as any).fetch = jest.fn().mockRejectedValue(dnsError);
+    const result = await connector.verifyCandidateCredentials!({ store_hash: "candidate-hash", api_key: "candidate-key" });
+    expect(result.outcome).toBe("unavailable");
+    expect((result as { reasonCode?: string }).reasonCode).toBe("DNS");
   });
 
   it("verifyCandidateCredentials checks a candidate without touching stored credentials", async () => {

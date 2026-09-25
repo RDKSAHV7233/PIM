@@ -38,9 +38,46 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from "../../connector-framework/connector.interface";
+import { ConnectorNetworkError } from "../../connector-framework/connector.errors";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
+
+// Shared by validateProduct() and buildProductPayload() so a malformed
+// bigcommerce_category_id is always treated the same way in both places —
+// buildProductPayload silently omits anything that doesn't match this, so
+// validateProduct must reject the same shapes rather than let the product
+// publish with its intended category quietly dropped.
+const CATEGORY_ID_PATTERN = /^\d+$/;
+
+// ─── network-failure classification (mirrors odoo.connector.ts / woocommerce.connector.ts) ─────
+//
+// Every BigCommerce call goes through fetchWithTimeout(), so classifying here
+// covers credential validation, publish, update and status sync alike. api.
+// bigcommerce.com is a fixed host (store_hash is a path segment, not a URL),
+// so DNS/TLS failures here point at network middleboxes or a BigCommerce-side
+// outage rather than a bad tenant-supplied hostname — but the category still
+// matters for telling a transient blip apart from something durable.
+function classifyFetchFailure(
+  err: unknown,
+): { category: "TIMEOUT" | "DNS" | "TLS" | "NETWORK"; retryable: boolean; detail: string } {
+  if (err instanceof Error && err.name === "AbortError") {
+    return { category: "TIMEOUT", retryable: true, detail: `request exceeded ${CONNECTOR_HTTP_TIMEOUT_MS}ms timeout` };
+  }
+  const cause = err instanceof Error ? (err.cause as { code?: string; message?: string } | undefined) : undefined;
+  const causeCode = cause?.code ?? "";
+  if (causeCode === "ENOTFOUND" || causeCode === "EAI_AGAIN") {
+    return { category: "DNS", retryable: false, detail: `DNS resolution failed (${causeCode})` };
+  }
+  if (causeCode.startsWith("ERR_TLS") || causeCode.startsWith("CERT_")) {
+    return { category: "TLS", retryable: false, detail: `TLS/certificate error (${causeCode})` };
+  }
+  if (causeCode === "ECONNREFUSED" || causeCode === "ECONNRESET" || causeCode === "EHOSTUNREACH" || causeCode === "ETIMEDOUT") {
+    return { category: "NETWORK", retryable: true, detail: `connection failed (${causeCode})` };
+  }
+  const detail = cause?.message || (err instanceof Error ? err.message : String(err));
+  return { category: "NETWORK", retryable: true, detail: detail || "unknown network failure" };
+}
 
 type ResolvedCredentials = { storeHash: string; apiKey: string };
 
@@ -114,7 +151,19 @@ export class BigCommerceConnector implements ConnectorInterface {
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-    return fetch(url, { ...init, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) });
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) });
+    } catch (err) {
+      const { category, retryable, detail } = classifyFetchFailure(err);
+      this.logger.warn("BigCommerce fetchWithTimeout network failure", {
+        url,
+        category,
+        retryable,
+        detail,
+        cause: err instanceof Error && err.cause ? String(err.cause) : undefined,
+      });
+      throw new ConnectorNetworkError("bigcommerce", category, retryable, detail);
+    }
   }
 
   // ─── required: validateCredentials ───────────────────────────────────────
@@ -138,6 +187,11 @@ export class BigCommerceConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
+      if (error instanceof ConnectorNetworkError) {
+        // fetchWithTimeout already logged the classified failure — no need
+        // to duplicate that warning here.
+        return { outcome: "unavailable", reasonCode: error.category };
+      }
       this.logger.warn("BigCommerce credential validation failed", {
         installationId: ctx.installationId,
         reason: error instanceof Error ? error.message : String(error),
@@ -162,7 +216,10 @@ export class BigCommerceConnector implements ConnectorInterface {
         return { outcome: "unavailable", reasonCode: `HTTP_${response.status}` };
       }
       return { outcome: "valid" };
-    } catch {
+    } catch (error) {
+      if (error instanceof ConnectorNetworkError) {
+        return { outcome: "unavailable", reasonCode: error.category };
+      }
       return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
     }
   }
@@ -190,6 +247,19 @@ export class BigCommerceConnector implements ConnectorInterface {
         severity: "error",
       });
     }
+    const categoryId = attrs["bigcommerce_category_id"];
+    if (categoryId != null && String(categoryId).trim().length > 0 && !CATEGORY_ID_PATTERN.test(String(categoryId))) {
+      // buildProductPayload() drops anything that fails this same pattern
+      // test rather than sending it to BigCommerce, so without this check a
+      // typo'd category id would silently publish with no category at all —
+      // not an error the tenant would ever see.
+      errors.push({
+        code: "INVALID_CATEGORY_ID_FORMAT",
+        fieldPath: "attributes.bigcommerce_category_id",
+        sellerMessage: "attributes.bigcommerce_category_id must be a whole number matching a BigCommerce category id.",
+        severity: "error",
+      });
+    }
 
     return { isValid: errors.length === 0, errors, warnings, source: "LOCAL_RULES" };
   }
@@ -214,8 +284,12 @@ export class BigCommerceConnector implements ConnectorInterface {
     const images = [product.mainImageUrl, ...(product.additionalImageUrls ?? [])]
       .filter((url): url is string => typeof url === "string" && url.trim().length > 0)
       .map((url, index) => ({ image_url: url, is_thumbnail: index === 0 }));
+    // weight_kg is already sent as the structured `weight` field below, so
+    // (like the "_id" attrs, which map to structured fields such as
+    // categories) it's excluded here to avoid showing a duplicate
+    // "Weight Kg" custom field on every physical product.
     const customFields = Object.entries(attrs)
-      .filter(([key]) => !key.endsWith("_id"))
+      .filter(([key]) => !key.endsWith("_id") && key !== "weight_kg")
       .map(([key, value]) => ({ name: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: String(value) }));
 
     return {
@@ -228,7 +302,7 @@ export class BigCommerceConnector implements ConnectorInterface {
       is_visible: true,
       availability: "available",
       brand_name: product.brand || "",
-      categories: /^\d+$/.test(String(categoryId ?? "")) ? [Number(categoryId)] : [],
+      categories: CATEGORY_ID_PATTERN.test(String(categoryId ?? "")) ? [Number(categoryId)] : [],
       images,
       custom_fields: customFields,
     };
