@@ -62,15 +62,31 @@ const TEST_PREFIXES = [
   "+vexa-qa",
 ];
 
+// F-004 (2026-09-25 follow-up): mirrors TEST_DATA_DESCRIPTION_MARKERS in
+// apps/api/src/catalog/test-data-exclusion.ts — kept in sync by
+// test-data-governance-patterns.test.cjs. A ~19,800-product bulk-import
+// load-test batch used generated titles/brands designed to look like
+// plausible real catalog entries ("EcoMotive Athletic Dry-Fit Tee Maroon
+// VX0500001"), so no title/category prefix could catch it without risking a
+// real customer collision — but every one of these products' own
+// description self-declares "... for bulk import testing with realistic
+// catalog attributes.", which is safe to substring-match since no real
+// merchant would ever write that phrase into a product description.
+const TEST_DESCRIPTION_MARKERS = ["for bulk import testing with realistic catalog attributes"];
+
 export function isTestData(name: string): boolean {
   const value = name.trim().toLowerCase();
-  return TEST_PREFIXES.some((prefix) => value.startsWith(prefix));
+  if (TEST_PREFIXES.some((prefix) => value.startsWith(prefix))) {
+    return true;
+  }
+  return TEST_DESCRIPTION_MARKERS.some((marker) => value.includes(marker));
 }
 
 interface TestDataShape {
   title?: string;
   name?: string;
   path?: string;
+  description?: string;
   // The real identifying label on BulkImportJob/BulkImportRun — the uploaded
   // file name (e.g. "e2e-fixture.csv") — is carried in `sourceName`, not
   // `title`/`name`, which those API shapes don't have.
@@ -88,6 +104,7 @@ function getCandidateLabels(item: TestDataShape): string[] {
     item.title,
     item.name,
     item.path,
+    item.description,
     item.sourceName,
     item.categoryName,
     item.categoryPath,

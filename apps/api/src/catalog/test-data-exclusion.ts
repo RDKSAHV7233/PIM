@@ -55,16 +55,35 @@ export const TEST_DATA_PREFIXES = [
   "+vexa-qa",
 ];
 
+/**
+ * F-004 (2026-09-25 follow-up): the title/category prefix list above missed an entire
+ * ~19,800-product bulk-import load-test batch because these products' titles/brands were
+ * deliberately generated to look like plausible real catalog entries (e.g. "EcoMotive Athletic
+ * Dry-Fit Tee Maroon VX0500001", "FreshNest Polo Collar T-Shirt Black VX0100001") — no prefix
+ * would catch these without risking real customer collisions. But every one of these products'
+ * own DESCRIPTION field self-declares its purpose verbatim: "... for bulk import testing with
+ * realistic catalog attributes." Confirmed live on both 10,000-row bulk-import batches
+ * (bulkRunId a0eab803, 273bc046) and on VX0109940/VX0109897 (the earlier smaller QA fixture
+ * batch reused for connector publish/edit-republish testing) — no real merchant would ever write
+ * this phrase into a product description, so this is a safe substring match unlike a prefix.
+ */
+export const TEST_DATA_DESCRIPTION_MARKERS = ["for bulk import testing with realistic catalog attributes"];
+
 export function buildTestDataExclusionWhere(hideTestData: boolean): Prisma.ProductWhereInput | null {
   if (!hideTestData) {
     return null;
   }
   return {
     NOT: {
-      OR: TEST_DATA_PREFIXES.flatMap((prefix) => [
-        { title: { startsWith: prefix, mode: "insensitive" as const } },
-        { category: { name: { startsWith: prefix, mode: "insensitive" as const } } },
-      ]),
+      OR: [
+        ...TEST_DATA_PREFIXES.flatMap((prefix) => [
+          { title: { startsWith: prefix, mode: "insensitive" as const } },
+          { category: { name: { startsWith: prefix, mode: "insensitive" as const } } },
+        ]),
+        ...TEST_DATA_DESCRIPTION_MARKERS.map((marker) => ({
+          description: { contains: marker, mode: "insensitive" as const },
+        })),
+      ],
     },
   };
 }

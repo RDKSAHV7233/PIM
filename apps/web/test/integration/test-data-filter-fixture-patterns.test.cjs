@@ -100,6 +100,19 @@ function run() {
     );
   }
 
+  // F-004 (2026-09-25 follow-up): a ~19,800-product bulk-import load-test batch used
+  // generated titles/brands designed to look plausible ("EcoMotive Athletic Dry-Fit Tee
+  // Maroon VX0500001"), so it passed every check above — but its own description
+  // self-declares its purpose, which must be caught via substring match.
+  assert(
+    isTestData("Lightweight Casual t-shirt for bulk import testing with realistic catalog attributes.") === true,
+    "isTestData must catch the bulk-import load-test description marker even when the title/brand looks like a plausible real product.",
+  );
+  assert(
+    isTestData("AeroLite Formal Flat Front Trousers Navy VX0109940") === false,
+    "isTestData must not false-positive on the VX-style SKU/brand pattern by title alone — only the description marker identifies these as test data.",
+  );
+
   for (const label of CI_OWN_E2E_FIXTURE_LABELS) {
     assert(
       isTestData(label) === false,

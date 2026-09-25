@@ -78,6 +78,18 @@ try {
     "API test-data exclusion must match case-insensitively, same as the web filter",
   );
 
+  // F-004 (2026-09-25 follow-up): a second, substring-matched list catches bulk-import
+  // load-test products whose titles/brands were generated to look like plausible real
+  // catalog entries — kept in sync the same way as the prefix lists above.
+  const webMarkers = extractPrefixArray(webFilterSource, "TEST_DESCRIPTION_MARKERS").sort();
+  const apiMarkers = extractPrefixArray(apiExclusionSource, "TEST_DATA_DESCRIPTION_MARKERS").sort();
+  assert(
+    JSON.stringify(webMarkers) === JSON.stringify(apiMarkers),
+    `API test-data-exclusion.ts description-marker list has drifted from the web filter's TEST_DESCRIPTION_MARKERS.\n` +
+      `  Web-only:  ${JSON.stringify(webMarkers.filter((m) => !apiMarkers.includes(m)))}\n` +
+      `  API-only:  ${JSON.stringify(apiMarkers.filter((m) => !webMarkers.includes(m)))}`,
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -88,6 +100,7 @@ try {
           "matcher_is_case_insensitive_in_web_and_sql",
           "purge_script_cleans_cross_tenant_products_attached_to_test_categories",
           "api_search_exclusion_list_matches_web_filter_exactly",
+          "api_description_marker_list_matches_web_filter_exactly",
         ],
       },
       null,
