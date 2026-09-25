@@ -6,6 +6,22 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const JOBS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "jobs", "page.tsx");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
+const ERRORS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "errors.ts");
+
+// Compiles the real lib/errors.ts (it has no imports) and returns its exports, so
+// the retry-failure classification is exercised as code, not matched as text.
+function loadErrorsModule() {
+  const ts = require("typescript");
+  const Module = require("node:module");
+  const { outputText } = ts.transpileModule(fs.readFileSync(ERRORS_FILE, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    fileName: "errors.ts",
+  });
+  const mod = new Module(ERRORS_FILE, module);
+  mod.filename = ERRORS_FILE;
+  mod._compile(outputText, ERRORS_FILE);
+  return mod.exports;
+}
 
 function assert(condition, message) {
   if (!condition) {
@@ -196,6 +212,50 @@ function run() {
     "Both retry forms must post the current Jobs view state so the retry actions can restore it.",
   );
 
+  const errors = loadErrorsModule();
+  assert(
+    typeof errors.classifyRetryFailure === "function",
+    "lib/errors.ts must export classifyRetryFailure(status, body, rawMessage) for the Jobs retry banner.",
+  );
+  const disabled = errors.classifyRetryFailure(
+    503,
+    { statusCode: 503, message: "Bulk publish is temporarily disabled for this connector. Try again later or contact support." },
+    "Bulk publish is temporarily disabled for this connector. Try again later or contact support.",
+  );
+  assert(
+    disabled.code === "SERVICE_TEMPORARILY_UNAVAILABLE" &&
+      errors.describeError(disabled.code).title !== errors.describeError("UNKNOWN_ERROR").title &&
+      disabled.message.includes("temporarily disabled"),
+    `A 503 retry failure must not read as "Something went wrong"; got ${JSON.stringify(disabled)}.`,
+  );
+  const planLimited = errors.classifyRetryFailure(
+    402,
+    { error: "PLAN_LIMIT_EXCEEDED", resource: "submissions", limit: 100, current: 98, upgrade_url: "/admin/plan", contact_url: null },
+    "Request failed (402).",
+  );
+  assert(
+    planLimited.code === "PLAN_LIMIT_EXCEEDED" &&
+      errors.describeError("PLAN_LIMIT_EXCEEDED").title === "Plan limit reached" &&
+      planLimited.message === "Plan limit reached for submissions (98 of 100 used)." &&
+      !planLimited.message.includes("Request failed (402)"),
+    `A plan-limit 402 on retry must explain the limit instead of "Request failed (402)."; got ${JSON.stringify(planLimited)}.`,
+  );
+  const known = errors.classifyRetryFailure(409, {}, "VERSION_CONFLICT: stale version");
+  const other = errors.classifyRetryFailure(500, {}, "boom");
+  const network = errors.classifyRetryFailure(null, null, "fetch failed");
+  assert(
+    known.code === "VERSION_CONFLICT" && known.message === "VERSION_CONFLICT: stale version" &&
+      other.code === "UNKNOWN_ERROR" && other.message === "boom" &&
+      network.code === "UNKNOWN_ERROR" && network.message === "fetch failed",
+    "Codes found in the message text keep winning, and unrecognised failures keep the existing UNKNOWN_ERROR fallback.",
+  );
+  for (const fn of [retrySubmissionBody, retryBulkBody]) {
+    assert(
+      fn.includes("classifyRetryFailure(") && !fn.includes('jobsParams.set("retryError", extractErrorCode(rawMessage))'),
+      "Both Jobs retry actions must classify failures with classifyRetryFailure (status-aware), not message text alone.",
+    );
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -219,6 +279,7 @@ function run() {
           "operations_jobs_route_preserves_store_filter_on_submission_links",
           "operations_jobs_route_never_applies_store_filter_invisibly",
           "operations_jobs_route_retry_actions_preserve_view_state",
+          "operations_jobs_route_retry_failures_classified_by_http_status",
         ],
         checkedAt: new Date().toISOString(),
       },

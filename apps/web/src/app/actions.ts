@@ -29,7 +29,7 @@ import {
   isMarketplaceChannel,
 } from "@/lib/marketplace-channels";
 import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
-import { extractErrorCode } from "@/lib/errors";
+import { classifyRetryFailure, extractErrorCode } from "@/lib/errors";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -1917,8 +1917,13 @@ export async function retrySubmissionAction(formData: FormData) {
     const rawMessage = error instanceof ApiHttpError
       ? extractApiErrorMessage(error)
       : error instanceof Error ? error.message : "Retry request failed.";
-    jobsParams.set("retryError", extractErrorCode(rawMessage));
-    jobsParams.set("retryErrorMessage", rawMessage);
+    const retryFailure = classifyRetryFailure(
+      error instanceof ApiHttpError ? error.status : null,
+      error instanceof ApiHttpError ? error.body : null,
+      rawMessage,
+    );
+    jobsParams.set("retryError", retryFailure.code);
+    jobsParams.set("retryErrorMessage", retryFailure.message);
   }
   redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
@@ -1946,8 +1951,13 @@ export async function retryFailedBulkPublishRunAction(formData: FormData) {
     const rawMessage = error instanceof ApiHttpError
       ? extractApiErrorMessage(error)
       : error instanceof Error ? error.message : "Retry request failed.";
-    jobsParams.set("retryError", extractErrorCode(rawMessage));
-    jobsParams.set("retryErrorMessage", rawMessage);
+    const retryFailure = classifyRetryFailure(
+      error instanceof ApiHttpError ? error.status : null,
+      error instanceof ApiHttpError ? error.body : null,
+      rawMessage,
+    );
+    jobsParams.set("retryError", retryFailure.code);
+    jobsParams.set("retryErrorMessage", retryFailure.message);
     redirect(`/operations/jobs?${jobsParams.toString()}`);
   }
   redirect(jobsHref);

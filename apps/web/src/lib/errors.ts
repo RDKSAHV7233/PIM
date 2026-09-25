@@ -649,6 +649,18 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     action: "Refresh the page and try again. If the problem persists, contact support.",
   },
 
+  // ── Retry failures classified by HTTP status (see classifyRetryFailure) ──────
+  PLAN_LIMIT_EXCEEDED: {
+    title: "Plan limit reached",
+    description: "This retry would take the workspace past its plan limit, so nothing was retried.",
+    action: "Review usage or upgrade in Settings > Plan & Usage, then retry.",
+  },
+  SERVICE_TEMPORARILY_UNAVAILABLE: {
+    title: "Temporarily unavailable",
+    description: "The service could not accept this retry right now.",
+    action: "Wait a few minutes and retry. If it keeps happening, contact support.",
+  },
+
   // ── Fallback ─────────────────────────────────────────────────────────────────
   UNKNOWN_ERROR: {
     title: "Something went wrong",
@@ -885,6 +897,36 @@ export function extractErrorCode(input: string | undefined | null): string {
   }
 
   return "UNKNOWN_ERROR";
+}
+
+/**
+ * Classifies a failed Jobs-page retry for its error banner. A code named in the
+ * message text wins (so existing codes keep their copy); when the text names none,
+ * the HTTP status the API answered with decides, so a plan-limit 402 (whose body
+ * carries no message) or a 503 no longer reads as "Something went wrong".
+ */
+export function classifyRetryFailure(
+  status: number | null,
+  body: unknown,
+  rawMessage: string,
+): { code: string; message: string } {
+  const code = extractErrorCode(rawMessage);
+  if (code !== "UNKNOWN_ERROR") {
+    return { code, message: rawMessage };
+  }
+  const payload = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  if (status === 402 && payload?.error === "PLAN_LIMIT_EXCEEDED") {
+    const resource = String(payload.resource ?? "").trim();
+    const limit = Number(payload.limit);
+    const current = Number(payload.current);
+    const detail =
+      resource && Number.isFinite(limit) && Number.isFinite(current) ? ` for ${resource} (${current} of ${limit} used)` : "";
+    return { code: "PLAN_LIMIT_EXCEEDED", message: `Plan limit reached${detail}.` };
+  }
+  if (status === 503) {
+    return { code: "SERVICE_TEMPORARILY_UNAVAILABLE", message: rawMessage };
+  }
+  return { code, message: rawMessage };
 }
 
 export function translateJobStatus(status: string): string {
