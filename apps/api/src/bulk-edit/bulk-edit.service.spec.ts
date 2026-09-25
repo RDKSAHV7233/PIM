@@ -89,6 +89,21 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
     operations.set(where.id, updated);
     return updated;
   });
+  // Mirrors the real conditional guard in markStuckOperationFailed(): only writes
+  // (and counts as affected) when the row still matches where.status at write time.
+  const bulkEditOperationUpdateMany = jest.fn(
+    async ({ where, data }: { where: { id: string; status?: { in: string[] } }; data: Record<string, unknown> }) => {
+      const existing = operations.get(where.id) as { status?: string } | undefined;
+      if (!existing) {
+        return { count: 0 };
+      }
+      if (where.status && !where.status.in.includes(String(existing.status))) {
+        return { count: 0 };
+      }
+      operations.set(where.id, { ...existing, ...data });
+      return { count: 1 };
+    },
+  );
 
   const bulkEditOperationItemCreate = jest.fn(async ({ data }: { data: { operationId: string; productId: string; status: string } }) => {
     items.push(data);
@@ -123,6 +138,7 @@ function createService(options: { products?: FakeProduct[]; existingItems?: Arra
       create: bulkEditOperationCreate,
       findUnique: bulkEditOperationFindUnique,
       update: bulkEditOperationUpdate,
+      updateMany: bulkEditOperationUpdateMany,
     },
     bulkEditOperationItem: {
       create: bulkEditOperationItemCreate,
@@ -477,5 +493,73 @@ describe("BulkEditService — SKU plan-limit enforcement on approval", () => {
     expect(finalOp.appliedCount).toBe(1);
     expect(finalOp.failedCount).toBe(0);
     expect(products.find((p) => p.id === "p1")?.status).toBe("approved");
+  });
+});
+
+// F-014: a worker that crashes mid-processApplyJob leaves the operation at
+// queued/processing forever, with appliedCount/failedCount frozen at 0 no
+// matter how many BulkEditOperationItem rows already got written before the
+// crash — confirmed live in production (21,245 requested, 100 real recorded
+// failures, counters still 0/0, status still "processing" weeks later).
+// BulkEditStaleOperationRecoveryService calls this for an operation it's
+// decided is stale; these tests cover the method itself in isolation.
+describe("BulkEditService.markStuckOperationFailed (F-014)", () => {
+  it("marks the operation failed and backfills real counts from whatever items already exist", async () => {
+    const { service, operations, items } = createService({
+      existingItems: [
+        { productId: "p1", status: "failed" },
+        { productId: "p2", status: "failed" },
+        { productId: "p3", status: "success" },
+      ],
+    });
+    operations.set("op_1", { id: "op_1", status: BulkEditOperationStatus.processing, requestedCount: 21245, appliedCount: 0, failedCount: 0 });
+
+    const result = await service.markStuckOperationFailed("op_1");
+
+    const finalOp = operations.get("op_1") as { status: string; appliedCount: number; failedCount: number };
+    expect(finalOp.status).toBe(BulkEditOperationStatus.failed);
+    expect(finalOp.appliedCount).toBe(1);
+    expect(finalOp.failedCount).toBe(2);
+    expect(result).toEqual({ recovered: true });
+    // Sanity: the seeded items are still there, untouched — this only updates the operation row.
+    expect(items).toHaveLength(3);
+  });
+
+  it("marks it failed even with zero recorded items yet (crashed before the first one finished)", async () => {
+    const { service, operations } = createService({ existingItems: [] });
+    operations.set("op_1", { id: "op_1", status: BulkEditOperationStatus.queued, requestedCount: 21245, appliedCount: 0, failedCount: 0 });
+
+    const result = await service.markStuckOperationFailed("op_1");
+
+    const finalOp = operations.get("op_1") as { status: string; appliedCount: number; failedCount: number };
+    expect(finalOp.status).toBe(BulkEditOperationStatus.failed);
+    expect(finalOp.appliedCount).toBe(0);
+    expect(finalOp.failedCount).toBe(0);
+    expect(result).toEqual({ recovered: true });
+  });
+
+  it("does NOT overwrite an operation that finished (completed/completed_with_errors/failed) between the sweep's read and this write", async () => {
+    // Regression guard for a real race found in review: the recovery sweep reads a
+    // batch of operations that LOOK stale, then calls this once per operation. A
+    // large-but-healthy operation can legitimately call the real finalizeOperation()
+    // in that gap — without this guard, this write landing after that one would
+    // silently stomp a correct terminal status back to "failed".
+    const { service, operations } = createService({
+      existingItems: [{ productId: "p1", status: "success" }],
+    });
+    operations.set("op_1", {
+      id: "op_1",
+      status: BulkEditOperationStatus.completed,
+      requestedCount: 1,
+      appliedCount: 1,
+      failedCount: 0,
+    });
+
+    const result = await service.markStuckOperationFailed("op_1");
+
+    const finalOp = operations.get("op_1") as { status: string; appliedCount: number; failedCount: number };
+    expect(finalOp.status).toBe(BulkEditOperationStatus.completed);
+    expect(finalOp.appliedCount).toBe(1);
+    expect(result).toEqual({ recovered: false });
   });
 });

@@ -426,6 +426,64 @@ export class BulkEditService implements OnModuleInit {
     });
   }
 
+  /**
+   * F-014: called by BulkEditStaleOperationRecoveryService for an operation
+   * stuck in queued/processing well past any realistic single-operation
+   * runtime (worker crash mid-loop — deploy, OOM, transient DB outage — with
+   * processApplyJob's promise never resolving *or* rejecting, so neither
+   * finalizeOperation() nor onModuleInit()'s own catch-and-mark-failed ever
+   * ran). Unlike bulk-import's equivalent stale-row recovery, this does NOT
+   * attempt to resume processing: BulkEditOperation never persists the
+   * original requester's PolicyActor (only the transient queue payload did,
+   * which is gone once the job is abandoned), and resuming with a
+   * reconstructed/elevated actor could apply changes outside the original
+   * actor's real scope. Marking it failed — with real counts pulled from
+   * whatever BulkEditOperationItem rows already exist, not left at 0/0 — is
+   * the safe stopping point; a genuinely-still-wanted edit needs a fresh
+   * apply() call with a live actor.
+   *
+   * Deliberately does not share code with finalizeOperation() above (same
+   * groupBy-and-count shape) — that method is part of a completed/locked
+   * increment story (ST-BULK-EDIT-SAFETY-001) and this fix stays purely
+   * additive rather than refactoring it.
+   *
+   * The write is conditioned on the operation still being queued/processing
+   * at update time — not just read time. The caller (a periodic sweep) reads
+   * a batch of stale-looking operations, then calls this once per operation;
+   * a job that isn't actually dead can legitimately finish and call
+   * finalizeOperation() in that gap (large operations can run long — see the
+   * recovery service's own staleness-threshold comment). Without this guard,
+   * this write landing after that one would silently stomp a correct
+   * completed/completed_with_errors status back to failed. updateMany's
+   * count tells the caller whether this actually took effect.
+   */
+  async markStuckOperationFailed(operationId: string): Promise<{ recovered: boolean }> {
+    const statusGroups = await this.prisma.tenant().bulkEditOperationItem.groupBy({
+      by: ["status"],
+      where: { operationId },
+      _count: { status: true },
+    });
+
+    let appliedCount = 0;
+    let failedCount = 0;
+    for (const group of statusGroups) {
+      if (group.status === "success") {
+        appliedCount = group._count.status;
+      } else if (group.status === "failed") {
+        failedCount = group._count.status;
+      }
+    }
+
+    const result = await this.prisma.tenant().bulkEditOperation.updateMany({
+      where: {
+        id: operationId,
+        status: { in: [BulkEditOperationStatus.queued, BulkEditOperationStatus.processing] },
+      },
+      data: { status: BulkEditOperationStatus.failed, appliedCount, failedCount },
+    });
+    return { recovered: result.count > 0 };
+  }
+
   async listOperations(limit = 20, pagination?: CursorPaginationQuery) {
     if (isCursorPagination(pagination)) {
       const safeLimit = resolveCursorLimit(pagination?.limit);
