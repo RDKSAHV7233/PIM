@@ -102,6 +102,23 @@ describe("EtsyConnector.buildListingPayload", () => {
     const payload = (connector as any).buildListingPayload({ ...baseProduct, attributes: { ...baseProduct.attributes, material: "clay" } });
     expect(payload.materials).toEqual(["clay"]);
   });
+
+  it("passes shipping_profile_id/return_policy_id through when set — needed to activate a physical listing", () => {
+    const connector = makeConnector();
+    const payload = (connector as any).buildListingPayload({
+      ...baseProduct,
+      attributes: { ...baseProduct.attributes, shipping_profile_id: 42, return_policy_id: 7 },
+    });
+    expect(payload.shipping_profile_id).toBe(42);
+    expect(payload.return_policy_id).toBe(7);
+  });
+
+  it("omits shipping_profile_id/return_policy_id entirely when not set, rather than sending 0/null", () => {
+    const connector = makeConnector();
+    const payload = (connector as any).buildListingPayload(baseProduct);
+    expect(payload).not.toHaveProperty("shipping_profile_id");
+    expect(payload).not.toHaveProperty("return_policy_id");
+  });
 });
 
 describe("EtsyConnector.encodeFormBody", () => {
@@ -168,6 +185,31 @@ describe("EtsyConnector.validateProduct", () => {
     expect(result.isValid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
+
+  it("warns (does not block) when a physical listing has no shipping_profile_id — Etsy will accept the draft but refuse to activate it", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct({} as any, baseProduct);
+    expect(result.isValid).toBe(true);
+    expect(result.warnings.some((w) => w.code === "MISSING_SHIPPING_PROFILE")).toBe(true);
+  });
+
+  it("does not warn once shipping_profile_id is set", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct(
+      {} as any,
+      { ...baseProduct, attributes: { ...baseProduct.attributes, shipping_profile_id: 42 } },
+    );
+    expect(result.warnings.some((w) => w.code === "MISSING_SHIPPING_PROFILE")).toBe(false);
+  });
+
+  it("does not warn for a digital (download) listing — no shipping profile applies", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct(
+      {} as any,
+      { ...baseProduct, attributes: { ...baseProduct.attributes, listing_type: "download" } },
+    );
+    expect(result.warnings.some((w) => w.code === "MISSING_SHIPPING_PROFILE")).toBe(false);
+  });
 });
 
 describe("EtsyConnector.normaliseError", () => {
@@ -181,6 +223,35 @@ describe("EtsyConnector.normaliseError", () => {
     const connector = makeConnector();
     const issue = connector.normaliseError("some_unknown_code", "raw detail");
     expect(issue.sellerMessage).toMatch(/raw detail/);
+  });
+});
+
+describe("EtsyConnector.describeFailure", () => {
+  // Regression tests for a real bug found in review: Etsy's REST resource
+  // endpoints (listings, images, ...) don't use the OAuth error/error_description
+  // shape — a failure body is just {"error": "<full human-readable message>"},
+  // e.g. {"error":"Missing input parameter: [products]"} (confirmed against
+  // Etsy's published OpenAPI spec 2026-09-22). describeFailure used to treat
+  // that whole sentence as a short machine code, so instead of surfacing it,
+  // sellers saw it re-derived as "Etsy returned an error: MISSING INPUT
+  // PARAMETER: [PRODUCTS]. Contact support." — shouted, mangled, and strictly
+  // worse than Etsy's own message.
+  it("surfaces Etsy's real single-field error message verbatim instead of re-deriving a shouted fallback", () => {
+    const connector = makeConnector();
+    const described = (connector as any).describeFailure({ error: "Missing input parameter: [products]" }, 400);
+    expect(described).toBe("Missing input parameter: [products]");
+  });
+
+  it("still prefers a curated ERROR_MESSAGES entry when the error code actually matches one", () => {
+    const connector = makeConnector();
+    const described = (connector as any).describeFailure({ error: "title_too_long" }, 400);
+    expect(described).toMatch(/140 characters/);
+  });
+
+  it("falls back to the status code when the body has no usable text at all", () => {
+    const connector = makeConnector();
+    const described = (connector as any).describeFailure({}, 500);
+    expect(described).toBe("Etsy request failed with status 500.");
   });
 });
 
@@ -318,7 +389,7 @@ describe("EtsyConnector.publishProduct / updateProduct — form encoding + image
     const calls: Array<{ url: string; init: any }> = [];
     const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
       calls.push({ url, init });
-      if (url.endsWith("/listings")) {
+      if (url.endsWith("/listings") && init?.method === "POST") {
         return { ok: true, status: 201, text: async () => JSON.stringify({ listing_id: 555 }) };
       }
       if (url === "https://cdn.example.com/etsy.jpg") {
@@ -327,6 +398,9 @@ describe("EtsyConnector.publishProduct / updateProduct — form encoding + image
       if (url.includes("/images")) {
         return { ok: true, status: 201, text: async () => JSON.stringify({ listing_image_id: 1 }) };
       }
+      if (url.endsWith("/listings/555") && init?.method === "PATCH") {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ listing_id: 555, state: "active" }) };
+      }
       throw new Error(`unexpected fetch to ${url}`);
     });
     (global as any).fetch = fetchMock;
@@ -334,7 +408,7 @@ describe("EtsyConnector.publishProduct / updateProduct — form encoding + image
     const ref = await connector.publishProduct(fakeCtx(), baseProduct);
 
     expect(ref.externalRef).toBe("555");
-    const listingCall = calls.find((c) => c.url.endsWith("/listings"));
+    const listingCall = calls.find((c) => c.url.endsWith("/listings") && c.init.method === "POST");
     expect(listingCall!.init.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
     expect(typeof listingCall!.init.body).toBe("string");
     expect(listingCall!.init.body.trim().startsWith("{")).toBe(false);
@@ -351,12 +425,15 @@ describe("EtsyConnector.publishProduct / updateProduct — form encoding + image
   it("does not fail the publish when a single image fails to upload — the listing already exists and is editable", async () => {
     mockDecrypt();
     const connector = makeConnectorWithDb(dbWithCreds());
-    const fetchMock = jest.fn().mockImplementation(async (url: string) => {
-      if (url.endsWith("/listings")) {
+    const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+      if (url.endsWith("/listings") && init?.method === "POST") {
         return { ok: true, status: 201, text: async () => JSON.stringify({ listing_id: 555 }) };
       }
       if (url === "https://cdn.example.com/etsy.jpg") {
         return { ok: false, status: 404 };
+      }
+      if (url.endsWith("/listings/555") && init?.method === "PATCH") {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ listing_id: 555, state: "active" }) };
       }
       throw new Error(`unexpected fetch to ${url}`);
     });
@@ -364,6 +441,103 @@ describe("EtsyConnector.publishProduct / updateProduct — form encoding + image
 
     const ref = await connector.publishProduct(fakeCtx(), baseProduct);
     expect(ref.externalRef).toBe("555");
+  });
+
+  describe("activateListing — the real fix: createDraftListing never goes live on its own", () => {
+    // Regression tests for the core bug found in review: POST .../listings is
+    // Etsy's createDraftListing — its request schema has no `state` field, so
+    // it can only ever create a draft. Nothing on etsy.com becomes visible
+    // until a separate PATCH sets state=active. The ported prototype never
+    // made that second call, so every "published" product would have sat in
+    // the shop as an invisible draft forever — never caught because publish
+    // has never been exercised against a real shop.
+    function imageCapableFetch(handlePatch: (init: any) => { ok: boolean; status: number; text: () => Promise<string> }) {
+      const calls: Array<{ url: string; init: any }> = [];
+      const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+        calls.push({ url, init });
+        if (url.endsWith("/listings") && init?.method === "POST") {
+          return { ok: true, status: 201, text: async () => JSON.stringify({ listing_id: 555 }) };
+        }
+        if (url === "https://cdn.example.com/etsy.jpg") {
+          return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(4) };
+        }
+        if (url.includes("/images")) {
+          return { ok: true, status: 201, text: async () => JSON.stringify({ listing_image_id: 1 }) };
+        }
+        if (url.endsWith("/listings/555") && init?.method === "PATCH") {
+          return handlePatch(init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      });
+      return { fetchMock, calls };
+    }
+
+    it("PATCHes state=active after a successful create + image upload", async () => {
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithCreds());
+      const { fetchMock, calls } = imageCapableFetch(() => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ listing_id: 555, state: "active" }),
+      }));
+      (global as any).fetch = fetchMock;
+
+      await connector.publishProduct(
+        fakeCtx(),
+        { ...baseProduct, attributes: { ...baseProduct.attributes, shipping_profile_id: 42, return_policy_id: 7 } },
+      );
+
+      const activationCall = calls.find((c) => c.url.endsWith("/listings/555") && c.init.method === "PATCH");
+      expect(activationCall).toBeDefined();
+      const params = new URLSearchParams(activationCall!.init.body);
+      expect(params.get("state")).toBe("active");
+      expect(params.get("shipping_profile_id")).toBe("42");
+      expect(params.get("return_policy_id")).toBe("7");
+    });
+
+    it("does not fail the publish when activation is rejected — the draft still exists and is editable", async () => {
+      // e.g. a physical listing with no valid shipping profile: Etsy accepts
+      // the draft but rejects activation. Same fail-open handling as a single
+      // image failing to upload.
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithCreds());
+      const { fetchMock } = imageCapableFetch(() => ({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: "Shipping profile is required for a physical listing." }),
+      }));
+      (global as any).fetch = fetchMock;
+
+      const ref = await connector.publishProduct(fakeCtx(), baseProduct);
+      expect(ref.externalRef).toBe("555");
+    });
+
+    it("updateProduct never sends state=active — forcing it on every edit would undo a seller's own deactivation or renew a sold_out listing", async () => {
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithCreds());
+      const calls: Array<{ url: string; init: any }> = [];
+      const fetchMock = jest.fn().mockImplementation(async (url: string, init: any) => {
+        calls.push({ url, init });
+        if (url.endsWith("/listings/555") && init?.method === "PATCH") {
+          return { ok: true, status: 200, text: async () => JSON.stringify({ listing_id: 555 }) };
+        }
+        if (url === "https://cdn.example.com/etsy.jpg") {
+          return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(4) };
+        }
+        if (url.includes("/images")) {
+          return { ok: true, status: 201, text: async () => JSON.stringify({ listing_image_id: 1 }) };
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      });
+      (global as any).fetch = fetchMock;
+
+      await connector.updateProduct(fakeCtx(), baseProduct, "555");
+
+      const patchCalls = calls.filter((c) => c.url.endsWith("/listings/555") && c.init.method === "PATCH");
+      expect(patchCalls).toHaveLength(1);
+      const params = new URLSearchParams(patchCalls[0].init.body);
+      expect(params.has("state")).toBe(false);
+    });
   });
 
   it("updateProduct also form-encodes the body and re-uploads images against the existing externalRef", async () => {

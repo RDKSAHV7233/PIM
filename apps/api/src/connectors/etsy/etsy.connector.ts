@@ -240,6 +240,24 @@ export class EtsyConnector implements ConnectorInterface {
       errors.push({ code: "NO_IMAGE", fieldPath: "mainImageUrl", sellerMessage: "Etsy listings require at least one image to go live.", severity: "error" });
     }
 
+    // Non-blocking: createDraftListing accepts a physical listing with no
+    // shipping_profile_id (Etsy relaxed this at draft-creation time), but
+    // updateListing's activation step (state: active) rejects it — Etsy's spec
+    // says the shipping profile "must be complete and valid" when activating a
+    // physical listing (confirmed against Etsy's published OpenAPI spec
+    // 2026-09-22). Warn rather than block: the draft still gets created and is
+    // editable, it just won't go live until this is set.
+    const listingType = this.readString(product.attributes?.["listing_type"], "physical");
+    if (listingType !== "download" && !product.attributes?.["shipping_profile_id"]) {
+      warnings.push({
+        code: "MISSING_SHIPPING_PROFILE",
+        fieldPath: "attributes.shipping_profile_id",
+        sellerMessage:
+          "Etsy needs a shipping profile to publish a physical listing live. Without attributes.shipping_profile_id, this will be created as a draft that stays invisible on Etsy until one is added.",
+        severity: "warning",
+      });
+    }
+
     return { isValid: errors.length === 0, errors, warnings, source: "LOCAL_RULES" };
   }
 
@@ -276,6 +294,15 @@ export class EtsyConnector implements ConnectorInterface {
     const listingId = String(body.listing_id ?? "");
     if (listingId) {
       await this.uploadListingImages(ctx, shopId, listingId, product);
+      // POST /shops/{shop_id}/listings is Etsy's createDraftListing — the name is
+      // literal: its request schema has no `state` field, so this call can only
+      // ever create a draft, never a live listing (confirmed against Etsy's
+      // published OpenAPI spec 2026-09-22; the prototype this was ported from
+      // never accounted for this, and it was never caught because publish has
+      // never been exercised against a real shop — see connector-launch-policy).
+      // Making the listing visible on etsy.com requires a second call, PATCH
+      // .../listings/{id} with state=active, which is what activateListing() does.
+      await this.activateListing(ctx, shopId, listingId, product);
     }
     return { externalRef: listingId, status: "PENDING", isAsync: false };
   }
@@ -392,6 +419,11 @@ export class EtsyConnector implements ConnectorInterface {
       tags: (product.tags ?? [product.productType, product.brand].filter(Boolean)).slice(0, 13),
       materials: attrs["material"] ? [String(attrs["material"])] : [],
       sku: [product.sku],
+      // Optional at draft-creation time, but required to activate a physical
+      // listing — sending them here (when known) up front means activateListing()
+      // doesn't need to repeat them, though it does anyway since it's a separate call.
+      ...(attrs["shipping_profile_id"] != null ? { shipping_profile_id: Number(attrs["shipping_profile_id"]) } : {}),
+      ...(attrs["return_policy_id"] != null ? { return_policy_id: Number(attrs["return_policy_id"]) } : {}),
     };
   }
 
@@ -443,6 +475,54 @@ export class EtsyConnector implements ConnectorInterface {
           reason: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+  }
+
+  // Moves a freshly-created draft listing to Etsy's "active" (live/visible) state.
+  // Intentionally not called from updateProduct(): updateListing's state field only
+  // accepts active/inactive, and per Etsy's spec, pushing state=active on every
+  // routine edit would silently undo a seller's own deliberate deactivation, or
+  // (worse, for a sold_out listing) reset its quantity to 1 and renew it — a
+  // side effect no caller here is asking for. Only the initial publish should
+  // attempt this transition.
+  // Fails open like uploadListingImages(): the listing already exists and is
+  // editable, so an activation failure (most commonly a physical listing with
+  // no valid shipping profile) is logged and left as a draft rather than
+  // failing the whole publish.
+  private async activateListing(
+    ctx: ConnectorContext,
+    shopId: string,
+    listingId: string,
+    product: ProductPayload,
+  ): Promise<void> {
+    const attrs = product.attributes ?? {};
+    const payload: Record<string, unknown> = { state: "active" };
+    if (attrs["shipping_profile_id"] != null) {
+      payload.shipping_profile_id = Number(attrs["shipping_profile_id"]);
+    }
+    if (attrs["return_policy_id"] != null) {
+      payload.return_policy_id = Number(attrs["return_policy_id"]);
+    }
+    try {
+      const response = await this.fetchWithTokenRetry(ctx, `${API_BASE}/shops/${shopId}/listings/${listingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: this.encodeFormBody(payload),
+      });
+      if (!response.ok) {
+        const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+        this.logger.warn("Etsy listing activation failed — left as a draft", {
+          installationId: ctx.installationId,
+          listingId,
+          reason: this.describeFailure(body, response.status),
+        });
+      }
+    } catch (error) {
+      this.logger.warn("Etsy listing activation request failed — left as a draft", {
+        installationId: ctx.installationId,
+        listingId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -687,7 +767,15 @@ export class EtsyConnector implements ConnectorInterface {
 
   private describeFailure(body: Record<string, unknown>, statusCode: number): string {
     const code = this.readOptionalString(body.error);
-    const message = this.readOptionalString(body.error_description) ?? this.readOptionalString(body.message);
+    // Etsy's REST resource endpoints (listings, images, ...) don't use the OAuth
+    // error/error_description shape — a failure body is just {"error": "<full
+    // human-readable message>"}, e.g. {"error":"Missing input parameter:
+    // [products]"} (confirmed against Etsy's published OpenAPI spec
+    // 2026-09-22). Falling back to `code` here (instead of leaving the message
+    // empty) means normaliseError()'s own fallback surfaces that real sentence
+    // to the seller verbatim, rather than re-deriving an all-caps, uppercased
+    // version of it with a bolted-on "Contact support."
+    const message = this.readOptionalString(body.error_description) ?? this.readOptionalString(body.message) ?? code;
     if (code) {
       return this.normaliseError(code, message ?? "").sellerMessage;
     }
