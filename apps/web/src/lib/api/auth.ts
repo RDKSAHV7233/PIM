@@ -20,15 +20,20 @@ export async function getNotifications(
   input?: { limit?: number; cursor?: string | null },
   options?: ApiRequestOptions,
 ) {
-  const params = new URLSearchParams();
+  // F-009: pagination=cursor must always be sent, not just when a cursor value is
+  // already present — the API's non-cursor fallback hardcodes nextCursor: null
+  // regardless of how many notifications actually exist, which meant callers could
+  // never advance past their first page on the very first request (no cursor exists
+  // yet then). Cursor mode with no cursor value still correctly returns page 1 with a
+  // real computed nextCursor, so there's no downside to requesting it unconditionally.
+  const params = new URLSearchParams({ pagination: "cursor" });
   if (typeof input?.limit === "number" && Number.isFinite(input.limit)) {
     params.set("limit", String(Math.max(1, Math.floor(input.limit))));
   }
   if (input?.cursor) {
     params.set("cursor", input.cursor);
-    params.set("pagination", "cursor");
   }
-  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const query = `?${params.toString()}`;
   return fetchJson<NotificationListResponse>(`/notifications${query}`, undefined, options);
 }
 

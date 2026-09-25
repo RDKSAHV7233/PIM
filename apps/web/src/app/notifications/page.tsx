@@ -171,10 +171,17 @@ export default function NotificationsPage() {
   }, []);
 
   const fetchPage = useCallback(async (cursor?: string | null): Promise<NotificationFetchResult> => {
-    const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+    // F-009: must send pagination=cursor unconditionally, including on the very first
+    // request (cursor is null then). The API's non-cursor fallback path hardcodes
+    // nextCursor: null regardless of how many notifications actually exist, so omitting
+    // this on page 1 (as a `if (cursor) { ... }` guard previously did) meant this page
+    // could never advance past its first PAGE_SIZE items — loadMore()'s own `if
+    // (!nextCursor) return;` guard then had nothing to work with, forever. Confirmed
+    // live: unreadCount was 1,853 while this page could only ever render its most
+    // recent 20.
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), pagination: "cursor" });
     if (cursor) {
       params.set("cursor", cursor);
-      params.set("pagination", "cursor");
     }
     const response = await fetch(`/api/notifications?${params.toString()}`, {
       method: "GET",
