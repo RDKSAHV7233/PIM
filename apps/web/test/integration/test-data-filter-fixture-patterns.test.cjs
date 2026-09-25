@@ -52,6 +52,20 @@ const KNOWN_TEST_LABELS = [
   "StageQA",
   "QAPilot",
   "VexaQA",
+  // 2026-09-25 additions (F-004 live-verification follow-up): found live by paginating
+  // through the full 265-product "still showing after Hide test data" list on
+  // /catalog/products, after the description-marker fix (F-004) removed the ~19,800-product
+  // bulk-import batch. None of these matched any prefix above.
+  "QA-Alpha T-Shirt Black QA0211",
+  "QA-Beta Audio Black QA0187",
+  "QA-Gamma Toy Blue QA0153",
+  "QA-Delta Stationery Blue QA0249",
+  "QA-Echo Kitchenware Black QA0155",
+  "QA-CODEX-20260728122450 Bulk Edit Product 1",
+  "QA-E2E Destructive Prod Cap",
+  "QA Mouse-Click Investigation Draft",
+  "PIM585-LiveVerify-VX3",
+  "QAv2 Shopify Fixture Tee VX-QA260814",
 ];
 
 const PLAUSIBLE_REAL_LABELS = [
@@ -61,6 +75,17 @@ const PLAUSIBLE_REAL_LABELS = [
   "Reserved Stock SKU 4471",
   "Vexa Lifestyle Pvt Ltd",
   "Premium Cotton Blend",
+  // 2026-09-25 (F-004 live-verification follow-up): found in the same 265-product leftover
+  // list as the KNOWN_TEST_LABELS additions above, but deliberately left unfiltered — unlike
+  // "QA-"/"PIM585-"/"QAv2 ", these two have no distinctive, safe-to-match prefix ("Vex"/"Vexa"
+  // is this tenant's own brand, used throughout the app's own name, so a broad match would
+  // risk hiding genuinely real products). Manually inspected both: "Vex T" (brand "Vex",
+  // description "Vex T for men") and "Vexapim Trial" (brand "Vexa", description "Vexa Pim
+  // risk") are minimal/generic enough to plausibly be early manual test entries, but neither
+  // carries a self-declared test marker the way the bulk-import batch's descriptions did for
+  // F-004's main fix — left for a human call rather than guessed at.
+  "Vex T",
+  "Vexapim Trial",
 ];
 
 // Regression guard: a bare "e2e " prefix was tried for F-011 and reverted

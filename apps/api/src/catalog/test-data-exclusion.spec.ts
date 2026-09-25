@@ -33,4 +33,14 @@ describe("buildTestDataExclusionWhere", () => {
       description: { contains: "for bulk import testing with realistic catalog attributes", mode: "insensitive" },
     });
   });
+
+  it("includes the 2026-09-25 QA-fixture-family prefixes found live after the description-marker fix", () => {
+    const where = buildTestDataExclusionWhere(true);
+    const or = (where as { NOT: { OR: Array<{ title?: { startsWith: string } }> } }).NOT.OR;
+    const titlePrefixes = or.map((clause) => clause.title?.startsWith).filter(Boolean);
+    expect(titlePrefixes).toContain("qa-");
+    expect(titlePrefixes).toContain("qa mouse-click");
+    expect(titlePrefixes).toContain("pim585-");
+    expect(titlePrefixes).toContain("qav2 ");
+  });
 });

@@ -53,6 +53,19 @@ export const TEST_DATA_PREFIXES = [
   "@sum(",
   "=1+1",
   "+vexa-qa",
+  // 2026-09-25 additions (F-004 live-verification follow-up): after the description-marker
+  // fix (see TEST_DATA_DESCRIPTION_MARKERS below) removed the ~19,800-product bulk-import
+  // batch, toggling "Hide test data" live on /catalog/products still showed 265 products —
+  // nearly all of them obvious QA fixtures by title/brand that no prefix above covered.
+  // Paginated through the full 265-product list (not just a sample) to confirm this is the
+  // complete set of distinct leaking patterns. A bare "qa-" catches QA-Alpha/Beta/Gamma/
+  // Delta/Echo (color-variant product families), QA-CODEX-<timestamp>, and QA-E2E (the
+  // existing "qa-e2e-" entry required a hyphen after "e2e" and missed "QA-E2E Destructive
+  // Prod ...", which uses a space there instead).
+  "qa-",
+  "qa mouse-click",
+  "pim585-",
+  "qav2 ",
 ];
 
 /**
