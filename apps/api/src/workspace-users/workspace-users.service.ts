@@ -707,6 +707,21 @@ export class WorkspaceUsersService {
       });
     });
 
+    // Cascade-revoke all active API keys created by this user (#885).
+    // Policy decision (recorded here): permanent — reactivating the user does
+    // NOT un-revoke these keys. API keys are often app/service credentials
+    // whose lifecycle should be managed explicitly, not auto-restored on
+    // re-onboarding. See issue #885 for the two open design questions (this
+    // implements the security-forward option pending PO/CTO confirmation).
+    const { count: revokedApiKeyCount } = await this.prisma.tenant(normalizedTenantId).apiAccessKey.updateMany({
+      where: {
+        tenantKey: normalizedTenantId,
+        createdBy: existing.userId,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+
     await this.auditService.record({
       actorId: normalizedActorId,
       actorRole,
@@ -715,6 +730,7 @@ export class WorkspaceUsersService {
       resourceId: existing.id,
       metadata: {
         targetUserId: updated.userId,
+        revokedApiKeyCount,
       },
     });
 

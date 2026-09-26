@@ -208,7 +208,7 @@ describe("WorkspaceUsersService — plan-tier role gating", () => {
 // feedback-pim-shared-tenant-concurrency memory for why a live click-test on
 // app.vexapim.com can't be trusted for this).
 
-function makeDeactivateStubs(options: { targetRole: string; targetActive: boolean; activeAdminIds: string[] }) {
+function makeDeactivateStubs(options: { targetRole: string; targetActive: boolean; activeAdminIds: string[]; activeKeyCount?: number }) {
   const targetRow = {
     id: "row-target",
     userId: "target@tenant",
@@ -235,8 +235,13 @@ function makeDeactivateStubs(options: { targetRole: string; targetActive: boolea
     return callback({ authIdentity: txAuthIdentity, $queryRaw: queryRawSpy });
   });
 
+  const apiAccessKey = {
+    updateMany: jest.fn().mockResolvedValue({ count: options.activeKeyCount ?? 0 }),
+  };
+
   const tenantClient = {
     authIdentity,
+    apiAccessKey,
     $transaction: transactionSpy,
   };
   const prisma = {
@@ -252,7 +257,7 @@ function makeDeactivateStubs(options: { targetRole: string; targetActive: boolea
     checkLimit: jest.fn().mockResolvedValue({ allowed: true, limit: 999, current: 0 }),
   } as unknown as PlanUsageService;
 
-  return { prisma, audit, planUsage, txAuthIdentity, transactionSpy, queryRawSpy };
+  return { prisma, audit, planUsage, txAuthIdentity, transactionSpy, queryRawSpy, apiAccessKey };
 }
 
 describe("WorkspaceUsersService.deactivateUser — last-admin guard (#816)", () => {
@@ -710,5 +715,67 @@ describe("WorkspaceUsersService — purgeUser", () => {
         metadata: { targetUserId: "temp@tenant" },
       }),
     );
+  });
+});
+
+// ─── deactivateUser — API key cascade-revoke (#885) ──────────────────────────
+//
+// Policy: deactivating a user permanently revokes all active API keys they
+// created. Reactivating the user does NOT un-revoke those keys — API keys are
+// often app/service credentials whose lifecycle should be managed explicitly.
+// See issue #885 for the two design questions this implements in the
+// security-forward direction (pending PO/CTO confirmation).
+describe("WorkspaceUsersService.deactivateUser — API key cascade-revoke (#885)", () => {
+  it("calls apiAccessKey.updateMany with createdBy=target userId and revokedAt: null filter on deactivation", async () => {
+    const { prisma, audit, planUsage, apiAccessKey } = makeDeactivateStubs({
+      targetRole: "editor",
+      targetActive: true,
+      activeAdminIds: [],
+      activeKeyCount: 2,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant");
+
+    expect(apiAccessKey.updateMany).toHaveBeenCalledTimes(1);
+    expect(apiAccessKey.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ createdBy: "target@tenant", revokedAt: null }),
+        data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it("includes revokedApiKeyCount in the audit metadata so ops can see how many keys were cleared", async () => {
+    const { prisma, audit, planUsage } = makeDeactivateStubs({
+      targetRole: "editor",
+      targetActive: true,
+      activeAdminIds: [],
+      activeKeyCount: 3,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant");
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "workspace_user.deactivated",
+        metadata: expect.objectContaining({ revokedApiKeyCount: 3 }),
+      }),
+    );
+  });
+
+  it("does not throw when the user has no active API keys (revokedApiKeyCount = 0)", async () => {
+    const { prisma, audit, planUsage } = makeDeactivateStubs({
+      targetRole: "editor",
+      targetActive: true,
+      activeAdminIds: [],
+      activeKeyCount: 0,
+    });
+    const svc = new WorkspaceUsersService(prisma, audit, planUsage);
+
+    await expect(
+      svc.deactivateUser("tenant-a", "actor@tenant", "admin", "target@tenant"),
+    ).resolves.toMatchObject({ isActive: false });
   });
 });

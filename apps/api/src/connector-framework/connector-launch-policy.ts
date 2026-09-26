@@ -388,7 +388,7 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       milestone: null,
       blockers: ["QA validation", "PO review", "customer pilot"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector.ts logic (raw JSON-RPC calls reproducing publishProduct/updateProduct/syncSubmissionStatus exactly) against a restored real Odoo 17 sandbox.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector.ts logic (raw JSON-RPC calls reproducing publishProduct/updateProduct/syncSubmissionStatus exactly) against a restored real Odoo 17 sandbox. QA validation pass (2026-09-22, PR #935): duplicate-reference risk found and fixed — validateProduct() now warns ODOO_DUPLICATE_REFERENCE_RISK via a live search_read on default_code, matching PrestaShop's DUPLICATE_REFERENCE_RISK parity (Odoo does not enforce default_code uniqueness, so a retried publish creates a silent duplicate without this check).",
     };
   }
   if (s === CONNECTOR_SLUGS.PRESTASHOP) {
