@@ -33,6 +33,20 @@ function run() {
     "Operations imports must keep repair discoverable from the result stage instead of hiding it behind a separate workflow.",
   );
 
+  // ST-LARGE-IMPORT-004: stepper state reconciliation — a run ID in the URL
+  // with an in-flight ("uploaded"/"validating") or unrecognised status must
+  // land on stage 2, not stage 1, so the server-rendered stepper stays
+  // consistent with the client-side validation form that already shows the
+  // validation zone.  The sentinel is the inline comment co-located with the
+  // fix in importWorkflowSteps.
+  assert(
+    source.includes("uploaded") &&
+      source.includes("validating") &&
+      source.includes("validation zone") &&
+      /runStatus === "preflight_blocked"[\s\S]*?: 2/.test(source),
+    "importWorkflowSteps must map preflight_blocked to stage 2, and its in-flight statuses (uploaded/validating) must also resolve to the validation zone (stage 2), not stage 1.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -41,6 +55,7 @@ function run() {
           "bulk_import_page_exposes_staged_operator_sections",
           "bulk_import_page_explains_handoff_from_preflight_to_jobs",
           "bulk_import_page_keeps_repair_discoverable_from_results",
+          "bulk_import_stepper_reconciles_preflight_blocked_to_stage_2",
         ],
         checkedAt: new Date().toISOString(),
       },

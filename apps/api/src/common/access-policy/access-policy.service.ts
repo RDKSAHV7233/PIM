@@ -462,6 +462,10 @@ export class AccessPolicyService {
           context,
         );
       }
+      // actor has no explicit admin-boundary role and is not the legacy "admin" —
+      // deny explicitly rather than falling through to a later, unrelated check
+      // (issue #894: without this, a readClassification GET shortcut returns true unconditionally)
+      return this.buildDecision(false, "ADMIN_BOUNDARY_FORBIDDEN", actor, actorType, action, resource, context);
     }
 
     if (requiredRoles.length > 0) {

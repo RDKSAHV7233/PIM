@@ -13,13 +13,12 @@
 //       GET-only read shortcuts, then default-write-roles, then default
 //       deny). Getting this order wrong is a real access-control bug, and
 //       it had never been tested end to end before. Tests below trace the
-//       order explicitly, including two fall-through cases that are easy to
+//       order explicitly, including fall-through cases that are easy to
 //       get backwards: passing the API-scope gate does NOT bypass a later
 //       required-roles check, and an unmet admin-boundary requirement (no
 //       explicit admin-boundary role, actorRole isn't legacy "admin")
-//       doesn't deny by itself — it falls through to whatever check comes
-//       next, which is documented here as real behavior, not asserted as
-//       correct or incorrect.
+//       now returns ADMIN_BOUNDARY_FORBIDDEN immediately rather than
+//       falling through to a later check — see issue #894.
 //   (b) createScopeAssignment()'s per-scope-type validation: category/brand/
 //       connector_account/catalog each require and validate a different
 //       field, a scope type that's "supported for storage but not
@@ -212,13 +211,21 @@ describe("AccessPolicyService.can — admin-boundary capability/role", () => {
     expect(denied).toEqual(expect.objectContaining({ allowed: false, reasonCode: "ADMIN_BOUNDARY_FORBIDDEN" }));
   });
 
-  it("an unmet admin-boundary requirement (non-admin, no explicit boundary role) falls through rather than denying immediately — a later requiredRoles check still governs the outcome", () => {
+  it("an unmet admin-boundary requirement (non-admin, no explicit boundary role) returns ADMIN_BOUNDARY_FORBIDDEN immediately — requiredRoles or read shortcuts cannot override an explicit admin-boundary gate", () => {
     const { service } = makeService();
-    const result = service.can(actor({ actorRole: "editor" }), "edit", "settings", {
+    // actor has a matching requiredRoles entry but no admin-boundary role — boundary gate wins
+    const withRoles = service.can(actor({ actorRole: "editor" }), "edit", "settings", {
       requiredAdminCapability: "manage_platform",
       requiredRoles: ["editor"],
     });
-    expect(result).toEqual(expect.objectContaining({ allowed: true, reasonCode: "ROLE_ALLOWED" }));
+    expect(withRoles).toEqual(expect.objectContaining({ allowed: false, reasonCode: "ADMIN_BOUNDARY_FORBIDDEN" }));
+    // actor with readClassification shortcut but no admin-boundary role — boundary gate still wins (issue #894 scenario)
+    const withClassification = service.can(actor({ actorRole: "editor" }), "view", "settings", {
+      method: "GET",
+      requiredAdminCapability: "manage_platform",
+      readClassification: "admin_only",
+    });
+    expect(withClassification).toEqual(expect.objectContaining({ allowed: false, reasonCode: "ADMIN_BOUNDARY_FORBIDDEN" }));
   });
 });
 

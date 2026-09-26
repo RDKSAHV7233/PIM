@@ -153,7 +153,10 @@ function importWorkflowSteps(input: {
               ? 3
               : ["completed", "failed", "repair_required", "dead_letter"].includes(runStatus)
                 ? 4
-                : 1
+                // "uploaded"/"validating" are in-flight preflight states; any
+                // other unrecognised status with a run ID still means the
+                // operator is in the validation zone, not back at Step 1.
+                : 2
         : 1;
   const stepTwoRejected = runStatus === "preflight_blocked";
   const stepFourCurrent = stage === 4;
