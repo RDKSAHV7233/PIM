@@ -30,6 +30,8 @@ export type InternalOpsAlertEnvelope = {
   issueId?: string;
   stuckCount?: number;
   stuckAgeThresholdHours?: number;
+  stuckExportCount?: number;
+  stuckImportCount?: number;
   missingCount?: number;
   unverifiableCount?: number;
   affectedTenantCount?: number;
@@ -259,8 +261,13 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     }
     this.evaluatingStuckJobs = true;
     try {
-      const stuckCount = await this.countStuckJobs(now);
-      const result = await this.processStuckJobCount(stuckCount, now);
+      const { stuckExports, stuckImports } = await this.countStuckJobs(now);
+      const stuckCount = stuckExports + stuckImports;
+      // #922: positive-execution heartbeat so silence can never be the only signal
+      // that the watchdog is running (a healthy zero-count and a silently-dead watchdog
+      // were previously indistinguishable in the logs)
+      this.logger.info("Internal ops stuck-job evaluation complete.", { stuckCount, stuckExports, stuckImports });
+      const result = await this.processStuckJobCount(stuckCount, now, { stuckExportCount: stuckExports, stuckImportCount: stuckImports });
       return { ...result, stuckCount };
     } catch (error: unknown) {
       this.logger.warn("Internal ops stuck-job alert evaluation failed open.", {
@@ -275,6 +282,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   async processStuckJobCount(
     stuckCountInput: number,
     observedAt = new Date(),
+    breakdown?: { stuckExportCount?: number; stuckImportCount?: number },
   ): Promise<{ alerted: boolean; reason: string }> {
     const stuckCount = Math.max(0, Math.floor(Number(stuckCountInput) || 0));
     if (stuckCount <= 0) {
@@ -299,6 +307,8 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       internalUrl: this.buildInternalUrl("/internal/ops"),
       stuckCount,
       stuckAgeThresholdHours: INTERNAL_OPS_STUCK_THRESHOLD_HOURS,
+      ...(breakdown?.stuckExportCount !== undefined ? { stuckExportCount: breakdown.stuckExportCount } : {}),
+      ...(breakdown?.stuckImportCount !== undefined ? { stuckImportCount: breakdown.stuckImportCount } : {}),
     });
 
     return { alerted: true, reason: "queued" };
@@ -433,7 +443,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     return { alerted: true, reason: "queued" };
   }
 
-  private async countStuckJobs(now: Date): Promise<number> {
+  private async countStuckJobs(now: Date): Promise<{ stuckExports: number; stuckImports: number }> {
     const stuckFrom = subtractDays(now, INTERNAL_OPS_STUCK_LOOKBACK_DAYS);
     const stuckBefore = new Date(now.getTime() - INTERNAL_OPS_STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
     const db = this.prismaDirect.getClient();
@@ -455,7 +465,7 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         ]),
       { timeout: 3_000 },
     );
-    return Number(stuckExports ?? 0) + Number(stuckImports ?? 0);
+    return { stuckExports: Number(stuckExports ?? 0), stuckImports: Number(stuckImports ?? 0) };
   }
 
   private async reserveNewIssueAlert(alertKey: string, observedAt: Date): Promise<boolean> {
@@ -881,6 +891,8 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         ...base,
         stuckCount: Number(envelope.stuckCount ?? 0),
         stuckAgeThresholdHours: INTERNAL_OPS_STUCK_THRESHOLD_HOURS,
+        ...(envelope.stuckExportCount !== undefined ? { stuckExportCount: envelope.stuckExportCount } : {}),
+        ...(envelope.stuckImportCount !== undefined ? { stuckImportCount: envelope.stuckImportCount } : {}),
       };
     }
     if (envelope.alertType === "media_integrity_defect_detected") {

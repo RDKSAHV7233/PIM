@@ -476,6 +476,50 @@ describe("InternalOpsAlertsService", () => {
     }));
   });
 
+  // #922: a healthy zero-count and a silently-dead watchdog were previously
+  // indistinguishable in the logs. This test proves the heartbeat log fires on
+  // every evaluation cycle regardless of the stuck count.
+  it("logs a positive heartbeat on every evaluation cycle (zero-stuck case) — #922", async () => {
+    const { service, logger } = makeService();
+
+    await service.evaluateStuckJobs(new Date("2026-08-23T12:00:00Z"));
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Internal ops stuck-job evaluation complete.",
+      expect.objectContaining({ stuckCount: 0 }),
+    );
+  });
+
+  it("logs a positive heartbeat with per-type breakdown when jobs are found — #922", async () => {
+    const { service, db, tx, logger } = makeService();
+    tx.marketplaceExportJob.count.mockResolvedValue(2);
+    tx.bulkImportJob.count.mockResolvedValue(1);
+    db.$queryRaw.mockResolvedValueOnce([{ alert_key: "stuck_jobs:global" }]);
+
+    await service.evaluateStuckJobs(new Date("2026-08-23T12:00:00Z"));
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Internal ops stuck-job evaluation complete.",
+      { stuckCount: 3, stuckExports: 2, stuckImports: 1 },
+    );
+  });
+
+  it("includes per-type breakdown in the alert envelope when jobs are found — #922", async () => {
+    const { service, db, tx, queueService } = makeService();
+    tx.marketplaceExportJob.count.mockResolvedValue(2);
+    tx.bulkImportJob.count.mockResolvedValue(1);
+    db.$queryRaw.mockResolvedValueOnce([{ alert_key: "stuck_jobs:global" }]);
+
+    await service.evaluateStuckJobs(new Date("2026-08-23T12:00:00Z"));
+
+    const payload = queueService.enqueue.mock.calls[0][1];
+    expect(payload.envelope).toMatchObject({
+      stuckCount: 3,
+      stuckExportCount: 2,
+      stuckImportCount: 1,
+    });
+  });
+
   it("delivers a safe payload (via Slack, the required human destination) and does not leak fields", async () => {
     process.env.OPS_ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
     const { service, queueService } = makeService();

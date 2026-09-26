@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-26T05:42",
+    "lastUpdated": "2026-09-26T07:15",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -3861,6 +3861,27 @@
             "AccessPolicyService.can() returns ADMIN_BOUNDARY_FORBIDDEN immediately when requiredAdminCapability/requiredAdminBoundaryRoles is set, actor has no explicit admin-boundary role, and actorRole !== 'admin'.",
             "The readClassification GET shortcut cannot silently grant access to an admin-boundary-gated route for a non-admin actor.",
             "Spec updated: the test that previously documented the fallthrough as 'real behavior' now asserts the corrected outcome and adds the readClassification scenario (issue #894 path)."
+          ]
+        },
+        {
+          "storyId": "ST-OPS-922-WATCHDOG-INSTRUMENTATION",
+          "title": "Add stuck-job watchdog heartbeat log and per-type breakdown to alert envelope (#922)",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "scope": [
+            "apps/api/src/internal-ops/internal-ops-alerts.service.ts",
+            "apps/api/src/internal-ops/internal-ops-alerts.service.spec.ts"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.json --noEmit (0 errors, pre-existing TS5101/TS5107 deprecation warnings only)"
+          ],
+          "acceptance": [
+            "evaluateStuckJobs() emits a positive logger.info heartbeat on every cycle regardless of stuck count — silence can no longer be the only evidence the watchdog is running (#922 criterion: 'watchdog execution is proven').",
+            "stuckExportCount and stuckImportCount are included in the stuck_jobs_threshold_exceeded alert envelope when the evaluation path fires them — SRE can see which job type is stuck without a follow-up DB query (#922 criterion: 'future alerts carry enough identifiers for SRE to act').",
+            "filterEnvelope() allowlist updated to pass the new breakdown fields — security invariant preserved (still aggregate counts only, no job IDs, tenant IDs, or raw payloads).",
+            "3 new tests added: heartbeat fires at zero, heartbeat fires with breakdown at non-zero, breakdown fields appear in queued envelope.",
+            "Existing tests unchanged — processStuckJobCount() backward-compatible via optional breakdown parameter."
           ]
         }
       ]
