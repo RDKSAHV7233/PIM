@@ -180,34 +180,32 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.ODOO) {
-    // CTO review (PIM#889): "code_complete" is in isInstallableStage()'s allowed
-    // list, so it made this connector installable by every real tenant against
-    // their live Odoo ERP immediately on merge — despite this same launchNote
-    // (and the pipeline metadata below) saying QA validation, PO review, and a
-    // customer pilot haven't happened yet. Odoo writes directly to a tenant's
-    // real product.template records (business inventory), the same "an
-    // unvalidated integration must not be broadly available" reasoning already
-    // applied to WooCommerce's P1 hold. "under_development" is NOT in
-    // isInstallableStage()'s list, matching Amazon's equivalent
-    // experimental/not-customer-validated precedent above.
+    // QA validation passed (2026-09-22, PR #935 merged): duplicate-reference
+    // risk found and fixed — validateProduct() now warns ODOO_DUPLICATE_REFERENCE_RISK
+    // via a live search_read on default_code, matching PrestaShop's
+    // DUPLICATE_REFERENCE_RISK parity. Advancing to "po_review" stage:
+    // QA is done; PO sign-off and a customer pilot remain before go-live.
+    // "po_review" IS in isInstallableStage(), making this connector installable —
+    // appropriate for PO evaluation against real Odoo instances.
     return {
-      launchStage: "under_development",
+      launchStage: "po_review",
       launchNote:
-        "Odoo ERP connector: publish, update, and status-sync verified against a real Odoo 17 instance via the /jsonrpc external API (common/object services). Not yet through QA validation or a customer pilot — not installable until those clear. Install (once unblocked) requires odoo_url (HTTPS), database name, username, and a password or API key.",
+        "Odoo ERP connector: publish, update, and status-sync verified against a real Odoo 17 instance via the /jsonrpc external API (common/object services). QA validation passed (2026-09-22, PR #935): duplicate-reference risk found and fixed. Awaiting PO sign-off and customer pilot before go-live. Install requires odoo_url (HTTPS), database name, username, and a password or API key.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.PRESTASHOP) {
-    // Re-verified live from within PIM1 itself (2026-09-21) against a real
-    // local PrestaShop 9.1.5 Docker sandbox — full publish/validate/status-
-    // sync/update round trip confirmed working end-to-end. Still
-    // under_development / not installable: QA validation and PO review
-    // haven't happened yet, not because of unproven code.
+    // QA validation passed (2026-09-22, issue #931 review): no blockers found
+    // across the full publish/validate/status-sync/update round trip against a
+    // real PrestaShop 9.1.5 sandbox (9/9 checks). Advancing to "po_review" stage:
+    // QA is done; PO sign-off remains before go-live. "po_review" IS in
+    // isInstallableStage(), making this connector installable — appropriate for
+    // PO evaluation against real PrestaShop stores.
     return {
-      launchStage: "under_development",
+      launchStage: "po_review",
       launchNote:
-        "PrestaShop Webservice API connector (XML over REST, HTTP Basic auth with the webservice key). Publish, update, status-sync, and live category/reference validation checks are all verified live from within PIM1 itself against a real PrestaShop 9.1.5 sandbox (9/9 checks passing, including a real bug found and fixed by that verification: updateProduct() needed <id> in the XML body). Not installable pending QA validation and PO review. Install requires store_url (HTTPS), a Webservice API key with products + categories (+ languages) read permission, and a language id. Note: PrestaShop's webservice enforces neither reference (SKU) uniqueness nor the category foreign key — validateProduct() adds proactive checks for both since the platform itself won't catch them.",
+        "PrestaShop Webservice API connector (XML over REST, HTTP Basic auth with the webservice key). Publish, update, status-sync, and live category/reference validation checks all verified live against a real PrestaShop 9.1.5 sandbox (9/9 checks passing). QA validation passed (2026-09-22, issue #931): no blockers found. Awaiting PO sign-off before go-live. Install requires store_url (HTTPS), a Webservice API key with products + categories (+ languages) read permission, and a language id. Note: PrestaShop's webservice enforces neither reference (SKU) uniqueness nor the category foreign key — validateProduct() adds proactive checks for both since the platform itself won't catch them.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -386,18 +384,18 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["QA validation", "PO review", "customer pilot"],
+      blockers: ["PO review", "customer pilot"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector.ts logic (raw JSON-RPC calls reproducing publishProduct/updateProduct/syncSubmissionStatus exactly) against a restored real Odoo 17 sandbox. QA validation pass (2026-09-22, PR #935): duplicate-reference risk found and fixed — validateProduct() now warns ODOO_DUPLICATE_REFERENCE_RISK via a live search_read on default_code, matching PrestaShop's DUPLICATE_REFERENCE_RISK parity (Odoo does not enforce default_code uniqueness, so a retried publish creates a silent duplicate without this check).",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth switched to /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design (verified against real Odoo 17 source). Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector.ts logic (raw JSON-RPC calls reproducing publishProduct/updateProduct/syncSubmissionStatus exactly) against a restored real Odoo 17 sandbox. QA validation PASSED (2026-09-22, PR #935 merged): duplicate-reference risk found and fixed — validateProduct() now warns ODOO_DUPLICATE_REFERENCE_RISK via a live search_read on default_code, matching PrestaShop's DUPLICATE_REFERENCE_RISK parity (Odoo does not enforce default_code uniqueness, so a retried publish creates a silent duplicate without this check). Stage advanced to po_review.",
     };
   }
   if (s === CONNECTOR_SLUGS.PRESTASHOP) {
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["QA validation", "PO review"],
+      blockers: ["PO review"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20), then fully live-verified from within PIM1 itself (2026-09-21) against a real local PrestaShop 9.1.5 Docker sandbox: publish, validate (live category/reference checks), status sync, and update all confirmed working end-to-end (9/9 checks). Two real bugs found and fixed during the port: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. A third real bug was found by the live-verification pass itself: updateProduct() omitted the required <id> field from the XML body, which PrestaShop's webservice rejects — fixed and re-verified live. This is the most-proven connector ported this sprint.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20), then fully live-verified from within PIM1 itself (2026-09-21) against a real local PrestaShop 9.1.5 Docker sandbox: publish, validate (live category/reference checks), status sync, and update all confirmed working end-to-end (9/9 checks). Two real bugs found and fixed during the port: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. A third real bug was found by the live-verification pass itself: updateProduct() omitted the required <id> field from the XML body, which PrestaShop's webservice rejects — fixed and re-verified live. This is the most-proven connector ported this sprint. QA validation PASSED (2026-09-22, issue #931): no blockers found across the full round trip. Stage advanced to po_review.",
     };
   }
   if (s === CONNECTOR_SLUGS.SHOPWARE) {

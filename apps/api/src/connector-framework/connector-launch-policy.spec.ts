@@ -284,19 +284,16 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
-  // CTO review (PIM#889): originally shipped as "code_complete", which
-  // isInstallableStage() treats as installable — making this brand-new,
-  // only prototype-verified connector installable by every real tenant
-  // against their live Odoo ERP immediately on merge, despite its own
-  // launchNote and pipeline metadata saying QA validation, PO review, and a
-  // customer pilot haven't happened. "under_development" matches Amazon's
-  // equivalent experimental/not-customer-validated precedent and is
-  // correctly excluded from isInstallableStage()'s allowed list.
+  // QA validation passed (2026-09-22, PR #935 merged): duplicate-reference
+  // risk found and fixed in validateProduct(). Stage advanced from
+  // "under_development" to "po_review" — QA cleared; PO sign-off and a
+  // customer pilot remain before go-live. "po_review" IS in
+  // isInstallableStage(), making the connector installable for PO evaluation.
   describe("odoo", () => {
-    it("is under_development (prototype-verified only, not yet QA/PO/pilot-cleared) and therefore not installable", () => {
+    it("is po_review after QA validation (PR #935) and is therefore installable", () => {
       const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
-      expect(policy.launchStage).toBe("under_development");
-      expect(isInstallableStage(policy.launchStage)).toBe(false);
+      expect(policy.launchStage).toBe("po_review");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 
     it("surfaces all capabilities", () => {
@@ -304,10 +301,9 @@ describe("resolveConnectorLaunchPolicy", () => {
       expect(policy.surfacedCapabilities).toEqual(allCaps);
     });
 
-    it("launchNote explains it is not yet installable and why", () => {
+    it("launchNote references QA validation passing and remaining PO/pilot gates", () => {
       const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
-      expect(policy.launchNote).toMatch(/not.*installable/i);
-      expect(policy.launchNote).toMatch(/QA validation/i);
+      expect(policy.launchNote).toMatch(/QA validation passed/i);
       expect(policy.launchNote).toMatch(/customer pilot/i);
     });
   });
@@ -412,9 +408,9 @@ describe("resolveConnectorPipelineMetadata", () => {
     expect(amazon.milestone).toBe("Sprint F");
   });
 
-  it("returns QA/PO/pilot blockers for Odoo, matching its under_development launch stage", () => {
+  it("returns PO/pilot blockers for Odoo (QA cleared), matching its po_review launch stage", () => {
     const odoo = resolveConnectorPipelineMetadata("odoo");
-    expect(odoo.blockers).toContain("QA validation");
+    expect(odoo.blockers).not.toContain("QA validation");
     expect(odoo.blockers).toContain("PO review");
     expect(odoo.blockers).toContain("customer pilot");
   });

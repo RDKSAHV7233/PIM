@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-26T09:00",
+    "lastUpdated": "2026-09-26T10:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -3930,6 +3930,33 @@
             "captureBackupJobFailure() enqueues with 2h cooldown",
             "POST /internal/ops/alerts/backup-job-failure endpoint returns 204",
             "notify-failure job in both backup workflows (non-blocking curl || true)"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-56",
+      "name": "Connector Stage Advancement: PrestaShop and Odoo to PO Review",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-931-CONNECTOR-PO-STAGE",
+          "title": "Advance PrestaShop and Odoo from under_development to po_review after QA validation",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "d41a5f5",
+          "scope": [
+            "apps/api/src/connector-framework/connector-launch-policy.ts"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ],
+          "acceptance": [
+            "PrestaShop launchStage = po_review (QA passed 2026-09-22, issue #931)",
+            "Odoo launchStage = po_review (QA passed 2026-09-22, PR #935 merged)",
+            "Blockers lists updated: 'QA validation' removed from both; 'PO review' (and 'customer pilot' for Odoo) remain",
+            "launchNotes updated to reflect current state"
           ]
         }
       ]
