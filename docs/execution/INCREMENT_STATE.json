@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-26T10:00",
+    "lastUpdated": "2026-09-26T11:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -3957,6 +3957,33 @@
             "Odoo launchStage = po_review (QA passed 2026-09-22, PR #935 merged)",
             "Blockers lists updated: 'QA validation' removed from both; 'PO review' (and 'customer pilot' for Odoo) remain",
             "launchNotes updated to reflect current state"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-57",
+      "name": "Sentry PII Guard Before Observatory Activation (#920)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-920-SENTRY-PII-GUARD",
+          "title": "Add beforeSend PII scrub and RAILWAY_GIT_COMMIT_SHA release tagging to Sentry init",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "fb07b90",
+          "scope": [
+            "apps/api/src/main.ts"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit — 0 new errors"
+          ],
+          "acceptance": [
+            "beforeSend hook strips event.request.data, .cookies, and auth/cookie/x-api-key headers from every Sentry event",
+            "release set to process.env.RAILWAY_GIT_COMMIT_SHA for Railway deploy pinning",
+            "Sentry init remains fail-open (try/catch unchanged) — no behavior change when SENTRY_DSN is unset",
+            "Unblocks #920 acceptance criterion: 'Secrets and sensitive tenant payloads are confirmed redacted'"
           ]
         }
       ]

@@ -47,7 +47,30 @@ async function bootstrap() {
       Sentry.init({
         dsn: env.SENTRY_DSN,
         environment: env.APP_ENV,
+        // Railway injects RAILWAY_GIT_COMMIT_SHA at deploy time; pins errors to
+        // the exact commit in the Sentry UI. Absent outside Railway — graceful.
+        release: process.env.RAILWAY_GIT_COMMIT_SHA,
         tracesSampleRate: env.APP_ENV === "production" ? 0.1 : 1.0,
+        // Multi-tenant PIM: strip request body, cookies, and auth headers from
+        // every captured event so tenant product data (titles, prices, SKUs)
+        // and session credentials never leave this system boundary.
+        beforeSend(event: unknown) {
+          if (event && typeof event === "object") {
+            const e = event as Record<string, unknown>;
+            if (e.request && typeof e.request === "object") {
+              const req = e.request as Record<string, unknown>;
+              delete req.data;
+              delete req.cookies;
+              if (req.headers && typeof req.headers === "object") {
+                const h = req.headers as Record<string, unknown>;
+                delete h["authorization"];
+                delete h["cookie"];
+                delete h["x-api-key"];
+              }
+            }
+          }
+          return event;
+        },
       });
     } catch (err: unknown) {
       // @sentry/node not installed or init failed — error tracking unavailable.
