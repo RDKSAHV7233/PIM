@@ -611,7 +611,7 @@ export function ConnectorCredentialFields({
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           {mode === "install"
-            ? "BigCommerce authenticates via a Store API account (Settings > API > Store API Accounts). Enter the Store Hash (above, from the account's API path) and its Access Token below. Values are encrypted on save and never shown again."
+            ? "BigCommerce authenticates via a Store API account (Settings > API > Store API Accounts). Enter the Store Hash (above, from the account's API path) and its Access Token below. When creating the account, grant the Products scope Modify (read & write) access — Read-Only will pass validation but fail when this connector publishes or updates a listing. Values are encrypted on save and never shown again."
             : "Stored secrets cannot be displayed. Re-enter the Store Hash (above) and Access Token to replace this installation's credential set — Vexa verifies them with BigCommerce before saving."}
         </div>
         <div className="space-y-1">
