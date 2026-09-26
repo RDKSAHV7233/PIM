@@ -518,6 +518,48 @@ describe("ConnectorInstallerService", () => {
     expect(result[0]!.slug).toBe("flipkart");
   });
 
+  // PIM#931 follow-up: resolveConnectorPipelineMetadata() was previously dead
+  // code — never called by any controller — while the admin pipeline page
+  // kept its own hand-copied duplicate that silently drifted. Wiring it
+  // through this same endpoint's response (gated to internal admins, since
+  // it can name unresolved security holds like WooCommerce's P1-1/P1-2) is
+  // the single-source-of-truth fix.
+  it("listAvailableDefinitions includes pipelineMetadata for a system_admin caller", async () => {
+    const { service, queryMock, connectorPermissionService } = createService();
+    queryMock.mockResolvedValue([
+      { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ]);
+    (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+    const result = await service.listAvailableDefinitions({
+      actorId: "user_1",
+      actorRole: "admin",
+      adminBoundaryRoles: ["system_admin"],
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.pipelineMetadata).toEqual({
+      owner: "Platform",
+      milestone: "Sprint F",
+      blockers: ["Feeds API bulk publish validation"],
+      internalNotes: expect.stringContaining("Experimental preview"),
+    });
+  });
+
+  it("listAvailableDefinitions omits pipelineMetadata for a caller without an internal-admin boundary role", async () => {
+    const { service, queryMock, connectorPermissionService } = createService();
+    queryMock.mockResolvedValue([
+      { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ]);
+    (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(new Map());
+
+    const result = await service.listAvailableDefinitions({
+      actorId: "user_1",
+      actorRole: "editor",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.pipelineMetadata).toBeUndefined();
+  });
+
   it("listAvailableDefinitions includes planned connectors when SHOW_PLANNED_CONNECTORS=true for admin", async () => {
     const originalEnv = process.env.SHOW_PLANNED_CONNECTORS;
     process.env.SHOW_PLANNED_CONNECTORS = "true";

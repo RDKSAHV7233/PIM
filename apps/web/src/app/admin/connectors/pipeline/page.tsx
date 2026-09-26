@@ -43,102 +43,14 @@ const IMPLEMENTATION_TONES: Record<string, string> = {
   stub: "bg-slate-200 text-slate-700",
 };
 
-type PipelineMetadata = {
-  owner: string;
-  milestone: string | null;
-  blockers: string[];
-  internalNotes: string | null;
-};
-
-const PIPELINE_METADATA: Record<string, PipelineMetadata> = {
-  shopify: { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — full lifecycle support." },
-  myntra: { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — Listing Management API." },
-  flipkart: { owner: "Platform", milestone: null, blockers: [], internalNotes: "GA — default fallback connector." },
-  meesho: { owner: "Platform", milestone: "RD-MEESHO-1", blockers: ["Meesho API access pending"], internalNotes: "Export-only. Waiting on Meesho partner API programme." },
-  nykaa: { owner: "Platform", milestone: null, blockers: ["Nykaa platform-partner credentials"], internalNotes: "Export-only. Direct API requires partner credentials." },
-  "amazon-in": { owner: "Platform", milestone: "Sprint F", blockers: ["Feeds API bulk publish validation"], internalNotes: "Experimental preview. Install + credential validation available; publish under validation." },
-  woocommerce: {
-    owner: "Platform",
-    milestone: "P1 blocker-closure hold",
-    blockers: [
-      "P1-1 tenant-owned app-auth credential verification",
-      "P1-2 auth revocation failure policy",
-      "staging runtime proof and fresh CTO/PO/Security/QA/SRE signoff",
-    ],
-    internalNotes:
-      "W1-W10 code-complete and historical P0 remediation evidence exists, but WooCommerce is not customer-installable while P1-1/P1-2 are open.",
-  },
-  odoo: {
-    owner: "Platform",
-    milestone: null,
-    blockers: ["QA validation", "PO review", "customer pilot"],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-20). Auth uses /jsonrpc's common/object external-API services — /web/session/authenticate rejects Odoo API keys by design. Full auth+create+update+status-sync round trip verified live against a real Odoo 17 instance during the prototype phase, then re-verified again (2026-09-22) directly against this codebase's own connector logic against a restored real Odoo 17 sandbox.",
-  },
-  etsy: {
-    owner: "Platform",
-    milestone: null,
-    blockers: ["real publish test (needs an Etsy shop opened on the account)", "QA validation", "PO review"],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during the port: x-api-key needs \"client_id:shared_secret\" (a bare client_id 403s), and validateCredentials() called a nonexistent endpoint (/taxonomy/seller, fixed to /seller-taxonomy/nodes). Both verified live against real Etsy sandbox data. publishProduct() implemented but never exercised — blocked on the sandbox account having no shop open yet.",
-  },
-  "dynamics-365": {
-    owner: "Platform",
-    milestone: null,
-    blockers: [
-      "re-verify Business Central data-API call after the Automation.ReadWrite.All permission fix",
-      "real publish test",
-      "QA validation",
-      "PO review",
-    ],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-20). Less verified than Etsy/Odoo at port time: only the Azure AD client_credentials token exchange was proven live against a real vexapim.com Entra app registration — the Business Central data-API call itself was not successfully re-verified after fixing a missing Automation.ReadWrite.All permission (the verification attempt was blocked mid-session before a second live check completed). Do not treat validateCredentials() as proven until that gap closes.",
-  },
-  prestashop: {
-    owner: "Platform",
-    milestone: null,
-    blockers: ["QA validation", "PO review"],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-20), then fully live-verified from within PIM1 itself (2026-09-21) against a real local PrestaShop 9.1.5 Docker sandbox: publish, validate (live category/reference checks), status sync, and update all confirmed working end-to-end (9/9 checks). Two real bugs found and fixed during the port: normaliseError()'s error-code table was completely stale for PrestaShop 9.1.5 (real codes are 41/85, not the original 47/84/83), and the connector never actually parsed PrestaShop's XML error envelope. A third real bug was found by the live-verification pass itself: updateProduct() omitted the required <id> field from the XML body, which PrestaShop's webservice rejects — fixed and re-verified live. This is the most-proven connector ported this sprint.",
-  },
-  ebay: {
-    owner: "Platform",
-    milestone: null,
-    blockers: [
-      "real publish test (needs eBay Business Policies configured for the sandbox test account)",
-      "QA validation",
-      "PO review",
-      "production support (deliberately not built yet — sandbox-only by design)",
-    ],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-21), then fully live-verified (2026-09-22) against a real eBay sandbox account: registered a sandbox test user, completed the 3-legged OAuth consent flow, and obtained a genuine refresh_token. Two real bugs found and fixed: (1) updateProduct() originally re-ran create-offer + publish-offer against an already-published offer — fixed to only re-upsert the inventory item; (2) validateCredentials() called GET /inventory_item_group, which has no bulk-list route and 404s even with fully valid credentials — fixed to use GET /inventory_item, verified live. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all.",
-  },
-  bigcommerce: {
-    owner: "Platform",
-    milestone: null,
-    blockers: ["re-verify live against a real BigCommerce trial store from within PIM1", "QA validation", "PO review"],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-22). Sandbox-verified in the prototype phase against a real BigCommerce trial store with no bugs found. This TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
-  },
-  shopware: {
-    owner: "Platform",
-    milestone: null,
-    blockers: ["QA validation", "PO review"],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 itself (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). One real bug found and fixed during the port: the prototype hardcoded a 19% German VAT rate when computing net-from-gross price, which is wrong for any non-German store or non-standard tax class — fixed to read the product's own attributes.tax_rate_percent, defaulting to 19% only as a last resort.",
-  },
-  "zoho-inventory": {
-    owner: "Platform",
-    milestone: null,
-    blockers: ["QA validation", "PO review"],
-    internalNotes:
-      "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 itself (2026-09-24) against a real Zoho Inventory trial org on the India data center: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Three real bugs found and fixed: (1) the prototype hardcoded Zoho's US data center (accounts.zoho.com / www.zohoapis.com), which fails outright for any org registered outside the US — fixed to resolve the region-specific host pair from the installation's marketplaceId, defaulting to the global \"com\" host when unset; (2) and (3) the prototype hardcoded taxability_type and is_taxable on every item payload, both rejected outright by Zoho on any organization that isn't GST-registered (the default for a fresh trial) — fixed by dropping both, verified live.",
-  },
-};
-
-function getMetadata(slug: string): PipelineMetadata {
-  return PIPELINE_METADATA[slug.toLowerCase()] ?? { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };
-}
+// Pipeline detail (owner/milestone/blockers/internalNotes) comes live from
+// the API's pipelineMetadata field (connector-launch-policy.ts's
+// resolveConnectorPipelineMetadata(), wired through listAvailableDefinitions()
+// for system_admin/super_admin callers) — previously this file kept its own
+// hand-copied duplicate of that same data, which silently drifted out of
+// sync with the backend on every connector update. Single source of truth
+// now; see PIM#931 follow-up.
+const UNKNOWN_PIPELINE_METADATA = { owner: "Unknown", milestone: null as string | null, blockers: [] as string[], internalNotes: null as string | null };
 
 function formatStage(stage: string): string {
   return STAGE_LABELS[stage] ?? stage;
@@ -215,7 +127,7 @@ export default async function ConnectorPipelinePage() {
             </div>
           ) : null}
           {definitions.map((def) => {
-            const meta = getMetadata(def.slug);
+            const meta = def.pipelineMetadata ?? UNKNOWN_PIPELINE_METADATA;
             const customerVisible = isCustomerVisible(def.launchStage);
             return (
               <div key={def.id} className="rounded-md border border-slate-200 bg-white p-4">

@@ -28,7 +28,7 @@ import {
   CredentialVerificationResult,
 } from "../connector-framework/connector.interface";
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
-import { resolveConnectorLaunchPolicy, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
+import { resolveConnectorLaunchPolicy, resolveConnectorPipelineMetadata, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
@@ -215,6 +215,10 @@ export class ConnectorInstallerService {
           implementationStatus: this.resolveImplementationStatus(slug),
           launchStage: launchPolicy.launchStage,
           launchNote: launchPolicy.launchNote,
+          // Internal-only detail (owner/milestone/blockers/notes) — never sent
+          // to a caller without a system_admin/super_admin boundary role, so
+          // an ordinary tenant hitting this same endpoint can't see it.
+          ...(isInternalAdmin ? { pipelineMetadata: resolveConnectorPipelineMetadata(slug) } : {}),
           marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
           connectorVersion: String(row.connectorVersion),
           isActive: Boolean(row.isActive),

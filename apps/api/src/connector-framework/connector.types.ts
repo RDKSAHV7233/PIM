@@ -23,6 +23,21 @@ export interface ConnectorDefinitionRecord {
   createdAt: string;
   updatedAt: string;
   actions?: ConnectorActionMatrix;
+  /**
+   * Internal launch-pipeline detail (owner, milestone, open blockers, and
+   * free-text engineering notes) from resolveConnectorPipelineMetadata().
+   * Populated by listAvailableDefinitions() only for callers with
+   * system_admin/super_admin boundary roles — this can name unresolved
+   * security holds (e.g. WooCommerce's P1-1/P1-2) and other detail that must
+   * never reach an ordinary tenant call to this same shared endpoint.
+   * Omitted (not merely empty) for every other caller.
+   */
+  pipelineMetadata?: {
+    owner: string;
+    milestone: string | null;
+    blockers: string[];
+    internalNotes: string | null;
+  };
 }
 
 export interface ConnectorActionRule {

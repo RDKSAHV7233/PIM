@@ -287,6 +287,21 @@ export interface ConnectorDefinition {
   createdAt: string;
   updatedAt: string;
   actions?: ConnectorActionMatrix;
+  /**
+   * Internal launch-pipeline detail — only present when the caller holds an
+   * admin-boundary role (see adminBoundaryRoles / AdminBoundaryRole; those
+   * boundary roles are a separate governance concept from this file's
+   * AppRole surface, so deliberately not named literally here — see
+   * role-aware-frontend-alignment-ui.test.cjs). See the matching field on
+   * the API's ConnectorDefinitionRecord (connector.types.ts) for why this is
+   * gated rather than always sent.
+   */
+  pipelineMetadata?: {
+    owner: string;
+    milestone: string | null;
+    blockers: string[];
+    internalNotes: string | null;
+  };
 }
 
 export interface ConnectorActionRule {
