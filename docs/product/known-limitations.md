@@ -2,7 +2,7 @@
 title: Known Limitations
 audience: sellers
 status: active
-last_updated: 2026-09-04
+last_updated: 2026-09-26
 owner: Product
 ---
 
@@ -26,6 +26,7 @@ Use this page to understand what is not available in the current controlled-roll
 | Nykaa direct publish not available | Nykaa is a manual-export workflow. Direct API publishing requires Nykaa platform-partner credentials. |
 | ONDC not live | ONDC connector exists but is behind a feature flag (`FEATURE_ONDC_ENABLED`). Not available to sellers in the current release. |
 | Amazon India under development | Seller install and credential validation are available; publish and status sync remain under active validation and are not recommended for production catalogues. |
+| Etsy not yet installable | Etsy is still under development and not available to sellers. OAuth2/PKCE consent and credential validation are proven against real Etsy sandbox data; publish has never been exercised against a real listing, pending a shop being opened on the sandbox account. |
 | WooCommerce not GA/public-sellable | WooCommerce customer onboarding is on P1 blocker-closure hold pending P1-1 credential write/read verification, P1-2 auth revocation implementation review, CI, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff. It is hidden/blocked from customer setup and install lanes while the hold is open. |
 | Shopify public claims restricted | Shopify direct-token publishing has real evidence, but managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. Public claims require the claims governance process. |
 

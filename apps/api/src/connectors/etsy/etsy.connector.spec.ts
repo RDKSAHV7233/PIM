@@ -210,6 +210,36 @@ describe("EtsyConnector.validateProduct", () => {
     );
     expect(result.warnings.some((w) => w.code === "MISSING_SHIPPING_PROFILE")).toBe(false);
   });
+
+  it("warns (does not block) when when_made is missing — buildListingPayload silently defaults it to made_to_order", async () => {
+    const connector = makeConnector();
+    const { when_made, ...rest } = baseProduct.attributes as Record<string, unknown>;
+    const result = await connector.validateProduct({} as any, { ...baseProduct, attributes: rest });
+    expect(result.isValid).toBe(true);
+    expect(result.warnings.some((w) => w.code === "MISSING_WHEN_MADE")).toBe(true);
+  });
+
+  it("does not warn about when_made once it is set", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct({} as any, baseProduct);
+    expect(result.warnings.some((w) => w.code === "MISSING_WHEN_MADE")).toBe(false);
+  });
+
+  it("warns (does not block) when is_supply is missing — buildListingPayload silently defaults it to false", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct({} as any, baseProduct);
+    expect(result.isValid).toBe(true);
+    expect(result.warnings.some((w) => w.code === "MISSING_IS_SUPPLY")).toBe(true);
+  });
+
+  it("does not warn about is_supply once it is explicitly set (including false)", async () => {
+    const connector = makeConnector();
+    const result = await connector.validateProduct(
+      {} as any,
+      { ...baseProduct, attributes: { ...baseProduct.attributes, is_supply: false } },
+    );
+    expect(result.warnings.some((w) => w.code === "MISSING_IS_SUPPLY")).toBe(false);
+  });
 });
 
 describe("EtsyConnector.normaliseError", () => {

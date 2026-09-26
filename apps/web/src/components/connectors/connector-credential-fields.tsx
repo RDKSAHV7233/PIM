@@ -373,7 +373,7 @@ export function ConnectorCredentialFields({
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           {mode === "install"
-            ? "Etsy uses OAuth2 (authorization-code + PKCE). Complete the OAuth flow first to get a refresh token, then enter the Shop ID (above), Client ID (Keystring), Shared Secret, and Refresh Token here. Etsy's x-api-key requires both the Client ID and Shared Secret together — a Client ID alone is rejected."
+            ? "Etsy uses OAuth2 (authorization-code + PKCE). Register an app at etsy.com/developers/register to get its Keystring and Shared Secret, then complete Etsy's OAuth2 consent flow using the Keystring to obtain a refresh token. Enter the Shop ID (above, from your Etsy shop), Client ID (Keystring), Shared Secret, and Refresh Token here. Etsy's x-api-key requires both the Client ID and Shared Secret together — a Client ID alone is rejected."
             : "Stored secrets cannot be displayed. Re-enter all fields to replace this installation's credential set — Vexa verifies them with Etsy before saving. Etsy issues a new refresh token on every use, so the value shown after saving may differ from what you entered."}
         </div>
         <div className="space-y-1">

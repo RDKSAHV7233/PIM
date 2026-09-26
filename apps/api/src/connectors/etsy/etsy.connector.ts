@@ -258,6 +258,39 @@ export class EtsyConnector implements ConnectorInterface {
       });
     }
 
+    // Non-blocking, but not a free default either: buildListingPayload() fills
+    // in a missing when_made with "made_to_order" so the request never 400s
+    // for a missing field, but that's a real, buyer-visible claim about the
+    // item (Etsy surfaces when_made on the listing page) — asserting it
+    // silently for every product that didn't set one is a PO-review honesty
+    // gap, not just a formatting nicety. Warn so the seller notices and can
+    // correct it before the listing goes live.
+    if (!product.attributes?.["when_made"]) {
+      warnings.push({
+        code: "MISSING_WHEN_MADE",
+        fieldPath: "attributes.when_made",
+        sellerMessage:
+          "Etsy requires when_made to describe how recently the item was made, and shows it to buyers. Without attributes.when_made, this listing will be submitted as \"made_to_order\" — set it explicitly if that's not accurate for this product.",
+        severity: "warning",
+      });
+    }
+
+    // Same reasoning as when_made: buildListingPayload() defaults is_supply to
+    // false so the request never 400s for a missing field, but Etsy ties
+    // is_supply to the chosen taxonomy_id (craft-supply taxonomy nodes require
+    // is_supply=true; finished-product nodes require false) — a silent
+    // false default that doesn't match the taxonomy is exactly the kind of
+    // confusing Etsy-side rejection this connector should catch first.
+    if (product.attributes?.["is_supply"] == null) {
+      warnings.push({
+        code: "MISSING_IS_SUPPLY",
+        fieldPath: "attributes.is_supply",
+        sellerMessage:
+          "Etsy requires is_supply to match the item's taxonomy (craft-supply taxonomy nodes require is_supply=true; finished-product nodes require false). Without attributes.is_supply, this defaults to false — verify it matches the chosen taxonomy_id, or Etsy may reject the listing.",
+        severity: "warning",
+      });
+    }
+
     return { isValid: errors.length === 0, errors, warnings, source: "LOCAL_RULES" };
   }
 
