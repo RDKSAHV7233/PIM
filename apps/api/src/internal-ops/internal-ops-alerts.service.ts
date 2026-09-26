@@ -15,7 +15,8 @@ export type InternalOpsAlertType =
   | "error_authority_new_p0p1_issue"
   | "stuck_jobs_threshold_exceeded"
   | "media_integrity_defect_detected"
-  | "auth_email_job_failure_threshold_exceeded";
+  | "auth_email_job_failure_threshold_exceeded"
+  | "backup_job_failure";
 export type InternalOpsAlertSeverity = "p0" | "p1";
 
 export type InternalOpsAlertEnvelope = {
@@ -38,6 +39,9 @@ export type InternalOpsAlertEnvelope = {
   authEmailFailureCount?: number;
   authEmailFailureThreshold?: number;
   authEmailFailureWindowMinutes?: number;
+  workflowName?: string;
+  database?: string;
+  errorSummary?: string;
 };
 
 // #921: destinations a human might actually see this alert at. "legacy_sink" is the
@@ -104,6 +108,12 @@ const MEDIA_INTEGRITY_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 // no such upgrade: it counts the metric the API already emits on its own.
 const AUTH_EMAIL_JOB_FAILURE_ALERT_KEY = "auth_email_job_failure:global";
 const AUTH_EMAIL_JOB_FAILURE_EVALUATION_INTERVAL_MS = 5 * 60 * 1000;
+
+// #919/#921 follow-up: backup-failure alerting for either job reaching a human.
+// Backup jobs run daily; 2h cooldown prevents a flapping retry from flooding Slack
+// while still catching the first failure within the same day's window.
+const BACKUP_JOB_FAILURE_ALERT_KEY = "backup_job_failure:global";
+const BACKUP_JOB_FAILURE_ALERT_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
 const AUTH_EMAIL_JOB_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_EMAIL_JOB_FAILURE_THRESHOLD = 3;
 const AUTH_EMAIL_JOB_FAILURE_COOLDOWN_MS = 30 * 60 * 1000;
@@ -443,6 +453,33 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     return { alerted: true, reason: "queued" };
   }
 
+  async captureBackupJobFailure(context: {
+    workflowName: string;
+    database: string;
+    errorSummary?: string;
+  }): Promise<void> {
+    const observedAt = new Date();
+    const cooldownUntil = new Date(observedAt.getTime() + BACKUP_JOB_FAILURE_ALERT_COOLDOWN_MS);
+    const reserved = await this.reserveBackupJobFailureAlert(observedAt, cooldownUntil);
+    if (!reserved) {
+      await this.touchAlertState(BACKUP_JOB_FAILURE_ALERT_KEY, observedAt);
+      return;
+    }
+
+    await this.enqueueAlert({
+      version: OPS_ALERT_VERSION,
+      alertType: "backup_job_failure",
+      severity: "p1",
+      environment: this.resolveEnvironment(),
+      release: this.resolveRelease(),
+      observedAt: observedAt.toISOString(),
+      internalUrl: this.buildInternalUrl("/internal/ops"),
+      workflowName: context.workflowName,
+      database: context.database,
+      ...(context.errorSummary !== undefined ? { errorSummary: context.errorSummary } : {}),
+    });
+  }
+
   private async countStuckJobs(now: Date): Promise<{ stuckExports: number; stuckImports: number }> {
     const stuckFrom = subtractDays(now, INTERNAL_OPS_STUCK_LOOKBACK_DAYS);
     const stuckBefore = new Date(now.getTime() - INTERNAL_OPS_STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
@@ -638,6 +675,53 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         cooldown_until = ${cooldownUntil},
         updated_at = ${observedAt}
       WHERE alert_key = ${AUTH_EMAIL_JOB_FAILURE_ALERT_KEY}
+        AND (cooldown_until IS NULL OR cooldown_until <= ${observedAt})
+      RETURNING alert_key
+    `);
+    return updated.length > 0;
+  }
+
+  private async reserveBackupJobFailureAlert(observedAt: Date, cooldownUntil: Date): Promise<boolean> {
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
+    const inserted = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
+      INSERT INTO ops_alert_states (
+        id,
+        alert_key,
+        alert_type,
+        first_observed_at,
+        last_observed_at,
+        last_sent_at,
+        cooldown_until,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${BACKUP_JOB_FAILURE_ALERT_KEY},
+        ${"backup_job_failure"},
+        ${observedAt},
+        ${observedAt},
+        ${observedAt},
+        ${cooldownUntil},
+        ${observedAt},
+        ${observedAt}
+      )
+      ON CONFLICT (alert_key) DO NOTHING
+      RETURNING alert_key
+    `);
+    if (inserted.length > 0) {
+      return true;
+    }
+
+    // RLS-BYPASS: ops_alert_states is global by design — see reserveNewIssueAlert.
+    const updated = await this.prismaDirect.getClient().$queryRaw<AlertStateRow[]>(Prisma.sql`
+      UPDATE ops_alert_states
+      SET
+        last_observed_at = ${observedAt},
+        last_sent_at = ${observedAt},
+        cooldown_until = ${cooldownUntil},
+        updated_at = ${observedAt}
+      WHERE alert_key = ${BACKUP_JOB_FAILURE_ALERT_KEY}
         AND (cooldown_until IS NULL OR cooldown_until <= ${observedAt})
       RETURNING alert_key
     `);
@@ -867,6 +951,8 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         return `:warning: [${severityLabel}] Media integrity defects in ${envLabel}: ${normalizeCount(envelope.missingCount)} missing, ${normalizeCount(envelope.unverifiableCount)} unverifiable across ${normalizeCount(envelope.affectedTenantCount)} tenant(s). <${link}|View details>`;
       case "auth_email_job_failure_threshold_exceeded":
         return `:warning: [${severityLabel}] ${normalizeCount(envelope.authEmailFailureCount)} auth email job failures in the last ${envelope.authEmailFailureWindowMinutes ?? AUTH_EMAIL_JOB_FAILURE_WINDOW_MS / (60 * 1000)} min in ${envLabel} (threshold ${envelope.authEmailFailureThreshold ?? AUTH_EMAIL_JOB_FAILURE_THRESHOLD}). <${link}|View details>`;
+      case "backup_job_failure":
+        return `:rotating_light: *Backup job failed* — \`${envelope.workflowName ?? "unknown"}\` targeting \`${envelope.database ?? "unknown"}\`. Check GitHub Actions for details. Error: ${envelope.errorSummary ?? "unknown"}`;
       default:
         return `:warning: [${severityLabel}] Internal ops alert (${envelope.alertType}) in ${envLabel}. <${link}|View details>`;
     }
@@ -909,6 +995,14 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
         authEmailFailureCount: normalizeCount(envelope.authEmailFailureCount),
         authEmailFailureThreshold: AUTH_EMAIL_JOB_FAILURE_THRESHOLD,
         authEmailFailureWindowMinutes: AUTH_EMAIL_JOB_FAILURE_WINDOW_MS / (60 * 1000),
+      };
+    }
+    if (envelope.alertType === "backup_job_failure") {
+      return {
+        ...base,
+        ...(envelope.workflowName !== undefined ? { workflowName: envelope.workflowName } : {}),
+        ...(envelope.database !== undefined ? { database: envelope.database } : {}),
+        ...(envelope.errorSummary !== undefined ? { errorSummary: envelope.errorSummary } : {}),
       };
     }
     return base;
@@ -999,6 +1093,9 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     }
     if (envelope.alertType === "auth_email_job_failure_threshold_exceeded") {
       return `ops-alert-auth-email-failures-${this.sanitizeQueueJobId(envelope.observedAt)}`;
+    }
+    if (envelope.alertType === "backup_job_failure") {
+      return `ops-alert-backup-job-failure-${this.sanitizeQueueJobId(envelope.workflowName ?? "unknown")}-${this.sanitizeQueueJobId(envelope.observedAt)}`;
     }
     return `ops-alert-stuck-jobs-${this.sanitizeQueueJobId(envelope.observedAt)}`;
   }

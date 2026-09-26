@@ -9615,6 +9615,33 @@
             },
             "description": ""
           }
+        },
+        {
+          "name": "InternalOpsController_captureBackupJobFailure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/internal/ops/alerts/backup-job-failure",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "alerts",
+                "backup-job-failure"
+              ]
+            },
+            "description": ""
+          }
         }
       ]
     },

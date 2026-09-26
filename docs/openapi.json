@@ -1567,6 +1567,20 @@
         ]
       }
     },
+    "/api/v1/internal/ops/alerts/backup-job-failure": {
+      "post": {
+        "operationId": "InternalOpsController_captureBackupJobFailure",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "InternalOps"
+        ]
+      }
+    },
     "/api/v1/connector-webhooks/relay/{tenantKey}/installations/{installationId}": {
       "post": {
         "operationId": "ConnectorWebhookRelayController_relayWebhook",

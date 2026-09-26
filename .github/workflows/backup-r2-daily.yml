@@ -65,10 +65,17 @@ jobs:
           fi
           node scripts/r2-backup-run.cjs
 
-      # NOTE: this does not yet push a failure alert into InternalOpsAlertsService /
-      # vexa-ops-alert-sink. That envelope has a fixed alertType enum
-      # (error_authority_new_p0p1_issue, stuck_jobs_threshold_exceeded,
-      # media_integrity_defect_detected — see apps/api/src/internal-ops/internal-ops-alerts.service.ts)
-      # with no backup-failure type. Adding one is a separate, small follow-up increment,
-      # not bundled here. Until then, a failed run is visible as a red GitHub Actions run
-      # and via docs/runbooks/backup-restore.md section 9's manual weekly check.
+  notify-failure:
+    needs: [r2-backup]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send backup-failure alert to InternalOpsAlertsService
+        # Non-blocking: a delivery failure here must never itself block anything.
+        run: |
+          curl -s -X POST \
+            "https://${{ secrets.API_INTERNAL_BASE_URL }}/internal/ops/alerts/backup-job-failure" \
+            -H "Authorization: Bearer ${{ secrets.INTERNAL_OPS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"workflowName":"backup-r2-daily","database":"primary-postgres","errorSummary":"GitHub Actions backup job failed — check run logs"}' \
+            || true

@@ -423,7 +423,7 @@ describe("InternalOpsSummaryService", () => {
 describe("InternalOpsController", () => {
   it("allows admin app-role after boundary decorators pass", async () => {
     const service = { getSummary: jest.fn().mockResolvedValue({ asOf: "now" }) };
-    const controller = new InternalOpsController(service as never);
+    const controller = new InternalOpsController(service as never, {} as never);
 
     await expect(controller.getSummary({ pimRole: "admin" } as never)).resolves.toEqual({ asOf: "now" });
   });
@@ -432,7 +432,7 @@ describe("InternalOpsController", () => {
     "denies %s app-role even when a request reaches the controller",
     async (pimRole) => {
       const service = { getSummary: jest.fn() };
-      const controller = new InternalOpsController(service as never);
+      const controller = new InternalOpsController(service as never, {} as never);
 
       expect(() => controller.getSummary({ pimRole } as never)).toThrow(ForbiddenException);
       expect(service.getSummary).not.toHaveBeenCalled();

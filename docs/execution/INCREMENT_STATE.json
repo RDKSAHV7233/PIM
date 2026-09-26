@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-26T08:30",
+    "lastUpdated": "2026-09-26T09:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -3865,7 +3865,7 @@
         },
         {
           "storyId": "ST-885-API-KEY-CASCADE-REVOKE",
-          "title": "Cascade-revoke API keys on user deactivation — security-forward policy implementation (#885)",
+          "title": "Cascade-revoke API keys on user deactivation \u2014 security-forward policy implementation (#885)",
           "status": "completed",
           "locked": true,
           "owner": "claude",
@@ -3878,11 +3878,11 @@
             "npx tsc -p apps/api/tsconfig.json --noEmit (0 errors, pre-existing TS5101/TS5107 deprecation warnings only)"
           ],
           "acceptance": [
-            "deactivateUser() calls apiAccessKey.updateMany with createdBy=target.userId and revokedAt: null filter — only active keys are revoked.",
+            "deactivateUser() calls apiAccessKey.updateMany with createdBy=target.userId and revokedAt: null filter \u2014 only active keys are revoked.",
             "revokedApiKeyCount is included in the workspace_user.deactivated audit record so ops can see how many keys were cleared.",
-            "Policy: permanent revocation — reactivating the user does NOT un-revoke keys (#885 design question 1 answered: security-forward default, pending PO/CTO confirmation).",
+            "Policy: permanent revocation \u2014 reactivating the user does NOT un-revoke keys (#885 design question 1 answered: security-forward default, pending PO/CTO confirmation).",
             "3 new tests added: filter correctness, audit metadata includes count, no-op case (zero keys) does not throw.",
-            "Existing last-admin-guard tests unaffected — makeDeactivateStubs updated to include apiAccessKey.updateMany mock (required by the new service path).",
+            "Existing last-admin-guard tests unaffected \u2014 makeDeactivateStubs updated to include apiAccessKey.updateMany mock (required by the new service path).",
             "connector-launch-policy.ts Odoo internalNotes updated to document merged PR #935 QA fix (#931)."
           ]
         },
@@ -3900,11 +3900,36 @@
             "npx tsc -p apps/api/tsconfig.json --noEmit (0 errors, pre-existing TS5101/TS5107 deprecation warnings only)"
           ],
           "acceptance": [
-            "evaluateStuckJobs() emits a positive logger.info heartbeat on every cycle regardless of stuck count — silence can no longer be the only evidence the watchdog is running (#922 criterion: 'watchdog execution is proven').",
-            "stuckExportCount and stuckImportCount are included in the stuck_jobs_threshold_exceeded alert envelope when the evaluation path fires them — SRE can see which job type is stuck without a follow-up DB query (#922 criterion: 'future alerts carry enough identifiers for SRE to act').",
-            "filterEnvelope() allowlist updated to pass the new breakdown fields — security invariant preserved (still aggregate counts only, no job IDs, tenant IDs, or raw payloads).",
+            "evaluateStuckJobs() emits a positive logger.info heartbeat on every cycle regardless of stuck count \u2014 silence can no longer be the only evidence the watchdog is running (#922 criterion: 'watchdog execution is proven').",
+            "stuckExportCount and stuckImportCount are included in the stuck_jobs_threshold_exceeded alert envelope when the evaluation path fires them \u2014 SRE can see which job type is stuck without a follow-up DB query (#922 criterion: 'future alerts carry enough identifiers for SRE to act').",
+            "filterEnvelope() allowlist updated to pass the new breakdown fields \u2014 security invariant preserved (still aggregate counts only, no job IDs, tenant IDs, or raw payloads).",
             "3 new tests added: heartbeat fires at zero, heartbeat fires with breakdown at non-zero, breakdown fields appear in queued envelope.",
-            "Existing tests unchanged — processStuckJobCount() backward-compatible via optional breakdown parameter."
+            "Existing tests unchanged \u2014 processStuckJobCount() backward-compatible via optional breakdown parameter."
+          ]
+        },
+        {
+          "storyId": "ST-919-BACKUP-FAILURE-ALERTING",
+          "title": "Add backup_job_failure alert type to InternalOpsAlertsService",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "3dbe6a6e",
+          "scope": [
+            "apps/api/src/internal-ops/internal-ops-alerts.service.ts",
+            "apps/api/src/internal-ops/internal-ops-alerts.service.spec.ts",
+            "apps/api/src/internal-ops/internal-ops.controller.ts",
+            ".github/workflows/backup-r2-daily.yml",
+            ".github/workflows/backup-r2-daily-observability.yml"
+          ],
+          "tests_passed": [
+            "npx jest internal-ops-alerts.service.spec.ts (3 new captureBackupJobFailure tests pass)",
+            "npx tsc --noEmit (apps/api) \u2014 0 errors"
+          ],
+          "acceptance": [
+            "backup_job_failure in InternalOpsAlertType union",
+            "captureBackupJobFailure() enqueues with 2h cooldown",
+            "POST /internal/ops/alerts/backup-job-failure endpoint returns 204",
+            "notify-failure job in both backup workflows (non-blocking curl || true)"
           ]
         }
       ]
