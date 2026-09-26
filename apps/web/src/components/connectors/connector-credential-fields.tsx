@@ -486,7 +486,9 @@ export function ConnectorCredentialFields({
     return (
       <>
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          eBay is sandbox-only in this connector — there is no production option. Complete eBay&apos;s OAuth2 consent flow first to get a refresh token, then enter Client ID, Client Secret, and Refresh Token below.
+          {mode === "install"
+            ? "eBay is sandbox-only in this connector — there is no production option. Complete eBay's OAuth2 consent flow first to get a refresh token, then enter Client ID, Client Secret, and Refresh Token below."
+            : "Stored secrets cannot be displayed. Re-enter all fields to replace this installation's credential set — Vexa verifies them against eBay's sandbox before saving. eBay is sandbox-only in this connector — there is no production option."}
         </div>
         <div className="space-y-1">
           <label htmlFor={`${idPrefix}-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
