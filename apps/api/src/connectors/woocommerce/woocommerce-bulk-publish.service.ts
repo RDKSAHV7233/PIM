@@ -3,11 +3,32 @@
 // Checkpoint key: `woo:pub:{productId}` — any prior SUCCESS submission for the same
 // (tenantKey, installationId, productId) is treated as published and skipped on re-run.
 // W2 idempotent upsert (_vexa_pim_product_id) ensures safe re-calls even without the checkpoint.
+//
+// PIM P1 WooCommerce review: the checkpoint used to be read-then-write (a plain
+// findFirst() followed later by an upsert()), which is a genuine TOCTOU race —
+// two overlapping executeBulkPublish runs for the same installation (a
+// double-submitted "Publish all" click, or a retried job racing a still-running
+// one) could both see "no existing SUCCESS row" for the same productId and both
+// call connector.publishProduct() concurrently. publishProduct()'s own
+// findExistingProductId() SKU lookup has the identical race, so two concurrent
+// calls for the same SKU can both decide "create" and create two WooCommerce
+// products for one PIM product — exactly the duplicate-creation class of bug
+// already found and fixed in the Odoo connector this sprint (PR #935), just via
+// a different code path (no existence check there; here the checkpoint's own
+// check-then-act window). Fixed by claiming the checkpoint atomically via
+// INSERT ... ON CONFLICT ... WHERE (the same idiom woocommerce.connector.ts's
+// handleOAuthCallback() already uses for its own tenant-ownership guard): a
+// second concurrent claim attempt for the same (tenantKey, installationId,
+// idempotencyKey) affects zero rows and is skipped instead of racing through.
+// A failed publish releases the claim (deletes the row) so the next run can
+// retry it, matching the pre-fix behaviour where a failed attempt left no
+// row behind at all.
 
 import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import type { ConnectorContext, ProductPayload } from '../../connector-framework/connector.interface';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
+import { tenantExecRaw } from '../../common/tenant/tenant-raw';
 import { WooCommerceConnector } from './woocommerce.connector';
 
 export type BulkPublishItem = {
@@ -60,44 +81,53 @@ export class WooCommerceBulkPublishService {
         batch.map(async ({ productId, payload }) => {
           const idempotencyKey = `woo:pub:${productId}`;
 
-          // Checkpoint: skip products already published successfully to this installation.
-          const existing = await db.connectorSubmission.findFirst({
-            where: { tenantKey, installationId, idempotencyKey, status: 'SUCCESS' },
-            select: { id: true },
-          });
-          if (existing) {
+          // Checkpoint: atomically claim (tenantKey, installationId, idempotencyKey) before
+          // publishing. A plain findFirst()-then-upsert() (the pre-fix version of this method)
+          // is a check-then-act race: two overlapping bulk-publish runs could both see "not
+          // published yet" for the same productId and both call publishProduct() concurrently,
+          // which can create two WooCommerce products for one PIM product (findExistingProductId()
+          // has the identical SKU-lookup race inside publishProduct() itself). The INSERT ...
+          // ON CONFLICT ... WHERE below only claims the row when no SUCCESS or in-flight PENDING
+          // row already exists, so a losing concurrent claim affects zero rows and is skipped
+          // instead of racing through to a duplicate create.
+          const claimedRows = await tenantExecRaw(
+            db,
+            `
+            INSERT INTO connector_submissions (
+              id, tenant_key, installation_id, product_id, idempotency_key,
+              submission_type, source, attempt_number, status, external_ref,
+              payload_snapshot, channel_errors, submitted_at, resolved_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, 'PUBLISH', 'BULK', 1, 'PENDING', NULL, '{}'::jsonb, '[]'::jsonb, NOW(), NULL
+            )
+            ON CONFLICT (tenant_key, installation_id, idempotency_key) DO UPDATE SET
+              status = 'PENDING',
+              submitted_at = NOW(),
+              resolved_at = NULL
+            WHERE connector_submissions.tenant_key = EXCLUDED.tenant_key
+              AND connector_submissions.status NOT IN ('SUCCESS', 'PENDING')
+            `,
+            [randomUUID(), tenantKey, installationId, productId, idempotencyKey],
+          );
+
+          if (claimedRows === 0) {
+            // Either already published (SUCCESS) or another concurrent run currently holds
+            // the claim (PENDING) — either way, this run does not attempt it.
             skipped++;
             return;
           }
 
           try {
             const ref = await this.connector.publishProduct(ctx, payload);
-            const now = new Date();
-            await db.connectorSubmission.upsert({
+            await db.connectorSubmission.update({
               where: {
                 tenantKey_installationId_idempotencyKey: { tenantKey, installationId, idempotencyKey },
               },
-              create: {
-                id: randomUUID(),
-                tenantKey,
-                installationId,
-                productId,
-                idempotencyKey,
-                submissionType: 'PUBLISH',
-                source: 'BULK',
-                attemptNumber: 1,
-                status: 'SUCCESS',
-                externalRef: ref.externalRef || null,
-                payloadSnapshot: {},
-                channelErrors: [],
-                submittedAt: now,
-                resolvedAt: now,
-              },
-              update: {
+              data: {
                 status: 'SUCCESS',
                 externalRef: ref.externalRef || null,
                 attemptNumber: { increment: 1 },
-                resolvedAt: now,
+                resolvedAt: new Date(),
               },
             });
             success++;
@@ -106,6 +136,11 @@ export class WooCommerceBulkPublishService {
               installationId,
               productId,
               reason: err instanceof Error ? err.message : String(err),
+            });
+            // Release the claim so a future run retries this item, matching the pre-fix
+            // behaviour where a failed attempt left no checkpoint row behind at all.
+            await db.connectorSubmission.deleteMany({
+              where: { tenantKey, installationId, idempotencyKey, status: 'PENDING' },
             });
             failed++;
           }

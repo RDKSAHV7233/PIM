@@ -6,27 +6,54 @@
 // + skipped always equal the input count? does one item's failure ever
 // silently drop or duplicate another item's result?) had never been checked
 // here.
+//
+// PIM P1 WooCommerce review: the checkpoint claim is now an atomic
+// INSERT ... ON CONFLICT ... WHERE (via tenantExecRaw) instead of a
+// findFirst()-then-upsert() check-then-act — the latter is a genuine race
+// that lets two overlapping bulk-publish runs both decide "not published
+// yet" for the same product and both call publishProduct(), creating a
+// duplicate WooCommerce product. The stubs below model that raw claim call
+// plus the update()/deleteMany() calls that now resolve/release it.
 
 import { WooCommerceBulkPublishService } from "./woocommerce-bulk-publish.service";
 import type { WooCommerceConnector } from "./woocommerce.connector";
 import type { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import type { ConnectorContext, ProductPayload } from "../../connector-framework/connector.interface";
 
-function makeStubs(existingSuccessProductIds: Set<string> = new Set()) {
-  const upserts: any[] = [];
-  const connectorSubmission = {
-    findFirst: jest.fn().mockImplementation(({ where }: any) => {
-      const productId = where.idempotencyKey.replace("woo:pub:", "");
-      return Promise.resolve(existingSuccessProductIds.has(productId) ? { id: `sub-${productId}` } : null);
-    }),
-    upsert: jest.fn().mockImplementation((args: any) => {
-      upserts.push(args);
-      return Promise.resolve({ id: "row" });
+function makeStubs(existingSuccessProductIds: Set<string> = new Set(), existingPendingProductIds: Set<string> = new Set()) {
+  const updates: any[] = [];
+  const deletes: any[] = [];
+  const claimedStatus = new Map<string, "SUCCESS" | "PENDING">();
+  for (const id of existingSuccessProductIds) claimedStatus.set(id, "SUCCESS");
+  for (const id of existingPendingProductIds) claimedStatus.set(id, "PENDING");
+
+  const client = {
+    connectorSubmission: {
+      update: jest.fn().mockImplementation((args: any) => {
+        updates.push(args);
+        return Promise.resolve({ id: "row" });
+      }),
+      deleteMany: jest.fn().mockImplementation((args: any) => {
+        deletes.push(args);
+        return Promise.resolve({ count: 1 });
+      }),
+    },
+    // tenantExecRaw() calls client.$executeRawUnsafe(sql, ...params) — the claim's
+    // outcome (0 rows = already SUCCESS or currently PENDING elsewhere; 1 row =
+    // claimed) is modeled off the productId embedded in the idempotency key param.
+    $executeRawUnsafe: jest.fn().mockImplementation((_sql: string, ...params: unknown[]) => {
+      const productId = String(params[3]);
+      const status = claimedStatus.get(productId);
+      if (status === "SUCCESS" || status === "PENDING") {
+        return Promise.resolve(0);
+      }
+      return Promise.resolve(1);
     }),
   };
-  const prismaDirect = { getClient: jest.fn().mockReturnValue({ connectorSubmission }) } as unknown as PrismaDirectService;
+
+  const prismaDirect = { getClient: jest.fn().mockReturnValue(client) } as unknown as PrismaDirectService;
   const connector = { publishProduct: jest.fn() } as unknown as WooCommerceConnector;
-  return { prismaDirect, connector, connectorSubmission, upserts };
+  return { prismaDirect, connector, client, updates, deletes };
 }
 
 function makeItems(count: number, offset = 0) {
@@ -47,11 +74,28 @@ describe("WooCommerceBulkPublishService.executeBulkPublish — checkpointed, fau
     const result = await service.executeBulkPublish(ctx, "install-1", "tenant-a", makeItems(1));
 
     expect(result).toEqual({ success: 1, failed: 0, skipped: 0 });
-    expect(stubs.upserts[0].create).toMatchObject({ status: "SUCCESS", externalRef: "wc-123", productId: "product-0" });
+    expect(stubs.updates[0].data).toMatchObject({ status: "SUCCESS", externalRef: "wc-123" });
+    expect(stubs.updates[0].where).toMatchObject({
+      tenantKey_installationId_idempotencyKey: {
+        tenantKey: "tenant-a",
+        installationId: "install-1",
+        idempotencyKey: "woo:pub:product-0",
+      },
+    });
   });
 
   it("skips a product with an existing SUCCESS submission — never calls publishProduct for it", async () => {
     const stubs = makeStubs(new Set(["product-0"]));
+    const service = new WooCommerceBulkPublishService(stubs.connector, stubs.prismaDirect);
+
+    const result = await service.executeBulkPublish(ctx, "install-1", "tenant-a", makeItems(1));
+
+    expect(result).toEqual({ success: 0, failed: 0, skipped: 1 });
+    expect(stubs.connector.publishProduct).not.toHaveBeenCalled();
+  });
+
+  it("skips a product whose claim is currently held by another in-flight run (PENDING) instead of racing through", async () => {
+    const stubs = makeStubs(new Set(), new Set(["product-0"]));
     const service = new WooCommerceBulkPublishService(stubs.connector, stubs.prismaDirect);
 
     const result = await service.executeBulkPublish(ctx, "install-1", "tenant-a", makeItems(1));
@@ -73,6 +117,23 @@ describe("WooCommerceBulkPublishService.executeBulkPublish — checkpointed, fau
     expect(result).toEqual({ success: 2, failed: 1, skipped: 0 });
   });
 
+  it("releases the claim (deletes the PENDING row) when publishProduct fails, so a future run can retry it", async () => {
+    const stubs = makeStubs();
+    (stubs.connector.publishProduct as jest.Mock).mockRejectedValue(new Error("WooCommerce rejected this SKU"));
+    const service = new WooCommerceBulkPublishService(stubs.connector, stubs.prismaDirect);
+
+    await service.executeBulkPublish(ctx, "install-1", "tenant-a", makeItems(1));
+
+    expect(stubs.deletes[0]).toMatchObject({
+      where: {
+        tenantKey: "tenant-a",
+        installationId: "install-1",
+        idempotencyKey: "woo:pub:product-0",
+        status: "PENDING",
+      },
+    });
+  });
+
   it("never drops or double-counts an item across a full multi-batch run — success+failed+skipped always equals the input size", async () => {
     const stubs = makeStubs(new Set(["product-5", "product-42"])); // a couple already-published, scattered across batch boundaries
     (stubs.connector.publishProduct as jest.Mock).mockImplementation(async (_ctx: unknown, payload: ProductPayload) => {
@@ -90,13 +151,13 @@ describe("WooCommerceBulkPublishService.executeBulkPublish — checkpointed, fau
     expect(result.success).toBe(146);
   });
 
-  it("increments attemptNumber on the update path when re-publishing over a non-SUCCESS prior row (upsert's update branch)", async () => {
+  it("increments attemptNumber on resolving a re-claimed (previously non-SUCCESS) checkpoint row", async () => {
     const stubs = makeStubs();
     (stubs.connector.publishProduct as jest.Mock).mockResolvedValue({ externalRef: "wc-retry" });
     const service = new WooCommerceBulkPublishService(stubs.connector, stubs.prismaDirect);
 
     await service.executeBulkPublish(ctx, "install-1", "tenant-a", makeItems(1));
 
-    expect(stubs.upserts[0].update).toMatchObject({ status: "SUCCESS", attemptNumber: { increment: 1 } });
+    expect(stubs.updates[0].data).toMatchObject({ status: "SUCCESS", attemptNumber: { increment: 1 } });
   });
 });
