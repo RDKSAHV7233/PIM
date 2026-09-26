@@ -14,18 +14,19 @@ import {
   issueStepUp,
   upsertOidcConfig,
 } from "@/lib/api";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 
 const STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK = "auth_config_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
 
-async function requireAdminRequestOptions() {
-  const { authHeader, actorRole } = await getServerSession();
+async function requireSystemAdminRequestOptions() {
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   if (!authHeader) {
     throw new Error("Authenticated session is required.");
   }
-  if (actorRole !== "admin") {
-    throw new Error("Admin role is required.");
+  if (actorRole !== "admin" || !isSystemAdminBoundary(adminBoundaryRoles)) {
+    throw new Error("Security admin access is required.");
   }
   return { role: actorRole, authHeader };
 }
@@ -71,7 +72,7 @@ async function issueAuthConfigStepUpToken(formData: FormData): Promise<string> {
   }
   const response = await issueStepUp(
     { password, scope: STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK },
-    await requireAdminRequestOptions(),
+    await requireSystemAdminRequestOptions(),
   );
   const token = String(response.stepUpToken ?? "").trim();
   if (!token) {
@@ -95,7 +96,7 @@ export async function upsertOidcConfigAction(formData: FormData) {
     const scopes = parseScopes(scopesInput);
     const claimsMapping = parseClaimsMapping(claimsInput);
     const stepUpToken = await issueAuthConfigStepUpToken(formData);
-    const adminOptions = await requireAdminRequestOptions();
+    const adminOptions = await requireSystemAdminRequestOptions();
     await upsertOidcConfig(
       {
         issuer,
@@ -124,7 +125,7 @@ export async function upsertOidcConfigAction(formData: FormData) {
 export async function deleteOidcConfigAction(formData: FormData) {
   try {
     const stepUpToken = await issueAuthConfigStepUpToken(formData);
-    const adminOptions = await requireAdminRequestOptions();
+    const adminOptions = await requireSystemAdminRequestOptions();
     await deleteOidcConfig({
       ...adminOptions,
       headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken },

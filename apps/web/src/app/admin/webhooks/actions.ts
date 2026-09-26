@@ -9,13 +9,17 @@ import {
   sendOutboundWebhookTest,
   updateOutboundWebhookEndpoint,
 } from "@/lib/api";
-import { getServerSession } from "@/lib/server-session";
 import { WEBHOOK_EVENT_TYPES } from "@/lib/constants/webhook-events";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
+import { getServerSession } from "@/lib/server-session";
 
-async function requireAdminRequestOptions() {
-  const { authHeader, actorRole: role } = await getServerSession();
-  if (role !== "admin" || !authHeader) {
-    throw new Error("Admin role is required.");
+async function requireSystemAdminRequestOptions() {
+  const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
+  if (!authHeader) {
+    throw new Error("Authenticated session is required.");
+  }
+  if (role !== "admin" || !isSystemAdminBoundary(adminBoundaryRoles)) {
+    throw new Error("Security admin access is required.");
   }
   return { authHeader, role };
 }
@@ -65,7 +69,7 @@ export async function createOutboundWebhookAction(formData: FormData) {
         signingSecret,
         isActive: true,
       },
-      await requireAdminRequestOptions(),
+      await requireSystemAdminRequestOptions(),
     );
     revalidatePath("/admin/webhooks");
   } catch (error) {
@@ -85,7 +89,7 @@ export async function toggleOutboundWebhookAction(formData: FormData) {
     await updateOutboundWebhookEndpoint(
       endpointId,
       { isActive: nextState === "true" },
-      await requireAdminRequestOptions(),
+      await requireSystemAdminRequestOptions(),
     );
     revalidatePath("/admin/webhooks");
   } catch (error) {
@@ -101,7 +105,7 @@ export async function deleteOutboundWebhookAction(formData: FormData) {
     if (!endpointId) {
       throw new Error("Webhook endpoint is required.");
     }
-    await deleteOutboundWebhookEndpoint(endpointId, await requireAdminRequestOptions());
+    await deleteOutboundWebhookEndpoint(endpointId, await requireSystemAdminRequestOptions());
     revalidatePath("/admin/webhooks");
   } catch (error) {
     redirectWithError(error instanceof Error ? error.message : "Unable to delete webhook endpoint.", redirectTo);
@@ -116,7 +120,7 @@ export async function sendTestOutboundWebhookAction(formData: FormData) {
     if (!endpointId) {
       throw new Error("Webhook endpoint is required.");
     }
-    await sendOutboundWebhookTest(endpointId, await requireAdminRequestOptions());
+    await sendOutboundWebhookTest(endpointId, await requireSystemAdminRequestOptions());
     revalidatePath("/admin/webhooks");
   } catch (error) {
     redirectWithError(error instanceof Error ? error.message : "Unable to queue webhook test delivery.", redirectTo);
@@ -135,7 +139,7 @@ export async function rotateOutboundWebhookSecretAction(formData: FormData) {
     if (signingSecret.length < 16) {
       throw new Error("Webhook signing secret must be at least 16 characters.");
     }
-    await updateOutboundWebhookEndpoint(endpointId, { signingSecret }, await requireAdminRequestOptions());
+    await updateOutboundWebhookEndpoint(endpointId, { signingSecret }, await requireSystemAdminRequestOptions());
     revalidatePath("/admin/webhooks");
   } catch (error) {
     redirectWithError(error instanceof Error ? error.message : "Unable to rotate webhook signing secret.", redirectTo);
@@ -150,7 +154,7 @@ export async function retryOutboundWebhookDeliveryAction(formData: FormData) {
     if (!deliveryId) {
       throw new Error("Webhook delivery is required.");
     }
-    await retryOutboundWebhookDelivery(deliveryId, await requireAdminRequestOptions());
+    await retryOutboundWebhookDelivery(deliveryId, await requireSystemAdminRequestOptions());
     revalidatePath("/admin/webhooks");
   } catch (error) {
     redirectWithError(error instanceof Error ? error.message : "Unable to retry webhook delivery.", redirectTo);

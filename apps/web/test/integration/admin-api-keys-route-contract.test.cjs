@@ -70,11 +70,11 @@ function run() {
     "Admin API key creation UI must not offer impossible admin machine credentials.",
   );
   assert(
-    actionsSource.includes('role === "admin"') &&
+    actionsSource.includes("isSystemAdminBoundary(adminBoundaryRoles)") &&
       actionsSource.includes("Admin API keys are intentionally disabled.") &&
       actionsSource.includes("scopes.length === 0") &&
       actionsSource.includes("Select at least one API scope."),
-    "Admin API key creation must preserve server-side admin rejection and reject empty scope submissions.",
+    "Admin API key creation must preserve server-side system-admin boundary enforcement and reject empty scope submissions.",
   );
   assert(
     source.includes('const API_KEY_STATUS_FILTERS = ["all", "active", "expired", "revoked"] as const') &&

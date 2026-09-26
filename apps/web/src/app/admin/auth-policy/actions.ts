@@ -3,15 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { updateTenantAuthPolicy } from "@/lib/api";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 
-async function requireAdminRequestOptions() {
-  const { authHeader, actorRole } = await getServerSession();
+async function requireSystemAdminRequestOptions() {
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   if (!authHeader) {
     throw new Error("Authenticated session is required.");
   }
-  if (actorRole !== "admin") {
-    throw new Error("Admin role is required.");
+  if (actorRole !== "admin" || !isSystemAdminBoundary(adminBoundaryRoles)) {
+    throw new Error("Security admin access is required.");
   }
   return { role: actorRole, authHeader };
 }
@@ -60,7 +61,7 @@ export async function updateTenantAuthPolicyAction(formData: FormData) {
         sessionTimeoutMinutes,
         allowedAuthMethods,
       },
-      await requireAdminRequestOptions(),
+      await requireSystemAdminRequestOptions(),
     );
     revalidatePath("/admin/auth-policy");
   } catch (error) {

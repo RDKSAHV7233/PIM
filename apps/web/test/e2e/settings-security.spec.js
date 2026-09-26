@@ -14,7 +14,7 @@ test.describe("/settings/security", () => {
     await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
 
     await expect(page.getByText(/multi-factor|mfa/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/plan|tier/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("link", { name: "View plans" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("viewer: renders security page with limited content", async ({ page }) => {

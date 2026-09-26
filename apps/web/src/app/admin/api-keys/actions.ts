@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createApiAccessKey, normalizeAppRole, revokeApiAccessKey, type ApiClientScope } from "@/lib/api";
-import { getServerSession } from "@/lib/server-session";
 import { SUPPORTED_API_KEY_SCOPES } from "@/lib/constants/api-scopes";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
+import { getServerSession } from "@/lib/server-session";
 
 export type ApiKeyCreateActionState = {
   status: "idle" | "success" | "error";
@@ -12,10 +13,13 @@ export type ApiKeyCreateActionState = {
   createdKey: string | null;
 };
 
-async function requireAdminRequestOptions() {
-  const { authHeader, actorRole: role } = await getServerSession();
-  if (role !== "admin" || !authHeader) {
-    throw new Error("Admin role is required.");
+async function requireSystemAdminRequestOptions() {
+  const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
+  if (!authHeader) {
+    throw new Error("Authenticated session is required.");
+  }
+  if (role !== "admin" || !isSystemAdminBoundary(adminBoundaryRoles)) {
+    throw new Error("Security admin access is required.");
   }
   return { authHeader, role };
 }
@@ -69,7 +73,7 @@ export async function createApiAccessKeyAction(
         expiresAt: expiresAtRaw ? new Date(expiresAtRaw).toISOString() : undefined,
         scopes,
       },
-      await requireAdminRequestOptions(),
+      await requireSystemAdminRequestOptions(),
     );
     revalidatePath("/admin/api-keys");
     return {
@@ -92,7 +96,7 @@ export async function revokeApiAccessKeyAction(formData: FormData) {
   if (!keyId) {
     throw new Error("API key is required.");
   }
-  await revokeApiAccessKey(keyId, await requireAdminRequestOptions());
+  await revokeApiAccessKey(keyId, await requireSystemAdminRequestOptions());
   revalidatePath("/admin/api-keys");
   redirect("/admin/api-keys?status=api-key-revoked");
 }

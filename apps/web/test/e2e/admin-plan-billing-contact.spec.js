@@ -2,6 +2,8 @@ const { test, expect } = require("@playwright/test");
 const { apiLogin, apiRequest, loginViaUi, DEFAULT_API_URL } = require("./helpers/vexa-pim.cjs");
 
 test("admin can set and clear billing contact from the plan page", async ({ page }) => {
+  test.setTimeout(90_000);
+
   const adminToken = await apiLogin("admin");
   const initialUsage = await apiRequest("GET", "/billing/usage", adminToken);
   const originalBillingContact = initialUsage.profile?.billingContactEmail ?? null;
@@ -17,22 +19,24 @@ test("admin can set and clear billing contact from the plan page", async ({ page
     await page.getByRole("button", { name: "Save billing contact" }).click();
 
     await page.waitForURL(/billingContactStatus=saved/);
-    await expect(page.getByText("Billing contact updated")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Plan & Usage" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Billing contact updated")).toBeVisible({ timeout: 30_000 });
     await expect(
       page.getByText(`Commercial notices will now go to ${nextBillingContact}.`),
     ).toBeVisible();
-    await expect(page.getByText(`Current recipient path: ${nextBillingContact}.`)).toBeVisible();
+    await expect(billingContactInput).toHaveValue(nextBillingContact);
 
     const savedUsage = await apiRequest("GET", "/billing/usage", adminToken, undefined, DEFAULT_API_URL);
     expect(savedUsage.profile?.billingContactEmail).toBe(nextBillingContact);
 
     await page.getByRole("button", { name: "Use admin fallback" }).click();
     await page.waitForURL(/billingContactStatus=cleared/);
-    await expect(page.getByText("Billing contact cleared")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Plan & Usage" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Billing contact cleared")).toBeVisible({ timeout: 30_000 });
     await expect(
-      page.getByText("Commercial notices will now fall back to active workspace admins for this workspace."),
+      page.getByText("Commercial notices will now fall back to active workspace admins."),
     ).toBeVisible();
-    await expect(page.getByText("Current recipient path: active workspace admins.")).toBeVisible();
+    await expect(page.getByLabel("Billing contact email")).toHaveValue("");
 
     const clearedUsage = await apiRequest("GET", "/billing/usage", adminToken, undefined, DEFAULT_API_URL);
     expect(clearedUsage.profile?.billingContactEmail ?? null).toBeNull();

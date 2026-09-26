@@ -94,10 +94,10 @@ function run() {
 
   assert(
     actions.includes("await updateTenantAuthPolicy(") &&
-      actions.includes('if (actorRole !== "admin") {') &&
+      actions.includes("isSystemAdminBoundary(adminBoundaryRoles)") &&
       actions.includes('redirect("/admin/auth-policy?status=auth-policy-updated");') &&
       actions.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update tenant auth policy."'),
-    "Admin auth policy server actions must stay admin-only, patch through the shared API layer, and keep failures inline.",
+    "Admin auth policy server actions must stay system-admin-boundary gated, patch through the shared API layer, and keep failures inline.",
   );
 
   assert(

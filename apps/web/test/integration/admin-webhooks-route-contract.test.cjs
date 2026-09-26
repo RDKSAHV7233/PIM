@@ -99,10 +99,11 @@ function run() {
   );
   assert(
     actionsSource.includes("rotateOutboundWebhookSecretAction") &&
+      actionsSource.includes("isSystemAdminBoundary(adminBoundaryRoles)") &&
       actionsSource.includes("signingSecret.length < 16") &&
       actionsSource.includes("updateOutboundWebhookEndpoint(endpointId, { signingSecret }") &&
       actionsSource.includes('redirectWithStatus("webhook-secret-rotated"'),
-    "Admin webhooks must rotate signing secrets through the existing endpoint update path with validation and banners.",
+    "Admin webhooks must rotate signing secrets through the existing endpoint update path with system-admin boundary enforcement, validation, and banners.",
   );
   assert(
     webApiSource.includes("retryOutboundWebhookDelivery") &&
@@ -153,6 +154,11 @@ function run() {
     source.includes('href="/admin/audit"') &&
       source.includes('redirect(buildLoginRedirect("/admin/webhooks", error));'),
     "Admin webhooks must link to audit evidence and redirect auth failures through the shared login helper.",
+  );
+  assert(
+    source.includes("Webhook data unavailable") &&
+      source.includes("Configured endpoints or recent deliveries could not be loaded."),
+    "Admin webhooks must render a safe unavailable state instead of a blank main when non-auth webhook reads fail.",
   );
   assert(
     source.includes("getBillingPlanProfile(") &&

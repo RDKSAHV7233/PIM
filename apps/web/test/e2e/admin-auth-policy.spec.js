@@ -12,19 +12,19 @@ test.describe("/admin/auth-policy", () => {
     await loginViaUi(page, "admin");
     await page.goto("/admin/auth-policy", { waitUntil: "domcontentloaded" });
     await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/auth policy/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Auth Policy", exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test("admin: OIDC sub-page renders", async ({ page }) => {
     await loginViaUi(page, "admin");
     await page.goto("/admin/auth-policy/oidc", { waitUntil: "domcontentloaded" });
     await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/oidc|sso/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: /OIDC|SSO/i })).toBeVisible({ timeout: 10_000 });
   });
 
-  test("editor: redirected away from auth policy", async ({ page }) => {
+  test("editor: sees explicit security-admin denial on auth policy", async ({ page }) => {
     await loginViaUi(page, "editor");
     await page.goto("/admin/auth-policy", { waitUntil: "domcontentloaded" });
-    await page.waitForURL(/\/admin(?:\/)?$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Security Admin access required" })).toBeVisible({ timeout: 15_000 });
   });
 });

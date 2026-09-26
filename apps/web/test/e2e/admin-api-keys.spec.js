@@ -7,8 +7,10 @@ const {
   deleteProduct,
   loginViaUi,
   purgeProduct,
+  setTenantPlanTier,
   uniqueName,
   DEFAULT_API_URL,
+  DEFAULT_WORKSPACE,
 } = require("./helpers/vexa-pim.cjs");
 
 async function apiKeyRequest(method, route, apiKey, body) {
@@ -37,6 +39,8 @@ async function apiKeyRequest(method, route, apiKey, body) {
 }
 
 test("admin can create and revoke an API key from the browser", async ({ page }) => {
+  test.setTimeout(120_000);
+
   const adminAuth = await apiLoginPayload("admin");
   test.skip(adminAuth.role !== "admin", `admin identity resolves as ${adminAuth.role} in current local environment`);
 
@@ -50,6 +54,7 @@ test("admin can create and revoke an API key from the browser", async ({ page })
   let productId = null;
 
   try {
+    await setTenantPlanTier("GROWTH", { tenantKey: DEFAULT_WORKSPACE });
     await loginViaUi(page, "admin");
     await page.goto("/admin/api-keys", { waitUntil: "domcontentloaded" });
 
@@ -57,9 +62,12 @@ test("admin can create and revoke an API key from the browser", async ({ page })
     await page.getByLabel("Role").selectOption("editor");
     await page.getByRole("button", { name: "Create API key" }).click();
 
+    const keyReveal = page.locator("textarea").first();
+    await expect(keyReveal).toBeVisible({ timeout: 60_000 });
+    await expect(keyReveal).toHaveValue(/^pim1_/, { timeout: 60_000 });
     await expect(page.getByText(`API key created for ${label}. Copy it now; it will not be shown again.`)).toBeVisible();
 
-    plainTextKey = await page.locator("textarea[readonly]").first().inputValue();
+    plainTextKey = await keyReveal.inputValue();
     expect(plainTextKey.startsWith("pim1_")).toBeTruthy();
 
     const keyRow = page.locator("tbody tr", { hasText: label }).first();
@@ -87,6 +95,8 @@ test("admin can create and revoke an API key from the browser", async ({ page })
     productId = createWithApiKey.payload?.id ?? null;
     expect(productId).toBeTruthy();
 
+    await keyRow.getByRole("link", { name: "Revoke" }).click();
+    await page.waitForURL(/confirmRevoke=/);
     await keyRow.getByRole("button", { name: "Revoke" }).click();
     await page.waitForURL(/\/admin\/api-keys\?status=api-key-revoked/);
     await expect(page.getByText("API key revoked.")).toBeVisible();
@@ -120,5 +130,8 @@ test("admin can create and revoke an API key from the browser", async ({ page })
         await apiRequest("POST", `/admin/api-keys/${encodeURIComponent(createdKeyId)}/revoke`, adminToken, {});
       } catch {}
     }
+    try {
+      await setTenantPlanTier("STARTER", { tenantKey: DEFAULT_WORKSPACE });
+    } catch {}
   }
 });

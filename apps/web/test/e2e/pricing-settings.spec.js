@@ -73,8 +73,7 @@ test.describe("Pricing Settings", () => {
   test("GET /pricing/coverage returns coverage snapshot", async () => {
     const result = await apiRequest("GET", "/pricing/coverage", adminToken, undefined, DEFAULT_API_URL);
     expect(result).toBeDefined();
-    // Coverage response has lists[] and optionally default summary
-    const lists = result.lists ?? result;
+    const lists = result.perPriceList ?? result.lists ?? result;
     expect(Array.isArray(lists)).toBe(true);
   });
 
@@ -160,8 +159,8 @@ test.describe("Pricing Settings", () => {
 
       await expect(page.getByText(product.title)).toBeVisible({ timeout: 15_000 });
 
-      // Pricing tab should exist
-      const pricingTab = page.getByRole("tab", { name: /pricing/i });
+      // Product detail uses link-based tab navigation.
+      const pricingTab = page.getByLabel("Product detail tabs").getByRole("link", { name: /^Pricing$/ });
       await expect(pricingTab).toBeVisible({ timeout: 10_000 });
 
       // Click it — should not crash

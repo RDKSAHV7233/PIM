@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ApiHttpError, deleteOidcConfig, upsertOidcConfig } from "@/lib/api";
+import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 
-async function requireAdminOptions() {
-  const { authHeader, actorRole: role } = await getServerSession();
-  if (role !== "admin" || !authHeader) {
-    throw new Error("Admin role is required.");
+async function requireSystemAdminRequestOptions() {
+  const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
+  if (!authHeader) {
+    throw new Error("Authenticated session is required.");
+  }
+  if (role !== "admin" || !isSystemAdminBoundary(adminBoundaryRoles)) {
+    throw new Error("Security admin access is required.");
   }
   return { authHeader, role };
 }
@@ -16,7 +20,7 @@ async function requireAdminOptions() {
 export async function saveOidcConfigAction(formData: FormData) {
   let errorRedirect = "/admin/oidc";
   try {
-    await requireAdminOptions();
+    await requireSystemAdminRequestOptions();
 
     const issuer = String(formData.get("issuer") ?? "").trim();
     const clientId = String(formData.get("clientId") ?? "").trim();
@@ -52,7 +56,7 @@ export async function saveOidcConfigAction(formData: FormData) {
       }
     }
 
-    const options = await requireAdminOptions();
+    const options = await requireSystemAdminRequestOptions();
     await upsertOidcConfig({ issuer, clientId, clientSecret, callbackUrl, scopes, claimsMapping }, options);
     revalidatePath("/admin/oidc");
   } catch (error) {
@@ -67,7 +71,7 @@ export async function saveOidcConfigAction(formData: FormData) {
 
 export async function deleteOidcConfigAction() {
   try {
-    const options = await requireAdminOptions();
+    const options = await requireSystemAdminRequestOptions();
     await deleteOidcConfig(options);
     revalidatePath("/admin/oidc");
   } catch (error) {

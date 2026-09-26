@@ -98,10 +98,8 @@ function run() {
   assert(
     actions.includes("await upsertOidcConfig(") &&
       actions.includes("await deleteOidcConfig(") &&
-      actions.includes('if (actorRole !== "admin") {') &&
-      actions.includes("Authenticated session is required.") &&
-      actions.includes("Admin role is required."),
-    "OIDC server actions must enforce admin-role gating and use the shared upsertOidcConfig / deleteOidcConfig API layer.",
+      actions.includes("isSystemAdminBoundary(adminBoundaryRoles)"),
+    "OIDC server actions must enforce system-admin boundary gating and use the shared upsertOidcConfig / deleteOidcConfig API layer.",
   );
 
   // ── Server actions validate required inputs ────────────────────────────────

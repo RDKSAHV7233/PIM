@@ -627,7 +627,23 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/admin/webhooks", error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Outbound Webhooks"
+          description="Send Vexa notification events to tenant-managed HTTP endpoints."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Outbound Webhooks</span>
+            </>
+          }
+        />
+        <InlineAlert
+          tone="error"
+          title="Webhook data unavailable"
+          message="Configured endpoints or recent deliveries could not be loaded. Retry in a moment or check API health before changing webhook settings."
+        />
+      </div>
+    );
   }
 }
-

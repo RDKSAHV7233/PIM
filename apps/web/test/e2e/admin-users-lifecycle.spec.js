@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
 const { PrismaClient } = require("@prisma/client");
-const { apiLoginPayload, apiRequest, loginViaUi } = require("./helpers/vexa-pim.cjs");
+const { apiLoginPayload, apiRequest, loginViaUi, setTenantPlanTier, DEFAULT_WORKSPACE } = require("./helpers/vexa-pim.cjs");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 
@@ -100,10 +100,12 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
   const adminToken = adminAuth.accessToken;
   const tenantKey = String(adminAuth.tenantId || "default");
   const tempUserId = `pw-user-${Date.now()}@example.com`;
+  const tempPassword = `Pw-${Date.now()}!`;
 
   const row = () => page.locator("tbody tr", { hasText: tempUserId }).first();
 
   try {
+    await setTenantPlanTier("ENTERPRISE", { tenantKey: DEFAULT_WORKSPACE });
     await loginViaUi(page, "admin");
     await page.goto("/admin/users", { waitUntil: "domcontentloaded" });
 
@@ -112,6 +114,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
 
     await page.getByLabel("User ID").fill(tempUserId);
     await page.locator("#admin-user-role").selectOption("viewer");
+    await page.getByLabel("Initial Password").fill(tempPassword);
     await page.getByRole("button", { name: "Create User" }).click();
 
     await page.waitForURL(/status=user-created/);
@@ -134,7 +137,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
     const updatedUser = updatedUsers.find((entry) => entry.userId === tempUserId);
     expect(updatedUser?.role).toBe("reviewer");
 
-    await row().getByRole("button", { name: "Lock 60m" }).click();
+    await row().getByRole("button", { name: "Lock" }).click();
     await page.waitForURL(/status=user-locked/);
     await expect(page.getByText("Workspace user locked.")).toBeVisible();
     await expect(row()).toContainText("locked");
@@ -155,7 +158,10 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
     expect(unlockedUser?.isLocked).toBe(false);
     expect(unlockedUser?.role).toBe("reviewer");
 
-    await row().getByRole("button", { name: "Deactivate" }).click();
+    await row().getByRole("link", { name: "Deactivate" }).click();
+    await page.waitForURL(/confirmDeactivate=/);
+    await row().getByLabel("Confirm User ID").fill(tempUserId);
+    await row().getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL(/status=user-deactivated/);
     await expect(page.getByText("Workspace user deactivated.")).toBeVisible();
     await expect(row()).toContainText("inactive");
@@ -169,5 +175,8 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
     } catch (error) {
       console.error("Workspace user browser flow cleanup failed:", error instanceof Error ? error.message : String(error));
     }
+    try {
+      await setTenantPlanTier("STARTER", { tenantKey: DEFAULT_WORKSPACE });
+    } catch {}
   }
 });
