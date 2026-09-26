@@ -2,7 +2,7 @@
 title: Known Limitations
 audience: sellers
 status: active
-last_updated: 2026-09-26
+last_updated: 2026-09-27
 owner: Product
 ---
 
@@ -22,10 +22,11 @@ Use this page to understand what is not available in the current controlled-roll
 
 | Limitation | Detail |
 |------------|--------|
+| Myntra not available | Myntra adapter source, Tier-1 mapping code, and credential UI exist in the codebase, but no `connector_definitions` row has been seeded — the connector is not runtime-registered and is unreachable to all tenants. A product decision is required: seed a DB row and complete QA, or formally remove from the Tier-1 marketplace channels list. |
 | Meesho direct publish not available | Meesho is a manual-export workflow. Generate the export file and upload it through Meesho Supplier Panel until partner API access is available. |
-| Nykaa direct publish not available | Nykaa is a manual-export workflow. Direct API publishing requires Nykaa platform-partner credentials. |
+| Nykaa not available | Nykaa adapter source exists (export-only, partial implementation), but no `connector_definitions` row has been seeded — the connector is not runtime-registered and is unreachable to all tenants. A product decision is required: seed a DB row, or remove this entry. Direct API publishing requires Nykaa platform-partner credentials (not yet available). |
 | ONDC not live | ONDC connector exists but is behind a feature flag (`FEATURE_ONDC_ENABLED`). Not available to sellers in the current release. |
-| Amazon India under development | Seller install and credential validation are available; publish and status sync remain under active validation and are not recommended for production catalogues. |
+| Amazon India under development | Seller install and credential validation are available; publish and status sync remain under active validation and are not recommended for production catalogues. Implementation status is `stub` — methods may throw NotImplementedError. |
 | Etsy not yet installable | Etsy is still under development and not available to sellers. OAuth2/PKCE consent and credential validation are proven against real Etsy sandbox data; publish has never been exercised against a real listing, pending a shop being opened on the sandbox account. |
 | WooCommerce not GA/public-sellable | WooCommerce customer onboarding is on P1 blocker-closure hold pending P1-1 credential write/read verification, P1-2 auth revocation implementation review, CI, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff. It is hidden/blocked from customer setup and install lanes while the hold is open. |
 | Shopify public claims restricted | Shopify direct-token publishing has real evidence, but managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. Public claims require the claims governance process. |

@@ -1,0 +1,370 @@
+{
+  "summary": {
+    "generatedAt": "2026-09-26T18:59:38.848Z",
+    "generatedFrom": "origin/main",
+    "totalCanonicalSlugs": 15,
+    "compiledInRegistry": 15,
+    "definitionSeeded": 13,
+    "runtimeRegistered": 13,
+    "customerVisible": 5,
+    "installable": 7,
+    "tier1Count": 6,
+    "tier2Count": 9,
+    "inconsistencies": [
+      {
+        "slug": "amazon-in",
+        "issue": "stub-implementation-but-runtime-registered",
+        "detail": "Implementation is marked as \"stub\" but the connector is active in the DB — methods may throw NotImplementedError at runtime."
+      },
+      {
+        "slug": "myntra",
+        "issue": "customer-visible-but-not-runtime-registered",
+        "detail": "Launch stage is \"live\" (customer-visible) but no connector_definitions migration seeds a row for \"myntra\" — this connector is unreachable at runtime."
+      },
+      {
+        "slug": "myntra",
+        "issue": "installable-stage-but-not-runtime-registered",
+        "detail": "Launch stage \"live\" is in isInstallableStage() but no DB row exists."
+      },
+      {
+        "slug": "nykaa",
+        "issue": "customer-visible-but-not-runtime-registered",
+        "detail": "Launch stage is \"manual\" (customer-visible) but no connector_definitions migration seeds a row for \"nykaa\" — this connector is unreachable at runtime."
+      },
+      {
+        "slug": "nykaa",
+        "issue": "installable-stage-but-not-runtime-registered",
+        "detail": "Launch stage \"manual\" is in isInstallableStage() but no DB row exists."
+      },
+      {
+        "slug": "odoo",
+        "issue": "runtime-registered-but-no-credential-ui",
+        "detail": "Connector is runtime-registered but has no credential UI branch in the setup page."
+      },
+      {
+        "slug": "prestashop",
+        "issue": "runtime-registered-but-no-credential-ui",
+        "detail": "Connector is runtime-registered but has no credential UI branch in the setup page."
+      }
+    ]
+  },
+  "inventory": [
+    {
+      "slug": "amazon-in",
+      "adapterExists": true,
+      "implementationStatus": "stub",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC",
+        "WEBHOOK_RECEIVE"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": true,
+      "tier": "Tier-1 (marketplace)",
+      "tier1Channel": "amazon",
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "bigcommerce",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "API_KEY",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "dynamics-365",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "ebay",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "etsy",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": "Etsy not yet installable | Etsy is still under development and not available to sellers. OAuth2/PKCE consent and credential validation are proven against real Etsy sandbox data; publish has never been exercised against a real listing, pending a shop being opened on the sandbox account."
+    },
+    {
+      "slug": "flipkart",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC",
+        "EXCEL_EXPORT"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "live",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": true,
+      "credentialUIExists": true,
+      "tier": "Tier-1 (marketplace)",
+      "tier1Channel": "flipkart",
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "meesho",
+      "adapterExists": true,
+      "implementationStatus": "partial",
+      "capabilities": [
+        "VALIDATE",
+        "EXCEL_EXPORT"
+      ],
+      "authType": null,
+      "launchStage": "manual",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": true,
+      "credentialUIExists": true,
+      "tier": "Tier-1 (marketplace)",
+      "tier1Channel": "meesho",
+      "knownLimitationEntry": "Meesho direct publish not available | Meesho is a manual-export workflow. Generate the export file and upload it through Meesho Supplier Panel until partner API access is available."
+    },
+    {
+      "slug": "myntra",
+      "adapterExists": true,
+      "implementationStatus": "partial",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "TOKEN",
+      "launchStage": "live",
+      "definitionSeeded": false,
+      "runtimeRegistered": false,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": true,
+      "credentialUIExists": true,
+      "tier": "Tier-1 (marketplace)",
+      "tier1Channel": "myntra",
+      "knownLimitationEntry": "Myntra not available | Myntra adapter source, Tier-1 mapping code, and credential UI exist in the codebase, but no `connector_definitions` row has been seeded — the connector is not runtime-registered and is unreachable to all tenants. A product decision is required: seed a DB row and complete QA, or formally remove from the Tier-1 marketplace channels list."
+    },
+    {
+      "slug": "nykaa",
+      "adapterExists": true,
+      "implementationStatus": "partial",
+      "capabilities": [
+        "VALIDATE",
+        "EXCEL_EXPORT"
+      ],
+      "authType": null,
+      "launchStage": "manual",
+      "definitionSeeded": false,
+      "runtimeRegistered": false,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": true,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": "Nykaa not available | Nykaa adapter source exists (export-only, partial implementation), but no `connector_definitions` row has been seeded — the connector is not runtime-registered and is unreachable to all tenants. A product decision is required: seed a DB row, or remove this entry. Direct API publishing requires Nykaa platform-partner credentials (not yet available)."
+    },
+    {
+      "slug": "odoo",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": null,
+      "launchStage": "po_review",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "prestashop",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "API_KEY",
+      "launchStage": "po_review",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "shopify",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC",
+        "WEBHOOK_RECEIVE"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "live",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": true,
+      "isCustomerVisible": true,
+      "credentialUIExists": true,
+      "tier": "Tier-1 (marketplace)",
+      "tier1Channel": "shopify",
+      "knownLimitationEntry": "Shopify public claims restricted | Shopify direct-token publishing has real evidence, but managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. Public claims require the claims governance process."
+    },
+    {
+      "slug": "shopware",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "woocommerce",
+      "adapterExists": true,
+      "implementationStatus": "partial",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC",
+        "WEBHOOK_RECEIVE"
+      ],
+      "authType": "BASIC",
+      "launchStage": "p1_blocker_hold",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": true,
+      "tier": "Tier-1 (marketplace)",
+      "tier1Channel": "woocommerce",
+      "knownLimitationEntry": null
+    },
+    {
+      "slug": "zoho-inventory",
+      "adapterExists": true,
+      "implementationStatus": "full",
+      "capabilities": [
+        "PUBLISH",
+        "VALIDATE",
+        "STATUS_SYNC"
+      ],
+      "authType": "OAuth2",
+      "launchStage": "under_development",
+      "definitionSeeded": true,
+      "runtimeRegistered": true,
+      "compiledInRegistry": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
+      "credentialUIExists": false,
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
+      "knownLimitationEntry": null
+    }
+  ]
+}
