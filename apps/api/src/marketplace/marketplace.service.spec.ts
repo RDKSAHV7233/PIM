@@ -94,20 +94,14 @@ function makeService(productOverride?: Record<string, unknown>) {
 }
 
 describe("MarketplaceService — system mapping pack required fields (PIM#755 follow-up)", () => {
-  it("flags Myntra's mainImageUrl as required, matching MyntraConnector's own category rules", async () => {
-    // MAPPING_PACKS.myntra.requiredFields had drifted from its own fieldMap (which has
-    // always carried "attributes.mainImageUrl": "images.0") and from MyntraConnector's own
-    // required-field rules (myntra-category-rules.ts BASE_FIELDS, mainImageUrl: required
-    // true) — nothing here ever flagged a missing image as blocking for Myntra specifically,
-    // unlike Shopify/WooCommerce. No categoryId/templateId passed, so getEffectiveMapping
-    // takes its final system-pack return path directly — no Prisma or connector-mapping
-    // lookups involved.
+  it("flags Meesho's required fields via mapping pack", async () => {
     const svc = makeService();
     const mapping = await (
       svc as unknown as { getEffectiveMapping: (channel: string) => Promise<{ requiredFields: string[] }> }
-    ).getEffectiveMapping("myntra");
+    ).getEffectiveMapping("meesho");
 
-    expect(mapping.requiredFields).toContain("attributes.mainImageUrl");
+    expect(mapping.requiredFields).toContain("title");
+    expect(mapping.requiredFields).toContain("brand");
   });
 });
 

@@ -271,16 +271,16 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("myntra", () => {
-    it("is live", () => {
+    it("is under_development", () => {
       const policy = resolveConnectorLaunchPolicy("myntra", allCaps);
-      expect(policy.launchStage).toBe("live");
+      expect(policy.launchStage).toBe("under_development");
     });
   });
 
   describe("nykaa", () => {
-    it("is manual", () => {
+    it("is under_development", () => {
       const policy = resolveConnectorLaunchPolicy("nykaa", allCaps);
-      expect(policy.launchStage).toBe("manual");
+      expect(policy.launchStage).toBe("under_development");
     });
   });
 

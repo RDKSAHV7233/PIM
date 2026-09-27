@@ -15,6 +15,10 @@
  *   6. migrations/seed_*                — connector_definitions DB rows
  *   7. connector setup page             — credential UI coverage
  *   8. known-limitations.md             — customer-facing limitation docs
+ *   9. marketplace.service.ts           — MAPPING_PACKS field maps (ADR-0009)
+ *  10. connector-mapping.service.ts     — SYSTEM_CONNECTOR_DEFAULTS (ADR-0009)
+ *  11. connectors/<slug>/*-category-rules/templates.ts — schema bridges (ADR-0008)
+ *  12. connector adapter files          — mapping resolution boundary (ADR-0010)
  *
  * Output: JSON inventory + Markdown table, both to stdout and optionally
  * to docs/connectors/CONNECTOR_INVENTORY.json and .md.
@@ -294,6 +298,126 @@ function getKnownLimitationEntry(slug) {
   return null;
 }
 
+// ─── 9. MAPPING_PACKS field maps from marketplace.service.ts (ADR-0009) ─
+function extractMappingPacks() {
+  const src = read("apps/api/src/marketplace/marketplace.service.ts");
+  if (!src) return {};
+  const blockMatch = src.match(/const\s+MAPPING_PACKS[^{]*\{([\s\S]*?)^\};/m);
+  if (!blockMatch) return {};
+  const block = blockMatch[1];
+  const packs = {};
+  const channelRe = /(\w+):\s*\{([\s\S]*?)\n  \}/g;
+  let cm;
+  while ((cm = channelRe.exec(block)) !== null) {
+    const channel = cm[1];
+    const body = cm[2];
+    const fmMatch = body.match(/fieldMap:\s*\{([\s\S]*?)\}/);
+    if (!fmMatch) continue;
+    const fieldMap = {};
+    const entryRe = /["']?([^"':,\s]+)["']?\s*:\s*["']([^"']+)["']/g;
+    let em;
+    while ((em = entryRe.exec(fmMatch[1])) !== null) {
+      fieldMap[em[1]] = em[2];
+    }
+    packs[channel] = fieldMap;
+  }
+  return packs;
+}
+
+// ─── 10. SYSTEM_CONNECTOR_DEFAULTS from connector-mapping.service.ts (ADR-0009) ─
+function extractSystemConnectorDefaults() {
+  const src = read("apps/api/src/marketplace/connector-mapping.service.ts");
+  if (!src) return {};
+  const blockMatch = src.match(/const\s+SYSTEM_CONNECTOR_DEFAULTS[^{]*\{([\s\S]*?)^\};/m);
+  if (!blockMatch) return {};
+  const block = blockMatch[1];
+  const defaults = {};
+  // Match both quoted ("amazon-in") and unquoted (flipkart) object keys followed by ': {'
+  const slugRe = /(?:["']([^"']+)["']|(\w[\w-]*))\s*:\s*\{([\s\S]*?)\}/g;
+  let sm;
+  while ((sm = slugRe.exec(block)) !== null) {
+    const slug = sm[1] || sm[2];
+    const body = sm[3];
+    const fieldMap = {};
+    const entryRe = /["']?([^"':,\s]+)["']?\s*:\s*["']([^"']+)["']/g;
+    let em;
+    while ((em = entryRe.exec(body)) !== null) {
+      fieldMap[em[1]] = em[2];
+    }
+    defaults[slug] = fieldMap;
+  }
+  return defaults;
+}
+
+// ─── 11. Schema bridge and staleness check (ADR-0008) ───────────────
+function checkSchemaBridge(slug) {
+  const baseDir = path.join(REPO_ROOT, "apps/api/src/connectors");
+  const dirCandidates = [slug, slug.replace(/-in$/, ""), slug.replace(/-/g, "")];
+  let connectorDir = null;
+  for (const candidate of dirCandidates) {
+    const dir = path.join(baseDir, candidate);
+    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+      connectorDir = dir;
+      break;
+    }
+  }
+  if (!connectorDir) return { hasLocalRegistry: false, hasBridge: false, staleDays: null };
+
+  const files = fs.readdirSync(connectorDir);
+  const schemaFile = files.find(
+    (f) => f.endsWith("-category-rules.ts") || f.endsWith("-category-templates.ts"),
+  );
+  if (!schemaFile) return { hasLocalRegistry: false, hasBridge: false, staleDays: null };
+
+  const content = fs.readFileSync(path.join(connectorDir, schemaFile), "utf8");
+  const hasBridge =
+    content.includes("ProductTypeSchema") ||
+    content.includes("ruleToProductTypeSchema") ||
+    content.includes("templateToProductTypeSchema");
+
+  let staleDays = null;
+  const dateMatches = content.match(/templateVerifiedAt[^"]*["'](\d{4}-\d{2}-\d{2})["']/g);
+  if (dateMatches) {
+    const now = new Date();
+    for (const dm of dateMatches) {
+      const dateStr = dm.match(/["'](\d{4}-\d{2}-\d{2})["']/);
+      if (dateStr) {
+        const d = new Date(dateStr[1]);
+        const days = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+        if (staleDays === null || days > staleDays) staleDays = days;
+      }
+    }
+  }
+
+  return { hasLocalRegistry: true, hasBridge, staleDays, schemaFile };
+}
+
+// ─── 12. Adapter mapping resolution boundary check (ADR-0010) ───────
+function checkAdapterMappingBoundary(slug) {
+  const baseDir = path.join(REPO_ROOT, "apps/api/src/connectors");
+  const dirCandidates = [slug, slug.replace(/-in$/, ""), slug.replace(/-/g, "")];
+  let connectorDir = null;
+  for (const candidate of dirCandidates) {
+    const dir = path.join(baseDir, candidate);
+    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+      connectorDir = dir;
+      break;
+    }
+  }
+  if (!connectorDir) return { violatesBoundary: false };
+
+  const files = fs.readdirSync(connectorDir);
+  const connFile = files.find((f) => f.endsWith(".connector.ts"));
+  if (!connFile) return { violatesBoundary: false };
+
+  const content = fs.readFileSync(path.join(connectorDir, connFile), "utf8");
+  const callsResolve =
+    content.includes("resolveEffectiveMapping") ||
+    content.includes("getEffectiveMapping");
+
+  return { violatesBoundary: callsResolve };
+}
+
 // ─── Severity Classification ────────────────────────────────────────
 //
 // ERROR     — architecture invariant violation; CI should fail
@@ -309,6 +433,14 @@ const SEVERITY_RULES = {
   "runtime-registered-but-no-credential-ui": SEVERITY.WARNING,
   "stub-implementation-but-runtime-registered": SEVERITY.WARNING,
   "tier1-but-not-runtime-registered": SEVERITY.ERROR,
+  // ADR-0009: mapping baseline invariants
+  "mapping-baseline-divergence": SEVERITY.ERROR,
+  "tier1-missing-system-default-baseline": SEVERITY.ERROR,
+  // ADR-0008: target schema invariants
+  "tier1-schema-missing-bridge": SEVERITY.WARNING,
+  "schema-template-stale": SEVERITY.INFO,
+  // ADR-0010: projection boundary invariant
+  "adapter-resolves-mapping-directly": SEVERITY.WARNING,
 };
 
 function loadExceptions() {
@@ -440,6 +572,85 @@ function main() {
         issue: "tier1-but-not-runtime-registered",
         severity: SEVERITY_RULES["tier1-but-not-runtime-registered"],
         detail: `Connector is in Tier-1 MARKETPLACE_CHANNELS but has no connector_definitions row — Tier-1 implies runtime availability.`,
+      });
+    }
+  }
+
+  // ─── ADR-0009: Mapping baseline invariants ─────────────────────────
+  const mappingPacks = extractMappingPacks();
+  const systemDefaults = extractSystemConnectorDefaults();
+
+  // Check 1: MAPPING_PACKS / SYSTEM_CONNECTOR_DEFAULTS intersection must not diverge
+  const channelToSlugMap = tier1Info.channelToSlug || {};
+  for (const [channel, packFieldMap] of Object.entries(mappingPacks)) {
+    const slug = channelToSlugMap[channel];
+    if (!slug) continue;
+    const defaultFieldMap = systemDefaults[slug];
+    if (!defaultFieldMap) continue;
+    const divergent = [];
+    for (const [key, packTarget] of Object.entries(packFieldMap)) {
+      if (key in defaultFieldMap && defaultFieldMap[key] !== packTarget) {
+        divergent.push(`${key}: MAPPING_PACKS="${packTarget}" vs SYSTEM_CONNECTOR_DEFAULTS="${defaultFieldMap[key]}"`);
+      }
+    }
+    if (divergent.length > 0) {
+      summary.findings.push({
+        slug,
+        issue: "mapping-baseline-divergence",
+        severity: SEVERITY_RULES["mapping-baseline-divergence"],
+        detail: `MAPPING_PACKS (channel="${channel}") and SYSTEM_CONNECTOR_DEFAULTS (slug="${slug}") have divergent field map values for shared keys: ${divergent.join("; ")}. ADR-0009 §2 requires these intersections to be identical.`,
+      });
+    }
+  }
+
+  // Check 2: Every Tier-1 connector must have a SYSTEM_CONNECTOR_DEFAULTS entry
+  for (const c of inventory) {
+    if (!c.tier.startsWith("Tier-1")) continue;
+    const slugsToCheck = [c.slug];
+    if (c.tier1Channel && channelToSlugMap[c.tier1Channel]) {
+      slugsToCheck.push(channelToSlugMap[c.tier1Channel]);
+    }
+    const hasBaseline = slugsToCheck.some((s) => s in systemDefaults);
+    if (!hasBaseline) {
+      summary.findings.push({
+        slug: c.slug,
+        issue: "tier1-missing-system-default-baseline",
+        severity: SEVERITY_RULES["tier1-missing-system-default-baseline"],
+        detail: `Tier-1 connector "${c.slug}" has no entry in SYSTEM_CONNECTOR_DEFAULTS (connector-mapping.service.ts). ADR-0009 §8 requires every Tier-1 connector to have a system default baseline.`,
+      });
+    }
+  }
+
+  // ─── ADR-0008: Target schema invariants ───────────────────────────
+  for (const c of inventory) {
+    const schema = checkSchemaBridge(c.slug);
+    if (c.tier.startsWith("Tier-1") && schema.hasLocalRegistry && !schema.hasBridge) {
+      summary.findings.push({
+        slug: c.slug,
+        issue: "tier1-schema-missing-bridge",
+        severity: SEVERITY_RULES["tier1-schema-missing-bridge"],
+        detail: `Tier-1 connector "${c.slug}" has a local category registry (${schema.schemaFile}) but no bridge function to ProductTypeSchema. ADR-0008 §1 requires all local registries to bridge to the canonical contract.`,
+      });
+    }
+    if (schema.hasLocalRegistry && schema.staleDays !== null && schema.staleDays > 90) {
+      summary.findings.push({
+        slug: c.slug,
+        issue: "schema-template-stale",
+        severity: SEVERITY_RULES["schema-template-stale"],
+        detail: `Local schema registry for "${c.slug}" has templateVerifiedAt dates older than 90 days (${schema.staleDays} days). ADR-0008 §2 requires quarterly review for local_registry sources.`,
+      });
+    }
+  }
+
+  // ─── ADR-0010: Projection boundary invariant ─────────────────────
+  for (const c of inventory) {
+    const boundary = checkAdapterMappingBoundary(c.slug);
+    if (boundary.violatesBoundary) {
+      summary.findings.push({
+        slug: c.slug,
+        issue: "adapter-resolves-mapping-directly",
+        severity: SEVERITY_RULES["adapter-resolves-mapping-directly"],
+        detail: `Connector adapter for "${c.slug}" calls resolveEffectiveMapping() or getEffectiveMapping() directly. ADR-0010 §5 requires the Provider Adapter to receive a projected payload, not re-resolve mappings.`,
       });
     }
   }

@@ -368,36 +368,6 @@ const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
       "attributes.material": "fabric",
     },
   },
-  myntra: {
-    channel: "myntra",
-    displayName: "Myntra",
-    requiredFields: [
-      "title",
-      "brand",
-      "description",
-      "hsnCode",
-      "gstRate",
-      "attributes.color",
-      "attributes.size",
-      // PIM#755 follow-up: MyntraConnector's own required-field rules
-      // (myntra-category-rules.ts BASE_FIELDS) already treat mainImageUrl as
-      // required for every category. This local pack's requiredFields list had
-      // drifted from that — the fieldMap below has always carried a mapping
-      // target for it, but nothing here ever flagged it as missing.
-      "attributes.mainImageUrl",
-    ],
-    fieldMap: {
-      title: "product_name",
-      brand: "brand",
-      description: "product_description",
-      hsnCode: "hsn_code",
-      gstRate: "gst_rate",
-      "attributes.color": "color",
-      "attributes.size": "size",
-      "attributes.material": "fabric_composition",
-      "attributes.mainImageUrl": "images.0",
-    },
-  },
   shopify: {
     channel: "shopify",
     displayName: "Shopify",

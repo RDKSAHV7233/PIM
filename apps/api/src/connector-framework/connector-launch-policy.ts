@@ -163,7 +163,7 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.MYNTRA) {
     return {
-      launchStage: "live",
+      launchStage: "under_development",
       launchNote:
         "Myntra supports publish, validation, and listing-status sync via the Myntra Listing Management API. API access requires account-manager enablement. Enter Merchant ID, Secret Key, and Warehouse ID from your Myntra seller account.",
       surfacedCapabilities: capabilities,
@@ -172,7 +172,7 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.NYKAA) {
     return {
-      launchStage: "manual",
+      launchStage: "under_development",
       launchNote:
         "Nykaa is an export-only connector. Generate a category-specific Excel file and upload it to seller.nykaa.com → Catalogue Management → Catalogue Upload. Nykaa reviews listings within 7–10 business days. Direct API publishing requires Nykaa platform-partner credentials (not yet available).",
       surfacedCapabilities: capabilities,

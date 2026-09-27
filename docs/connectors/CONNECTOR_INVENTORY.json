@@ -1,51 +1,21 @@
 {
   "summary": {
-    "generatedAt": "2026-09-26T19:31:33.008Z",
+    "generatedAt": "2026-09-27T08:24:44.819Z",
     "generatedFrom": "origin/main",
     "totalCanonicalSlugs": 15,
     "compiledInRegistry": 15,
     "definitionSeeded": 13,
     "runtimeRegistered": 13,
-    "customerVisible": 5,
-    "installable": 7,
-    "tier1Count": 6,
-    "tier2Count": 9,
+    "customerVisible": 3,
+    "installable": 5,
+    "tier1Count": 5,
+    "tier2Count": 10,
     "findings": [
       {
         "slug": "amazon-in",
         "issue": "stub-implementation-but-runtime-registered",
         "severity": "WARNING",
         "detail": "Implementation is marked as \"stub\" but the connector is active in the DB — methods may throw NotImplementedError at runtime."
-      },
-      {
-        "slug": "myntra",
-        "issue": "customer-visible-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage is \"live\" (customer-visible) but no connector_definitions migration seeds a row for \"myntra\" — this connector is unreachable at runtime."
-      },
-      {
-        "slug": "myntra",
-        "issue": "installable-stage-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage \"live\" is in isInstallableStage() but no DB row exists."
-      },
-      {
-        "slug": "myntra",
-        "issue": "tier1-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Connector is in Tier-1 MARKETPLACE_CHANNELS but has no connector_definitions row — Tier-1 implies runtime availability."
-      },
-      {
-        "slug": "nykaa",
-        "issue": "customer-visible-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage is \"manual\" (customer-visible) but no connector_definitions migration seeds a row for \"nykaa\" — this connector is unreachable at runtime."
-      },
-      {
-        "slug": "nykaa",
-        "issue": "installable-stage-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage \"manual\" is in isInstallableStage() but no DB row exists."
       },
       {
         "slug": "odoo",
@@ -58,6 +28,30 @@
         "issue": "runtime-registered-but-no-credential-ui",
         "severity": "WARNING",
         "detail": "Connector is runtime-registered but has no credential UI branch in the setup page."
+      },
+      {
+        "slug": "meesho",
+        "issue": "tier1-schema-missing-bridge",
+        "severity": "WARNING",
+        "detail": "Tier-1 connector \"meesho\" has a local category registry (meesho-category-templates.ts) but no bridge function to ProductTypeSchema. ADR-0008 §1 requires all local registries to bridge to the canonical contract."
+      },
+      {
+        "slug": "meesho",
+        "issue": "schema-template-stale",
+        "severity": "INFO",
+        "detail": "Local schema registry for \"meesho\" has templateVerifiedAt dates older than 90 days (123 days). ADR-0008 §2 requires quarterly review for local_registry sources."
+      },
+      {
+        "slug": "myntra",
+        "issue": "schema-template-stale",
+        "severity": "INFO",
+        "detail": "Local schema registry for \"myntra\" has templateVerifiedAt dates older than 90 days (108 days). ADR-0008 §2 requires quarterly review for local_registry sources."
+      },
+      {
+        "slug": "nykaa",
+        "issue": "schema-template-stale",
+        "severity": "INFO",
+        "detail": "Local schema registry for \"nykaa\" has templateVerifiedAt dates older than 90 days (108 days). ADR-0008 §2 requires quarterly review for local_registry sources."
       }
     ],
     "inconsistencies": [
@@ -68,36 +62,6 @@
         "detail": "Implementation is marked as \"stub\" but the connector is active in the DB — methods may throw NotImplementedError at runtime."
       },
       {
-        "slug": "myntra",
-        "issue": "customer-visible-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage is \"live\" (customer-visible) but no connector_definitions migration seeds a row for \"myntra\" — this connector is unreachable at runtime."
-      },
-      {
-        "slug": "myntra",
-        "issue": "installable-stage-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage \"live\" is in isInstallableStage() but no DB row exists."
-      },
-      {
-        "slug": "myntra",
-        "issue": "tier1-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Connector is in Tier-1 MARKETPLACE_CHANNELS but has no connector_definitions row — Tier-1 implies runtime availability."
-      },
-      {
-        "slug": "nykaa",
-        "issue": "customer-visible-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage is \"manual\" (customer-visible) but no connector_definitions migration seeds a row for \"nykaa\" — this connector is unreachable at runtime."
-      },
-      {
-        "slug": "nykaa",
-        "issue": "installable-stage-but-not-runtime-registered",
-        "severity": "ERROR",
-        "detail": "Launch stage \"manual\" is in isInstallableStage() but no DB row exists."
-      },
-      {
         "slug": "odoo",
         "issue": "runtime-registered-but-no-credential-ui",
         "severity": "WARNING",
@@ -108,12 +72,36 @@
         "issue": "runtime-registered-but-no-credential-ui",
         "severity": "WARNING",
         "detail": "Connector is runtime-registered but has no credential UI branch in the setup page."
+      },
+      {
+        "slug": "meesho",
+        "issue": "tier1-schema-missing-bridge",
+        "severity": "WARNING",
+        "detail": "Tier-1 connector \"meesho\" has a local category registry (meesho-category-templates.ts) but no bridge function to ProductTypeSchema. ADR-0008 §1 requires all local registries to bridge to the canonical contract."
+      },
+      {
+        "slug": "meesho",
+        "issue": "schema-template-stale",
+        "severity": "INFO",
+        "detail": "Local schema registry for \"meesho\" has templateVerifiedAt dates older than 90 days (123 days). ADR-0008 §2 requires quarterly review for local_registry sources."
+      },
+      {
+        "slug": "myntra",
+        "issue": "schema-template-stale",
+        "severity": "INFO",
+        "detail": "Local schema registry for \"myntra\" has templateVerifiedAt dates older than 90 days (108 days). ADR-0008 §2 requires quarterly review for local_registry sources."
+      },
+      {
+        "slug": "nykaa",
+        "issue": "schema-template-stale",
+        "severity": "INFO",
+        "detail": "Local schema registry for \"nykaa\" has templateVerifiedAt dates older than 90 days (108 days). ADR-0008 §2 requires quarterly review for local_registry sources."
       }
     ],
     "severityCounts": {
-      "ERROR": 5,
-      "WARNING": 3,
-      "INFO": 0,
+      "ERROR": 0,
+      "WARNING": 4,
+      "INFO": 3,
       "EXCEPTION": 0
     }
   },
@@ -276,15 +264,15 @@
         "STATUS_SYNC"
       ],
       "authType": "TOKEN",
-      "launchStage": "live",
+      "launchStage": "under_development",
       "definitionSeeded": false,
       "runtimeRegistered": false,
       "compiledInRegistry": true,
-      "isInstallable": true,
-      "isCustomerVisible": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
       "credentialUIExists": true,
-      "tier": "Tier-1 (marketplace)",
-      "tier1Channel": "myntra",
+      "tier": "Tier-2 (generic)",
+      "tier1Channel": null,
       "knownLimitationEntry": "Myntra not available | Myntra adapter source, Tier-1 mapping code, and credential UI exist in the codebase, but no `connector_definitions` row has been seeded — the connector is not runtime-registered and is unreachable to all tenants. A product decision is required: seed a DB row and complete QA, or formally remove from the Tier-1 marketplace channels list."
     },
     {
@@ -296,12 +284,12 @@
         "EXCEL_EXPORT"
       ],
       "authType": null,
-      "launchStage": "manual",
+      "launchStage": "under_development",
       "definitionSeeded": false,
       "runtimeRegistered": false,
       "compiledInRegistry": true,
-      "isInstallable": true,
-      "isCustomerVisible": true,
+      "isInstallable": false,
+      "isCustomerVisible": false,
       "credentialUIExists": false,
       "tier": "Tier-2 (generic)",
       "tier1Channel": null,
