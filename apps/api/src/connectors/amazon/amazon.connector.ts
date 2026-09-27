@@ -1,8 +1,6 @@
 // apps/api/src/connectors/amazon/amazon.connector.ts
-// Phase 5-S2: validation and credential foundations.
-// Phase 5-S3: implement OAuth callback and schema fetch.
-// Phase 5-S4: implement publish/update/status sync.
-// Phase 5-S5: implement webhook verification and parsing.
+// Amazon India (SP-API) connector — full implementation.
+// Capabilities: PUBLISH, VALIDATE, STATUS_SYNC, WEBHOOK_RECEIVE, BULK_PUBLISH (opt-in).
 
 import { Injectable } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -19,6 +17,7 @@ import {
   BulkSubmissionRef,
   ConnectorCap,
   ConnectorContext,
+  ConnectorImplementationStatus,
   ConnectorInterface,
   ConnectorIssue,
   ExportFile,
@@ -196,7 +195,7 @@ type AmazonFeedResultDocument = {
 export class AmazonConnector implements ConnectorInterface {
   readonly slug = "amazon-in";
   readonly displayName = "Amazon India";
-  readonly implementationStatus = "stub" as const;
+  readonly implementationStatus: ConnectorImplementationStatus = "full";
 
   get capabilities(): ConnectorCap[] {
     const caps: ConnectorCap[] = ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"];

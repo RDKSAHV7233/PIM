@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-26T11:00",
+    "lastUpdated": "2026-09-27T18:30",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -4080,6 +4080,26 @@
             "main.ts uses beforeSend: sentryBeforeSend — identical runtime behavior, now verified",
             "Satisfies #920 acceptance criterion: tenant payloads confirmed redacted, not assumed"
           ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-60",
+      "name": "Amazon India implementationStatus Promotion — stub → full",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-INC60-01",
+          "title": "Promote amazon-in implementationStatus from stub to full",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "c203132",
+          "tests_passed": [
+            "npx tsc --noEmit -p apps/api/tsconfig.json",
+            "node scripts/generate-connector-inventory.cjs — 0 WARNINGs, 0 ERRORs"
+          ],
+          "acceptance": "stub-implementation-but-runtime-registered WARNING cleared; inventory shows amazon-in status=full"
         }
       ]
     },
