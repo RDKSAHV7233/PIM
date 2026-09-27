@@ -1,6 +1,6 @@
 # Vexa PIM — Source-Generated Connector Inventory
 
-> **Generated:** 2026-09-27T08:24:44.819Z
+> **Generated:** 2026-09-27T16:39:35.985Z
 > **Source:** `origin/main`
 > **Script:** `scripts/generate-connector-inventory.cjs`
 

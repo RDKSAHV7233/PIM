@@ -19,6 +19,9 @@
  *  10. connector-mapping.service.ts     — SYSTEM_CONNECTOR_DEFAULTS (ADR-0009)
  *  11. connectors/<slug>/*-category-rules/templates.ts — schema bridges (ADR-0008)
  *  12. connector adapter files          — mapping resolution boundary (ADR-0010)
+ *  13. apps/web/src/lib/marketplace-channels.ts — frontend Tier-1 list (ADR-0014)
+ *  14. apps/api/src/media/media.service.ts      — CHANNEL_RULES exhaustive map (ADR-0014)
+ *  15. apps/web/src/lib/design-tokens.ts        — channelConfig exhaustive map (ADR-0014)
  *
  * Output: JSON inventory + Markdown table, both to stdout and optionally
  * to docs/connectors/CONNECTOR_INVENTORY.json and .md.
@@ -418,6 +421,62 @@ function checkAdapterMappingBoundary(slug) {
   return { violatesBoundary: callsResolve };
 }
 
+// ─── 13. Frontend Tier-1 channel list (ADR-0014) ────────────────────
+function extractFrontendChannels() {
+  const src = read("apps/web/src/lib/marketplace-channels.ts");
+  if (!src) return null;
+  const match = src.match(/MARKETPLACE_CHANNELS\s*=\s*\[([^\]]+)\]/);
+  if (!match) return null;
+  const slugs = [];
+  const re = /["'](\w+)["']/g;
+  let m;
+  while ((m = re.exec(match[1])) !== null) {
+    slugs.push(m[1]);
+  }
+  return slugs;
+}
+
+// ─── 14/15. Exhaustive Tier-1 config maps (ADR-0014) ────────────────
+function extractExhaustiveConfigMapKeys(filePath, mapPattern) {
+  const src = read(filePath);
+  if (!src) return null;
+  const match = src.match(mapPattern);
+  if (!match) return null;
+  const keys = [];
+  let indent = null;
+  for (const line of match[1].split("\n")) {
+    const m = line.match(/^(\s+)([\w-]+)\s*:/);
+    if (!m) continue;
+    if (indent === null) indent = m[1];
+    if (m[1] === indent) keys.push(m[2]);
+  }
+  return keys;
+}
+
+function extractTier1ConfigMaps() {
+  const maps = [];
+
+  const mediaKeys = extractExhaustiveConfigMapKeys(
+    "apps/api/src/media/media.service.ts",
+    /CHANNEL_RULES[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
+  );
+  if (mediaKeys) maps.push({ source: "media.service.ts:CHANNEL_RULES", keys: mediaKeys });
+
+  const designKeys = extractExhaustiveConfigMapKeys(
+    "apps/web/src/lib/design-tokens.ts",
+    /channelConfig[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
+  );
+  if (designKeys) maps.push({ source: "design-tokens.ts:channelConfig", keys: designKeys });
+
+  const mappingKeys = extractExhaustiveConfigMapKeys(
+    "apps/api/src/marketplace/marketplace.service.ts",
+    /const MAPPING_PACKS[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
+  );
+  if (mappingKeys) maps.push({ source: "marketplace.service.ts:MAPPING_PACKS", keys: mappingKeys });
+
+  return maps;
+}
+
 // ─── Severity Classification ────────────────────────────────────────
 //
 // ERROR     — architecture invariant violation; CI should fail
@@ -441,6 +500,9 @@ const SEVERITY_RULES = {
   "schema-template-stale": SEVERITY.INFO,
   // ADR-0010: projection boundary invariant
   "adapter-resolves-mapping-directly": SEVERITY.WARNING,
+  // ADR-0014: Tier-1 config-map drift invariants
+  "frontend-api-channel-sync": SEVERITY.ERROR,
+  "tier1-exhaustive-config-drift": SEVERITY.ERROR,
 };
 
 function loadExceptions() {
@@ -652,6 +714,62 @@ function main() {
         severity: SEVERITY_RULES["adapter-resolves-mapping-directly"],
         detail: `Connector adapter for "${c.slug}" calls resolveEffectiveMapping() or getEffectiveMapping() directly. ADR-0010 §5 requires the Provider Adapter to receive a projected payload, not re-resolve mappings.`,
       });
+    }
+  }
+
+  // ─── ADR-0014: Tier-1 config-map drift ──────────────────────────
+  const apiChannels = getTier1Slugs().channels;
+  const frontendChannels = extractFrontendChannels();
+  if (apiChannels && frontendChannels) {
+    const apiSet = new Set(apiChannels);
+    const feSet = new Set(frontendChannels);
+    for (const ch of frontendChannels) {
+      if (!apiSet.has(ch)) {
+        summary.findings.push({
+          slug: ch,
+          issue: "frontend-api-channel-sync",
+          severity: SEVERITY_RULES["frontend-api-channel-sync"],
+          detail: `Frontend MARKETPLACE_CHANNELS contains "${ch}" but API MARKETPLACE_CHANNELS does not. ADR-0014 §1 requires the frontend channel list to be a subset of the API authority.`,
+        });
+      }
+    }
+    for (const ch of apiChannels) {
+      if (!feSet.has(ch)) {
+        summary.findings.push({
+          slug: ch,
+          issue: "frontend-api-channel-sync",
+          severity: SEVERITY_RULES["frontend-api-channel-sync"],
+          detail: `API MARKETPLACE_CHANNELS contains "${ch}" but frontend MARKETPLACE_CHANNELS does not. ADR-0014 §1 requires the frontend and API channel lists to stay in sync.`,
+        });
+      }
+    }
+  }
+
+  const tier1ConfigMaps = extractTier1ConfigMaps();
+  if (apiChannels) {
+    const canonical = new Set(apiChannels);
+    for (const map of tier1ConfigMaps) {
+      const mapKeys = new Set(map.keys);
+      for (const key of map.keys) {
+        if (!canonical.has(key)) {
+          summary.findings.push({
+            slug: key,
+            issue: "tier1-exhaustive-config-drift",
+            severity: SEVERITY_RULES["tier1-exhaustive-config-drift"],
+            detail: `${map.source} contains key "${key}" which is not a valid MarketplaceChannel. Remove the stale entry.`,
+          });
+        }
+      }
+      for (const ch of apiChannels) {
+        if (!mapKeys.has(ch)) {
+          summary.findings.push({
+            slug: ch,
+            issue: "tier1-exhaustive-config-drift",
+            severity: SEVERITY_RULES["tier1-exhaustive-config-drift"],
+            detail: `${map.source} is missing required key "${ch}". Every MarketplaceChannel must have an entry.`,
+          });
+        }
+      }
     }
   }
 
