@@ -128,4 +128,61 @@ describe("ApiExceptionCaptureFilter policy", () => {
 
     expect(captureUnexpected).not.toHaveBeenCalled();
   });
+
+  it("fails open: capture rejection is swallowed and original response is still sent", async () => {
+    const captureUnexpected = jest.fn().mockRejectedValue(new Error("db down"));
+    const reply = jest.fn();
+    const warnSpy = jest.fn();
+    const filter = new ApiExceptionCaptureFilter(
+      { captureUnexpected } as never,
+      { httpAdapter: { reply, isHeadersSent: () => false } } as never,
+      { warn: warnSpy } as never,
+    );
+    const host = {
+      getType: () => "http",
+      getArgByIndex: (index: number) => index === 0 ? {} : {},
+      switchToHttp: () => ({ getRequest: () => ({ method: "GET", originalUrl: "/api/v1/test" }), getResponse: () => ({}) }),
+    } as never;
+
+    filter.catch(new Error("boom"), host);
+    // Let the microtask queue drain so the .catch() fires
+    await Promise.resolve();
+
+    expect(reply).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("failed open"),
+      expect.objectContaining({ captureError: "db down" }),
+    );
+  });
+
+  it("does not send sensitive headers or request body to Error Authority", () => {
+    const captureUnexpected = jest.fn().mockResolvedValue(undefined);
+    const filter = new ApiExceptionCaptureFilter({ captureUnexpected } as never, {
+      httpAdapter: { reply: jest.fn(), isHeadersSent: () => false },
+    } as never);
+    const request = {
+      method: "POST",
+      originalUrl: "/api/v1/products",
+      headers: { authorization: "Bearer secret_token", cookie: "session=abc", "x-api-key": "key_123" },
+      body: { title: "Tenant Product", price: 99.99, sku: "SKU-001" },
+      pimUserId: "uid_tenant_a",
+    };
+    const host = {
+      getType: () => "http",
+      getArgByIndex: (index: number) => index === 0 ? request : {},
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}) }),
+    } as never;
+
+    filter.catch(new Error("connector failure"), host);
+
+    const callArg = captureUnexpected.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(callArg["rawActorId"]).toBe("uid_tenant_a");
+    // No raw headers, cookies, or body in the capture input
+    expect(callArg).not.toHaveProperty("headers");
+    expect(callArg).not.toHaveProperty("body");
+    expect(callArg).not.toHaveProperty("cookies");
+    expect(JSON.stringify(callArg)).not.toContain("secret_token");
+    expect(JSON.stringify(callArg)).not.toContain("Tenant Product");
+    expect(JSON.stringify(callArg)).not.toContain("key_123");
+  });
 });

@@ -1,6 +1,7 @@
-import { ArgumentsHost, Catch, HttpException, HttpStatus } from "@nestjs/common";
+import { ArgumentsHost, Catch, HttpException, HttpStatus, Optional } from "@nestjs/common";
 import { BaseExceptionFilter, HttpAdapterHost } from "@nestjs/core";
 import type { Request } from "express";
+import { LoggerService } from "../common/logging/logger.service";
 import { ErrorCaptureService } from "./error-capture.service";
 
 const CAPTURED_MARKER = Symbol("vexa.errorAuthorityCaptured");
@@ -28,6 +29,7 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
   constructor(
     private readonly errorCaptureService: ErrorCaptureService,
     adapterHost: HttpAdapterHost,
+    @Optional() private readonly logger?: LoggerService,
   ) {
     super(adapterHost.httpAdapter);
   }
@@ -37,19 +39,25 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
       if (!isCaptured(exception)) {
         markCaptured(exception);
         const request = host.switchToHttp().getRequest<RequestWithActor>();
-        void this.errorCaptureService.captureUnexpected({
-          runtime: "api",
-          service: "vexa-pim-api",
-          error: exception,
-          errorCode: extractErrorCode(exception),
-          category: "internal",
-          severity: "p1",
-          routeTemplate: resolveRouteTemplate(request),
-          method: request.method,
-          statusCode: resolveStatusCode(exception),
-          rawActorId: request.pimUserId,
-          actorType: request.pimAuthType === "api_key" ? "api_client" : request.pimUserId ? "human" : "anonymous",
-        });
+        void this.errorCaptureService
+          .captureUnexpected({
+            runtime: "api",
+            service: "vexa-pim-api",
+            error: exception,
+            errorCode: extractErrorCode(exception),
+            category: "internal",
+            severity: "p1",
+            routeTemplate: resolveRouteTemplate(request),
+            method: request.method,
+            statusCode: resolveStatusCode(exception),
+            rawActorId: request.pimUserId,
+            actorType: request.pimAuthType === "api_key" ? "api_client" : request.pimUserId ? "human" : "anonymous",
+          })
+          .catch((captureErr: unknown) => {
+            this.logger?.warn("Error Authority capture boundary failed open in global filter.", {
+              captureError: captureErr instanceof Error ? captureErr.message : String(captureErr),
+            });
+          });
       }
     }
     super.catch(exception, host);

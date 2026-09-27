@@ -3985,6 +3985,101 @@
             "Sentry init remains fail-open (try/catch unchanged) — no behavior change when SENTRY_DSN is unset",
             "Unblocks #920 acceptance criterion: 'Secrets and sensitive tenant payloads are confirmed redacted'"
           ]
+        },
+        {
+          "storyId": "ST-920-CTO-ARCH-DECISIONS",
+          "title": "CTO architecture decisions: web telemetry (Option A) + OTel strategy (Option 1)",
+          "status": "completed",
+          "locked": true,
+          "owner": "cto",
+          "commit": "pending-activation",
+          "scope": [
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "decisions": [
+            {
+              "id": "DEC-920-WEB-TELEMETRY",
+              "decision": "Option A — Keep Error Authority for web",
+              "rationale": "Web app uses captureNextServerError → /error-authority/ingest → Postgres. Adding @sentry/nextjs would introduce a second PII review surface with no v1 benefit. Revisit when multi-service distributed tracing is required.",
+              "decided_by": "cto",
+              "date": "2026-09-27"
+            },
+            {
+              "id": "DEC-920-OTEL",
+              "decision": "Option 1 — Sentry Performance only, no separate OTel collector",
+              "rationale": "tracesSampleRate: 0.1 already set in production. No OTLP endpoint needed for v1. Revisit when team exceeds 3 Railway services or requires vendor-neutral trace export.",
+              "decided_by": "cto",
+              "date": "2026-09-27"
+            },
+            {
+              "id": "DEC-920-OBSERVABILITY-AUTHORITY",
+              "decision": "Vexa Error Authority is canonical. External vendors are optional sinks only.",
+              "rationale": "Vexa already has error grouping, occurrences, sanitized context, release correlation, and admin UI. Adding Sentry duplicates a capability Vexa owns. No external dependency required for correctness, error visibility, or incident handling. See ADR-001.",
+              "decided_by": "cto",
+              "date": "2026-09-27"
+            }
+          ],
+          "tests_passed": [],
+          "acceptance": [
+            "Web telemetry decision documented: Error Authority retained, no @sentry/nextjs for v1",
+            "OTel decision documented: Sentry Performance only, OTEL_EXPORTER_OTLP_ENDPOINT not set for v1",
+            "Vexa Observability Authority principle documented in ADR-001"
+          ]
+        },
+        {
+          "storyId": "ST-920-API-EXCEPTION-FILTER",
+          "title": "API global exception filter → ErrorCaptureService (fail-open, PII-safe)",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "pending-push",
+          "scope": [
+            "apps/api/src/error-authority/api-exception-capture.filter.ts",
+            "apps/api/src/error-authority/api-exception-capture.filter.spec.ts",
+            "docs/architecture/ADR-001-vexa-observability-authority.md"
+          ],
+          "tests_passed": [
+            "cd apps/api && npx jest --config jest.config.js --testPathPatterns=api-exception-capture --no-coverage — 8/8 passed",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit — 0 errors on filter files"
+          ],
+          "acceptance": [
+            "NestJS APP_FILTER catches all unhandled API exceptions",
+            "Expected 4xx (400/401/403/404/409/422/429) not captured as unexpected",
+            "Unexpected errors and 5xx captured via ErrorCaptureService.captureUnexpected(runtime='api')",
+            "Fail-open: capture rejection caught, logged via LoggerService, original response unaffected",
+            "Dedup: CAPTURED_MARKER symbol prevents double-capture of same exception instance",
+            "PII-safe: no headers, body, cookies, credentials forwarded — only route, method, status, rawActorId",
+            "rawActorId hashed/redacted by ErrorCaptureService.normalizeErrorEvent before persistence",
+            "Already wired as APP_FILTER in ErrorAuthorityModule → AppModule — zero new wiring needed"
+          ]
+        },
+        {
+          "storyId": "ST-920-SENTRY-PII-GUARD-UNIT-TESTS",
+          "title": "Extract sentryBeforeSend to testable module + 13 unit tests confirming PII scrub",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "73bfcff",
+          "scope": [
+            "apps/api/src/common/sentry-before-send.ts",
+            "apps/api/src/common/sentry-before-send.spec.ts",
+            "apps/api/src/main.ts",
+            "apps/api/test/unit/sentry-before-send-runner.ts",
+            "apps/api/test/unit/sentry-before-send.test.cjs",
+            "apps/api/test/unit/tsconfig.test.json"
+          ],
+          "tests_passed": [
+            "cd apps/api && ts-node --project test/unit/tsconfig.test.json --transpile-only test/unit/sentry-before-send-runner.ts — 13/13 passed",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit — 0 new errors"
+          ],
+          "acceptance": [
+            "sentryBeforeSend extracted to pure function — no external deps, fully testable",
+            "13 unit tests prove: request.data stripped (tenant SKUs/titles/prices), cookies stripped, authorization/cookie/x-api-key headers stripped",
+            "Non-sensitive fields (exception, level, tags, host header) preserved",
+            "Edge cases: no-throw on missing headers, pass-through on non-object request",
+            "main.ts uses beforeSend: sentryBeforeSend — identical runtime behavior, now verified",
+            "Satisfies #920 acceptance criterion: tenant payloads confirmed redacted, not assumed"
+          ]
         }
       ]
     }
