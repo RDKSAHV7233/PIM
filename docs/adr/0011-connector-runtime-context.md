@@ -1,6 +1,6 @@
 # ADR-0011: Connector Runtime Context
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: ADR sprint 2 — architecture sprint
 **Gate**: Gate 1 — ADR-007
@@ -104,3 +104,9 @@ A new `correlationId: string` field is added to `ConnectorContext`. The context 
 ### Neutral
 
 - Logger remains DI-injected, not context-carried. Connectors are singletons and their logger instance is stable for the process lifetime. The `correlationId` provides the missing per-call correlation without changing the logging infrastructure.
+
+---
+
+## Migration Constraint
+
+Existing runtime-context factories remain supported until behavioral parity for install, reconnect, publish, and status paths is demonstrated.

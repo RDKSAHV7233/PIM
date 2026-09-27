@@ -1,6 +1,6 @@
 # ADR-0012: Connector Error Taxonomy and Run Tracking
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: ADR sprint 2 — architecture sprint
 **Gate**: Gate 1 — ADR-008

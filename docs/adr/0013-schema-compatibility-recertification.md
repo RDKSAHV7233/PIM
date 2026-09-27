@@ -1,6 +1,6 @@
 # ADR-0013: Schema Compatibility and Recertification
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: ADR sprint 2 — architecture sprint
 **Gate**: Gate 1 — ADR-009
@@ -150,3 +150,9 @@ This is not implemented today. ADR-0007's certification model must be materializ
 
 - The 60-day and 90-day staleness thresholds coexist at different levels. No alignment needed.
 - `templateVerifiedAt` remains the freshness mechanism for local registries. No new date fields introduced.
+
+---
+
+## Enforcement Dependency
+
+Automatic recertification enforcement remains inactive until ADR-0007 certification evidence is implemented.

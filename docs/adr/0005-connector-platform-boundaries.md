@@ -1,6 +1,6 @@
 # ADR-0005: Connector Platform Boundaries
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: Gate 0 architecture sprint
 **Gate**: Gate 0 — ADR-001

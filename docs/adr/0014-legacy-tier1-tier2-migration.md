@@ -1,6 +1,6 @@
 # ADR-0014: Legacy Tier-1/Tier-2 Migration Strategy
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: ADR sprint 2 — architecture sprint
 **Gate**: Gate 1 — ADR-010
@@ -141,3 +141,9 @@ This path allows connectors like Odoo or PrestaShop to benefit from the mapping 
 
 - The architecture freeze prevents any mapping migration work until the gate passes. This ADR establishes the strategy; execution is post-gate.
 - `MAPPING_PACKS` removal (Phase 3) is per-connector and may never complete for all connectors simultaneously. The system must tolerate a mixed state indefinitely.
+
+---
+
+## Migration Invariant
+
+Vexa must safely support mixed legacy and vNext connector states.

@@ -1,6 +1,6 @@
 # ADR-0007: Connector Certification and Evidence Model
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: Gate 0 architecture sprint
 **Gate**: Gate 0 — ADR-003
@@ -143,3 +143,9 @@ These rules determine when the inventory should raise findings for certification
 - ADR-0006: Connector Identity, State, and Availability
 - `scripts/generate-connector-inventory.cjs`: Evidence verification (future enhancement)
 - `connector-launch-policy.ts`: Pipeline metadata contains some evidence signals
+
+---
+
+## Implementation Status
+
+Not yet materialized. Certification levels and evidence records defined by this ADR must not be represented as operationally enforced until the certification storage and verification workflow are implemented.

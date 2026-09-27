@@ -1,6 +1,6 @@
 # ADR-0008: Target Schema Registry
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-27
 **Author**: ADR sprint 1 — architecture sprint
 **Gate**: Gate 1 — ADR-004
