@@ -363,6 +363,45 @@ async function main() {
       nextCursor: Boolean(occurrences.payload.nextCursor),
     });
 
+    const apiProof = await requestJson(`${apiBase}/api/v1/error-authority/runtime-proof/api`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-error-authority-ingest-token": ingestToken,
+      },
+      retries: 1,
+    });
+    assertStatus(apiProof, 500, "controlled API runtime proof");
+    pass("controlled_api_runtime_proof_triggered");
+
+    const apiRouteTemplate = "/api/v1/error-authority/runtime-proof/api";
+    let apiIssues = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      apiIssues = await requestJson(
+        `${apiBase}/api/v1/error-authority/ops/issues?runtime=api&errorCode=Err920ApiRuntimeProof&route=${encodeURIComponent(apiRouteTemplate)}&limit=25`,
+        { headers: authHeaders, retries: 1 },
+      );
+      assertStatus(apiIssues, 200, "ops API runtime issues read");
+      if (apiIssues.payload?.storageAvailable === true && Array.isArray(apiIssues.payload?.items) && apiIssues.payload.items.length > 0) {
+        break;
+      }
+      await sleep(1_000);
+    }
+
+    assert(apiIssues.payload?.storageAvailable === true, "API runtime: ops issues storage unavailable");
+    assert(Array.isArray(apiIssues.payload?.items), "API runtime: ops issues items is not an array");
+    assert(apiIssues.payload.items.length > 0, "API runtime: controlled API exception was not visible through ops API");
+    const apiIssue = apiIssues.payload.items.find((item) => item.errorCode === "Err920ApiRuntimeProof") ?? apiIssues.payload.items[0];
+    assert(apiIssue.runtime === "api", `API runtime: expected runtime api, got ${apiIssue.runtime}`);
+    assert(apiIssue.service === "vexa-pim-api", `API runtime: expected service vexa-pim-api, got ${apiIssue.service}`);
+    assert(findProhibitedKeys(apiIssues.payload).length === 0, `API runtime: ops issue payload exposed prohibited keys: ${findProhibitedKeys(apiIssues.payload).join(", ")}`);
+    pass("api_runtime_ops_issue_captured", {
+      issueId: apiIssue.id,
+      runtime: apiIssue.runtime,
+      service: apiIssue.service,
+      occurrenceCount: apiIssue.occurrenceCount,
+    });
+
     const pageCookie = await loginWeb(webBase, workspaceSlug, userId, password);
     pass("admin_web_login_sets_session");
     const page = await requestJson(
@@ -416,10 +455,16 @@ async function main() {
       webHost: new URL(webBase).host,
       checks,
       evidence: {
-        issueId: issue.id,
-        latestOccurrenceId: issue.latestOccurrenceId,
-        sourceEventId,
-        routeTemplate,
+        nextServer: {
+          issueId: issue.id,
+          latestOccurrenceId: issue.latestOccurrenceId,
+          sourceEventId,
+          routeTemplate,
+        },
+        apiRuntime: {
+          issueId: apiIssue.id,
+          routeTemplate: apiRouteTemplate,
+        },
         storageAvailable: true,
       },
     };

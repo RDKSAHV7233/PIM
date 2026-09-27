@@ -71,6 +71,7 @@ function main() {
 
   assert(script.includes('requireEnv("ERROR_AUTHORITY_INGEST_TOKEN")'), "Acceptance script must fail closed when ingest token is absent.");
   assert(script.includes("/error-authority/ingest/next-server"), "Acceptance script must create a controlled real Error Authority event.");
+  assert(script.includes("/error-authority/runtime-proof/api"), "Acceptance script must verify API runtime capture via runtime-proof endpoint.");
   assert(script.includes("/error-authority/ops/issues"), "Acceptance script must verify ops issue reads.");
   assert(script.includes("/internal/ops/errors"), "Acceptance script must verify the Web console route.");
   assert(script.includes("createTemporaryViewer"), "Acceptance script must verify non-admin denial with a real temporary viewer.");
@@ -91,6 +92,7 @@ function main() {
           "acceptance_uses_staging_api_and_web_urls",
           "acceptance_uses_masked_ingest_secret",
           "acceptance_creates_real_controlled_event",
+          "acceptance_verifies_api_runtime_capture",
           "acceptance_checks_admin_visibility",
           "acceptance_checks_non_admin_denial",
           "acceptance_artifact_uploaded",

@@ -2,6 +2,7 @@ import { Global, Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { AuditModule } from "../audit/audit.module";
 import { ApiExceptionCaptureFilter } from "./api-exception-capture.filter";
+import { ApiRuntimeProofController } from "./api-runtime-proof.controller";
 import { BrowserErrorIngestController } from "./browser-ingest.controller";
 import { ErrorAuthorityOpsController } from "./error-authority-ops.controller";
 import { ErrorAuthorityOpsService } from "./error-authority-ops.service";
@@ -13,7 +14,7 @@ import { ObservabilityDbService } from "./observability-db.service";
 @Global()
 @Module({
   imports: [AuditModule],
-  controllers: [NextServerErrorIngestController, BrowserErrorIngestController, ErrorAuthorityOpsController],
+  controllers: [NextServerErrorIngestController, BrowserErrorIngestController, ErrorAuthorityOpsController, ApiRuntimeProofController],
   providers: [
     ErrorAuthorityOpsService,
     ErrorCaptureService,
