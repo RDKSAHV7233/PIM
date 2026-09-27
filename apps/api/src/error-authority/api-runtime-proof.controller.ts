@@ -33,7 +33,7 @@ export class ApiRuntimeProofController {
 
 function isRuntimeProofAvailable(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
-  if (appEnv === "production") {
+  if (appEnv !== "staging") {
     return false;
   }
   return String(process.env.ERROR_AUTHORITY_ENABLED ?? "").trim().toLowerCase() === "true";

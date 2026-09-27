@@ -45,10 +45,10 @@ describe("ApiRuntimeProofController", () => {
     }
   });
 
-  it("works in development environment", async () => {
+  it("returns 404 in development environment (staging-only gate)", async () => {
     process.env.APP_ENV = "development";
     process.env.ERROR_AUTHORITY_ENABLED = "true";
     process.env.ERROR_AUTHORITY_INGEST_TOKEN = "dev-token";
-    await expect(controller.triggerApiRuntimeProof("dev-token", fakeRequest)).rejects.toThrow("ERR_920_API_RUNTIME_PROOF");
+    await expect(controller.triggerApiRuntimeProof("dev-token", fakeRequest)).rejects.toThrow(NotFoundException);
   });
 });
