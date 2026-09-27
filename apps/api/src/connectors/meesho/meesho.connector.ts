@@ -13,6 +13,7 @@ import {
   ConnectorIssue,
   ExportFile,
   ProductPayload,
+  ProductTypeSchema,
   ProductVariantPayload,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
@@ -20,6 +21,7 @@ import {
   getMeeshoCategoryTemplate,
   isMeeshoTemplateStale,
   MeeshoCategoryTemplate,
+  templateToProductTypeSchema,
 } from './meesho-category-templates';
 
 // ─── error map ─────────────────────────────────────────────────────────────────
@@ -464,6 +466,13 @@ export class MeeshoConnector implements ConnectorInterface {
       filename: `meesho_${categoryLabel}_${date}.xlsx`,
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
+  }
+
+  async fetchProductTypeSchema(
+    _ctx: ConnectorContext,
+    productType: string,
+  ): Promise<ProductTypeSchema> {
+    return templateToProductTypeSchema(getMeeshoCategoryTemplate(productType));
   }
 
   // publishProduct is intentionally NOT implemented.

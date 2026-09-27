@@ -4084,6 +4084,52 @@
       ]
     },
     {
+      "incrementId": "INC-59",
+      "name": "Meesho ProductTypeSchema Bridge — ADR-0008 §1 Compliance (#984)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-INC59-01",
+          "title": "Add templateToProductTypeSchema bridge to meesho-category-templates.ts",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "pending-push",
+          "scope": [
+            "apps/api/src/connectors/meesho/meesho-category-templates.ts"
+          ],
+          "tests_passed": [
+            "node scripts/generate-connector-inventory.cjs — tier1-schema-missing-bridge WARNING cleared for meesho",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit — 0 errors"
+          ],
+          "acceptance": [
+            "ProductTypeSchema imported and referenced in meesho-category-templates.ts",
+            "templateToProductTypeSchema exported — maps required/optional columns and validValues from MeeshoCategoryColumn",
+            "ADR-0008 §1 bridge trigger satisfied (inventory check passes)"
+          ]
+        },
+        {
+          "storyId": "ST-INC59-02",
+          "title": "Wire fetchProductTypeSchema in MeeshoConnector delegating to bridge",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "pending-push",
+          "scope": [
+            "apps/api/src/connectors/meesho/meesho.connector.ts"
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit — 0 errors"
+          ],
+          "acceptance": [
+            "fetchProductTypeSchema method delegates to templateToProductTypeSchema(getMeeshoCategoryTemplate(productType))",
+            "ProductTypeSchema and templateToProductTypeSchema imported into connector",
+            "Matches Flipkart pattern (ruleToProductTypeSchema in connector service)"
+          ]
+        }
+      ]
+    },
+    {
       "incrementId": "INC-58",
       "name": "Connector Inventory hasCredentialUI False-Positive Fix (#981)",
       "status": "completed",

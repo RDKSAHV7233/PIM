@@ -13,6 +13,8 @@
 // CTO decision: local registry (same as Flipkart pattern). Meesho updates templates
 // when category requirements change — the templateVerifiedAt date is the freshness signal.
 
+import { ProductTypeSchema } from '../../connector-framework/connector.interface';
+
 export type MeeshoCategoryColumn = {
   /** Exact column header string used by Meesho Supplier Panel */
   header: string;
@@ -370,4 +372,38 @@ export function isMeeshoTemplateStale(template: MeeshoCategoryTemplate): boolean
  */
 export function getMeeshoSupportedCategorySlugs(): string[] {
   return Object.keys(MEESHO_CATEGORY_TEMPLATES).sort();
+}
+
+// ─── ADR-0008 §1 bridge ────────────────────────────────────────────────────────
+
+/**
+ * Convert a MeeshoCategoryTemplate into a ProductTypeSchema so the mapping UI
+ * and connector-framework can drive field requirements without knowing the
+ * internal template structure.
+ *
+ * ADR-0008 §1: all local registries must bridge to the canonical contract.
+ * Pattern: follows flipkart/flipkart-category-rules.ts → ruleToProductTypeSchema.
+ */
+export function templateToProductTypeSchema(
+  template: MeeshoCategoryTemplate,
+): ProductTypeSchema {
+  const requiredAttributes = template.columns
+    .filter((c) => c.required)
+    .map((c) => c.key);
+  const optionalAttributes = template.columns
+    .filter((c) => !c.required)
+    .map((c) => c.key);
+  const validValues: Record<string, string[]> = {};
+  for (const col of template.columns) {
+    if (col.allowedValues && col.allowedValues.length > 0) {
+      validValues[col.key] = col.allowedValues;
+    }
+  }
+  return {
+    productType: template.slug,
+    requiredAttributes,
+    optionalAttributes,
+    validValues,
+    schemaVersion: `LOCAL-${template.templateVerifiedAt}`,
+  };
 }
