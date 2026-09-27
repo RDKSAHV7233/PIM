@@ -422,8 +422,8 @@ function checkAdapterMappingBoundary(slug) {
 }
 
 // ─── 13. Frontend Tier-1 channel list (ADR-0014) ────────────────────
-function extractFrontendChannels() {
-  const src = read("apps/web/src/lib/marketplace-channels.ts");
+function extractFrontendChannels(srcOverride) {
+  const src = srcOverride !== undefined ? srcOverride : read("apps/web/src/lib/marketplace-channels.ts");
   if (!src) return null;
   const match = src.match(/MARKETPLACE_CHANNELS\s*=\s*\[([^\]]+)\]/);
   if (!match) return null;
@@ -437,8 +437,8 @@ function extractFrontendChannels() {
 }
 
 // ─── 14/15. Exhaustive Tier-1 config maps (ADR-0014) ────────────────
-function extractExhaustiveConfigMapKeys(filePath, mapPattern) {
-  const src = read(filePath);
+function extractExhaustiveConfigMapKeys(filePath, mapPattern, srcOverride) {
+  const src = srcOverride !== undefined ? srcOverride : read(filePath);
   if (!src) return null;
   const match = src.match(mapPattern);
   if (!match) return null;
@@ -903,4 +903,11 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = {
+  extractFrontendChannels,
+  extractExhaustiveConfigMapKeys,
+  SEVERITY,
+  SEVERITY_RULES,
+};
