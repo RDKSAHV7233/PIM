@@ -3074,7 +3074,7 @@
     {
       "incrementId": "INC-38",
       "name": "Large Import Mode MVP (30k CSV)",
-      "status": "in_progress",
+      "status": "completed",
       "stories": [
         {
           "storyId": "ST-LARGE-IMPORT-001",
