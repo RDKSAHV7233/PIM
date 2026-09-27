@@ -19,9 +19,16 @@
  * Output: JSON inventory + Markdown table, both to stdout and optionally
  * to docs/connectors/CONNECTOR_INVENTORY.json and .md.
  *
+ * Findings are classified by severity:
+ *   ERROR     — architecture invariant violation; CI should fail
+ *   WARNING   — incomplete/unverified state; CI may pass but reports
+ *   INFO      — intentional design difference
+ *   EXCEPTION — explicitly approved variance (from CONNECTOR_EXCEPTIONS.json)
+ *
  * Usage:
- *   node scripts/generate-connector-inventory.cjs [--write]
+ *   node scripts/generate-connector-inventory.cjs [--write] [--ci]
  *   --write  Persist output to docs/connectors/
+ *   --ci     Label output for CI (exit 1 on ERROR findings)
  */
 "use strict";
 
@@ -287,12 +294,58 @@ function getKnownLimitationEntry(slug) {
   return null;
 }
 
+// ─── Severity Classification ────────────────────────────────────────
+//
+// ERROR     — architecture invariant violation; CI should fail
+// WARNING   — incomplete / unverified state; CI may pass but reports clearly
+// INFO      — intentional design difference
+// EXCEPTION — explicitly approved variance (loaded from exceptions file)
+//
+const SEVERITY = { ERROR: "ERROR", WARNING: "WARNING", INFO: "INFO", EXCEPTION: "EXCEPTION" };
+
+const SEVERITY_RULES = {
+  "customer-visible-but-not-runtime-registered": SEVERITY.ERROR,
+  "installable-stage-but-not-runtime-registered": SEVERITY.ERROR,
+  "runtime-registered-but-no-credential-ui": SEVERITY.WARNING,
+  "stub-implementation-but-runtime-registered": SEVERITY.WARNING,
+  "tier1-but-not-runtime-registered": SEVERITY.ERROR,
+};
+
+function loadExceptions() {
+  const exPath = path.join(REPO_ROOT, "docs/connectors/CONNECTOR_EXCEPTIONS.json");
+  if (!fs.existsSync(exPath)) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(exPath, "utf8"));
+    if (!Array.isArray(data)) return [];
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+function applyExceptions(findings, exceptions) {
+  for (const f of findings) {
+    const match = exceptions.find(
+      (ex) => ex.slug === f.slug && ex.issue === f.issue,
+    );
+    if (match) {
+      f.severity = SEVERITY.EXCEPTION;
+      f.exceptionApprovedBy = match.approvedBy || "unknown";
+      f.exceptionDate = match.date || "unknown";
+      f.exceptionReason = match.reason || "";
+    }
+  }
+  return findings;
+}
+
 // ─── Main ───────────────────────────────────────────────────────────
 function main() {
   const writeMode = process.argv.includes("--write");
+  const ciMode = process.argv.includes("--ci");
   const slugs = extractCanonicalSlugs();
   const tier1Info = getTier1Slugs();
   const registryWiredCount = getRegistryWiredSlugs();
+  const exceptions = loadExceptions();
 
   const inventory = slugs.map((slug) => {
     const source = extractConnectorSourceInfo(slug);
@@ -305,17 +358,12 @@ function main() {
     const isTier1 = tier1Channel !== null && tier1Channel !== undefined;
     const knownLimitation = getKnownLimitationEntry(slug);
 
-    // Runtime registered = definition seeded in migrations
-    // (ConnectorRegistry.refreshFromDefinitions reads connector_definitions rows)
     const runtimeRegistered = definitionSeeded;
 
-    // Installable = launch stage is in isInstallableStage's list
     const installableStages = new Set([
       "live", "manual", "code_complete", "qa_validation", "po_review", "early_access",
     ]);
     const isInstallable = installableStages.has(launchStage);
-
-    // Customer-visible = live or manual
     const isCustomerVisible = launchStage === "live" || launchStage === "manual";
 
     return {
@@ -327,7 +375,7 @@ function main() {
       launchStage,
       definitionSeeded,
       runtimeRegistered,
-      compiledInRegistry: true, // all 15 are in the implementationMap
+      compiledInRegistry: true,
       isInstallable,
       isCustomerVisible,
       credentialUIExists: credentialUI,
@@ -349,50 +397,74 @@ function main() {
     installable: inventory.filter((c) => c.isInstallable).length,
     tier1Count: inventory.filter((c) => c.tier.startsWith("Tier-1")).length,
     tier2Count: inventory.filter((c) => c.tier.startsWith("Tier-2")).length,
-    inconsistencies: [],
+    findings: [],
   };
 
-  // ─── Detect inconsistencies ───────────────────────────────────────
+  // ─── Detect findings with severity ────────────────────────────────
   for (const c of inventory) {
     if (c.isCustomerVisible && !c.runtimeRegistered) {
-      summary.inconsistencies.push({
+      summary.findings.push({
         slug: c.slug,
         issue: "customer-visible-but-not-runtime-registered",
+        severity: SEVERITY_RULES["customer-visible-but-not-runtime-registered"],
         detail: `Launch stage is "${c.launchStage}" (customer-visible) but no connector_definitions migration seeds a row for "${c.slug}" — this connector is unreachable at runtime.`,
       });
     }
     if (c.isInstallable && !c.runtimeRegistered) {
-      summary.inconsistencies.push({
+      summary.findings.push({
         slug: c.slug,
         issue: "installable-stage-but-not-runtime-registered",
+        severity: SEVERITY_RULES["installable-stage-but-not-runtime-registered"],
         detail: `Launch stage "${c.launchStage}" is in isInstallableStage() but no DB row exists.`,
       });
     }
     if (c.runtimeRegistered && !c.credentialUIExists && c.launchStage !== "under_development" && c.launchStage !== "planned") {
-      summary.inconsistencies.push({
+      summary.findings.push({
         slug: c.slug,
         issue: "runtime-registered-but-no-credential-ui",
+        severity: SEVERITY_RULES["runtime-registered-but-no-credential-ui"],
         detail: `Connector is runtime-registered but has no credential UI branch in the setup page.`,
       });
     }
     if (c.implementationStatus === "stub" && c.runtimeRegistered) {
-      summary.inconsistencies.push({
+      summary.findings.push({
         slug: c.slug,
         issue: "stub-implementation-but-runtime-registered",
+        severity: SEVERITY_RULES["stub-implementation-but-runtime-registered"],
         detail: `Implementation is marked as "stub" but the connector is active in the DB — methods may throw NotImplementedError at runtime.`,
+      });
+    }
+    if (c.tier.startsWith("Tier-1") && !c.runtimeRegistered) {
+      summary.findings.push({
+        slug: c.slug,
+        issue: "tier1-but-not-runtime-registered",
+        severity: SEVERITY_RULES["tier1-but-not-runtime-registered"],
+        detail: `Connector is in Tier-1 MARKETPLACE_CHANNELS but has no connector_definitions row — Tier-1 implies runtime availability.`,
       });
     }
   }
 
+  applyExceptions(summary.findings, exceptions);
+
+  // Backward compat: expose as "inconsistencies" too
+  summary.inconsistencies = summary.findings;
+
+  // Severity counts
+  const severityCounts = { ERROR: 0, WARNING: 0, INFO: 0, EXCEPTION: 0 };
+  for (const f of summary.findings) {
+    severityCounts[f.severity] = (severityCounts[f.severity] || 0) + 1;
+  }
+  summary.severityCounts = severityCounts;
+
   // ─── Build Markdown table ─────────────────────────────────────────
-  const header = "| Slug | Adapter | Status | Capabilities | Stage | DB Row | Runtime | Installable | Visible | Cred UI | Tier | Inconsistency |";
-  const sep =    "|------|---------|--------|-------------|-------|--------|---------|-------------|---------|---------|------|---------------|";
+  const header = "| Slug | Adapter | Status | Capabilities | Stage | DB Row | Runtime | Installable | Visible | Cred UI | Tier | Finding |";
+  const sep =    "|------|---------|--------|-------------|-------|--------|---------|-------------|---------|---------|------|---------|";
   const rows = inventory.map((c) => {
-    const inconsistency = summary.inconsistencies
-      .filter((i) => i.slug === c.slug)
-      .map((i) => i.issue)
-      .join(", ");
-    return `| ${c.slug} | ${c.adapterExists ? "✅" : "❌"} | ${c.implementationStatus ?? "—"} | ${c.capabilities.join(", ") || "—"} | ${c.launchStage} | ${c.definitionSeeded ? "✅" : "❌"} | ${c.runtimeRegistered ? "✅" : "❌"} | ${c.isInstallable ? "✅" : "❌"} | ${c.isCustomerVisible ? "✅" : "❌"} | ${c.credentialUIExists ? "✅" : "❌"} | ${c.tier} | ${inconsistency || "—"} |`;
+    const finding = summary.findings
+      .filter((f) => f.slug === c.slug)
+      .map((f) => `${f.severity}: ${f.issue}`)
+      .join("; ");
+    return `| ${c.slug} | ${c.adapterExists ? "YES" : "NO"} | ${c.implementationStatus ?? "—"} | ${c.capabilities.join(", ") || "—"} | ${c.launchStage} | ${c.definitionSeeded ? "YES" : "NO"} | ${c.runtimeRegistered ? "YES" : "NO"} | ${c.isInstallable ? "YES" : "NO"} | ${c.isCustomerVisible ? "YES" : "NO"} | ${c.credentialUIExists ? "YES" : "NO"} | ${c.tier} | ${finding || "—"} |`;
   });
 
   const md = [
@@ -413,6 +485,13 @@ function main() {
     `- **Tier-1 (marketplace):** ${summary.tier1Count}`,
     `- **Tier-2 (generic):** ${summary.tier2Count}`,
     "",
+    "### Findings by Severity",
+    "",
+    `- **ERROR** (architecture invariant violation — CI blocks): ${severityCounts.ERROR}`,
+    `- **WARNING** (incomplete/unverified state — CI reports): ${severityCounts.WARNING}`,
+    `- **INFO** (intentional design difference): ${severityCounts.INFO}`,
+    `- **EXCEPTION** (explicitly approved variance): ${severityCounts.EXCEPTION}`,
+    "",
     "## Inventory",
     "",
     header,
@@ -421,17 +500,32 @@ function main() {
     "",
   ];
 
-  if (summary.inconsistencies.length > 0) {
-    md.push("## ⚠️ Inconsistencies Detected");
+  if (summary.findings.length > 0) {
+    const grouped = {};
+    for (const sev of ["ERROR", "WARNING", "INFO", "EXCEPTION"]) {
+      const items = summary.findings.filter((f) => f.severity === sev);
+      if (items.length > 0) grouped[sev] = items;
+    }
+
+    md.push("## Findings");
     md.push("");
-    for (const inc of summary.inconsistencies) {
-      md.push(`### ${inc.slug}: ${inc.issue}`);
+    for (const [sev, items] of Object.entries(grouped)) {
+      const icon = sev === "ERROR" ? "🔴" : sev === "WARNING" ? "🟡" : sev === "INFO" ? "🔵" : "🟢";
+      md.push(`### ${icon} ${sev}`);
       md.push("");
-      md.push(inc.detail);
-      md.push("");
+      for (const f of items) {
+        md.push(`**${f.slug}** — \`${f.issue}\``);
+        md.push("");
+        md.push(f.detail);
+        if (f.exceptionReason) {
+          md.push("");
+          md.push(`> Approved by ${f.exceptionApprovedBy} on ${f.exceptionDate}: ${f.exceptionReason}`);
+        }
+        md.push("");
+      }
     }
   } else {
-    md.push("## ✅ No Inconsistencies Detected");
+    md.push("## No Findings");
     md.push("");
   }
 
@@ -455,12 +549,29 @@ function main() {
 
   console.log(mdText);
 
-  if (summary.inconsistencies.length > 0) {
-    console.error(`\n⚠️  ${summary.inconsistencies.length} inconsistency(ies) detected — see above.`);
+  // CI exit codes: exit 1 only on ERROR findings not covered by EXCEPTION
+  const errors = summary.findings.filter((f) => f.severity === SEVERITY.ERROR);
+  const warnings = summary.findings.filter((f) => f.severity === SEVERITY.WARNING);
+
+  if (errors.length > 0) {
+    console.error(`\n🔴 ${errors.length} ERROR finding(s) — architecture invariant violations.`);
+    if (warnings.length > 0) {
+      console.error(`🟡 ${warnings.length} WARNING finding(s) — incomplete/unverified state.`);
+    }
+    if (ciMode) {
+      console.error("CI mode: failing on ERROR findings.");
+    }
     process.exit(1);
   }
 
-  console.log(JSON.stringify(output, null, 2));
+  if (warnings.length > 0) {
+    console.error(`\n🟡 ${warnings.length} WARNING finding(s) — incomplete/unverified state (not blocking CI).`);
+    // Warnings don't fail CI but exit 0
+  }
+
+  if (summary.findings.length === 0) {
+    console.log("\n✅ No findings detected.");
+  }
 }
 
 main();
