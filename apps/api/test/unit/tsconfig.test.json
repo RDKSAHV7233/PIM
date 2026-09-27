@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist-test",
+    "ignoreDeprecations": "6.0",
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "../../src/common/sentry-before-send.ts"]
+}

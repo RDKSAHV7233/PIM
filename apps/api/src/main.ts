@@ -11,6 +11,7 @@ import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 import { PrismaService } from "./prisma/prisma.service";
 import { QueueService } from "./queue/queue.service";
+import { sentryBeforeSend } from "./common/sentry-before-send";
 
 const EXPRESS_BODY_LIMIT = "10mb";
 const BOOT_DEBUG_ENABLED =
