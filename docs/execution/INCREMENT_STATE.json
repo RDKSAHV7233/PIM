@@ -4082,6 +4082,33 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-58",
+      "name": "Connector Inventory hasCredentialUI False-Positive Fix (#981)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-981-INVENTORY-CREDENTIAL-UI-CHECK",
+          "title": "Extend hasCredentialUI to scan connector-credential-fields.tsx — eliminates odoo/prestashop false-positive WARNINGs",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "pending-push",
+          "scope": [
+            "scripts/generate-connector-inventory.cjs"
+          ],
+          "tests_passed": [
+            "node scripts/generate-connector-inventory.cjs — 0 ERROR, 2 WARNING (meesho only, expected), odoo/prestashop show '—'"
+          ],
+          "acceptance": [
+            "hasCredentialUI() checks both setup/page.tsx and connector-credential-fields.tsx",
+            "Odoo and PrestaShop no longer emit runtime-registered-but-no-credential-ui WARNING",
+            "Connectors genuinely lacking credential UI still emit the WARNING",
+            "Inventory total WARNINGs reduced from 4 to 2 (meesho tier1-schema-missing-bridge and schema-template-stale remain, are real findings)"
+          ]
+        }
+      ]
     }
   ]
 }

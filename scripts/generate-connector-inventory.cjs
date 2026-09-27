@@ -277,8 +277,11 @@ function hasDefinitionMigration(slug) {
 // ─── 7. Credential UI check ────────────────────────────────────────
 function hasCredentialUI(slug) {
   const setupPage = read("apps/web/src/app/connectors/setup/page.tsx");
-  if (!setupPage) return false;
-  return setupPage.includes(`"${slug}"`) || setupPage.includes(`'${slug}'`);
+  const credFields = read("apps/web/src/components/connectors/connector-credential-fields.tsx");
+  if (!setupPage && !credFields) return false;
+  const inSetup = setupPage && (setupPage.includes(`"${slug}"`) || setupPage.includes(`'${slug}'`));
+  const inCredFields = credFields && (credFields.includes(`"${slug}"`) || credFields.includes(`'${slug}'`));
+  return !!(inSetup || inCredFields);
 }
 
 // ─── 8. Known-limitations mentions ──────────────────────────────────
