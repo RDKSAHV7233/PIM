@@ -72,7 +72,6 @@ const CHANNEL_RULES: Record<Channel, ChannelRule> = {
   amazon: { minWidth: 1000, minHeight: 1000, aspectMin: 0.8, aspectMax: 1.91 },
   flipkart: { minWidth: 800, minHeight: 800, aspectMin: 0.75, aspectMax: 1.5 },
   meesho: { minWidth: 700, minHeight: 700, aspectMin: 0.75, aspectMax: 1.6 },
-  myntra: { minWidth: 1000, minHeight: 1000, aspectMin: 0.75, aspectMax: 1.5 },
   shopify: { minWidth: 800, minHeight: 800, aspectMin: 0.5, aspectMax: 2 },
   // WooCommerce imposes no platform-level minimums (self-hosted, theme-dependent) —
   // reuse Shopify's permissive rule as a reasonable default until a real store is verified.
