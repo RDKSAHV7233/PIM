@@ -53,7 +53,7 @@ function run() {
       editorSource.includes("Show mapped required fields") &&
       editorSource.includes("Show optional fields") &&
       editorSource.includes('data-mapping-dirty-form="true"') &&
-      editorSource.includes("Open review step"),
+      editorSource.includes("Saving takes you straight to the review step"),
     "Mapping editor must default to a required-first layout with sample-value preview, dirty-state tracking, and an explicit forward path into review while scope changes stay in the current-scope summary.",
   );
   assert(

@@ -513,6 +513,18 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       invalidInstallation && currentStep !== "scope"
         ? { title: "Connector account no longer valid", description: invalidInstallation }
         : null;
+    // resolveRequestedWizardStep silently sends the operator to an earlier step when the
+    // requested one isn't reachable yet (e.g. a bookmarked ?step=review link before a draft
+    // exists). Without this, the URL says "review" while the page shows "Map Required
+    // Fields" with no explanation of why.
+    const stepDowngradeAlert =
+      wizardQuery.step && wizardQuery.step !== currentStep
+        ? !hasBaseScope
+          ? { title: "Choose a channel and category first", description: "A channel and source category are required before this mapping can be opened." }
+          : !hasPublishCategory
+            ? { title: "Choose a publish category first", description: "Select a publish category on the Scope step before mapping or reviewing this connector." }
+            : { title: "Save a draft before reviewing", description: "No draft or published mapping version exists yet for this scope. Map the required fields and save a draft first." }
+        : null;
 
     const baseWizardState: Partial<MappingWizardState> = {
       step: currentStep,
@@ -638,6 +650,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         />
         <MappingStepUpAlert message={stepUpMessage} />
         <MappingStepUpAlert message={invalidInstallationAlert} />
+        <MappingStepUpAlert message={stepDowngradeAlert} />
         <MappingDirtyNavigationGuard />
         <div className="space-y-1.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operator flow</p>
@@ -759,7 +772,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 attributeMapping: "Required mapping groups",
                 attributeMappingDescription: "Map the required channel fields first. Work through the missing required channel fields by group while optional fields and advanced controls stay out of the way until you need them.",
                 fieldInputPrefix: "mapTarget::",
-                advancedJson: "Advanced tools",
+                advancedJson: "Advanced JSON overrides",
                 mappingRulesPlaceholder: viewModel.mappingDraftRulesDefault,
               }}
               installationId={selectedInstallationId || undefined}

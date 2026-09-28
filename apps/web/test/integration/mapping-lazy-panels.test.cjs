@@ -34,7 +34,7 @@ function run() {
   assert(
     source.includes("continueToMapHref") &&
       source.includes("Change scope") &&
-      editorSource.includes("Open review step"),
+      editorSource.includes("Saving takes you straight to the review step"),
     "Mappings page must expose explicit wizard actions instead of on-demand lazy-panel loaders.",
   );
 

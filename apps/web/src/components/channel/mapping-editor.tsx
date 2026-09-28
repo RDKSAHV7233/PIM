@@ -452,13 +452,12 @@ export function MappingEditorCard({
           {installationId ? <input type="hidden" name="installationId" value={installationId} /> : null}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
-              Save the draft here, then continue to the review step to validate and publish it.
+              Saving takes you straight to the review step to validate and publish this draft.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" className="w-fit">
                 Save draft version
               </Button>
-              <span className="text-xs text-slate-500">Open review step after saving to validate and publish.</span>
             </div>
           </div>
         </form>

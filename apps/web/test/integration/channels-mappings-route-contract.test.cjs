@@ -156,6 +156,42 @@ function run() {
     "Step 2 must load mapping versions and seed the editor (and the Review checklist) from the working draft, and tell the operator which draft they are editing.",
   );
 
+  // resolveRequestedWizardStep silently sends the operator to an earlier step (a
+  // bookmarked ?step=review link before a publish category or a draft exists), and the
+  // page must explain why instead of leaving the URL and the rendered step disagreeing
+  // with no clue as to what changed.
+  assert(
+    page.includes('const stepDowngradeAlert =') &&
+      page.includes('wizardQuery.step && wizardQuery.step !== currentStep') &&
+      page.includes('"Choose a channel and category first"') &&
+      page.includes('"Choose a publish category first"') &&
+      page.includes('"Save a draft before reviewing"') &&
+      page.includes('<MappingStepUpAlert message={stepDowngradeAlert} />'),
+    "The mappings page must detect when resolveRequestedWizardStep downgraded the requested step and render an explanatory alert naming the missing prerequisite (scope, publish category, or a saved draft).",
+  );
+
+  // Two independent "Advanced tools" disclosures rendered on the same Map step (one for
+  // JSON overrides inside the editor form, one for diagnostics/legacy compatibility below
+  // it) read as a single confusing control. They must be labeled distinctly.
+  assert(
+    page.includes('advancedJson: "Advanced JSON overrides"') &&
+      !page.includes('advancedJson: "Advanced tools"'),
+    "The mapping editor's inner JSON-overrides disclosure must be labeled distinctly from the outer AdvancedDrawer's \"Advanced tools\" disclosure, since both render on the Map step.",
+  );
+
+  // Saving a draft always redirects to the review step (buildMappingsViewModel hardcodes
+  // step: "review"), so copy telling the operator to separately "continue to" or "open"
+  // review after saving describes a manual action that doesn't exist.
+  const editorSource = read(
+    path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "mapping-editor.tsx"),
+  );
+  assert(
+    editorSource.includes("Saving takes you straight to the review step to validate and publish this draft.") &&
+      !editorSource.includes("Open review step after saving") &&
+      !editorSource.includes("then continue to the review step"),
+    "The Save draft version control must describe the automatic redirect to Review accurately, without a second, redundant/ambiguous instruction implying a manual step.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -172,6 +208,9 @@ function run() {
           "mappings_route_surfaces_invalid_installation_warning_on_every_step",
           "mappings_route_scope_pill_copy_is_accurate_for_invalid_installation",
           "mappings_route_resumes_latest_saved_draft_in_editor_and_checklist",
+          "mappings_route_explains_silent_wizard_step_downgrades",
+          "mappings_route_disambiguates_duplicate_advanced_tools_labels",
+          "mappings_route_save_draft_copy_matches_automatic_review_redirect",
         ],
         checkedAt: new Date().toISOString(),
       },
