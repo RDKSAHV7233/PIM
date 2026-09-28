@@ -74,7 +74,7 @@ type MappingPack = {
   fieldMap: Record<string, string | string[]>;
 };
 
-type EffectiveMapping = MappingPack & {
+export type EffectiveMapping = MappingPack & {
   templateId: string | null;
   templateName: string | null;
   /** How the effective mapping was resolved.
@@ -2601,7 +2601,20 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  private async getEffectiveMapping(
+  // Not private: exposed specifically for MappingResolutionService
+  // (mapping-resolution.service.ts) to delegate to, so it can offer a narrow,
+  // connector-oriented resolution boundary without duplicating this method's
+  // 4-tier precedence (explicit template -> legacy default template ->
+  // ConnectorMappingVersion bridge -> system pack). Behavior is unchanged;
+  // only the access modifier moved so that real call site doesn't need a
+  // private-bypass cast.
+  //
+  // MarketplaceService remains the current legacy authority during migration —
+  // this method's own internal call sites are unaffected. New callers outside
+  // this class should go through MappingResolutionService rather than calling
+  // getEffectiveMapping() directly, so there is exactly one connector-facing
+  // entry point to the mapping-resolution boundary, not two.
+  async getEffectiveMapping(
     channelInput: string,
     categoryId?: string,
     templateId?: string,
