@@ -294,6 +294,35 @@ describe("ShopifyConnector.validateProduct — local rules", () => {
   });
 });
 
+// ─── fetchProductTypeSchema (Shopify Target Schema vNext) ────────────────────
+
+describe("ShopifyConnector.fetchProductTypeSchema", () => {
+  let connector: ShopifyConnector;
+  const ctx = makeCtx();
+
+  beforeEach(() => {
+    connector = makeConnector();
+  });
+
+  it("returns the default schema's required fields for an unknown product type", async () => {
+    const schema = await connector.fetchProductTypeSchema!(ctx, "unknown-xyz");
+    expect(schema.requiredAttributes).toEqual(
+      expect.arrayContaining(["sku", "title", "description", "mainImageUrl"]),
+    );
+  });
+
+  it("returns the apparel schema's additional recommended (optional) fields for productType 'apparel'", async () => {
+    const schema = await connector.fetchProductTypeSchema!(ctx, "apparel");
+    expect(schema.optionalAttributes).toContain("attributes.color");
+    expect(schema.optionalAttributes).toContain("attributes.size");
+  });
+
+  it("is case-insensitive and defaults an empty productType to 'default'", async () => {
+    const schema = await connector.fetchProductTypeSchema!(ctx, "");
+    expect(schema.productType).toBe("default");
+  });
+});
+
 // ─── harmonizedSystemCode resolution ─────────────────────────────────────────
 
 describe("ShopifyConnector — harmonizedSystemCode resolution", () => {

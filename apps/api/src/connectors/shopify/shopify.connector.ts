@@ -17,10 +17,12 @@ import {
   ConnectorPublicationTarget,
   ParsedWebhookEvent,
   ProductPayload,
+  ProductTypeSchema,
   SubmissionRef,
   SubmissionStatusUpdate,
   ValidationResult,
 } from "../../connector-framework/connector.interface";
+import { getCategoryRule, ruleToProductTypeSchema } from "./shopify-category-rules";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { tenantRaw, tenantExecRaw } from "../../common/tenant/tenant-raw";
 import {
@@ -550,6 +552,15 @@ export class ShopifyConnector implements ConnectorInterface {
       warnings,
       source: "LOCAL_RULES",
     };
+  }
+
+  async fetchProductTypeSchema(
+    _ctx: ConnectorContext,
+    productType: string,
+  ): Promise<ProductTypeSchema> {
+    const slug = String(productType ?? "").trim().toLowerCase();
+    const rule = getCategoryRule(slug);
+    return ruleToProductTypeSchema(slug || "default", rule);
   }
 
   normaliseError(errorCode: string, rawMessage: string): ConnectorIssue {
