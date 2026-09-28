@@ -5,6 +5,23 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
+const CHANNEL_MAPPINGS = path.join(REPO_ROOT, "apps", "web", "src", "lib", "channel-mappings.ts");
+const WORKING_DRAFT = path.join(REPO_ROOT, "apps", "web", "src", "lib", "mapping-working-draft.ts");
+
+// Compiles the real (import-free) lib/mapping-working-draft.ts and returns its exports,
+// so draft selection is exercised as code rather than matched as text.
+function loadWorkingDraftModule() {
+  const ts = require("typescript");
+  const Module = require("node:module");
+  const { outputText } = ts.transpileModule(fs.readFileSync(WORKING_DRAFT, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    fileName: "mapping-working-draft.ts",
+  });
+  const mod = new Module(WORKING_DRAFT, module);
+  mod.filename = WORKING_DRAFT;
+  mod._compile(outputText, WORKING_DRAFT);
+  return mod.exports;
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -101,6 +118,44 @@ function run() {
       "while the invalid-installation warning banner said otherwise).",
   );
 
+  // Step 2 must resume the operator's latest saved (unpublished) draft instead of
+  // re-seeding the editor from the live/system-default map: otherwise saved draft work
+  // shows as "Missing", the Review checklist reports "Required fields mapped: Blocked"
+  // while readiness is ok, and a second save rebuilds the draft from defaults.
+  assert(fs.existsSync(WORKING_DRAFT), "lib/mapping-working-draft.ts must exist.");
+  const { selectWorkingDraft, workingDraftFieldMap } = loadWorkingDraftModule();
+  const v = (id, lifecycleState, createdAt, fieldMappings, extra = {}) => ({
+    id, lifecycleState, createdAt, archivedAt: null, mappingRules: { field_mappings: fieldMappings }, ...extra,
+  });
+  const published = v("pub", "published", "2026-09-01T00:00:00Z", { title: "title" });
+  const olderDraft = v("old", "draft", "2026-08-01T00:00:00Z", { title: "title" });
+  const draft = v("d1", "draft", "2026-09-02T00:00:00Z", { description: ["description", "descriptionHtml"] });
+  const newerValidated = v("d2", "validated", "2026-09-03T00:00:00Z", { brand: "vendor" });
+  const archived = v("arch", "draft", "2026-09-04T00:00:00Z", { brand: "vendor" }, { archivedAt: "2026-09-05T00:00:00Z" });
+  const laterPublished = v("pub2", "published", "2026-09-06T00:00:00Z", { title: "title" });
+  assert(selectWorkingDraft([]) === null, "No versions -> no working draft.");
+  assert(selectWorkingDraft([published]) === null, "Only a published version -> no working draft.");
+  assert(selectWorkingDraft([olderDraft, published]) === null, "A draft older than the live version is stale, not a working draft.");
+  assert(selectWorkingDraft([published, draft])?.id === "d1", "The newest unpublished draft after the live version is resumed.");
+  assert(selectWorkingDraft([published, draft, newerValidated, archived])?.id === "d2", "The newest non-archived draft/validated version wins.");
+  assert(selectWorkingDraft([draft, newerValidated, laterPublished]) === null, "Once a newer version is published, older drafts are no longer resumed.");
+  const fieldMap = workingDraftFieldMap(draft);
+  assert(
+    JSON.stringify(fieldMap) === JSON.stringify({ description: ["description", "descriptionHtml"] }),
+    `The working draft's field_mappings must seed the editor unchanged; got ${JSON.stringify(fieldMap)}.`,
+  );
+  assert(workingDraftFieldMap(v("x", "draft", "2026-09-02T00:00:00Z", undefined)) === null, "A draft without field_mappings seeds nothing.");
+
+  const channelMappings = read(CHANNEL_MAPPINGS);
+  assert(
+    channelMappings.includes("draftFieldMap ?? mapping.fieldMap") &&
+      page.includes("selectWorkingDraft(versions)") &&
+      page.includes("draftFieldMap: workingDraftFieldMap(workingDraft)") &&
+      /shouldFetchVersions = Boolean\(hasBaseScope && \(wizardQuery\.step === "map" \|\| wizardQuery\.step === "review"/.test(page) &&
+      page.includes("Resuming draft"),
+    "Step 2 must load mapping versions and seed the editor (and the Review checklist) from the working draft, and tell the operator which draft they are editing.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -116,6 +171,7 @@ function run() {
           "mappings_route_does_not_auto_select_on_invalid_installation_id",
           "mappings_route_surfaces_invalid_installation_warning_on_every_step",
           "mappings_route_scope_pill_copy_is_accurate_for_invalid_installation",
+          "mappings_route_resumes_latest_saved_draft_in_editor_and_checklist",
         ],
         checkedAt: new Date().toISOString(),
       },

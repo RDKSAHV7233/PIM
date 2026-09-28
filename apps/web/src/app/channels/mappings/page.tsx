@@ -58,6 +58,7 @@ import { canManageChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
 import { formatDate } from "@/lib/format";
+import { selectWorkingDraft, workingDraftFieldMap } from "@/lib/mapping-working-draft";
 
 export const dynamic = "force-dynamic";
 
@@ -417,7 +418,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
 
     const hasBaseScope = Boolean(selectedChannel && selectedCategoryId);
     const shouldFetchTaxonomy = Boolean(hasBaseScope && (wizardQuery.step === "scope" || wizardQuery.taxonomyQ || wizardQuery.publishCategoryId));
-    const shouldFetchVersions = Boolean(hasBaseScope && (wizardQuery.step === "review" || stepUpAction || stepUpVersionId || wizardQuery.fallbackAckVersionId));
+    const shouldFetchVersions = Boolean(hasBaseScope && (wizardQuery.step === "map" || wizardQuery.step === "review" || stepUpAction || stepUpVersionId || wizardQuery.fallbackAckVersionId));
     const shouldFetchReview = Boolean(hasBaseScope && (wizardQuery.step === "review" || stepUpAction || stepUpVersionId));
     const shouldFetchAdvancedShopify = Boolean(connectorSlug === "shopify" && selectedInstallationId && wizardQuery.showAdvanced);
 
@@ -568,6 +569,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     ];
 
     const definition = connectorSlug ? definitionForConnector(connectorDefinitions, connectorSlug) : null;
+    // Step 2 resumes the operator's latest saved, unpublished draft rather than
+    // re-seeding from the live/default map (which made saved work show as "Missing").
+    const workingDraft = selectWorkingDraft(versions);
 
     const viewModel =
       hasBaseScope && mapping
@@ -590,6 +594,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             showAdvanced: wizardQuery.showAdvanced,
             advancedPanel: wizardQuery.advancedPanel,
             shopifyMetafields: connectorSlug === "shopify" ? (shopifyConfig?.metafields ?? []) : [],
+            draftFieldMap: workingDraftFieldMap(workingDraft),
           })
         : null;
 
@@ -710,6 +715,17 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 </Card>
               );
             })() : null}
+            {workingDraft ? (
+              <Card>
+                <div className="flex items-center gap-2">
+                  <StatusChip label="Resuming draft" tone="info" />
+                </div>
+                <p className="mt-1 text-xs text-slate-600">
+                  Showing the draft saved {formatDate(workingDraft.createdAt)}
+                  {workingDraft.createdBy ? ` by ${workingDraft.createdBy}` : ""}. Saving again creates a new draft version from these values; the live mapping is unchanged until a version is published.
+                </p>
+              </Card>
+            ) : null}
             <MappingEditorCard
               actorRole={actorRole}
               canWrite={canWrite}

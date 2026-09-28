@@ -513,6 +513,8 @@ interface BuildMappingsViewModelArgs {
   showAdvanced?: boolean;
   advancedPanel?: MappingAdvancedPanel | "";
   shopifyMetafields?: ShopifyMetafieldDefinition[];
+  /** Field map of the operator's latest saved, unpublished draft (see lib/mapping-working-draft). */
+  draftFieldMap?: Record<string, string | string[]> | null;
 }
 
 export function buildMappingsViewModel({
@@ -534,6 +536,7 @@ export function buildMappingsViewModel({
   showAdvanced = false,
   advancedPanel = "",
   shopifyMetafields = [],
+  draftFieldMap = null,
 }: BuildMappingsViewModelArgs) {
   const redirectTo = buildMappingRoute({
     step,
@@ -559,7 +562,8 @@ export function buildMappingsViewModel({
   const selectedTargetCategory = selectedPublishCategoryId || resolvedCategoryTarget || targetCategoryOptions[0] || "";
   const requiredTargetFields = uniqueStrings([...mapping.requiredFields, ...taxonomyDefaults]);
   const currentFieldMap: Record<string, FieldMapValue> = {};
-  for (const [sourceField, targetField] of Object.entries(mapping.fieldMap)) {
+  // Resume the saved draft when there is one; otherwise start from the live/default map.
+  for (const [sourceField, targetField] of Object.entries(draftFieldMap ?? mapping.fieldMap)) {
     const source = String(sourceField ?? "").trim();
     const targets = normalizeTargetList(targetField);
     if (!source || targets.length === 0) {
