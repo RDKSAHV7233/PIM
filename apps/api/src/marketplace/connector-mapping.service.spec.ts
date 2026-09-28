@@ -50,19 +50,36 @@ function makePrismaStub() {
   };
   const connectorDefinition = { findUnique: jest.fn() };
   const connectorInstallation = { findFirst: jest.fn() };
+  const attributeDefinition = { findMany: jest.fn().mockResolvedValue([]) };
+  const product = { findUnique: jest.fn().mockResolvedValue(null) };
+  const validationIssue = { count: jest.fn().mockResolvedValue(0) };
+  const mediaAsset = { findFirst: jest.fn().mockResolvedValue(null) };
 
   const tenantClient = {
     connectorMappingVersion,
     connectorMappingEvent,
     connectorDefinition,
     connectorInstallation,
+    attributeDefinition,
+    product,
+    validationIssue,
+    mediaAsset,
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(tenantClient)),
   };
 
   return {
     prisma: { tenant: jest.fn().mockReturnValue(tenantClient) },
     tenantClient,
-    mocks: { connectorMappingVersion, connectorMappingEvent, connectorDefinition, connectorInstallation },
+    mocks: {
+      connectorMappingVersion,
+      connectorMappingEvent,
+      connectorDefinition,
+      connectorInstallation,
+      attributeDefinition,
+      product,
+      validationIssue,
+      mediaAsset,
+    },
   };
 }
 
@@ -479,5 +496,136 @@ describe("ConnectorMappingService.resolveEffectiveMapping — 5-level precedence
     expect(result.matchedVersions).toEqual([]);
     expect(result.compatibilityState).toBe("compatible");
     expect(result.resolvedMapping).toEqual({ field_mappings: {} });
+  });
+});
+
+// Regression coverage for evaluatePublishReadiness's missingRequiredProductValues:
+// SYSTEM_CONNECTOR_DEFAULTS stores attribute-sourced fields under an "attributes.X"
+// source key (e.g. Shopify's "attributes.sku" -> "variants.0.sku",
+// "attributes.mainImageUrl" -> "images.0.src"), but a tenant's required_fields list
+// naturally names the bare canonical field ("sku", "mainImageUrl"). Before this fix,
+// missingRequiredProductValues only ever looked up the bare name as an exact source
+// key, so it always fell through to "missing" for any attribute-sourced required
+// field even when the connector's own default mapping already covered it —
+// mislabeling a fully-mapped product as blocked. missingRequiredMappings (just above
+// it in evaluatePublishReadiness) already guarded against this exact mismatch by
+// checking both `key` and `attributes.${key}`; these tests assert
+// missingRequiredProductValues now does the same.
+describe("ConnectorMappingService.evaluatePublishReadiness — attributes. prefix coverage (missingRequiredProductValues)", () => {
+  afterEach(() => jest.clearAllMocks());
+
+  function publishedShopifyDefault(requiredFields: string[]) {
+    return makeRow({
+      id: "v-shopify-default",
+      connectorSlug: "shopify",
+      mappingLevel: "tenant_connector_default",
+      categoryScope: "*",
+      installationId: null,
+      lifecycleState: "published",
+      mappingRules: { required_fields: requiredFields },
+    });
+  }
+
+  function baseProduct(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "prod-1",
+      categoryId: "cat-apparel",
+      status: "approved",
+      title: "Classic Tee",
+      description: "A tee",
+      brand: "Acme",
+      hsnCode: null,
+      gstRate: null,
+      attributes: {},
+      variants: [{ skuCode: "SKU-1", sellingPrice: 999, mrp: 1099, attributes: {} }],
+      ...overrides,
+    };
+  }
+
+  it("does not report bare 'sku' as missing when the Shopify default mapping only covers it via attributes.sku and the value is present", async () => {
+    const { service, mocks } = createService();
+    mocks.connectorMappingVersion.findMany.mockResolvedValue([publishedShopifyDefault(["sku"])]);
+    mocks.product.findUnique.mockResolvedValue(
+      baseProduct({ attributes: { sku: "SKU-1" } }),
+    );
+
+    const result = await service.evaluatePublishReadiness({
+      connectorSlug: "shopify",
+      categoryScope: "cat-apparel",
+      productId: "prod-1",
+    });
+
+    expect(result.checks).toMatchObject({
+      productDataReadiness: { missingRequiredProductValues: [] },
+    });
+    expect(result.blockers).not.toContain("required_product_data_missing");
+  });
+
+  it("still reports bare 'sku' as missing when attributes.sku resolves but the value itself is empty", async () => {
+    const { service, mocks } = createService();
+    mocks.connectorMappingVersion.findMany.mockResolvedValue([publishedShopifyDefault(["sku"])]);
+    mocks.product.findUnique.mockResolvedValue(baseProduct({ attributes: {} }));
+
+    const result = await service.evaluatePublishReadiness({
+      connectorSlug: "shopify",
+      categoryScope: "cat-apparel",
+      productId: "prod-1",
+    });
+
+    expect(result.checks).toMatchObject({
+      productDataReadiness: { missingRequiredProductValues: ["sku"] },
+    });
+    expect(result.blockers).toContain("required_product_data_missing");
+  });
+
+  it("does not report bare 'mainImageUrl' as missing when the Shopify default mapping only covers it via attributes.mainImageUrl and the value is present", async () => {
+    const { service, mocks } = createService();
+    mocks.connectorMappingVersion.findMany.mockResolvedValue([publishedShopifyDefault(["mainImageUrl"])]);
+    mocks.product.findUnique.mockResolvedValue(
+      baseProduct({ attributes: { mainImageUrl: "https://cdn.example.com/img.jpg" } }),
+    );
+
+    const result = await service.evaluatePublishReadiness({
+      connectorSlug: "shopify",
+      categoryScope: "cat-apparel",
+      productId: "prod-1",
+    });
+
+    expect(result.checks).toMatchObject({
+      productDataReadiness: { missingRequiredProductValues: [] },
+    });
+  });
+
+  it("still reports missing when required_fields already uses the attributes.-prefixed form and the value is empty", async () => {
+    const { service, mocks } = createService();
+    mocks.connectorMappingVersion.findMany.mockResolvedValue([publishedShopifyDefault(["attributes.mainImageUrl"])]);
+    mocks.product.findUnique.mockResolvedValue(baseProduct({ attributes: {} }));
+
+    const result = await service.evaluatePublishReadiness({
+      connectorSlug: "shopify",
+      categoryScope: "cat-apparel",
+      productId: "prod-1",
+    });
+
+    expect(result.checks).toMatchObject({
+      productDataReadiness: { missingRequiredProductValues: ["attributes.mainImageUrl"] },
+    });
+  });
+
+  it("still reports a genuinely unmapped required field as missing (no attributes. source or target covers it)", async () => {
+    const { service, mocks } = createService();
+    mocks.connectorMappingVersion.findMany.mockResolvedValue([publishedShopifyDefault(["seoDescription"])]);
+    mocks.product.findUnique.mockResolvedValue(baseProduct());
+
+    const result = await service.evaluatePublishReadiness({
+      connectorSlug: "shopify",
+      categoryScope: "cat-apparel",
+      productId: "prod-1",
+    });
+
+    expect(result.checks).toMatchObject({
+      productDataReadiness: { missingRequiredProductValues: ["seoDescription"] },
+    });
+    expect(result.blockers).toContain("required_product_data_missing");
   });
 });

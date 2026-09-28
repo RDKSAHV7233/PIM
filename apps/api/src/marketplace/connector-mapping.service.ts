@@ -1445,10 +1445,22 @@ export class ConnectorMappingService {
           blockers.push("product_blocking_issues_open");
         }
         missingRequiredProductValues = channelRequiredFields.filter((requiredField) => {
-          // required_fields may contain PIM source field names (keys) or
-          // channel target field names (values) — check both directions.
+          // required_fields may contain PIM source field names (keys, either bare or
+          // attributes.-prefixed) or channel target field names (values) — check all
+          // directions. Mirrors the attributes. prefix handling already applied to
+          // missingRequiredMappings above: SYSTEM_CONNECTOR_DEFAULTS stores
+          // attribute-sourced fields under an "attributes.X" source key (e.g. Shopify's
+          // "attributes.sku"/"attributes.mainImageUrl"), so a required_fields entry using
+          // the bare canonical field name must still resolve against that prefixed source
+          // instead of being reported as unmapped.
+          const namespacedField = requiredField.startsWith("attributes.")
+            ? requiredField.slice("attributes.".length)
+            : `attributes.${requiredField}`;
           if (mappingHasSource(fieldMappings, requiredField)) {
             return isEmptyValue(readFieldValue(requiredField, product));
+          }
+          if (mappingHasSource(fieldMappings, namespacedField)) {
+            return isEmptyValue(readFieldValue(namespacedField, product));
           }
           if (mappingHasTarget(fieldMappings, requiredField)) {
             const sourceField = findSourceForTarget(fieldMappings, requiredField);
