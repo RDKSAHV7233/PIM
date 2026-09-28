@@ -20,6 +20,7 @@ import {
   type ProtectedMappingActionKind,
 } from "@/lib/channel-mappings";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
+import { computeVersionOrdinals } from "@/lib/mapping-version-label";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -183,6 +184,7 @@ export function VersionManagerCard({
       return rightTime - leftTime;
     });
   const activeVersion = publishedVersions[0] ?? null;
+  const versionOrdinals = computeVersionOrdinals(versions);
   const columns: Column<ConnectorMappingVersion>[] = [
     {
       key: "version",
@@ -190,8 +192,8 @@ export function VersionManagerCard({
       cellClassName: "align-top",
       render: (version) => (
         <>
-          <p className="font-medium text-slate-900">{version.connectorDefinitionVersion}</p>
-          <p className="text-xs text-slate-500">{version.id}</p>
+          <p className="font-medium text-slate-900">Version {versionOrdinals.get(version.id) ?? "?"}</p>
+          <p className="text-xs text-slate-500">Connector schema {version.connectorDefinitionVersion} · {version.id}</p>
           <p className="text-xs text-slate-500">{presentMappingLevel(version.mappingLevel)}</p>
           <p className="text-xs text-slate-500 md:hidden">Updated {formatDateTime(version.updatedAt)}</p>
           <div className="mt-2 flex flex-wrap gap-2 md:hidden">

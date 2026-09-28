@@ -174,6 +174,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-readiness-version-context-ui.test.cjs",
   "mapping-step-up-ui.test.cjs",
   "mapping-structured-editor.test.cjs",
+  "mapping-version-label.test.cjs",
   "mapping-workflow-ui.test.cjs",
   "marketplace-capability-ui-gating.test.cjs",
   "media-governance-ui.test.cjs",

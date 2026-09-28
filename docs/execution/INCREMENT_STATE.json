@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-28T15:45",
+    "lastUpdated": "2026-09-28T16:45",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -4222,6 +4222,81 @@
             "node apps/web/test/integration/run-all.cjs -> 187/190 total (3 pre-existing failures unrelated to this change: auth-cookie-csrf.test.cjs, mfa-login-db-proof.test.cjs, public-signup-web-flow.test.cjs all fail identically on unmodified main with 'spawn cmd.exe ENOENT' -- a pre-existing sandbox/environment limitation, confirmed via git stash before/after comparison)",
             "live Chromium/Playwright regression: /channels -> active=['Overview']; /channels/mappings -> active=['Mappings']; /channels/connectors -> active=['Connections']; /channels/health -> active=['Issues']; /channels/submissions -> active=['Submission Log']; /admin/connectors -> active=['Governance']; /admin/connectors/pipeline -> active=['Governance'] (Pipeline item not visible to this role, confirms role-aware correctness, no crash)"
           ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-62",
+      "name": "Mapping Journey Deep-QA Follow-ups (version-label clarity + step-downgrade alert accessibility)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-VERSION-LABEL-001",
+          "title": "Version-manager table shows the connector definition version, not a distinguishable per-draft identifier",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "e856a11",
+          "scope": [
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/lib/mapping-version-label.ts",
+            "apps/web/test/integration/mapping-version-label.test.cjs",
+            "scripts/check-integration-test-coverage.cjs"
+          ],
+          "scope_expansion": "scripts/check-integration-test-coverage.cjs was not in original scope; added the new test file's name to GLOB_COVERED_TESTS because the coverage-drift guard fails on any undeclared *.test.cjs file (AGENTS.md rule 3: required to fix a check broken by this change).",
+          "problem": "version-manager.tsx:193 renders `version.connectorDefinitionVersion` as the bold primary label in the 'Version' column, with the raw mapping-version UUID as secondary text. `ConnectorMappingVersion` (apps/web/src/lib/api/core.ts) has no incrementing per-mapping version field at all. Two independent draft versions for the same scope both display the identical primary label (e.g. '0.1.0', the Shopify connector schema version) and are distinguishable only by a raw UUID and an update timestamp -- live-confirmed on store-a's Review step during the deep QA pass (two 0.1.0 draft rows, ids 6451b75b... and bdd1ff04...).",
+          "proposed_fix": "Presentational-only fix, no backend/schema change: compute a per-scope ordinal (1-based, ordered by createdAt) among the versions sharing the same categoryScope+mappingLevel, and render it alongside the connector definition version, e.g. 'Draft 1 (Shopify v0.1.0)' / 'Draft 2 (Shopify v0.1.0)'. Extract the ordinal computation into a small dependency-free lib module (matching the mapping-working-draft.ts pattern from PR A/#990) so it is unit-testable via ts.transpileModule.",
+          "team_investigation": "PIM domain expert + architect (2026-09-28): verified getConnectorMappingVersions() in page.tsx:448 is called with includeArchived: true, so archived versions ARE present in the `versions` array VersionManagerCard renders from. This means the ordinal MUST be computed over the full fetched set (archived included), never a filtered/visible-only subset -- otherwise a version's displayed number could shift after an older sibling is archived, breaking the 'Draft 2 is always Draft 2' continuity the whole feature exists to provide. Confirmed no existing ordinal-label pattern exists elsewhere in the codebase (grepped apps/web/src) to copy from -- this is a new UI pattern, so the wording deserves its own review at implementation time, not just the mechanism. CTO: approved with the stability rule folded into acceptance below.",
+          "acceptance": [
+            "Two draft (or any-lifecycle) versions sharing the same scope render visibly distinct primary labels in the Version column",
+            "The connector definition version remains visible (still useful context), just no longer the sole/misleading distinguishing label",
+            "The ordinal is computed over the full includeArchived:true version set (never a filtered subset), so a version's number never changes once assigned, even after an older sibling is archived",
+            "No backend, schema, or API change -- purely a web presentational fix",
+            "Existing version-manager tests and the mapping-canonical-ui / mapping-workflow-ui suites remain green"
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-version-label.test.cjs (new: computeVersionOrdinals exercised as code via ts.transpileModule -- creation-order within a scope, scope-isolation across different scopes, and archive-stability; plus source-contract checks that VersionManagerCard wires it into the primary label and still shows connectorDefinitionVersion as secondary context)",
+            "npx tsc --noEmit -p apps/web/tsconfig.json (clean)",
+            "node apps/web/test/integration/mapping-workflow-ui.test.cjs (6/6)",
+            "node apps/web/test/integration/channels-mappings-route-contract.test.cjs (12/12)",
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs (4/4)",
+            "node apps/web/test/integration/mapping-readiness-version-context-ui.test.cjs (2/2)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)",
+            "npm run guard:unsafe-raw (clean)",
+            "live Chromium/Playwright on store-a's real two-draft scope: table now shows 'Version 2' (6451b75b, saved 8:46:30pm) and 'Version 1' (bdd1ff04, saved 1:05:59pm) as distinct primary labels, correctly creation-ordered, with 'Connector schema 0.1.0 · <uuid>' as secondary context; screenshot confirms no layout regression"
+          ],
+          "notes": "Implemented and shipped in the same PR as ST-CON-MAPPINGS-A11Y-001 (both are the same risk domain -- presentational-only mapping wizard UI, zero data/security risk -- so the earlier plan to split them into two PRs was revised; a clean-tree/no-unpushed-commits harness requirement made holding this fix uncommitted while waiting for a separate PR to merge untenable). Final label wording is 'Version N' (not the originally proposed 'Draft N'), decided during implementation since versions can hold any lifecycle state, not just draft."
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-A11Y-001",
+          "title": "Step-downgrade / step-up alert banner is not announced to assistive tech",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "b11231a",
+          "scope": [
+            "apps/web/src/components/channel/mapping-editor.tsx"
+          ],
+          "problem": "mapping-editor.tsx's exported `MappingStepUpAlert` (the shared amber banner used for stepUpMessage, invalidInstallationAlert, and stepDowngradeAlert from PR B/#991) renders a plain `<div>` with no `role` or `aria-live` attribute -- live-confirmed via getAttribute() in the deep QA pass (role=null, aria-live=null). A screen-reader user who is silently redirected a step back (per #991's own fix) is never told why the page changed under them.",
+          "team_investigation": "Accessibility specialist + architect (2026-09-28): checked invalidInstallationAlert's render condition (page.tsx:512-515) -- it renders whenever invalidInstallation is truthy AND currentStep !== 'scope', which can hold across EVERY page load while an operator sits on a stale bookmarked link, not just a one-time transition. role=\"alert\" (assertive) on the shared component would re-interrupt a screen-reader user on every single navigation while that persists -- worse than current silence. Found the codebase already has a shared apps/web/src/components/ui/inline-alert.tsx with exactly the right pattern: role={tone === 'error' ? 'alert' : 'status'}, aria-live={tone === 'error' ? 'assertive' : 'polite'}; its 'warning' tone classes (border-amber-200 bg-amber-50 text-amber-900) are near-identical to MappingStepUpAlert's current hand-rolled markup. No test pins MappingStepUpAlert's internal classes (checked channels-mappings-route-contract.test.cjs -- only asserts the <MappingStepUpAlert message={...} /> call sites). CTO: prefer this over the original role/aria-live-bolt-on plan -- collapse MappingStepUpAlert into a thin wrapper around InlineAlert(tone=\"warning\"). Same risk profile, less code, follows an established codebase convention instead of inventing a new one, and resolves the accessibility gap as a side effect rather than a special case.",
+          "proposed_fix": "Rewrite MappingStepUpAlert as a thin wrapper: `if (!message) return null; return <InlineAlert tone=\"warning\" title={message.title} message={message.description} />;` -- removes the hand-rolled div/classes, inherits role=\"status\" aria-live=\"polite\" from InlineAlert's existing warning-tone branch. No change to any of the three call sites (stepUpMessage, invalidInstallationAlert, stepDowngradeAlert) or their prop shape.",
+          "acceptance": [
+            "MappingStepUpAlert's rendered root element exposes role=\"status\" and aria-live=\"polite\" (via InlineAlert's warning tone), verified live via getAttribute(), not just source-contract",
+            "No visual regression -- amber styling and content unchanged (minor rounded-md vs rounded-lg corner-radius difference from InlineAlert is acceptable; flag if it reads as a real regression)",
+            "All three call sites (stepUpMessage, invalidInstallationAlert, stepDowngradeAlert) continue to render correctly with no prop-shape change needed",
+            "Existing mapping-step-up-ui and channels-mappings-route-contract tests remain green"
+          ],
+          "tests_passed": [
+            "npx tsc --noEmit -p apps/web/tsconfig.json (clean)",
+            "node apps/web/test/integration/mapping-step-up-ui.test.cjs (3/3)",
+            "node apps/web/test/integration/channels-mappings-route-contract.test.cjs (12/12)",
+            "node apps/web/test/integration/mapping-editor-component.test.cjs (3/3)",
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs (4/4)",
+            "node apps/web/test/integration/mapping-workflow-ui.test.cjs (6/6)",
+            "node apps/web/test/integration/mapping-lazy-panels.test.cjs (2/2)",
+            "live Chromium/Playwright: navigated to a step-downgrade URL, confirmed via getAttribute() the rendered banner now has role=\"status\" aria-live=\"polite\" (was null/null before), same title/description text, screenshot pixel-matches the pre-fix banner (no visual regression)"
+          ],
+          "notes": "Implemented and shipped in PR #994, which was later revised in the same PR to also carry ST-CON-MAPPINGS-VERSION-LABEL-001 above (see that story's notes for why)."
         }
       ]
     }

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { createConnectorMappingVersionAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
@@ -146,12 +147,7 @@ export function MappingStepUpAlert({
     return null;
   }
 
-  return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <p className="font-semibold">{message.title}</p>
-      <p className="mt-1">{message.description}</p>
-    </div>
-  );
+  return <InlineAlert tone="warning" title={message.title} message={message.description} />;
 }
 
 export function ResolvedMappingSnapshotCard({
