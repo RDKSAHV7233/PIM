@@ -163,6 +163,87 @@ test("modal renders Contact us to upgrade when contactUrl is set", () => {
   );
 });
 
+// ── PlanLimitModal link hardening ─────────────────────────────────────────────
+// The product and media pages pass planUpgrade / planContact straight from the
+// URL into this modal, so a crafted link could point its "Request upgrade" /
+// "Contact us to upgrade" buttons off-site. The modal must only ever link to a
+// same-origin path for upgrades, and to the server-configured contact origin.
+console.log("\nPlanLimitModal link hardening");
+
+const linksPath = path.join(webRoot, "src/lib/plan-limit-links.ts");
+function loadLinks() {
+  const ts = require("typescript");
+  const Module = require("node:module");
+  const { outputText } = ts.transpileModule(fs.readFileSync(linksPath, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    fileName: "plan-limit-links.ts",
+  });
+  const mod = new Module(linksPath, module);
+  mod.filename = linksPath;
+  mod._compile(outputText, linksPath);
+  return mod.exports;
+}
+
+test("plan-limit link helpers exist", () => {
+  assert.ok(fs.existsSync(linksPath), `Missing: ${linksPath}`);
+});
+
+test("upgrade link only ever points at a same-origin path", () => {
+  const { safeUpgradeHref } = loadLinks();
+  assert.equal(safeUpgradeHref("/admin/plan"), "/admin/plan");
+  assert.equal(safeUpgradeHref("/admin/plan?from=jobs"), "/admin/plan?from=jobs");
+  for (const hostile of [
+    "https://evil.example/upgrade",
+    "//evil.example/upgrade",
+    "/\\evil.example",
+    "/\t/evil.example",
+    "/\n/evil.example",
+    "/admin/plan\u0000",
+    "javascript:alert(1)",
+    " JavaScript:alert(1)",
+    "data:text/html,hi",
+    "admin/plan",
+    "",
+    null,
+  ]) {
+    assert.equal(safeUpgradeHref(hostile), "/admin/plan", `must reject ${JSON.stringify(hostile)}`);
+  }
+});
+
+test("contact link only accepts the server-configured contact origin", () => {
+  const { safeContactHref } = loadLinks();
+  const trusted = "https://vexapim.com/contact";
+  assert.equal(safeContactHref("https://vexapim.com/contact?tenantKey=t1", trusted), "https://vexapim.com/contact?tenantKey=t1");
+  for (const hostile of [
+    "https://evil.example/contact",
+    "https://vexapim.com.evil.example/contact",
+    "https://vexapim.com@evil.example/contact",
+    "https://vexapim.com\t@evil.example/contact",
+    "http://vexapim.com/contact",
+    "javascript:alert(1)",
+    "mailto:attacker@evil.example",
+    "//evil.example",
+    "/contact",
+    "",
+    null,
+  ]) {
+    assert.equal(safeContactHref(hostile, trusted), null, `must reject ${JSON.stringify(hostile)}`);
+  }
+  // No configured contact URL (or a non-https one) means no contact link at all.
+  assert.equal(safeContactHref("https://vexapim.com/contact", ""), null);
+  assert.equal(safeContactHref("https://vexapim.com/contact", undefined), null);
+  assert.equal(safeContactHref("http://vexapim.com/contact", "http://vexapim.com/contact"), null);
+});
+
+test("modal sanitizes both links server-side against server config", () => {
+  assert.ok(
+    modalSource.includes("safeUpgradeHref(upgradeUrl)") &&
+      modalSource.includes("safeContactHref(contactUrl, process.env.PIM_COMMERCIAL_CONTACT_URL)") &&
+      !/^\s*["']use client["']/m.test(modalSource),
+    "PlanLimitModal must be a server component that sanitizes upgradeUrl and contactUrl (the latter against PIM_COMMERCIAL_CONTACT_URL) before rendering them as links.",
+  );
+});
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) {

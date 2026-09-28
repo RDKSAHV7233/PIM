@@ -1,9 +1,7 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { AppDialog } from "@/components/ui/app-dialog";
 import { buttonVariants } from "@/components/ui/button";
+import { PlanLimitDialogShell } from "@/components/ui/plan-limit-dialog-shell";
+import { safeContactHref, safeUpgradeHref } from "@/lib/plan-limit-links";
 import { cn } from "@/lib/utils";
 
 interface PlanLimitModalProps {
@@ -54,22 +52,23 @@ export function PlanLimitModal({
   contactUrl,
   dismissHref,
 }: PlanLimitModalProps) {
-  const router = useRouter();
-
   if (!isOpen) {
     return null;
   }
 
   const resourceLabel = normalizeResourceLabel(resource);
+  // This modal opens from URL query params, so neither link is trusted as-is: the
+  // upgrade link must stay on this origin, and the contact link must match the
+  // server-configured commercial contact URL (the one the API itself reports).
+  const upgradeHref = safeUpgradeHref(upgradeUrl);
+  const contactHref = safeContactHref(contactUrl, process.env.PIM_COMMERCIAL_CONTACT_URL);
   const isSkuLimit = resource.toLowerCase() === "skus";
 
   return (
-    <AppDialog
-      open={isOpen}
+    <PlanLimitDialogShell
       title={`You reached your ${resourceLabel} limit`}
       description={`Your current plan includes ${limit} ${resourceLabel}${limit === 1 ? "" : "s"}. You are currently using ${current}.`}
-      onClose={() => router.push(dismissHref)}
-      size="md"
+      dismissHref={dismissHref}
     >
       {isSkuLimit ? (
         <p className="mb-4 text-sm text-slate-500">
@@ -80,9 +79,9 @@ export function PlanLimitModal({
         <Link href={dismissHref} className={cn(buttonVariants({ variant: "secondary" }))}>
           Maybe later
         </Link>
-        {contactUrl ? (
+        {contactHref ? (
           <a
-            href={contactUrl}
+            href={contactHref}
             className={cn(buttonVariants({ variant: "dark" }))}
             target="_blank"
             rel="noreferrer"
@@ -90,11 +89,11 @@ export function PlanLimitModal({
             Contact us to upgrade
           </a>
         ) : (
-          <Link href={upgradeUrl} className={cn(buttonVariants({ variant: "dark" }))}>
+          <Link href={upgradeHref} className={cn(buttonVariants({ variant: "dark" }))}>
             Request upgrade
           </Link>
         )}
       </div>
-    </AppDialog>
+    </PlanLimitDialogShell>
   );
 }
