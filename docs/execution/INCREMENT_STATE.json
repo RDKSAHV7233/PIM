@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-27T18:30",
+    "lastUpdated": "2026-09-28T15:45",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -4184,6 +4184,43 @@
             "Odoo and PrestaShop no longer emit runtime-registered-but-no-credential-ui WARNING",
             "Connectors genuinely lacking credential UI still emit the WARNING",
             "Inventory total WARNINGs reduced from 4 to 2 (meesho tier1-schema-missing-bridge and schema-template-stale remain, are real findings)"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-61",
+      "name": "Sidebar Active-Item Highlighting Fix (mapping-journey deep QA follow-up)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-NAV-SIDEBAR-ACTIVE-ITEM-001",
+          "title": "Fix sidebar 'Overview' staying highlighted on every /channels/* sub-route",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "5fe2a0e",
+          "scope": [
+            "apps/web/src/components/nav/app-sidebar.tsx",
+            "apps/web/src/lib/nav-active-item.ts",
+            "apps/web/test/integration/app-sidebar-active-item.test.cjs",
+            "scripts/check-integration-test-coverage.cjs"
+          ],
+          "scope_expansion": "scripts/check-integration-test-coverage.cjs was not in original scope; added the new test file's name to GLOB_COVERED_TESTS because the coverage-drift guard fails on any *.test.cjs file not declared there (AGENTS.md rule 3: required to fix a check broken by this change).",
+          "acceptance": [
+            "Visiting /channels/mappings, /channels/connectors, /channels/health, /channels/submissions highlights only that specific sidebar item, not 'Overview'",
+            "Visiting /channels itself still highlights 'Overview' alone",
+            "The same most-specific-href-wins fix also resolves the parallel Governance-vs-Pipeline collision under /admin/connectors/*",
+            "Exactly one sidebar item is ever marked active for a given pathname",
+            "No change to which items are visible per role (canViewAdminNavigationItem filtering untouched)"
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/app-sidebar-active-item.test.cjs (new: selectActiveHref exercised as code via ts.transpileModule, plus source-contract checks that AppSidebar wires it in and does not reintroduce independent per-item startsWith matching)",
+            "node apps/web/test/integration/app-sidebar-prefetch-disabled.test.cjs (still passes, unaffected)",
+            "npx tsc --noEmit -p apps/web/tsconfig.json (clean)",
+            "npm run lint --workspace apps/web (clean)",
+            "node apps/web/test/integration/run-all.cjs -> 187/190 total (3 pre-existing failures unrelated to this change: auth-cookie-csrf.test.cjs, mfa-login-db-proof.test.cjs, public-signup-web-flow.test.cjs all fail identically on unmodified main with 'spawn cmd.exe ENOENT' -- a pre-existing sandbox/environment limitation, confirmed via git stash before/after comparison)",
+            "live Chromium/Playwright regression: /channels -> active=['Overview']; /channels/mappings -> active=['Mappings']; /channels/connectors -> active=['Connections']; /channels/health -> active=['Issues']; /channels/submissions -> active=['Submission Log']; /admin/connectors -> active=['Governance']; /admin/connectors/pipeline -> active=['Governance'] (Pipeline item not visible to this role, confirms role-aware correctness, no crash)"
           ]
         }
       ]

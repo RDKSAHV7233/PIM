@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { AppRole } from "@/lib/api";
 import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";
+import { selectActiveHref } from "@/lib/nav-active-item";
 import { cn } from "@/lib/utils";
 
 interface SidebarItem {
@@ -214,13 +215,6 @@ const INTERNAL_SECTION: SidebarSection = {
   ],
 };
 
-function isItemActive(pathname: string, item: SidebarItem): boolean {
-  if (item.href === "/") {
-    return pathname === "/";
-  }
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
-}
-
 interface AppSidebarProps {
   actorRole: AppRole;
   adminBoundaryRoles?: string[];
@@ -242,6 +236,10 @@ export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = 
         }))
         .filter((section) => section.items.length > 0),
     [actorRole, adminBoundaryRoles, showInternal],
+  );
+  const activeHref = useMemo(
+    () => selectActiveHref(pathname, sections.flatMap((section) => section.items.map((item) => item.href))),
+    [pathname, sections],
   );
 
   useEffect(() => {
@@ -293,7 +291,7 @@ export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = 
             </div>
             <ul className="space-y-1">
               {section.items.map((item) => {
-                const active = isItemActive(pathname, item);
+                const active = item.href === activeHref;
                 return (
                   <li key={`${section.title}:${item.label}:${item.href}`}>
                     <Link

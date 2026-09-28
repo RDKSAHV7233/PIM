@@ -87,6 +87,7 @@ const GLOB_COVERED_TESTS = [
   "apm-vendor-decision.test.cjs",
   "app-dialog-focus-return.test.cjs",
   "app-drawer-a11y.test.cjs",
+  "app-sidebar-active-item.test.cjs",
   "app-sidebar-prefetch-disabled.test.cjs",
   "approval-comments-ui.test.cjs",
   "approval-diff-workspace.test.cjs",
