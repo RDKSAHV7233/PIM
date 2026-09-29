@@ -3,6 +3,13 @@ import { MarketplaceService } from "./marketplace.service";
 import { runWithTenantContext } from "../common/tenant/tenant-context";
 import { CredentialExpiredError, InstallationNotFoundError } from "../connector-framework/connector.errors";
 import { ConnectorMappingService } from "./connector-mapping.service";
+// Real typed import (not require("typescript")) is required here: ts.isMethodDeclaration/
+// ts.isCallExpression are user-defined type-predicate functions, and TypeScript only applies
+// their narrowing when the function is referenced through a properly typed binding. A
+// require()'d "ts" is inferred as `any`, so `ts.isMethodDeclaration(node) && node.name` fails
+// to compile ("Property 'name' does not exist on type 'Node'") even though the check is
+// correct at runtime.
+import * as ts from "typescript";
 
 // ---------------------------------------------------------------------------
 // Shared factory
@@ -2697,45 +2704,122 @@ describe("RBAC verification", () => {
 // Gap 5 — External identity isolation
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// AST-bounded source assertions (replaces fixed-character-offset slicing)
+// ---------------------------------------------------------------------------
+// The tests below used to extract a method's body with
+// `source.substring(source.indexOf("methodName"), fnStart + N)` for a
+// hardcoded N. That window is a guess about how long the method is "right
+// now" — any unrelated, correct code added anywhere earlier in the file (a
+// new comment, a new guard clause, a new unrelated method call) shifts or
+// lengthens the real method and can silently push the text under test past
+// the fixed window, failing the test with zero actual regression. This
+// happened for real in PR #998 (Shopify shadow-execution wiring added ~13
+// lines before the block "GID lookup is scoped by installationId" asserts
+// on, with no behavior change).
+//
+// parseMethodSource uses the TypeScript compiler API to find the named
+// method by its actual AST node and return exactly that node's own text —
+// correctly bounded by its real opening and closing braces (which the
+// TypeScript parser resolves properly even across nested braces in strings,
+// template literals, and regexes, unlike hand-counting `{`/`}`). The
+// extracted text always covers the whole real method, however long it
+// actually is, so unrelated code inserted anywhere outside the method can
+// never affect these assertions again.
+function parseMethodSource(filePath: string, methodName: string): string {
+  const fs = require("fs");
+  const path = require("path");
+  const resolvedPath = path.resolve(__dirname, filePath);
+  const source = fs.readFileSync(resolvedPath, "utf8");
+  const sourceFile = ts.createSourceFile(resolvedPath, source, ts.ScriptTarget.Latest, true);
+
+  let found: ts.MethodDeclaration | undefined;
+  const visit = (node: ts.Node) => {
+    if (found) return;
+    if (ts.isMethodDeclaration(node) && node.name && node.name.getText(sourceFile) === methodName) {
+      found = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  if (!found) {
+    throw new Error(`Method "${methodName}" not found via AST parse of ${resolvedPath}`);
+  }
+  return found.getText(sourceFile);
+}
+
+// Finds the first call expression within `methodSource` whose callee ends in
+// `calleeSuffix` (e.g. "findFirst") and returns that specific call's own
+// text — narrower and equally AST-correct for tests that only care about one
+// call site within an otherwise large method.
+function findCallExpressionInSource(methodSource: string, calleeSuffix: string): string {
+  // A method-shorthand body ("name(args) { ... }") is only valid syntax inside
+  // a class or object literal, not as a standalone expression — wrap it in a
+  // throwaway class so the parser produces a real AST (with correctly nested
+  // call expressions) instead of error-recovering through malformed input.
+  const sourceFile = ts.createSourceFile("method.ts", `class __Wrapper { ${methodSource} }`, ts.ScriptTarget.Latest, true);
+
+  let found: ts.CallExpression | undefined;
+  const visit = (node: ts.Node) => {
+    if (found) return;
+    if (ts.isCallExpression(node) && node.expression.getText(sourceFile).endsWith(calleeSuffix)) {
+      found = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  if (!found) {
+    throw new Error(`No call expression ending in "${calleeSuffix}" found in the given method source`);
+  }
+  return found.getText(sourceFile);
+}
+
 describe("External identity isolation", () => {
   it("GID lookup is scoped by installationId", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
-    );
-    const fnStart = source.indexOf("private async recordConnectorSubmission(");
-    expect(fnStart).toBeGreaterThan(-1);
-    const gidSection = source.substring(fnStart, fnStart + 4000);
-    expect(gidSection).toContain("installationId: installation.id");
+    const recordSection = parseMethodSource("marketplace.service.ts", "recordConnectorSubmission");
+    expect(recordSection).toContain("installationId: installation.id");
   });
 
-  it("sync state upsert is scoped by installation_id", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
+  it("sync state upsert is scoped by installation_id", async () => {
+    // Behavioral, not text-based: call the real public method with a mocked
+    // raw-SQL execution and assert the actual installationId value flows
+    // into the actual query parameters — proving runtime behavior, not
+    // proximity of two strings in the source file.
+    const tenantDb = { $executeRawUnsafe: jest.fn().mockResolvedValue(1) };
+    const prisma = { tenant: jest.fn().mockReturnValue(tenantDb) };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    };
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
     );
-    const syncSection = source.substring(
-      source.indexOf("upsertSyncState") || source.indexOf("persistSyncStateForProduct"),
-      (source.indexOf("upsertSyncState") || source.indexOf("persistSyncStateForProduct")) + 2000,
-    );
-    expect(syncSection).toContain("installation_id");
+
+    await svc.upsertSyncState("inst-abc-123", "prod-xyz", 5, "success");
+
+    expect(tenantDb.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, ...params] = tenantDb.$executeRawUnsafe.mock.calls[0];
+    expect(String(sql)).toContain("installation_id");
+    expect(params).toContain("inst-abc-123");
   });
 
   it("preview reads submissions scoped by installationId", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
-    );
-    const previewSection = source.substring(
-      source.indexOf("async previewProductChanges"),
-      source.indexOf("async previewProductChanges") + 2000,
-    );
+    const previewSection = parseMethodSource("marketplace.service.ts", "previewProductChanges");
     expect(previewSection).toContain("installationId: resolvedInstallationId");
   });
 
@@ -2751,31 +2835,13 @@ describe("External identity isolation", () => {
   });
 
   it("syncSubmissionStatus passes explicit installationId (no arbitrary fallback)", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
-    );
-    const syncSection = source.substring(
-      source.indexOf("syncSubmissionStatus"),
-      source.indexOf("syncSubmissionStatus") + 1500,
-    );
+    const syncSection = parseMethodSource("marketplace.service.ts", "syncSubmissionStatus");
     expect(syncSection).toContain("submission.installationId");
     expect(syncSection).not.toContain("requireInstallation(tenantKey, submission.connectorSlug)");
   });
 
   it("processLiveSubmissionRetry rejects null installationId", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
-    );
-    const retrySection = source.substring(
-      source.indexOf("processLiveSubmissionRetry"),
-      source.indexOf("processLiveSubmissionRetry") + 2000,
-    );
+    const retrySection = parseMethodSource("marketplace.service.ts", "processLiveSubmissionRetry");
     expect(retrySection).toContain("no installation ID on record");
     expect(retrySection).not.toContain("installationId ?? undefined");
   });
@@ -2787,15 +2853,7 @@ describe("External identity isolation", () => {
   // function returning means a submission definitely exists, so "no
   // installation to submit to" must throw, not return.
   it("recordConnectorSubmission throws for null installationId (no fallback, no silent completion)", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
-    );
-    const fnStart = source.indexOf("private async recordConnectorSubmission(");
-    expect(fnStart).toBeGreaterThan(-1);
-    const recordSection = source.substring(fnStart, fnStart + 1400);
+    const recordSection = parseMethodSource("marketplace.service.ts", "recordConnectorSubmission");
     expect(recordSection).toContain("if (!job.installationId)");
     expect(recordSection).toContain("throw new InstallationNotFoundError(connectorSlug)");
     expect(recordSection).not.toContain("return null");
@@ -2803,20 +2861,8 @@ describe("External identity isolation", () => {
   });
 
   it("no query looks up external mapping by tenant+product alone in submission recording", () => {
-    const fs = require("fs");
-    const path = require("path");
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "marketplace.service.ts"),
-      "utf8",
-    );
-    const recordSection = source.substring(
-      source.indexOf("private async recordConnectorSubmission("),
-      source.indexOf("private async recordConnectorSubmission(") + 4000,
-    );
-    const gidLookup = recordSection.substring(
-      recordSection.indexOf("findFirst"),
-      recordSection.indexOf("findFirst") + 300,
-    );
+    const recordSection = parseMethodSource("marketplace.service.ts", "recordConnectorSubmission");
+    const gidLookup = findCallExpressionInSource(recordSection, "findFirst");
     expect(gidLookup).toContain("installationId");
   });
 });
