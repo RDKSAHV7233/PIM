@@ -21,6 +21,7 @@ import {
 } from "@/lib/channel-mappings";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { computeVersionOrdinals } from "@/lib/mapping-version-label";
+import { pickActiveVersion, presentInstallationScope } from "@/lib/mapping-version-scope";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -31,10 +32,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 function fallbackAckMessage(version: ConnectorMappingVersion): string | null {
   const ackMessage = asRecord(version.fallbackPolicy).ack_message;
   return typeof ackMessage === "string" && ackMessage.trim().length > 0 ? ackMessage.trim() : null;
-}
-
-function describePublishedVersion(version: ConnectorMappingVersion): string {
-  return version.id.slice(0, 8);
 }
 
 function presentPublishedAt(value: string | null, fallbackValue: string): string {
@@ -183,7 +180,10 @@ export function VersionManagerCard({
       const rightTime = new Date(right.publishedAt ?? right.updatedAt).getTime();
       return rightTime - leftTime;
     });
-  const activeVersion = publishedVersions[0] ?? null;
+  // Published versions exist per account scope; the resolver prefers the selected account's version
+  // over the "all accounts" one, so the active version is chosen the same way rather than by date.
+  const activeVersion = pickActiveVersion(versions, installationId);
+  const otherLiveVersions = publishedVersions.filter((version) => version.id !== activeVersion?.id);
   const versionOrdinals = computeVersionOrdinals(versions);
   const columns: Column<ConnectorMappingVersion>[] = [
     {
@@ -195,6 +195,7 @@ export function VersionManagerCard({
           <p className="font-medium text-slate-900">Version {versionOrdinals.get(version.id) ?? "?"}</p>
           <p className="text-xs text-slate-500">Connector schema {version.connectorDefinitionVersion} · {version.id}</p>
           <p className="text-xs text-slate-500">{presentMappingLevel(version.mappingLevel)}</p>
+          <p className="text-xs text-slate-500">{presentInstallationScope(version.installationId)}</p>
           <p className="text-xs text-slate-500 md:hidden">Updated {formatDateTime(version.updatedAt)}</p>
           <div className="mt-2 flex flex-wrap gap-2 md:hidden">
             <StatusChip
@@ -439,15 +440,19 @@ export function VersionManagerCard({
         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
           <p className="font-semibold">Active promoted version</p>
           <p className="mt-1">
-            Version {describePublishedVersion(activeVersion)} is currently live for this mapping scope.
+            Version {versionOrdinals.get(activeVersion.id) ?? "?"} ({presentInstallationScope(activeVersion.installationId).toLowerCase()}) is currently live for this mapping scope.
           </p>
           <p className="mt-1 text-xs text-emerald-900">
             Published {presentPublishedAt(activeVersion.publishedAt, activeVersion.updatedAt)} from connector definition version{" "}
             {activeVersion.connectorDefinitionVersion}.
           </p>
-          {publishedVersions.length > 1 ? (
+          {otherLiveVersions.length > 0 ? (
             <p className="mt-1 text-xs text-emerald-900">
-              {publishedVersions.length - 1} prior published version{publishedVersions.length - 1 === 1 ? "" : "s"} remain in history for rollback.
+              Also live:{" "}
+              {otherLiveVersions
+                .map((version) => `Version ${versionOrdinals.get(version.id) ?? "?"} (${presentInstallationScope(version.installationId).toLowerCase()})`)
+                .join(", ")}
+              . Each connector-account scope has its own live version; the one for the selected account is used first.
             </p>
           ) : null}
         </div>

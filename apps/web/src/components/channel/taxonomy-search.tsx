@@ -249,9 +249,11 @@ export function TaxonomyAlignmentCard({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{item.path}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Required attributes: {item.requiredAttributes.join(", ") || "None"}
-                    </p>
+                    {item.requiredAttributes.length > 0 ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Required attributes: {item.requiredAttributes.join(", ")}
+                      </p>
+                    ) : null}
                   </div>
                   <Link
                     href={href}

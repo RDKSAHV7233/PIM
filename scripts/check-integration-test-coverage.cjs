@@ -173,6 +173,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-editor-prop-contract.test.cjs",
   "mapping-lazy-panels.test.cjs",
   "mapping-readiness-version-context-ui.test.cjs",
+  "mapping-scope-label-clarity.test.cjs",
   "mapping-required-banner-ui.test.cjs",
   "mapping-step-up-ui.test.cjs",
   "mapping-structured-editor.test.cjs",

@@ -59,6 +59,7 @@ import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
 import { formatDate } from "@/lib/format";
 import { selectWorkingDraft, workingDraftFieldMap } from "@/lib/mapping-working-draft";
+import { buildSelectedPublishCategoryOption } from "@/lib/mapping-publish-category";
 
 export const dynamic = "force-dynamic";
 
@@ -495,9 +496,18 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       ? String(asRecord(asRecord(resolved.resolvedMapping).category).target ?? "").trim()
       : "";
     const selectedPublishCategoryId = wizardQuery.publishCategoryId || resolvedCategoryTarget;
+    // The search results are capped and filtered, so the selected category (often the resolver's
+    // default target) may not be in them; fall back to the category tree before printing a raw id.
+    const selectedPublishCategoryFallback = buildSelectedPublishCategoryOption(
+      selectedPublishCategoryId,
+      taxonomyMatches,
+      unmappedCategories,
+      categories,
+    );
     const selectedPublishCategoryLabel =
       taxonomyMatches.find((item) => item.id === selectedPublishCategoryId)?.path ??
       unmappedCategories.find((item) => item.id === selectedPublishCategoryId)?.path ??
+      selectedPublishCategoryFallback?.path ??
       selectedPublishCategoryId;
 
     const hasPublishCategory = Boolean(selectedPublishCategoryId);
@@ -752,7 +762,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 definitionVersion: definition?.connectorVersion ?? "1.0.0",
               }}
               taxonomy={{
-                matches: taxonomyMatches as ConnectorTaxonomyOption[],
+                matches: (selectedPublishCategoryFallback ? [selectedPublishCategoryFallback, ...taxonomyMatches] : taxonomyMatches) as ConnectorTaxonomyOption[],
                 unmapped: unmappedCategories as ConnectorTaxonomyOption[],
                 defaults: viewModel.taxonomyDefaults,
                 categoryOptions: viewModel.targetCategoryOptions,

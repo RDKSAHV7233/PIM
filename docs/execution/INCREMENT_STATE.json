@@ -4376,6 +4376,95 @@
           "notes": "Shipped in PR #1002 (merge commit 8ac40410). This entry was part of that PR's branch but was dropped when main was merged into the branch to resolve the INCREMENT_STATE.json conflict, so it lands here as a docs-only follow-up. The test is a source-structure check, weaker than a rendered test because MappingEditorCard imports server actions. Post-deploy browser verification of the Step 2 rendering is tracked separately."
         }
       ]
+    },
+    {
+      "incrementId": "INC-65",
+      "name": "Mapping Journey Live-QA Follow-ups (scope and label clarity)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-PUBLISH-CATEGORY-LABEL-001",
+          "title": "Publish category shown as a raw cuid when the selected category is not in the capped search results",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "2835d222",
+          "scope": [
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/lib/mapping-publish-category.ts",
+            "apps/web/test/integration/mapping-scope-label-clarity.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Live QA (2026-09-29, Shopify / T-Shirt): the Current Scope chip and the Step 2 Publish category dropdown showed the raw id cmqatz4330027mz01ii7z5dnt. The label came only from the taxonomy search results, which are capped at 25 and filtered, and the resolver's default target is usually not among them.",
+          "proposed_fix": "buildSelectedPublishCategoryOption falls back to the category tree's path; used for the label and prepended to the editor's matches so the dropdown labels the selected option.",
+          "team_investigation": "Engineering: label logic read from page.tsx; the fallback is display-only and is deliberately NOT added to the Step 1 card list, because that list switches to the unmapped set when matches are empty. UX: raw ids are never acceptable as operator-facing labels. CTO-lens (analysis, not approval): presentational, no data or auth change.",
+          "acceptance": [
+            "A selected publish category missing from the search results is labelled with its category path.",
+            "No fallback when the category is already in matches or unmapped, when nothing is selected, or when the id is unknown."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-scope-label-clarity.test.cjs (new; helper executed as code plus page wiring contract; the wiring contract failed before the fix)",
+            "node apps/web/test/integration/run-all.cjs (191/191 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-REQUIRED-ATTRS-NONE-001",
+          "title": "Publish-category cards say 'Required attributes: None' while Step 1 says 7 fields are required",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "2835d222",
+          "scope": [
+            "apps/web/src/components/channel/taxonomy-search.tsx",
+            "apps/web/test/integration/mapping-scope-label-clarity.test.cjs"
+          ],
+          "problem": "Live QA (2026-09-29): every card printed 'Required attributes: None' while the required-fields preview listed 7 required fields. For connectors without a per-category taxonomy the list is simply empty, so 'None' asserted something the data does not say.",
+          "proposed_fix": "Render the required-attributes line only when the category lists some.",
+          "team_investigation": "Engineering: item.requiredAttributes.join(', ') || 'None' turned 'unknown/empty' into a claim. UX: omit rather than contradict the required-fields preview. QA: pinned by a source-contract assertion. CTO-lens: presentational only.",
+          "acceptance": [
+            "No 'None' fallback string in the card.",
+            "The line still renders when a category lists attributes."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-scope-label-clarity.test.cjs (new; failed before the fix)",
+            "node apps/web/test/integration/run-all.cjs (191/191 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-VERSION-SCOPE-001",
+          "title": "Two versions labelled 'Live' for one scope with no indication of their connector-account scope",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "2835d222",
+          "scope": [
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/lib/mapping-version-scope.ts",
+            "apps/web/test/integration/mapping-scope-label-clarity.test.cjs"
+          ],
+          "problem": "Live QA (2026-09-29, Shopify / T-Shirt): versions 7 and 9 were both 'Live', the header said '2 live', and the active card said 'Version 2cdbc527' (a raw id prefix) while the table said 'Version 9'. connector-mapping.service.ts listVersions returns installationId = selected OR null, and publish supersedes only within the same installation scope, so one live version per scope is by design; the UI showed neither the scope nor which version the resolver uses, and picked the 'active' one by date.",
+          "proposed_fix": "presentInstallationScope line in the Version column; pickActiveVersion chooses selected-account first, then all-accounts, then newest (matching mappingResolutionWeight); other live versions are listed with their scope; the active card uses the table's 'Version N' label.",
+          "team_investigation": "Engineering: read listVersions, publishVersion (per-scope supersede, covered by connector-mapping.service.spec.ts) and mappingResolutionWeight (installOffset 2 beats slug scope), which shows the data is correct and the presentation is not. QA: could not confirm from the browser that v7/v9 differ in scope (the version manager is a server component and the API data is not exposed), so this fixes the ambiguity rather than asserting the cause. CTO-lens: presentational only; no lifecycle or API change.",
+          "acceptance": [
+            "Each version row shows 'This connector account only' or 'All connector accounts'.",
+            "The active version is the selected account's newest published version, else the all-accounts one, else the newest overall.",
+            "Other live versions are listed with their scope; the active card uses 'Version N'."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-scope-label-clarity.test.cjs (new; helper behaviours executed as code, including the case where an all-accounts version is newer than the account-scoped one)",
+            "node apps/web/test/integration/run-all.cjs (191/191 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ],
+          "notes": "commit is the pre-squash fix commit; the merge commit replaces it once merged. DEF-07 (Archive enabled on the live version) was investigated and is NOT changed: the API deliberately allows archiving a published version (connector-mapping.service.spec.ts), so any confirmation prompt is a product decision."
+        }
+      ]
     }
   ]
 }
