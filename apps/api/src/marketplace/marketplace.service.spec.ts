@@ -2881,6 +2881,22 @@ describe("MarketplaceService.runShopifyShadowProjection — Story 4 shadow execu
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("Story 5: surfaces the semantic comparison result (comparisonMatches) for a well-formed, correctly-projected product", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";
+    const { svc, logger }: ShadowHarness = makeShadowTestService();
+
+    await runShadow(svc);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "shopify_shadow_projection_computed",
+      expect.objectContaining({ comparisonMatches: true }),
+    );
+    // A correct projection of its own source never mismatches, so the
+    // dedicated comparison-mismatch warning must not fire here.
+    expect(logger.warn).not.toHaveBeenCalledWith("shopify_shadow_comparison_mismatch", expect.anything());
+  });
+
   it("reports a missing required field via readiness without throwing", async () => {
     process.env.APP_ENV = "staging";
     process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";

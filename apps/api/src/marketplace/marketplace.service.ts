@@ -35,6 +35,7 @@ import { PriceResolutionService } from "./price-resolution.service";
 import { MediaStorageService } from "../media/media-storage.service";
 import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
 import { buildShopifyChannelProjection } from "../connectors/shopify/shopify-channel-projection";
+import { compareProjectionToSource } from "../connectors/shopify/shopify-shadow-comparator";
 import type { ResolvedConnectorMapping } from "./mapping-resolution.service";
 import { WooCommercePublishError } from "../connectors/woocommerce/woocommerce.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
@@ -3634,6 +3635,12 @@ export class MarketplaceService implements OnModuleInit {
       };
       const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
 
+      // Story 5: verify the projection stays faithful to its own source data —
+      // the actual verification step this shadow sprint exists to produce.
+      // Comparison-only: never affects productPayload, never affects the real
+      // publish/update call regardless of the result.
+      const comparison = compareProjectionToSource(projection, productPayload);
+
       this.logger.info("shopify_shadow_projection_computed", {
         installationId: installation.id,
         categoryId,
@@ -3641,7 +3648,16 @@ export class MarketplaceService implements OnModuleInit {
         schemaVersion: projection.readiness.schemaVersion,
         missingRequiredFields: projection.readiness.missingRequiredFields,
         mappingSource: resolvedMapping.source,
+        comparisonMatches: comparison.matches,
       });
+      if (!comparison.matches) {
+        this.logger.warn("shopify_shadow_comparison_mismatch", {
+          installationId: installation.id,
+          categoryId,
+          sku: projection.identity.sku,
+          mismatches: comparison.mismatches,
+        });
+      }
     } catch (error) {
       this.logger.warn("shopify_shadow_projection_failed", {
         installationId: installation.id,
