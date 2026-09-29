@@ -38,53 +38,73 @@ export default async function MappingManagerRedirectPage({
   const query = await searchParams;
   const { authHeader, actorRole } = await getServerSession();
 
+  // redirect() and notFound() work by throwing. Calling them inside the try below would let the
+  // catch swallow them and fall through to the bare "/channels/mappings" fallback, dropping the
+  // channel, account and product context — so resolve the destination here and navigate after.
+  let destination = "/channels/mappings";
+  let installationMissing = false;
+
   try {
     const installations = await getInstalledConnectors({ role: actorRole, authHeader });
     const installation = installations.find((item) => item.id === installationId);
     if (!installation) {
-      notFound();
-    }
-
-    const productId = String(query.productId ?? "").trim();
-    const product = productId ? await getProduct(productId, { role: actorRole, authHeader }) : null;
-    const target = new URLSearchParams();
-    target.set(
-      "channel",
-      normalizeChannel(query.channel, mapConnectorSlugToMarketplaceChannel(installation.slug)),
-    );
-    target.set("installationId", installation.id);
-    if (productId) {
-      target.set("productId", productId);
-    }
-    if (product?.categoryId) {
-      target.set("categoryId", product.categoryId);
-    }
-
-    // If a live (published) mapping version already exists for this scope, land the operator
-    // directly on the "review" step, where the version manager surfaces it — otherwise every
-    // wizard open starts at "scope" and silently offers to build a mapping from nothing, even
-    // when one already exists.
-    if (product?.categoryId) {
-      try {
-        const versions = await getConnectorMappingVersions(
-          installation.slug,
-          { categoryScope: product.categoryId, installationId: installation.id },
-          { role: actorRole, authHeader },
-        );
-        const hasLiveVersion = versions.some((version) => version.lifecycleState === "published");
-        if (hasLiveVersion) {
-          target.set("step", "review");
+      installationMissing = true;
+    } else {
+      const productId = String(query.productId ?? "").trim();
+      let product: Awaited<ReturnType<typeof getProduct>> | null = null;
+      if (productId) {
+        try {
+          product = await getProduct(productId, { role: actorRole, authHeader });
+        } catch (error) {
+          if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+            throw error;
+          }
+          // Non-fatal: keep the connector scope and let the wizard handle a missing product.
         }
-      } catch {
-        // Non-fatal: fall through to the wizard's default step if the version lookup fails.
       }
-    }
+      const target = new URLSearchParams();
+      target.set(
+        "channel",
+        normalizeChannel(query.channel, mapConnectorSlugToMarketplaceChannel(installation.slug)),
+      );
+      target.set("installationId", installation.id);
+      if (productId) {
+        target.set("productId", productId);
+      }
+      if (product?.categoryId) {
+        target.set("categoryId", product.categoryId);
+      }
 
-    redirect(`/channels/mappings?${target.toString()}`);
+      // If a live (published) mapping version already exists for this scope, land the operator
+      // directly on the "review" step, where the version manager surfaces it — otherwise every
+      // wizard open starts at "scope" and silently offers to build a mapping from nothing, even
+      // when one already exists.
+      if (product?.categoryId) {
+        try {
+          const versions = await getConnectorMappingVersions(
+            installation.slug,
+            { categoryScope: product.categoryId, installationId: installation.id },
+            { role: actorRole, authHeader },
+          );
+          const hasLiveVersion = versions.some((version) => version.lifecycleState === "published");
+          if (hasLiveVersion) {
+            target.set("step", "review");
+          }
+        } catch {
+          // Non-fatal: fall through to the wizard's default step if the version lookup fails.
+        }
+      }
+
+      destination = `/channels/mappings?${target.toString()}`;
+    }
   } catch (error) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect(`/connectors/${encodeURIComponent(installationId)}/mapping`, error));
     }
-    redirect("/channels/mappings");
   }
+
+  if (installationMissing) {
+    notFound();
+  }
+  redirect(destination);
 }

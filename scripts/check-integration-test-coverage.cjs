@@ -141,6 +141,7 @@ const GLOB_COVERED_TESTS = [
   "connector-issue-snapshot-dedupe.test.cjs",
   "connector-launch-honesty-ui.test.cjs",
   "connector-legacy-route-redirects.test.cjs",
+  "connector-mapping-redirect-route.test.cjs",
   "connector-oauth-initiation-contract.test.cjs",
   "connectors-hub-route-contract.test.cjs",
   "connectors-setup-route-contract.test.cjs",

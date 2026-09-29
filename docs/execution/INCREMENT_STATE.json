@@ -4299,6 +4299,45 @@
           "notes": "Implemented and shipped in PR #994, which was later revised in the same PR to also carry ST-CON-MAPPINGS-VERSION-LABEL-001 above (see that story's notes for why)."
         }
       ]
-    }
-  ]
+    },
+    {
+      "incrementId": "INC-63",
+      "name": "Mapping Journey Live-QA Follow-ups (connector entry redirect)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-ENTRY-REDIRECT-001",
+          "title": "Connector-page mapping links land on a bare /channels/mappings and lose channel, account and product scope",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "c16a3e17",
+          "scope": [
+            "apps/web/src/app/connectors/[installationId]/mapping/page.tsx",
+            "apps/web/test/integration/connector-mapping-redirect-route.test.cjs"
+          ],
+          "scope_expansion": [
+            "apps/web/test/integration/mapping-canonical-ui.test.cjs -- its source-string assertion pinned the exact buggy call shape (redirect inside the try), so it had to follow the fix; behaviour it protects is now covered by the new behavioural test.",
+            "scripts/check-integration-test-coverage.cjs -- registers the new test in GLOB_COVERED_TESTS (AGENTS.md rule 3)."
+          ],
+          "problem": "Live browser QA on app.vexapim.com (2026-09-29, Admin, read-only) followed every /connectors/{id}/mapping link (Shopify and WooCommerce accounts, plus a non-existent id) and all of them ended on a bare /channels/mappings with no channel, installationId, productId or categoryId, and never on the review step even where a live version exists. The page called redirect() (and notFound()) inside a try whose catch swallowed Next's NEXT_REDIRECT exception and issued redirect('/channels/mappings'). Six-plus entry points (Connector portfolio, Connector detail) were affected. No test covered the route; the route smoke spec line for it is commented out.",
+          "proposed_fix": "Resolve the destination inside the try and call redirect(destination) / notFound() after it. Keep redirect-to-login for 401/403 and the documented bare-route fallback for unexpected failures. Make a non-auth product lookup failure non-fatal so the connector scope survives.",
+          "team_investigation": "Engineering: root cause confirmed by reading the page (redirect at the end of the try; catch handles only ApiHttpError 401/403 and otherwise redirects bare), and reproduced by a behavioural test that failed on the old code with 'got \"/channels/mappings\"'. QA: the only existing assertion was a source-string check in mapping-canonical-ui.test.cjs that matched the buggy line, which is why the route stayed broken while tests were green. UX: restores the intended 'land on Review when a live mapping exists' behaviour from the redirect page's own comment; no new UI. CTO-lens (analysis, not an approval): low risk, reversible, single file; one deliberate behaviour change (product 404 keeps connector scope). Required-team label still applies at merge.",
+          "acceptance": [
+            "A /connectors/{id}/mapping link redirects to /channels/mappings with channel, installationId, productId and categoryId preserved.",
+            "When a published version exists for the product's category the redirect includes step=review.",
+            "An unknown installation id returns notFound, not a bare redirect.",
+            "401/403 redirect to login carrying the original target; unexpected API failure still falls back to /channels/mappings.",
+            "A product lookup failure (non-auth) keeps the connector scope; a version lookup failure keeps scope without a step."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/connector-mapping-redirect-route.test.cjs (new, 8 scenarios; FAILED before the fix with: redirect must keep the query string, got \"/channels/mappings\" (bare route = DEF-01); passes after)",
+            "node apps/web/test/integration/run-all.cjs (190/190 with both fixes applied in the working tree)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ],
+          "notes": "Post-deploy verification still required in the browser: re-run MAP-A04, A05, A06 and A11 from docs/qa/mapping-journey-browser-review-testcases-2026-09-29.md."
+        }
+      ]
+    }  ]
 }

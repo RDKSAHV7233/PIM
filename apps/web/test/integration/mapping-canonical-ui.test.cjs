@@ -41,8 +41,9 @@ function run() {
   );
   assert(
     connectorMappingSource.includes('target.set("installationId", installation.id);') &&
-      connectorMappingSource.includes('redirect(`/channels/mappings?${target.toString()}`)'),
-    "Legacy connector mapping route must redirect into the lifecycle mappings workspace and preserve connector installation context.",
+      connectorMappingSource.includes("destination = `/channels/mappings?${target.toString()}`") &&
+      connectorMappingSource.includes("redirect(destination)"),
+    "Legacy connector mapping route must redirect into the lifecycle mappings workspace and preserve connector installation context (behaviour covered by connector-mapping-redirect-route.test.cjs).",
   );
 
   console.log(
