@@ -4339,5 +4339,43 @@
           "notes": "Post-deploy verification still required in the browser: re-run MAP-A04, A05, A06 and A11 from docs/qa/mapping-journey-browser-review-testcases-2026-09-29.md."
         }
       ]
-    }  ]
+    },
+    {
+      "incrementId": "INC-64",
+      "name": "Mapping Journey Live-QA Follow-ups (required-fields notice consistency)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-REQUIRED-BANNER-001",
+          "title": "Step 2 shows 'Required fields still missing' and 'All required fields are mapped' at the same time",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "8ac40410",
+          "scope": [
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/test/integration/mapping-required-banner-ui.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test in GLOB_COVERED_TESTS (AGENTS.md rule 3)."
+          ],
+          "problem": "Live browser QA on app.vexapim.com (2026-09-29, Admin, read-only), Shopify / T-Shirt scope, Step 2 with 7 of 7 required fields mapped and 0 missing: an amber 'Required fields still missing -- Finish these required fields before you move to validation and publish' notice rendered directly above a green 'All required fields are mapped' notice. In mapping-editor.tsx the amber block sat outside the missingRequiredRows.length > 0 conditional.",
+          "proposed_fix": "Move the amber notice inside the missingRequiredRows.length > 0 branch, ahead of the field rows; leave the green notice in the else branch. No copy or styling change.",
+          "team_investigation": "Engineering: cause is a single unconditional block in mapping-editor.tsx; the required-field counts and the green branch were already correct. UX: the two notices give opposite instructions; with fields missing the amber notice is still wanted, directly above the rows to fix, so it moves rather than goes. QA: mapping-workflow-ui.test.cjs only asserts the string exists, which is why this was never caught; the new test pins the branch structure. CTO-lens (analysis, not an approval): presentational only, no data, auth or API surface.",
+          "acceptance": [
+            "With at least one required field missing, the amber notice renders above the missing field rows.",
+            "With none missing, only the green notice renders.",
+            "The amber notice text exists exactly once in the editor."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-required-banner-ui.test.cjs (new; FAILED before the fix with: The amber 'Required fields still missing' notice must render only inside the missing-fields branch (DEF-02: it was unconditional); passes after)",
+            "node apps/web/test/integration/run-all.cjs (189/189 on the PR branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ],
+          "notes": "Shipped in PR #1002 (merge commit 8ac40410). This entry was part of that PR's branch but was dropped when main was merged into the branch to resolve the INCREMENT_STATE.json conflict, so it lands here as a docs-only follow-up. The test is a source-structure check, weaker than a rendered test because MappingEditorCard imports server actions. Post-deploy browser verification of the Step 2 rendering is tracked separately."
+        }
+      ]
+    }
+  ]
 }
