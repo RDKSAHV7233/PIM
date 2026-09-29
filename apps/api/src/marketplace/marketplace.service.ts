@@ -34,6 +34,8 @@ import { MarketPrice, ProductPayload } from "../connector-framework/connector.in
 import { PriceResolutionService } from "./price-resolution.service";
 import { MediaStorageService } from "../media/media-storage.service";
 import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
+import { buildShopifyChannelProjection } from "../connectors/shopify/shopify-channel-projection";
+import type { ResolvedConnectorMapping } from "./mapping-resolution.service";
 import { WooCommercePublishError } from "../connectors/woocommerce/woocommerce.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import {
@@ -3383,6 +3385,19 @@ export class MarketplaceService implements OnModuleInit {
           existingGid = priorSubmission?.externalRef ?? null;
         }
 
+        // Story 4 (Shopify shadow-sprint restart): run the new vNext pipeline beside
+        // the real publish/update call below, purely for observation. Staging-only,
+        // fully isolated — see runShopifyShadowProjection's own guards. Awaited
+        // (not fire-and-forget) so its own try/catch fully resolves before this
+        // method continues; it never throws and never touches productPayload.
+        if (connectorSlug === "shopify" && job.categoryId) {
+          await this.runShopifyShadowProjection({
+            productPayload,
+            categoryId: job.categoryId,
+            installation,
+          });
+        }
+
         const publishResult = existingGid
           ? await this.connectorFramework.update(installation, productPayload, existingGid)
           : await this.connectorFramework.publish(installation, productPayload);
@@ -3557,6 +3572,83 @@ export class MarketplaceService implements OnModuleInit {
       attemptNumber: submission.attemptNumber,
     });
     return outcome;
+  }
+
+  /**
+   * Story 4 of the Shopify shadow-sprint restart: runs the new vNext pipeline
+   * — Story 1 fetchProductTypeSchema, Story 2 mapping resolution, Story 3
+   * ChannelProjection — beside the real Shopify publish/update call in
+   * recordConnectorSubmission, purely for observation. Never mutates
+   * productPayload, never calls Shopify's API or uses real credentials
+   * (the ConnectorContext built here has no fetch() implementation at all —
+   * if the shadow path ever tried to make a real API call, it would fail
+   * loudly rather than silently succeed), and never affects the real
+   * publish/update outcome: every failure here is caught and logged, never
+   * rethrown.
+   *
+   * Gated on APP_ENV === "staging" — the exact-match convention the CTO
+   * required for the error-authority runtime-proof gate (#988) — plus an
+   * explicit opt-in flag, so this can be disabled instantly without a
+   * deploy if it ever misbehaves.
+   *
+   * Calls this.getEffectiveMapping() directly rather than injecting
+   * MappingResolutionService: MappingResolutionService depends on
+   * MarketplaceService (Story 2), so the reverse dependency here would be
+   * circular. This reuses the exact same resolution authority
+   * MappingResolutionService itself delegates to — not a second, divergent
+   * mapping-resolution path.
+   */
+  private async runShopifyShadowProjection(input: {
+    productPayload: ProductPayload;
+    categoryId: string;
+    installation: { id: string; connectorId: string };
+  }): Promise<void> {
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+    if (appEnv !== "staging") {
+      return;
+    }
+    if (String(process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED ?? "").trim().toLowerCase() !== "true") {
+      return;
+    }
+
+    const { productPayload, categoryId, installation } = input;
+    try {
+      const connector = this.connectorRegistry.getConnector("shopify");
+      if (!connector.fetchProductTypeSchema) {
+        return;
+      }
+      const shadowCtx = {
+        tenantId: this.connectorFramework.getCurrentTenantKey(),
+        installationId: installation.id,
+        connectorId: installation.connectorId,
+        getAccessToken: async () => "",
+      };
+      const targetSchema = await connector.fetchProductTypeSchema(shadowCtx, productPayload.productType);
+      const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
+      const resolvedMapping: ResolvedConnectorMapping = {
+        connectorSlug: "shopify",
+        requiredFields: effective.requiredFields,
+        fieldMap: effective.fieldMap,
+        rawFieldMap: effective.rawFieldMap,
+        source: effective.source,
+      };
+      const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
+
+      this.logger.info("shopify_shadow_projection_computed", {
+        installationId: installation.id,
+        categoryId,
+        sku: projection.identity.sku,
+        schemaVersion: projection.readiness.schemaVersion,
+        missingRequiredFields: projection.readiness.missingRequiredFields,
+        mappingSource: resolvedMapping.source,
+      });
+    } catch (error) {
+      this.logger.warn("shopify_shadow_projection_failed", {
+        installationId: installation.id,
+        categoryId,
+        err: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async buildConnectorProductPayload(

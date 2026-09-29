@@ -2752,3 +2752,182 @@ describe("MarketplaceService — primary-variant selection stability (#662)", ()
     expect(snap2.variants[0].sellingPrice).toBe(snap1.variants[0].sellingPrice);
   });
 });
+
+// Story 4 of the Shopify shadow-sprint restart: runShopifyShadowProjection
+// (private — accessed the same way the existing getEffectiveMapping test
+// above does) must be staging-only, opt-in, side-effect-free, and must never
+// throw or affect the real publish/update flow regardless of what fails
+// inside it.
+describe("MarketplaceService.runShopifyShadowProjection — Story 4 shadow execution", () => {
+  const ORIGINAL_ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    jest.clearAllMocks();
+  });
+
+  type ShadowHarness = ReturnType<typeof makeShadowTestService>;
+
+  function makeShadowTestService(options: {
+    schemaVersion?: string;
+    fieldMappings?: Record<string, unknown>;
+    fetchProductTypeSchemaImpl?: () => Promise<unknown>;
+  } = {}) {
+    const prisma = {
+      tenant: jest.fn().mockReturnValue({
+        channelMappingTemplate: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+      }),
+    };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+    };
+    const fetchProductTypeSchema =
+      options.fetchProductTypeSchemaImpl ??
+      jest.fn().mockResolvedValue({
+        productType: "default",
+        requiredAttributes: ["sku", "title", "description", "mainImageUrl"],
+        optionalAttributes: [],
+        validValues: {},
+        schemaVersion: options.schemaVersion ?? "LOCAL-shopify-default-2026Q3",
+      });
+    const connectorRegistry = {
+      getConnector: jest.fn().mockReturnValue({ fetchProductTypeSchema }),
+    };
+    const connectorMappingService = {
+      resolveEffectiveMapping: jest.fn().mockResolvedValue({
+        resolvedMapping: { field_mappings: options.fieldMappings ?? {} },
+        matchedVersions: [],
+      }),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      connectorRegistry as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      connectorMappingService as never,
+      {} as never,
+      logger as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    return { svc, logger, connectorRegistry, fetchProductTypeSchema };
+  }
+
+  function runShadow(svc: MarketplaceService, overrides: Record<string, unknown> = {}) {
+    return (
+      svc as unknown as {
+        runShopifyShadowProjection: (input: {
+          productPayload: Record<string, unknown>;
+          categoryId: string;
+          installation: { id: string; connectorId: string };
+        }) => Promise<void>;
+      }
+    ).runShopifyShadowProjection({
+      productPayload: {
+        sku: "SKU-1",
+        title: "Classic Tee",
+        description: "A tee",
+        brand: "Acme",
+        mainImageUrl: "https://cdn.example.com/tee.jpg",
+        attributes: {},
+        productType: "default",
+        ...overrides,
+      },
+      categoryId: "cat-1",
+      installation: { id: "inst-1", connectorId: "conn-1" },
+    });
+  }
+
+  it("does nothing outside staging — never calls the connector at all", async () => {
+    process.env.APP_ENV = "development";
+    process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";
+    const { svc, connectorRegistry }: ShadowHarness = makeShadowTestService();
+
+    await runShadow(svc);
+
+    expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+  });
+
+  it("does nothing in staging when the opt-in flag is not set to 'true'", async () => {
+    process.env.APP_ENV = "staging";
+    delete process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED;
+    const { svc, connectorRegistry }: ShadowHarness = makeShadowTestService();
+
+    await runShadow(svc);
+
+    expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+  });
+
+  it("computes and logs the projection when staging + enabled", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";
+    const { svc, logger }: ShadowHarness = makeShadowTestService();
+
+    await runShadow(svc);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "shopify_shadow_projection_computed",
+      expect.objectContaining({ sku: "SKU-1", missingRequiredFields: [] }),
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing required field via readiness without throwing", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";
+    const { svc, logger }: ShadowHarness = makeShadowTestService();
+
+    await runShadow(svc, { title: "" });
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "shopify_shadow_projection_computed",
+      expect.objectContaining({ missingRequiredFields: ["title"] }),
+    );
+  });
+
+  it("catches a failure inside the shadow path (e.g. fetchProductTypeSchema rejecting) and logs a warning instead of throwing", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";
+    const { svc, logger }: ShadowHarness = makeShadowTestService({
+      fetchProductTypeSchemaImpl: jest.fn().mockRejectedValue(new Error("boom")),
+    });
+
+    await expect(runShadow(svc)).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "shopify_shadow_projection_failed",
+      expect.objectContaining({ err: "boom" }),
+    );
+  });
+
+  it("never calls ctx.fetch or any credential method — the shadow context has no fetch implementation at all", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "true";
+    let capturedCtx: Record<string, unknown> | undefined;
+    const { svc } = makeShadowTestService({
+      fetchProductTypeSchemaImpl: jest.fn().mockImplementation((ctx: Record<string, unknown>) => {
+        capturedCtx = ctx;
+        return Promise.resolve({
+          productType: "default",
+          requiredAttributes: [],
+          optionalAttributes: [],
+          validValues: {},
+          schemaVersion: "TEST",
+        });
+      }),
+    });
+
+    await runShadow(svc);
+
+    expect(capturedCtx).toBeDefined();
+    expect(capturedCtx!.fetch).toBeUndefined();
+  });
+});
