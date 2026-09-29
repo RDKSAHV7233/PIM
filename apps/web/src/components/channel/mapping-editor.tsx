@@ -370,14 +370,16 @@ export function MappingEditorCard({
               <p className="text-xs text-slate-500">{attributeMappingDescription}</p>
             </div>
             <div className="space-y-4 p-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm font-semibold text-amber-900">Required fields still missing</p>
-                <p className="mt-1 text-xs text-amber-800">
-                  Finish these required fields before you move to validation and publish.
-                </p>
-              </div>
               {missingRequiredRows.length > 0 ? (
-                renderFieldRows(missingRequiredRows, fieldInputPrefix, sourceFieldOptions)
+                <>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm font-semibold text-amber-900">Required fields still missing</p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Finish these required fields before you move to validation and publish.
+                    </p>
+                  </div>
+                  {renderFieldRows(missingRequiredRows, fieldInputPrefix, sourceFieldOptions)}
+                </>
               ) : (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                   All required fields are mapped. Save the draft, then validate it in version history.
