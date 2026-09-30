@@ -17,10 +17,14 @@ Ratified by: ______  Date: ______
 
 ## D9. DEF-27: a "Blocked" compatibility draft can be validated and published
 
+**Status: OPEN. Two positions conflict; no API change has been made.**
+
 - Finding (verified on a local API, 2026-09-30): validate accepts a Blocked draft (201) and publish accepts it (201). Rolling back to a Blocked source is refused (409 `rollback_source_blocked`, `connector-mapping.service.ts`). Readiness raises `mapping_compatibility_blocked`, which hard-blocks product exports for that scope.
-- Options: (a) keep; (b) refuse to publish a Blocked version; (c) keep, but warn at publish time.
-- **Decision: (a) now, (c) as a follow-up story.** Publishing a version with blockers is intentional and specified (`channels-mapping-publish-complex-blockers.spec.js` publishes a `remap_required` version); step-up re-authentication already guards the action; and the refusal on rollback is consistent (it stops *restoring* a known-bad version, not a deliberate new publish). A server gate on compatibility is a connector-workflow change for the required team.
-- Follow-up story (not built): on a Blocked version's Publish panel, warn that publishing it makes it the live version for the scope and stops product exports there until it is replaced.
+- **Position A (review input): an invariant mismatch.** `Blocked` is a hard compatibility state, so publish must not make it live: readiness says HARD BLOCK while publish says 201, and rollback already refuses the same state. Enforce at the API (409 on publish of a Blocked version), for every caller.
+- **Position B (existing tested design): publishing a Blocked mapping is how a category is declared unsupported.** `apps/api/test/integration/connector-mapping-bulk-coverage.test.cjs`, Test 9 ("blocked category does not contaminate siblings"), deliberately validates **and publishes** a Blocked version, then asserts that preflight for that category fails with `mapping_compatibility_blocked` while sibling categories stay compatible. Read that way, the hard readiness block is the intended **effect** of the publish, not a disagreement with it; and rollback refusing a Blocked source is a different act (restoring a prior version, not a fresh deliberate publish). This was missed when D9 was first drafted and again when it was corrected, because the test was not read before the decision.
+- What enforcing Position A would take: change or remove Test 9, and provide another explicit way to declare a category blocked for a connector. It would also change behavior for any tenant that already relies on publishing Blocked mappings; that was **not** checked in production.
+- Not affected either way: publishing a `remap_required` version or any version with readiness blockers stays allowed and specified (`channels-mapping-publish-complex-blockers.spec.js`).
+- **Needs a named decision** between (1) keep publish-of-Blocked as a feature and add a publish-time warning that it makes the version live for the scope and stops exports there, or (2) refuse it at the API and add an explicit alternative. Assistant's recommendation: (1), because it is tested intent and (2) removes a capability without a replacement; but the trade-off is the owner's.
 - Revisit if: an operator publishes a Blocked version by mistake in a pilot tenant.
 
 ## D10. Archive is offered to roles the API will refuse
@@ -38,3 +42,12 @@ Ratified by: ______  Date: ______
 - **D5 (DEF-25, login redirect target):** the scratch run found DEF-26 (a wrong step-up password was treated as an expired session and redirected to login; fixed in #1011). It is a plausible cause of the odd `login?next=%2Fdashboard` seen in production but is **not confirmed**. Keep D5 open pending a runtime trace.
 - **D7 (remaining QA plan):** run on a local scratch stack instead (API cases for all eight roles, step-up, publish, rollback, archive; UI cases for double-save, step-up, viewer denial). Not covered: cross-tenant isolation, mid-session expiry, other browsers, screen readers, concurrent users. Archive and rollback were not exercised through the UI.
 - **D6 (production hygiene):** unchanged; owner actions, not code.
+
+## Review input received (pasted by the user on 2026-09-30; the author is not named, so this is **not** a recorded ratification)
+
+- **D8:** interim UI degradation acceptable; long-term policy direction: read-only readiness/preflight evaluation should be available to any role authorized to validate/publish the same mapping, unless the response carries genuinely admin-only information. If the current response exposes sensitive diagnostics, do not broaden the admin endpoint wholesale; return a sanitized evaluation (ready/blocked, blocking reasons, warnings, mapping/schema compatibility, required remediation; no credentials, tenant-administration detail or privileged diagnostics). This PR's degradation should not become the final UX. Follow-up (not built): a sanitized evaluation for editor / channel_manager; needs the access-policy owner.
+- **D9:** do not keep as is; enforce at the API. (Conflicts with existing Test 9, which publishes a Blocked version on purpose; D9 above is therefore left OPEN for a named decision.)
+- **D10:** ratify. Hide Archive for roles the API refuses; keep the API 403 as the enforcement boundary; do not change API authorization.
+- **D11:** ratify. Do not weaken the production throttle.
+- **Production items:** do not archive the WooCommerce "Aa" Versions 1-3 without an explicit instruction, and first confirm none is published or referenced by an active mapping. Trace DEF-25 read-only at runtime (request/response, server logs or correlation id) before any code change.
+- Next execution order: amend D9 here (done), let this PR's CI/review finish, fix D9 as a narrow API invariant defect, fix D10 in the web UI, trace DEF-25 read-only.
