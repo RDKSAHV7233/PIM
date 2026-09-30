@@ -5239,6 +5239,90 @@
           "notes": "Disabled default skips remain quiet to avoid normal-operation log noise, but the returned outcome still carries the correlation ID. Enabled gate misses and executed attempts log the correlation ID for traceability."
         }
       ]
+    },
+    {
+      "incrementId": "INC-75",
+      "name": "Shopify vNext Controlled Mutation Rollback Readiness",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-VMUT-004",
+          "title": "Rollback path: designed, scaffolded, and prepared for the real candidate product",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "16e9d08d",
+          "scope": [
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-adapter.ts",
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-adapter.spec.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.spec.ts",
+            "docs/execution/VNEXT_MUTATION_ROLLBACK_PLAN.md",
+            "docs/execution/VNEXT_MUTATION_PAUSE_POINT_1_AUTHORIZATION.md"
+          ],
+          "team_investigation": "Engineering: added read-only rollback snapshot capture, compensating ProductSet payload construction, and a manual rollback runbook. Evidence-capture pass attached the selected candidate product, current observed Shopify state, and a compensating payload computed by the shipped buildCompensatingWritePayload function in the pause-point authorization draft. CTO-lens: rollback remains manual and no rollback payload is auto-submitted. The final live captureRollbackSnapshot rerun is deliberately retained as a pre-authorization gate after inert deployment and exact release SHA selection.",
+          "acceptance": [
+            "Rollback plan documents pre-mutation snapshot strategy, compensating-write strategy, manual runbook, and non-reversible side effects.",
+            "ShopifyConnector.captureRollbackSnapshot performs a read-only Shopify product-state query and fails closed when the product is missing.",
+            "buildCompensatingWritePayload builds a ProductSet rollback payload from captured state and uses identifier { id: product.id }.",
+            "Rollback metadata, correlation IDs, Shopify variant IDs, and image IDs are not serialized into ProductSetInput.",
+            "Multi-option variants, product options, inventory item tracking/SKU metadata, and image source URLs are preserved where captured.",
+            "The pause-point artifact now names the candidate product and carries a computed compensating payload for observed current Shopify state.",
+            "Final authorization still requires a fresh live captureRollbackSnapshot run against the chosen product with the deployed code; this lock does not authorize mutation."
+          ],
+          "tests_passed": [
+            "npm run test:unit --workspace @pim1/api -- --runTestsByPath src/connectors/shopify/shopify-vnext-mutation-adapter.spec.ts src/connectors/shopify/shopify.connector.spec.ts --runInBand --no-coverage (73/73 passed)",
+            "npm run test:integration:vnext-mutation-gating (112/112 passed at rollback checkpoint)",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit (passed)",
+            "npm run build --workspace @pim1/api (passed)",
+            "git diff --check (passed)"
+          ],
+          "notes": "This locks the preparatory rollback story while preserving the final NO-GO gate. Shopify-internal identifiers not visible in the UI-based evidence remain intentionally unresolved until captureRollbackSnapshot is rerun immediately before authorization."
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-76",
+      "name": "Shopify vNext Controlled Mutation Safety Proofs",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-VMUT-005",
+          "title": "Mandatory safety-proof automated test suite",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "42157754",
+          "scope": [
+            ".github/workflows/ci.yml",
+            "apps/api/src/common/vnext-mutation-env.spec.ts",
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-safety.spec.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/test/integration/shopify-vnext-mutation-safety.test.cjs",
+            "package.json"
+          ],
+          "team_investigation": "Engineering: added a dedicated safety proof suite for the controlled vNext mutation path, including gate-missing matrix coverage, exact allowlist matching, release identity mismatch, tenant-scoped credential context construction, ConnectorSubmission idempotency schema proof, no credential/token leakage in logs, and behavioral proof that controlled-branch failure skips vNext while falling back to exactly one legacy write. Required-agent review (Hubble) flagged that the original fallback proof was static and that fail-closed means no controlled vNext mutation, not no Shopify write; the suite was strengthened with a recordConnectorSubmission caller-path test before commit. CTO-lens: no environment defaults enable vNext; the new CI-visible command is a focused Jest-backed safety suite, not a live Shopify write.",
+          "acceptance": [
+            "Cannot mutate through controlled vNext without all gates.",
+            "Only the exact allowlisted tenant, connector, installation, and product passes; case changes skip.",
+            "Retry/idempotency safety leans on ConnectorSubmission's tenantKey, installationId, idempotencyKey unique constraint.",
+            "Credential lookup is tenant-scoped through ConnectorFrameworkService.buildContextForInstallation and getOrRefreshAccessToken.",
+            "Legacy publish/update path remains available when controlled vNext does not execute.",
+            "Controlled-branch failures are contained, log sanitized metadata, and do not leak provider tokens.",
+            "Executed-path logs do not contain credential token values.",
+            "Release-identity mismatch skips even when every other allowlist field matches.",
+            "CI includes npm run test:integration:shopify-vnext-mutation-safety alongside the Shopify runtime foundation checks."
+          ],
+          "tests_passed": [
+            "npm run test:integration:vnext-mutation-gating (4 suites passed, 136/136 tests passed)",
+            "npm run test:integration:shopify-vnext-mutation-safety (passed; emitted {\"scenario\":\"shopify_vnext_mutation_safety_suite\",\"status\":\"passed\"})",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit (passed)",
+            "npm run build --workspace @pim1/api (passed)",
+            "git diff --check (passed)"
+          ],
+          "notes": "The safety command is CI-visible and repeatable but is not a live Shopify mutation test. It proves no controlled vNext mutation occurs without exact gates; if controlled vNext fails after gates pass, the existing legacy path remains available and exactly-one legacy write behavior is covered."
+        }
+      ]
     }
   ]
 }
