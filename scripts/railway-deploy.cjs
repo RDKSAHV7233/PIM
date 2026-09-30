@@ -354,7 +354,7 @@ function sleep(ms) {
 }
 
 function runRailwayCommandCaptureWithRetry(config, args, options) {
-  const maxAttempts = Math.max(1, Number(config.deployRetries) || 1);
+  const maxAttempts = Math.max(3, Number(config.deployRetries) || 1);
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = childProcess.spawnSync(config.railwayBin, args, {
       cwd: options.cwd,
