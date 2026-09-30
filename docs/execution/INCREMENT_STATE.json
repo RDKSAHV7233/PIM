@@ -5127,6 +5127,44 @@
           "notes": "Not verified: how production users are configured (workspaces whose users are all base-role admin will not see the notice); a channel_manager login in the browser (same code path as editor, not run); the Archive action's runtime error page for editors (only the API 403 was confirmed). Follow-ups recorded in the decision record: hide Archive for non-admin roles (D10), warn when publishing a Blocked version (D9)."
         }
       ]
+    },
+    {
+      "incrementId": "INC-76",
+      "name": "Mapping Archive offered to admin only (D10)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-ARCHIVE-ADMIN-ONLY-001",
+          "title": "The version row offers Archive only to roles the API will accept",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "4e899d01",
+          "scope": [
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/lib/role-capabilities.ts",
+            "apps/web/test/integration/mapping-archive-admin-only.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "POST .../mappings/versions/:id/archive is @Roles(\"admin\") behind the admin-boundary gate (verified: an editor with a valid step-up token gets 403 ADMIN_BOUNDARY_FORBIDDEN), but the web gate for the whole actions column is canManageChannels, so editors and channel managers were shown Archive.",
+          "proposed_fix": "canArchiveMappingVersions(role) = admin; the Archive ProtectedMappingActionForm is rendered only when it is true. Validate, Publish and Rollback keep the canWrite gate. The API stays the enforcement boundary and is unchanged.",
+          "team_investigation": "Decision D10 (docs/decisions/DR-2026-09-30-mapping-po-cto-rulings.md), ratified in the user-supplied review input (author not named). CTO-lens (analysis, not approval): web-only visibility change; it removes a control, it does not widen access.",
+          "acceptance": [
+            "Editor/channel_manager see no Archive control.",
+            "Admin still sees Archive.",
+            "Validate/Publish/Rollback unchanged."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-archive-admin-only.test.cjs (helper executed for all eight roles plus source contracts)",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=199 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "Browser, local stack: as editor the row actions are Validate, Publish (previously Validate, Publish, Archive, Archive); as admin Validate, Publish, Archive, Archive (desktop and mobile copies)"
+          ],
+          "notes": "The archive server action still rethrows non-step-up errors to the generic error page; unreachable from the UI for non-admin roles now, but direct form posts would still hit it."
+        }
+      ]
     }
   ]
 }

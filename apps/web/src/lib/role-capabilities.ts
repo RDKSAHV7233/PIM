@@ -8,6 +8,12 @@ export function canManageChannels(role: AppRole): boolean {
   return role === "admin" || role === "editor" || role === "channel_manager";
 }
 
+// POST .../mappings/versions/:id/archive is @Roles("admin") behind the admin-boundary gate; every other role gets a 403.
+// Validate, publish and rollback are open to editor and channel_manager, so this is narrower than canManageChannels.
+export function canArchiveMappingVersions(role: AppRole): boolean {
+  return role === "admin";
+}
+
 export function canPublishToChannels(role: AppRole): boolean {
   return role === "admin" || role === "publisher" || role === "channel_manager";
 }
