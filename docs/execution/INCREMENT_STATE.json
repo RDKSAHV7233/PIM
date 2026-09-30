@@ -5050,6 +5050,41 @@
           "notes": "Not changed: admin@pim1.local still has no assigned admin-boundary roles in this file (the script default gives admin product_admin/system_admin); the rbac specs pass with the legacy admin fallback. The other local Playwright failures (publish, hydration, shopify sku setup) are unrelated and untouched."
         }
       ]
+    },
+    {
+      "incrementId": "INC-74",
+      "name": "Mapping e2e specs: diagnose and update stale expectations (test-only)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-QA-MAPPING-E2E-STALE-SPECS-001",
+          "title": "Six locally failing mapping e2e tests diagnosed; five fixed, one blocked only by the API throttle when the file runs whole",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "bd34f908",
+          "scope": [
+            "apps/web/test/e2e/channels-mapping-hydration.spec.js",
+            "apps/web/test/e2e/channels-mapping-publish.spec.js",
+            "apps/web/test/e2e/channels-mapping-publish-complex-blockers.spec.js"
+          ],
+          "problem": "channels-mapping-hydration (1), channels-mapping-publish-complex-blockers (1) and channels-mapping-publish (4) failed identically on baseline 86e9e1bf and on main; none is a regression from the mapping PRs.",
+          "proposed_fix": "Per-test causes, all against a local playwright_e2e stack: (1) hydration + 3 fallback scenarios: URLs used step=review without publishCategoryId, so resolveRequestedWizardStep forces the scope step and no history table renders; add publishCategoryId. (2) create-validate-publish: the system default already maps all required fields, so their selects sit in the collapsed 'Show mapped required fields' details (hidden); open it. Then the source labels are 'Size (Attribute)' / 'Color (Attribute)' (source-field-label helper, #1005-era), not 'attributes.size'; then the heading is 'Publish Readiness', not 'Publish Readiness (Hard Gate)'. (3) complex-blockers: asserted a role=alert blocker bar, but MappingBlockerBar is never rendered (dead component; the only alert is Next's empty route announcer, hence Received string ''); blockers live in the collapsed 'Blockers and warnings' panel; the spec now opens it and asserts only the two mapping blockers it controls, never a count, because the list also carries environment/fixture blockers ('Connector not installed for this channel', 'product not approved'). (4) version polls slowed to one request per second.",
+          "team_investigation": "QA: each cause confirmed from error-context snapshots and the rendered DOM, then by a passing rerun. Engineering: MappingBlockerBar (apps/web/src/components/channel/mapping-blocker-bar.tsx) is dead code that the DEF-17 test still reads; not touched. CTO-lens (analysis, not approval): test-only, one risk domain; no product code changed. The label drift came from my own earlier source-field-label change, which did not update this spec because it was not in CI.",
+          "acceptance": [
+            "Hydration spec passes.",
+            "Complex-blockers spec passes.",
+            "The three fallback scenarios pass.",
+            "Create-validate-publish passes when run on its own."
+          ],
+          "tests_passed": [
+            "hydration + complex-blockers: 3 passed",
+            "channels-mapping-publish.spec.js whole file: 3 passed, 1 failed (see notes)",
+            "create-validate-publish alone: 1 passed (43.7 s)"
+          ],
+          "notes": "NOT fully green: run as a whole file, the fourth test (create-validate-publish) fails with 429 ThrottlerException because the API allows 300 requests/min per user (app.module.ts ThrottlerModule) and the first three scenarios plus their server-rendered page calls use that budget. Reproduced 6 of 6 whole-file runs; passes alone. A retry-with-backoff in the shared helper and wider poll windows were tried and did not fix it, so they were reverted. Options for a human: raise or skip the throttle in the Playwright API only (API change), split the file, or add a cool-down. journey-connector-first-publish.spec.js:231 still has the stale 'Publish Readiness (Hard Gate)' text; it was skipped in these runs and is untouched."
+        }
+      ]
     }
   ]
 }
