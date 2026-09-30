@@ -73,6 +73,10 @@ function run() {
   // ---- DEF-13: summary tap targets on the mapping page ----
   assert(!page.includes('<summary className="cursor-pointer text-sm font-medium text-slate-900">'), "advanced-drawer summaries need vertical padding to reach a 24px target (DEF-13).");
   assert(editor.includes('<summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-800">Blockers and warnings</summary>'), "the 'Blockers and warnings' summary needs vertical padding (DEF-13).");
+  assert(
+    !/<summary className="cursor-pointer text-sm/.test(editor),
+    "every <summary> in the mapping editor (mapped/optional fields, advanced JSON, resolved snapshot) needs vertical padding to reach a 24px target (DEF-13).",
+  );
 
   // ---- DEF-11 (aria-current, title) and DEF-13 (breadcrumb targets): shared shell pieces ----
   const sidebar = read("components", "nav", "app-sidebar.tsx");

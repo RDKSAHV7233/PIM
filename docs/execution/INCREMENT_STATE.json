@@ -4593,6 +4593,38 @@
           "notes": "Not changed: app-wide page titles (only 3 pages define one). Post-deploy verification: document.title on /channels/mappings, aria-current on the Mappings link, and breadcrumb link height at 375px."
         }
       ]
+    },
+    {
+      "incrementId": "INC-67",
+      "name": "Mapping Journey Live-QA Follow-ups (editor summary tap targets)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-EDITOR-SUMMARY-TARGETS-001",
+          "title": "Four mapping-editor <summary> controls are still 20px tall after the DEF-13 pass",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "0f1d7e7b",
+          "scope": [
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/test/integration/mapping-a11y-copy-polish.test.cjs"
+          ],
+          "problem": "Production re-check of #1005 (2026-09-30, Step 2, Shopify / T-Shirt): 'Show mapped required fields', 'Show optional fields', 'Advanced JSON overrides' and 'Advanced: resolved mapping JSON' measured 20px tall. #1005 padded the drawer and readiness summaries that had been measured on Step 3 but missed these four on Step 2.",
+          "proposed_fix": "Add py-1.5 to the four summaries and assert that no <summary> in the editor lacks vertical padding.",
+          "team_investigation": "Engineering: the gap was incomplete coverage of the same class string, not a different cause; the new assertion covers every summary in the file so a future one cannot regress. CTO-lens (analysis, not approval): presentational only.",
+          "acceptance": [
+            "Every <summary> in mapping-editor.tsx has vertical padding."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-a11y-copy-polish.test.cjs (extended; origin/main's editor has 4 unpadded summaries, so the new assertion fails there and passes here)",
+            "node apps/web/test/integration/run-all.cjs (192/192 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean)"
+          ],
+          "notes": "commit is the pre-squash fix commit. Everything else from #1005 was verified live on 2026-09-30: title, aria-current, 0 duplicate ids, unique select names, Ready chips, Size (Attribute), Scope column path, breadcrumb links 24px, dialog emphasis."
+        }
+      ]
     }
   ]
 }

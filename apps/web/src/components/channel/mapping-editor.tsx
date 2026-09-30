@@ -195,7 +195,7 @@ export function ResolvedMappingSnapshotCard({
         <p>Matched mapping versions: {resolved?.matchedVersions?.length ?? 0}</p>
       </div>
       <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-        <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced: resolved mapping JSON</summary>
+        <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-800">Advanced: resolved mapping JSON</summary>
         <JsonPreview value={resolvedMappingJson} className="mt-2 max-h-60 border-0 bg-transparent p-0" />
       </details>
     </Card>
@@ -388,7 +388,7 @@ export function MappingEditorCard({
 
               {mappedRequiredRows.length > 0 ? (
                 <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-900">
+                  <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-900">
                     Show mapped required fields
                   </summary>
                   <div className="mt-3">{renderFieldRows(mappedRequiredRows, fieldInputPrefix, sourceFieldOptions)}</div>
@@ -397,7 +397,7 @@ export function MappingEditorCard({
 
               {optionalRows.length > 0 ? (
                 <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-900">
+                  <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-900">
                     Show optional fields
                   </summary>
                   <p className="mt-2 text-xs text-slate-500">
@@ -425,7 +425,7 @@ export function MappingEditorCard({
           ))}
 
           <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
-            <summary className="cursor-pointer text-sm font-medium text-slate-800">{advancedJsonTitle}</summary>
+            <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-800">{advancedJsonTitle}</summary>
             <p className="mt-2 text-xs text-slate-500">Use only for exceptional cases. The structured editor above is the primary authoring path.</p>
             <div className="mt-3 grid gap-3">
               <div className="space-y-1">
