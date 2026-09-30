@@ -5152,6 +5152,51 @@
           "notes": "The local Docker Desktop host port 5432 blocker was removed by recreating the compose project that owned pim1-postgres (project condescending-tu-c051a9), preserving its named Postgres volume. Prisma now connects to 127.0.0.1:5432 and the full env-validation integration gate passes on the normal compose database."
         }
       ]
+    },
+    {
+      "incrementId": "INC-73",
+      "name": "Shopify vNext Controlled Mutation Adapter Wiring",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-VMUT-002",
+          "title": "Mutation-path wiring: vNext-projection-derived write, thin adapter, still inert by default",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "0033517b",
+          "scope": [
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-adapter.ts",
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-adapter.spec.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.spec.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.service.spec.ts",
+            "package.json"
+          ],
+          "scope_expansion": [
+            "package.json -- adds the named test:integration:vnext-mutation-gating command requested by the story validation plan."
+          ],
+          "team_investigation": "Engineering: added a projection-to-ProductSet adapter and a narrow ShopifyConnector.applyControlledMutation method that accepts prebuilt ProductSet input, reuses ShopifyApiClient.graphqlRequest, requireCredential, access-token resolution, token-expiry handling, and parseShopifyUserError/ShopifyPublishError, and deliberately does not call legacy buildProductSetInput, updateDefaultVariantPrice, connectorFramework.publish/update, or publishablePublish. Required-agent review (Einstein) flagged the provider-neutral projection boundary, release/allowlist exactness, real credential context requirement, and double-write risk; implementation keeps the controlled branch skip-first and uses ConnectorFrameworkService.buildContextForInstallation only after the allowlist and release gates pass. CTO-lens: connector write-path code exists but remains unreachable unless VNEXT_MUTATION_ENABLED, the exact four-field allowlist, and the approved release SHA all match; this commit does not authorize enabling those gates or performing any real Shopify mutation.",
+          "acceptance": [
+            "Shopify ProductSetInput is built from ShopifyChannelProjection, not ProductPayload or the legacy buildProductSetInput mapper.",
+            "The marketplace call site checks exact tenantKey, connectorSlug, installationId, productId, and approved release SHA before building projection, resolving mapping, building connector context, or touching the Shopify connector.",
+            "When skipped, the existing connectorFramework.publish/update path remains the fallback behavior.",
+            "When executed under exact test gates, the controlled branch calls only ShopifyConnector.applyControlledMutation and uses its result instead of double-writing through the legacy publish/update path.",
+            "applyControlledMutation sends caller-supplied ProductSet input unchanged and maps Shopify user errors through the existing ShopifyPublishError issue model.",
+            "The controlled connector method does not run the legacy single-variant secondary price update and does not issue a publishablePublish call.",
+            "No environment file flips VNEXT_MUTATION_ENABLED on; no production mutation is authorized by this story."
+          ],
+          "tests_passed": [
+            "npm run test:unit --workspace @pim1/api -- --runTestsByPath src/connectors/shopify/shopify-vnext-mutation-adapter.spec.ts src/connectors/shopify/shopify.connector.spec.ts src/marketplace/marketplace.service.spec.ts --runInBand --no-coverage (170/170 passed)",
+            "npm run test:integration:vnext-mutation-gating (109/109 passed)",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit (passed)",
+            "npm run build --workspace @pim1/api (passed)",
+            "git diff --check (passed)"
+          ],
+          "notes": "Projection does not carry every legacy ProductPayload-only field. HS/taxCode harmonizedSystemCode is intentionally not invented by the adapter; future authorization artifacts must review expected diffs for the chosen product before enabling the gate. Controlled mutation currently limits blast radius to ProductSet only; publication-target writes stay out of this branch unless a later signed story explicitly adds them."
+        }
+      ]
     }
   ]
 }
