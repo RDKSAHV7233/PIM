@@ -5131,7 +5131,7 @@
             "apps/api/src/common/vnext-mutation-env.spec.ts",
             "apps/api/test/integration/env-validation.test.cjs"
           ],
-          "team_investigation": "Engineering: implemented only inert configuration validation and exact-match helper gates; no connector, publish-path, payload, or remote-mutation files were touched. Required-agent review: Fermat confirmed Story 001 validation logic is independent of the full API boot Prisma blocker; Erdos isolated the blocker to Docker Desktop host port 5432 and validated the full env gate against a migrated temporary database on 55432. CTO-lens: no production mutation capability is enabled; defaults remain false and non-test activation still requires Epic 2 sign-off plus release identity.",
+          "team_investigation": "Engineering: implemented only inert configuration validation and exact-match helper gates; no connector, publish-path, payload, or remote-mutation files were touched. Required-agent review: Fermat confirmed Story 001 validation logic was independent of the full API boot blocker; Erdos reproduced the P1001 symptom and proved a migrated temporary database could validate the new gate while the local environment was being repaired. Follow-up local rerun identified the actual layered blocker as workstation .env setup: missing .env, then non-empty placeholder values shadowing the test harness defaults, then inline comments in quoted .env values confusing the test parser. CTO-lens: no production mutation capability is enabled; defaults remain false and non-test activation still requires Epic 2 sign-off plus release identity.",
           "acceptance": [
             "VNEXT_MUTATION_ENABLED defaults to false and requires no allowlist config while disabled.",
             "When enabled, startup validation requires exactly one well-formed allowlist entry with tenantKey, connectorSlug, installationId, and productId.",
@@ -5144,12 +5144,12 @@
             "npm run test:unit --workspace @pim1/api -- --runTestsByPath src/common/vnext-mutation-env.spec.ts src/common/env-validation.spec.ts --runInBand --no-coverage (14/14 passed)",
             "npm run lint --workspace @pim1/api (tsc -p tsconfig.build.json --noEmit passed)",
             "npm run build --workspace @pim1/api (passed)",
-            "npm run test:integration:env-validation (passed against normal compose Postgres on 127.0.0.1:5432 after recreating the owning compose project to clear stale Docker/WSL port plumbing)",
-            "npm run test:integration:env-validation (earlier fallback passed against migrated temporary Postgres on 127.0.0.1:55432 while Docker host port 5432 was stale)",
+            "npm run test:integration:env-validation (passed all 20 scenarios against normal local .env/compose setup after repairing gitignored .env placeholders and inline comments; includes vnext_mutation_requires_allowlist_and_release, vnext_mutation_accepts_single_allowlist_and_release, and valid_env_starts_api)",
+            "npm run test:integration:env-validation (earlier fallback passed against migrated temporary Postgres on 127.0.0.1:55432 while the local .env/root-cause investigation was still in progress)",
             "npx prisma db execute --stdin --schema packages/db/prisma/schema.prisma against 127.0.0.1:55432 (passed)",
             "npm run prisma:migrate:deploy against 127.0.0.1:55432 (106 migrations applied)"
           ],
-          "notes": "The local Docker Desktop host port 5432 blocker was removed by recreating the compose project that owned pim1-postgres (project condescending-tu-c051a9), preserving its named Postgres volume. Prisma now connects to 127.0.0.1:5432 and the full env-validation integration gate passes on the normal compose database."
+          "notes": "The Story 001 blocker is resolved. The final root cause was local gitignored .env state, not source code: no .env initially, then placeholder JWT/PIM_AUTH_PASSWORD/AUTH_EMAIL_PROVIDER values blocking the test harness defaults, then inline comments after quoted values corrupting parsed env values. No tracked source change was required for that local repair; the official env-validation suite now passes on the normal local setup."
         }
       ]
     },
