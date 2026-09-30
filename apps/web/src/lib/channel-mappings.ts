@@ -15,6 +15,7 @@ import {
   normalizeMarketplaceChannel,
 } from "@/lib/marketplace-channels";
 import { labelUndefinedSourceField } from "@/lib/mapping-source-field-label";
+import { requiredCoverageBySource } from "@/lib/mapping-required-coverage";
 
 export type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
 export type ConnectorTaxonomyOption = Pick<ConnectorTaxonomyItem, "id" | "path" | "requiredAttributes">;
@@ -573,6 +574,9 @@ export function buildMappingsViewModel({
     currentFieldMap[source] = targets.length === 1 ? targets[0] : targets;
   }
   const mappedTargetToSource = invertFieldMap(currentFieldMap);
+  // A required field the map already covers as a source key (channel renames it) is not missing; this is the
+  // same rule the API's readiness check applies, so the wizard and the Readiness card agree.
+  const requiredCoveredBySource = requiredCoverageBySource(requiredTargetFields, currentFieldMap, mappedTargetToSource);
   const targetFieldOptions = uniqueStrings([
     ...requiredTargetFields,
     ...shopifyMetafields
@@ -617,6 +621,7 @@ export function buildMappingsViewModel({
     selectedTargetCategory,
     requiredTargetFields,
     mappedTargetToSource,
+    requiredCoveredBySource,
     targetFieldOptions,
     sourceFieldOptions,
     mappingDraftRulesDefault,

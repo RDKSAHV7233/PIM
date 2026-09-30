@@ -623,7 +623,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         : null;
 
     const mappedRequiredCount = viewModel
-      ? viewModel.requiredTargetFields.filter((field) => Boolean(viewModel.mappedTargetToSource[field])).length
+      ? viewModel.requiredTargetFields.filter(
+          (field) => Boolean(viewModel.mappedTargetToSource[field]) || Boolean(viewModel.requiredCoveredBySource[field]),
+        ).length
       : 0;
     const requiredMappingsReady = viewModel ? mappedRequiredCount === viewModel.requiredTargetFields.length : false;
     const activeVersionShown = versions.some((version) => version.lifecycleState === "published");
@@ -772,6 +774,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
               fieldMapping={{
                 required: viewModel.requiredTargetFields,
                 mappedToSource: viewModel.mappedTargetToSource,
+                coveredBySource: viewModel.requiredCoveredBySource,
                 options: viewModel.targetFieldOptions,
               }}
               sampleProduct={{

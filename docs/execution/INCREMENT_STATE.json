@@ -4625,6 +4625,72 @@
           "notes": "commit is the pre-squash fix commit. Everything else from #1005 was verified live on 2026-09-30: title, aria-current, 0 duplicate ids, unique select names, Ready chips, Size (Attribute), Scope column path, breadcrumb links 24px, dialog emphasis."
         }
       ]
+    },
+    {
+      "incrementId": "INC-68",
+      "name": "Mapping Journey Extended-QA Follow-ups (required-field coverage, double draft save)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-REQUIRED-COVERAGE-001",
+          "title": "Wizard shows already-covered required fields as missing and contradicts the Readiness card",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "bf3cd397",
+          "scope": [
+            "apps/web/src/lib/mapping-required-coverage.ts",
+            "apps/web/src/lib/channel-mappings.ts",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/components/channel/mapping-field-row.tsx",
+            "apps/web/test/integration/mapping-required-coverage-and-save.test.cjs",
+            "docs/qa/mapping-journey-extended-qa-run-2026-09-30.md"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Extended QA (2026-09-30, WooCommerce / Aa): Step 2 said '3 required fields, 1 mapped, 2 missing' and the Review checklist said 'Required fields mapped: Blocked', while the Readiness card on the same page said 'missing: 0'. Initially reported as DEF-15 'the server validates an incomplete draft' (P1). Investigation showed that was wrong.",
+          "proposed_fix": "requiredCoverageBySource (pure helper) applies the API's own rule, source key OR target, with the attributes. prefix normalisation. Rows for covered fields show 'Covered / Already mapped: title -> name' and are counted as mapped in Step 2 and the Review checklist. Server unchanged.",
+          "team_investigation": "Engineering: required_fields are canonical PIM-side names. WooCommerce's resolved default (read from the production resolved snapshot) maps title -> name and attributes.mainImageUrl -> images.0.src, so those fields are covered as source keys; the wizard only counted target rows (invertFieldMap). connector-mapping.service.ts evaluatePublishReadiness already counts mappingHasSource || mappingHasTarget. QA: the original 'draft was incomplete' claim was mine and wrong; the draft equalled the system default. The server also deliberately allows validating and publishing a mapping with blockers (channels-mapping-publish-complex-blockers.spec.js publishes with two active blockers and asserts they show afterwards); exports are what readiness hard-blocks, so a server-side completeness gate would have broken a tested contract and was not added. CTO-lens (analysis, not approval): UI-only alignment to existing API semantics; no lifecycle change. Open follow-up: the Readiness card says 'Publish remains blocked' where it means exporting products.",
+          "acceptance": [
+            "A required field mapped as a source key is shown as Covered and counted as mapped.",
+            "A required field that is neither a source key nor a target stays Missing.",
+            "The Step 2 count, the Review checklist and the Readiness card agree for WooCommerce / Aa."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-required-coverage-and-save.test.cjs (new; coverage helper executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (193/193 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-SAVE-DOUBLE-SUBMIT-001",
+          "title": "A double-click on 'Save draft version' creates two drafts",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "bf3cd397",
+          "scope": [
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/test/integration/mapping-required-coverage-and-save.test.cjs"
+          ],
+          "problem": "Extended QA (2026-09-30): one real double-click on 'Save draft version' produced Version 2 and Version 3 one second apart (two POST .../mappings/versions audit events). The button was a plain Button; the API creates a new row on every call.",
+          "proposed_fix": "Use PendingSubmitButton (useFormStatus) so the button disables while the save is in flight, as Validate/Publish/Archive already do.",
+          "team_investigation": "Engineering: PendingSubmitButton is already used for every other mapping action; the Save button was the exception. QA: reproduced with a real double_click, not a scripted click. Not changed: API-side idempotency (createDraft inserts unconditionally); a duplicate-window guard would be a separate, riskier change and is left as a follow-up. CTO-lens: presentational/interaction only.",
+          "acceptance": [
+            "'Save draft version' is a PendingSubmitButton with a pending label."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-required-coverage-and-save.test.cjs (new; coverage helper executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (193/193 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ],
+          "notes": "Post-deploy verification needs one deliberate double-click on a junk scope, which creates drafts; it is best done by the team on a scratch scope."
+        }
+      ]
     }
   ]
 }

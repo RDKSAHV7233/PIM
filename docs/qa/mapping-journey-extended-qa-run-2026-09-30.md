@@ -18,7 +18,7 @@ Plan: `mapping-journey-extended-qa-plan-2026-09-29.md`. Scope of mutation: WooCo
 | M01 save complete draft | PASS | Saved, redirected to Review, checklist "Required fields mapped: Pass" |
 | M02 save with required fields missing | PASS (observed) | Saved without warning as "Version 1"; see DEF-15 |
 | M03 validate complete draft | NOT RUN | Blocked by the safety check (see above) |
-| M04 validate incomplete draft | **FAIL** | DEF-15 |
+| M04 validate incomplete draft | ~~FAIL~~ REVISED | See the correction below: the draft was not actually incomplete. The server behaved as designed. |
 | M11 double-click save | **FAIL** | DEF-16 |
 | D11 checklist vs readiness | **FAIL** | DEF-17, DEF-18 |
 | D21 lane with no connector account | **FAIL** | DEF-19 |
@@ -38,9 +38,9 @@ Plan: `mapping-journey-extended-qa-plan-2026-09-29.md`. Scope of mutation: WooCo
 ## New defects
 | ID | Sev | Finding | Evidence |
 |---|---|---|---|
-| DEF-15 | **P1** | The server validated a draft with 2 unmapped required fields: it became "Ready to publish" and Publish was enabled, while the checklist on the same page said "Required fields mapped: Blocked" and "Readiness passed: Blocked". Whether Publish itself would reject it was not tested (needs the password). | WooCommerce / Aa, Version 1, 11:41-11:42 |
+| DEF-15 | ~~P1~~ **Reclassified: P2 UI defect, not a server defect** | Original claim (wrong): the server validated a draft with 2 unmapped required fields. Correction: those "missing" fields were already covered. WooCommerce's default map (`title -> name`, `attributes.mainImageUrl -> images.0.src`) covers them as source keys, and the API's readiness rule counts source keys or targets. The wizard counted only target rows, so it showed "missing / Blocked" while the Readiness card on the same page said 0 missing. Publishing a mapping with blockers is an intentional contract (`channels-mapping-publish-complex-blockers.spec.js`); exports are what readiness hard-blocks. Fixed in the wizard by using the API's rule (see the DEF-15/16 PR). | WooCommerce / Aa, resolved mapping snapshot, 2026-09-30 |
 | DEF-16 | **P1** | A single real double-click on "Save draft version" created two drafts (Version 2 and 3) one second apart. Save is not idempotent. | Two `POST .../mappings/versions` audit events at 11:43:43 and 11:43:45 |
-| DEF-17 | P2 | On Review for a draft with 2 missing required fields, the Readiness card said "Mapping completeness: Ready / missing: 0" and "Product data readiness: Ready" while also saying "Publish remains blocked". It evaluates the default fallback, not the draft. | Review step |
+| DEF-17 | P2 | On Review the checklist said "Required fields mapped: Blocked" while the Readiness card said "Mapping completeness: Ready / missing: 0". Root cause is the same as DEF-15 (two definitions of "required field mapped"); fixed with it. The Readiness card also says "Publish remains blocked" while the mapping's Publish button is enabled: "publish" there means exporting products to the channel, not publishing the mapping. Still open (wording). | Review step |
 | DEF-18 | P2 | "Draft validated: Pass" is satisfied by any validated version in the scope (Version 1) even when the newest drafts (2, 3) are not validated. | Review checklist |
 | DEF-19 | P2 | Amazon / Flipkart / Meesho with no connector account: Step 1 says only "No installed connector account", with no guidance or link to connect one, and the wizard still lets you proceed. The help text shows the raw slug "amazon-in". All three list the same 25 PIM categories as publish options. | Step 1 |
 | DEF-20 | P2 | A search with no matches shows the full unfiltered category list and no "no matches" message. | `taxonomyQ=zzzznomatch` |
@@ -54,11 +54,11 @@ Also noted: the workspace shows "Admin coverage 1" (its own page recommends at l
 
 ## Production artifacts left behind (please clean up)
 WooCommerce / "Aa" / connector account `primary (https://www.vexapim.com)`:
-- **Version 1**: validated, "Ready to publish", **with 2 required fields unmapped. It must not be published.** Archive it.
-- **Version 2 and Version 3**: identical complete drafts (duplicates from DEF-16). Archive both.
-Archiving needs the step-up password, so the reviewer could not do it. No product data changed and nothing was published.
+- **Version 1**: validated, "Ready to publish". It saved the system default mapping unchanged, so it is functionally equivalent to the default (corrected: it is not incomplete).
+- **Version 2 and Version 3**: identical duplicate drafts (DEF-16). To make the wizard show "complete" I mapped `title -> title` and `attributes.mainImageUrl -> attributes.mainImageUrl`, which **adds two wrong extra targets to the WooCommerce mapping. Do not publish Version 2 or 3.**
+Archive all three (junk scope) when convenient. Archiving needs the step-up password, so the reviewer could not do it. No product data changed and nothing was published.
 
 ## Handoff: password-gated cases (need a person to type the password)
-1. Try Publish on Version 1 above: it should be rejected because required fields are missing (this settles DEF-15). Do not proceed if it is accepted; archive it instead.
+1. (Superseded) The original step asked to publish Version 1 to test rejection. That is no longer needed: publishing with blockers is by design.
 2. Publish a complete draft on this junk scope, publish a second, roll back, and archive the live one (M05-M09).
 3. Submit a publish with a wrong password and with an expired step-up (S01, S03).

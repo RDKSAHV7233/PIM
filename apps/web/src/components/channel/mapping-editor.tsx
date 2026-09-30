@@ -1,11 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { createConnectorMappingVersionAction } from "@/app/actions";
-import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { JsonPreview } from "@/components/ui/json-preview";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,7 @@ type MappingFieldRow = {
   targetField: string;
   selectedSource: string;
   required: boolean;
+  coveredBy?: string;
 };
 
 type MappingFieldGroupKey = "core" | "compliance" | "attributes" | "media";
@@ -218,6 +219,8 @@ export type MappingEditorTaxonomy = {
 export type MappingEditorFieldMapping = {
   required: string[];
   mappedToSource: Record<string, string>;
+  // Required fields the map already covers as a source key (e.g. title -> name); not "missing".
+  coveredBySource?: Record<string, { source: string; targets: string[] }>;
   options: string[];
 };
 
@@ -265,16 +268,20 @@ export function MappingEditorCard({
 }) {
   const { slug: connectorSlug, definitionId, definitionVersion } = connector;
   const { matches: taxonomyMatches, unmapped: unmappedCategories, defaults: taxonomyDefaults, categoryOptions: targetCategoryOptions } = taxonomy;
-  const { required: requiredTargetFields, mappedToSource: mappedTargetToSource, options: targetFieldOptions } = fieldMapping;
+  const { required: requiredTargetFields, mappedToSource: mappedTargetToSource, coveredBySource = {}, options: targetFieldOptions } = fieldMapping;
   const { label: sampleProductLabel, mode: sampleProductMode, fieldOptions: sourceFieldOptions } = sampleProduct;
   const { mappingType: mappingTypeLabel, attributeMapping: attributeMappingTitle, attributeMappingDescription, fieldInputPrefix, advancedJson: advancedJsonTitle, mappingRulesPlaceholder } = labels;
-  const rows: MappingFieldRow[] = targetFieldOptions.map((targetField) => ({
-    targetField,
-    selectedSource: mappedTargetToSource[targetField] ?? "",
-    required: requiredTargetFields.includes(targetField),
-  }));
-  const missingRequiredRows = rows.filter((row) => row.required && !row.selectedSource);
-  const mappedRequiredRows = rows.filter((row) => row.required && row.selectedSource);
+  const rows: MappingFieldRow[] = targetFieldOptions.map((targetField) => {
+    const covered = coveredBySource[targetField];
+    return {
+      targetField,
+      selectedSource: mappedTargetToSource[targetField] ?? "",
+      required: requiredTargetFields.includes(targetField),
+      coveredBy: covered ? `${covered.source} → ${covered.targets.join(", ")}` : undefined,
+    };
+  });
+  const missingRequiredRows = rows.filter((row) => row.required && !row.selectedSource && !row.coveredBy);
+  const mappedRequiredRows = rows.filter((row) => row.required && (row.selectedSource || row.coveredBy));
   const optionalRows = rows.filter((row) => !row.required);
   const mappedRequiredCount = mappedRequiredRows.length;
   const missingRequiredCount = missingRequiredRows.length;
@@ -453,9 +460,9 @@ export function MappingEditorCard({
               Saving takes you straight to the review step to validate and publish this draft.
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="submit" className="w-fit">
-                Save draft version
-              </Button>
+              {/* PendingSubmitButton disables itself while the save is in flight, so a double-click cannot
+                  submit the form twice (each submit creates a new draft version). */}
+              <PendingSubmitButton type="submit" className="w-fit" idleLabel="Save draft version" pendingLabel="Saving draft..." />
             </div>
           </div>
         </form>

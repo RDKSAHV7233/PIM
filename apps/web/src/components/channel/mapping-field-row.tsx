@@ -8,6 +8,8 @@ type MappingFieldRow = {
   targetField: string;
   selectedSource: string;
   required: boolean;
+  // Set when no PIM field is picked for this row but the map already covers the field as a source key.
+  coveredBy?: string;
 };
 
 export function MappingFieldRowControls({
@@ -75,9 +77,12 @@ export function MappingFieldRowControls({
           Status:
         </p>
         <StatusChip
-          label={selectedSource ? "Mapped" : "Missing"}
-          tone={selectedSource ? "success" : row.required ? "danger" : "neutral"}
+          label={selectedSource ? "Mapped" : row.coveredBy ? "Covered" : "Missing"}
+          tone={selectedSource ? "success" : row.coveredBy ? "info" : row.required ? "danger" : "neutral"}
         />
+        {!selectedSource && row.coveredBy ? (
+          <p className="text-xs text-slate-500">Already mapped: {row.coveredBy}</p>
+        ) : null}
       </div>
     </>
   );
