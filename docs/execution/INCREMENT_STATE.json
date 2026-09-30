@@ -5197,6 +5197,48 @@
           "notes": "Projection does not carry every legacy ProductPayload-only field. HS/taxCode harmonizedSystemCode is intentionally not invented by the adapter; future authorization artifacts must review expected diffs for the chosen product before enabling the gate. Controlled mutation currently limits blast radius to ProductSet only; publication-target writes stay out of this branch unless a later signed story explicitly adds them."
         }
       ]
+    },
+    {
+      "incrementId": "INC-74",
+      "name": "Shopify vNext Controlled Mutation Correlation IDs",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-VMUT-003",
+          "title": "Correlation-ID plumbing for controlled vNext mutation attempts",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "71c0b593",
+          "scope": [
+            "apps/api/src/common/vnext-correlation.ts",
+            "apps/api/src/common/vnext-correlation.spec.ts",
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-adapter.ts",
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-adapter.spec.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.spec.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.service.spec.ts"
+          ],
+          "team_investigation": "Engineering: added a local createVnextCorrelationId helper with an inline ADR-0011 deferral note, then threaded a single per-attempt ID through the controlled mutation outcome, adapter payload wrapper, marketplace skip/executed logs, and ShopifyConnector.applyControlledMutation log metadata. CTO-lens: no gate semantics or Shopify payload semantics changed; correlation IDs are operational metadata only and are deliberately not embedded in ProductSetInput.",
+          "acceptance": [
+            "Every attempt receives a vnext-prefixed UUID correlation ID.",
+            "Skipped and executed controlled mutation outcomes return the same correlation ID generated for that attempt.",
+            "When the enabled gate path logs a skip or execution, the log payload includes that attempt's correlation ID.",
+            "ShopifyConnector.applyControlledMutation accepts optional correlation metadata and includes it in its success log.",
+            "The adapter carries correlation metadata alongside the ProductSet input and identifier without serializing it into the Shopify mutation input.",
+            "The local helper documents the ADR-0011 ConnectorContext.correlationId deferral."
+          ],
+          "tests_passed": [
+            "npm run test:unit --workspace @pim1/api -- --runTestsByPath src/common/vnext-correlation.spec.ts src/connectors/shopify/shopify-vnext-mutation-adapter.spec.ts src/connectors/shopify/shopify.connector.spec.ts src/marketplace/marketplace.service.spec.ts --runInBand --no-coverage (173/173 passed)",
+            "npm run test:integration:vnext-mutation-gating (110/110 passed)",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit (passed)",
+            "npm run build --workspace @pim1/api (passed)",
+            "git diff --check (passed)"
+          ],
+          "notes": "Disabled default skips remain quiet to avoid normal-operation log noise, but the returned outcome still carries the correlation ID. Enabled gate misses and executed attempts log the correlation ID for traceability."
+        }
+      ]
     }
   ]
 }
