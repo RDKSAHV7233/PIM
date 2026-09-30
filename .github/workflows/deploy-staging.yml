@@ -7,6 +7,35 @@ on:
         description: "Optional deploy target override: api, web, or api,web"
         required: false
         type: string
+      rollback_snapshot:
+        description: "Optional: capture Shopify vNext rollback snapshot after deploy"
+        required: false
+        default: false
+        type: boolean
+      rollback_release_sha:
+        description: "Release SHA for optional Shopify vNext rollback snapshot"
+        required: false
+        type: string
+      rollback_tenant:
+        description: "Tenant key for optional Shopify vNext rollback snapshot"
+        required: false
+        type: string
+      rollback_connector:
+        description: "Connector slug for optional Shopify vNext rollback snapshot"
+        required: false
+        type: string
+      rollback_installation:
+        description: "Installation ID for optional Shopify vNext rollback snapshot"
+        required: false
+        type: string
+      rollback_product:
+        description: "PIM product ID for optional Shopify vNext rollback snapshot"
+        required: false
+        type: string
+      rollback_shopify_product_gid:
+        description: "Shopify Product GID for optional Shopify vNext rollback snapshot"
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -405,6 +434,37 @@ jobs:
             --apiBase "${STAGING_BASE_URL}/api/v1" \
             --diagnosticOutputPath ".run-logs/queue-failure-diagnostics-${GITHUB_RUN_ID}.json"
 
+      - name: Capture Shopify vNext rollback snapshot
+        if: ${{ inputs.rollback_snapshot }}
+        shell: bash
+        env:
+          STAGING_DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_API_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
+          RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_ENVIRONMENT_NAME: Production
+          RAILWAY_DEPLOY_RETRIES: "3"
+          RAILWAY_DEPLOY_RETRY_DELAY_MS: "10000"
+          SNAPSHOT_OUTPUT: .run-logs/shopify-vnext-rollback-snapshot-${{ github.run_id }}.json
+        run: |
+          if [ -z "${{ inputs.rollback_release_sha }}" ] || [ -z "${{ inputs.rollback_tenant }}" ] || [ -z "${{ inputs.rollback_connector }}" ] || [ -z "${{ inputs.rollback_installation }}" ] || [ -z "${{ inputs.rollback_product }}" ] || [ -z "${{ inputs.rollback_shopify_product_gid }}" ]; then
+            echo "Missing one or more rollback snapshot inputs."
+            exit 1
+          fi
+          node scripts/capture-shopify-vnext-rollback-snapshot.cjs \
+            --release "${{ inputs.rollback_release_sha }}" \
+            --tenant "${{ inputs.rollback_tenant }}" \
+            --connector "${{ inputs.rollback_connector }}" \
+            --installation "${{ inputs.rollback_installation }}" \
+            --product "${{ inputs.rollback_product }}" \
+            --shopifyProductGid "${{ inputs.rollback_shopify_product_gid }}" \
+            --runUrl "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --output "${SNAPSHOT_OUTPUT}"
+
       - name: Upload gate + rollout + smoke artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -418,5 +478,6 @@ jobs:
             .run-logs/p0p1-open-issues-*.json
             .run-logs/e2e-smoke-*.log
             .run-logs/e2e-result-*.json
+            .run-logs/shopify-vnext-rollback-snapshot-*.json
           include-hidden-files: true
           if-no-files-found: error
