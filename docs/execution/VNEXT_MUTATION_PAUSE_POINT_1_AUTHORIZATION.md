@@ -1,42 +1,46 @@
 # vNext Mutation Pause Point 1 Authorization
 
-Status: blocked-draft
+Status: ready-for-human-authorization / NO-GO until signed
 Prepared: 2026-09-30
-Prepared by: Codex; evidence-capture pass by Claude
+Prepared by: Codex; evidence-capture pass by Claude; final deploy/snapshot pass by Codex
 Story: ST-CON-VMUT-006
 
 This document is a draft authorization packet for the first controlled Shopify vNext mutation. It does not authorize enabling `VNEXT_MUTATION_ENABLED`, changing environment variables, or running a real Shopify mutation.
 
-The authorization cannot be completed until required-team approval and ledger locks for `ST-CON-VMUT-004`/`ST-CON-VMUT-005` land, a release SHA is approved, and a real person signs off in chat.
+The authorization cannot be completed until a real person signs off in chat.
 
 ## Blocking Status
 
-Current state (updated 2026-09-30, evidence-capture pass):
+Current state (updated 2026-09-30, final deploy/snapshot pass):
 
 - Candidate tenant/installation/product/SKU/Shopify GID are now named (sections 2-5). The product was selected by the product owner in chat from among today's already shadow-verified fixtures, not invented here.
-- Sections 6-9 now carry real evidence captured against the exact candidate product: a live read-only Shopify diff-preview via app.vexapim.com (section 6/8), the actual shipped `buildShopifyChannelProjection`/`buildShopifyVnextProductSetInput` functions run locally against this product's real field data (section 7/8), and the actual shipped `buildCompensatingWritePayload` function run against the real current Shopify state (section 9). No write was issued capturing any of this — the diff-preview was cancelled, not confirmed.
-- `ST-CON-VMUT-004` has rollback scaffold code and a rollback plan; the compensating payload for this exact candidate is now computed (section 9). Several Shopify-internal ids (variant id, inventoryItem id, image id, handle) were not independently observable via the PIM UI and are explicitly marked "not captured via UI" below — they would come from the real `captureRollbackSnapshot` GraphQL query at authorization time, not fabricated here.
-- `ST-CON-VMUT-005` has a committed safety-test checkpoint, but the story is not locked because required approval and ledger evidence are still missing.
-- No release SHA has been approved yet (section 1 remains blocked).
+- Sections 6-9 now carry real evidence captured against the exact candidate product: a live read-only Shopify diff-preview via app.vexapim.com (section 6/8), the actual shipped `buildShopifyChannelProjection`/`buildShopifyVnextProductSetInput` functions run locally against this product's real field data (section 7/8), and the actual shipped `captureRollbackSnapshot`/`buildCompensatingWritePayload` functions run against live Shopify state after the final deploy (section 9). No write was issued capturing any of this; the diff-preview was cancelled, and the rollback snapshot path is read-only GraphQL.
+- `ST-CON-VMUT-004` and `ST-CON-VMUT-005` are now formally locked in `INCREMENT_STATE.json` (`INC-78` / `INC-79` after merging `origin/main`).
+- Final inert code was deployed successfully by GitHub Actions run `36742655646`.
+- The exact deployed release SHA is now recorded in section 1.
+- The real `captureRollbackSnapshot` GraphQL path was re-run after the final deploy against the exact candidate product. Section 9 now includes the live Shopify rollback snapshot with handle, variant id, inventory item id, image id, SEO, tags, and the computed compensating payload.
+- The allowlist tuple to use is now exact and complete: `tenant=admin`, `connector=shopify`, `installation=5b07df00-5b47-48f0-991b-2bc2f3fe8a95`, `product=cmt9mc8xe0010pf01pkieafm5`, `release=7b4820ee35ea46212046b94d089a82dcbf01e6cf`.
 - No human sign-off has been recorded in chat for the first real mutation.
 
-Do not treat this file as approval. Evidence being attached is not the same as authorization — the sign-off block below must still be completed by a real person in chat.
+Do not treat this file as approval. Evidence being attached is not the same as authorization; the sign-off block below must still be completed by a real person in chat.
 
 ## 1. Deployment SHA
 
 Candidate release SHA:
 
 ```text
-BLOCKED: no approved release SHA has been selected.
-Current worktree HEAD at draft time: 42157754cb469894f3cafba41a5626985583ac5d
-Worktree HEAD at evidence-capture time: 972379b2 (docs(shopify): draft vnext mutation pause point)
+Exact deployed release SHA: 7b4820ee35ea46212046b94d089a82dcbf01e6cf
+Deploy run: https://github.com/Vexaap/PIM/actions/runs/36742655646
+Deploy result: success
+Rollback snapshot artifact: staging-gate-artifacts-36742655646 / .run-logs/shopify-vnext-rollback-snapshot-36742655646.json
 ```
 
 Required before authorization:
 
-- Exact `VNEXT_MUTATION_APPROVED_RELEASE_SHA`.
-- Confirmation that `RAILWAY_GIT_COMMIT_SHA` will match that SHA in the target environment.
-- Confirmation that the release contains locked `ST-CON-VMUT-001`, `ST-CON-VMUT-002`, and `ST-CON-VMUT-003`, plus accepted evidence for `ST-CON-VMUT-004` and `ST-CON-VMUT-005`.
+- `VNEXT_MUTATION_APPROVED_RELEASE_SHA` must be exactly `7b4820ee35ea46212046b94d089a82dcbf01e6cf`.
+- Confirmation that `RAILWAY_GIT_COMMIT_SHA` matches `7b4820ee35ea46212046b94d089a82dcbf01e6cf` in the target environment when the gate is enabled.
+- The release contains locked `ST-CON-VMUT-001`, `ST-CON-VMUT-002`, `ST-CON-VMUT-003`, `ST-CON-VMUT-004`, and `ST-CON-VMUT-005` evidence.
+- Human sign-off must still name this exact release SHA.
 
 ## 2. Tenant
 
@@ -86,14 +90,14 @@ Confirmed matching the product above via the Content/Attributes tabs and the liv
 
 ## 6. Current Shopify State
 
-Captured 2026-09-30 via a live, read-only "Queue channel export" diff-preview in app.vexapim.com for this exact product (cancelled afterward — no write issued). This UI feature computes the diff against Shopify's actual current product state before any write.
+Captured 2026-09-30 via a live, read-only "Queue channel export" diff-preview in app.vexapim.com for this exact product (cancelled afterward; no write issued). This UI feature computes the diff against Shopify's actual current product state before any write.
 
 ```text
 Product GID: gid://shopify/Product/8087828889690
 Capture method: app.vexapim.com live diff-preview (Channels > Shopify > Queue channel export), cancelled without confirming
 Capture time: 2026-09-30 (same session as this document)
-Correlation ID: n/a (UI-level capture; captureRollbackSnapshot's own correlationId would be generated at real authorization time)
-Write issued during capture: No — dialog was cancelled, not confirmed
+Correlation ID: n/a (UI-level capture; final captureRollbackSnapshot evidence is in section 9)
+Write issued during capture: No; dialog was cancelled, not confirmed
 ```
 
 Real current-Shopify field values observed (everything not listed matched the PIM-derived value exactly, per the live diff-preview showing only 1 field changed):
@@ -109,13 +113,13 @@ size/color/material (as size_name/color_name/material_type): M / blue / cotton (
 tax_rate / hsn_code: 18 / 6205 (both match PIM)
 ```
 
-Not independently captured via this UI method (would come from the real `captureRollbackSnapshot` GraphQL query at authorization time): exact Shopify variant id, inventoryItem id, image id, product handle, SEO title/description, tags.
+Not independently captured via this UI method: exact Shopify variant id, inventoryItem id, image id, product handle, SEO title/description, tags. The final live `captureRollbackSnapshot` evidence in section 9 fills those fields.
 
 ## 7. vNext Channel Projection
 
 Two independent pieces of real evidence, both for this exact candidate:
 
-**(a) Real production shadow-pipeline run, captured earlier today (2026-09-30) during the 4-fixture shadow verification, from the live Railway deploy logs — not recomputed, quoted verbatim:**
+**(a) Real production shadow-pipeline run, captured earlier today (2026-09-30) during the 4-fixture shadow verification, from the live Railway deploy logs; not recomputed, quoted verbatim:**
 
 ```text
 shopify_shadow_projection_computed
@@ -213,9 +217,9 @@ Full raw ProductSetInput the vNext adapter would submit:
 
 Identifier that would be submitted (update-in-place, not a new product): `{ "id": "gid://shopify/Product/8087828889690" }`
 
-**Only one field is expected to change: the product image**, from the current live Shopify CDN URL to the PIM-configured `dummyimage.com` placeholder URL. This matches the same single-field diff the live legacy "Queue channel export" preview independently showed for this product — the vNext-derived values and the legacy-mapped values agree on every field except image, which is consistent with today's `comparisonMatches: true` shadow result.
+**Only one field is expected to change: the product image**, from the current live Shopify CDN URL to the PIM-configured `dummyimage.com` placeholder URL. This matches the same single-field diff the live legacy "Queue channel export" preview independently showed for this product; the vNext-derived values and the legacy-mapped values agree on every field except image, which is consistent with today's `comparisonMatches: true` shadow result.
 
-Explicit fields intentionally not covered by the vNext projection for this product: SEO title/description (none set), tags (none set), `compareAtPrice` is emitted as equal to `price` (499.00 == 499.00) since `mrp === sellingPrice` here — this is a known minor difference from whatever the legacy mapper does with equal MRP/selling price, worth a human eyeballing at sign-off even though it wasn't flagged as a changed field by the live diff-preview.
+Explicit fields intentionally not covered by the vNext projection for this product: SEO title/description (none set), tags (none set), `compareAtPrice` is emitted as equal to `price` (499.00 == 499.00) since `mrp === sellingPrice` here; this is a known minor difference from whatever the legacy mapper does with equal MRP/selling price, worth a human eyeballing at sign-off even though it wasn't flagged as a changed field by the live diff-preview.
 
 Known caveat from `ST-CON-VMUT-002` (unchanged from draft):
 
@@ -223,71 +227,139 @@ Known caveat from `ST-CON-VMUT-002` (unchanged from draft):
 
 ## 9. Rollback Payload
 
-**Real rollback snapshot**, built from the real current-Shopify field values observed in section 6 (fields not independently observable via the PIM UI — variant id, inventoryItem id, image id, handle, SEO, tags — are `null`/empty and explicitly marked below, not fabricated):
+Final live rollback evidence was captured after the final inert deploy by the actual shipped `ShopifyConnector.captureRollbackSnapshot(ctx, shopifyGid, { correlationId })` path. This was a read-only Shopify Admin GraphQL query; no ProductSet mutation or rollback mutation was issued.
+
+```text
+Release SHA: 7b4820ee35ea46212046b94d089a82dcbf01e6cf
+Deploy/snapshot run: https://github.com/Vexaap/PIM/actions/runs/36742655646
+Evidence artifact: staging-gate-artifacts-36742655646 / .run-logs/shopify-vnext-rollback-snapshot-36742655646.json
+Captured at: 2026-09-30T16:19:31.733Z
+Correlation ID: vnext_rollback_7b4820ee35ea_1790785168414
+Shopify Product GID: gid://shopify/Product/8087828889690
+Allowlist tuple: tenant=admin; connector=shopify; installation=5b07df00-5b47-48f0-991b-2bc2f3fe8a95; product=cmt9mc8xe0010pf01pkieafm5; release=7b4820ee35ea46212046b94d089a82dcbf01e6cf
+```
+
+**Final live rollback snapshot**, returned by `captureRollbackSnapshot` from Shopify:
 
 ```json
 {
-  "capturedAt": "2026-09-30T13:08:39.922Z",
+  "capturedAt": "2026-09-30T16:19:31.732Z",
   "product": {
     "id": "gid://shopify/Product/8087828889690",
     "title": "RES-02 Approved Candidate 1787720001100-77",
-    "handle": null,
+    "handle": "res-02-approved-candidate-1787720001100-77-res02-1787720001100-77-2",
     "descriptionHtml": "RES-02 controlled staging connector/export coverage product.",
     "status": "ACTIVE",
     "vendor": "Vexa QA",
     "productType": "QA Apparel",
     "tags": [],
-    "seo": null,
-    "options": [],
+    "seo": {
+      "title": null,
+      "description": null
+    },
+    "options": [
+      {
+        "name": "Title",
+        "position": 1,
+        "values": [
+          "Default Title"
+        ]
+      }
+    ],
     "variants": [
       {
-        "id": null,
+        "id": "gid://shopify/ProductVariant/43915000021082",
         "sku": "RES02-1787720001100-77-2",
         "price": "499.00",
-        "compareAtPrice": null,
+        "compareAtPrice": "499.00",
         "barcode": null,
         "inventoryPolicy": "CONTINUE",
         "taxable": true,
-        "selectedOptions": [{ "name": "Title", "value": "Default Title" }],
-        "inventoryItem": { "id": null, "sku": "RES02-1787720001100-77-2", "tracked": false }
+        "selectedOptions": [
+          {
+            "name": "Title",
+            "value": "Default Title"
+          }
+        ],
+        "inventoryItem": {
+          "id": "gid://shopify/InventoryItem/46033990778970",
+          "sku": "RES02-1787720001100-77-2",
+          "tracked": false
+        }
       }
     ],
     "images": [
       {
-        "id": null,
+        "id": "gid://shopify/ProductImage/42656046022746",
         "src": "https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_ba64d666-d392-40c6-887c-f7a8d481aa4f.png?v=1790748226",
-        "altText": null
+        "altText": "RES-02 Approved Candidate 1787720001100-77"
       }
     ]
   }
 }
 ```
 
-**Real compensating write payload**, computed by feeding the snapshot above into the actual shipped `buildCompensatingWritePayload(snapshot, correlationId)` function (from `apps/api/dist/connectors/shopify/shopify-vnext-mutation-adapter.js`) — not hand-written:
+**Final compensating write payload**, computed from that live snapshot by the actual shipped `buildCompensatingWritePayload(snapshot, correlationId)` function:
 
 ```json
 {
-  "correlationId": "vnext_evidence_capture_1790773719923",
+  "correlationId": "vnext_rollback_7b4820ee35ea_1790785168414",
   "input": {
     "title": "RES-02 Approved Candidate 1787720001100-77",
+    "handle": "res-02-approved-candidate-1787720001100-77-res02-1787720001100-77-2",
     "descriptionHtml": "RES-02 controlled staging connector/export coverage product.",
     "status": "ACTIVE",
     "vendor": "Vexa QA",
     "productType": "QA Apparel",
-    "productOptions": [{ "name": "Title", "position": 1, "values": [{ "name": "Default Title" }] }],
-    "variants": [{ "price": "499.00", "inventoryPolicy": "CONTINUE", "taxable": true, "inventoryItem": { "tracked": false, "sku": "RES02-1787720001100-77-2" }, "optionValues": [{ "optionName": "Title", "name": "Default Title" }] }],
-    "files": [{ "originalSource": "https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_ba64d666-d392-40c6-887c-f7a8d481aa4f.png?v=1790748226", "alt": "RES-02 Approved Candidate 1787720001100-77", "contentType": "IMAGE", "filename": "product-image.png" }]
+    "productOptions": [
+      {
+        "name": "Title",
+        "position": 1,
+        "values": [
+          {
+            "name": "Default Title"
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "price": "499.00",
+        "compareAtPrice": "499.00",
+        "inventoryPolicy": "CONTINUE",
+        "taxable": true,
+        "inventoryItem": {
+          "tracked": false,
+          "sku": "RES02-1787720001100-77-2"
+        },
+        "optionValues": [
+          {
+            "optionName": "Title",
+            "name": "Default Title"
+          }
+        ]
+      }
+    ],
+    "files": [
+      {
+        "originalSource": "https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_ba64d666-d392-40c6-887c-f7a8d481aa4f.png?v=1790748226",
+        "alt": "RES-02 Approved Candidate 1787720001100-77",
+        "contentType": "IMAGE",
+        "filename": "product-image.png"
+      }
+    ]
   },
-  "identifier": { "id": "gid://shopify/Product/8087828889690" }
+  "identifier": {
+    "id": "gid://shopify/Product/8087828889690"
+  }
 }
 ```
 
-This compensating payload would restore the product's current real image URL if the controlled mutation's image change (section 8) needs to be reversed. It is real, computed, actionable — not theoretical.
+This compensating payload would restore the product's current real image URL and current live product state if the controlled mutation's image change (section 8) needs to be reversed. It is real, computed, actionable, and includes the Shopify-internal identifiers that were previously missing from the UI-derived draft snapshot.
 
 Still required before authorization:
 
-- Operator review confirming this compensating payload is acceptable as the rollback artifact (explicitly not done by this evidence-capture pass — this is a human judgment call, not something to self-approve).
-- At real authorization time, re-run `captureRollbackSnapshot` (not this UI-based reconstruction) immediately before the mutation, since Shopify state could have changed between now and sign-off, and to fill in the ids marked `null` above.
+- Operator review confirming this compensating payload is acceptable as the rollback artifact. This is a human judgment call, not something to self-approve.
 
 Rollback remains manual. The compensating payload must not be submitted automatically.
 
@@ -376,9 +448,8 @@ NO-GO.
 
 Reason:
 
-- Candidate product, evidence, and computed rollback payload are now attached (sections 2-9), but:
-- Missing an approved release SHA (section 1).
-- Missing required team approval and ledger lock for `ST-CON-VMUT-004` and `ST-CON-VMUT-005`.
+- Candidate product, expected diff, final deployed release SHA, formal VMUT-004/VMUT-005 locks, and final live rollback payload are now attached (sections 1-10).
+- The allowlist tuple is exact and complete.
 - Missing human sign-off.
 
-This draft closes no gate by itself. Attaching real evidence is not the same as authorization.
+This package closes no mutation gate by itself. Attaching real evidence is not the same as authorization.
