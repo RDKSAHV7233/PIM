@@ -33,6 +33,36 @@ describe("vnext mutation env gates", () => {
     expect(isMutationAllowedFor("tenant-a", "shopify", "install-1", "prod-2", MATCHING_ENV)).toBe(false);
   });
 
+  it.each([
+    {
+      name: "disabled flag",
+      env: { ...MATCHING_ENV, VNEXT_MUTATION_ENABLED: "false" },
+      allowed: false,
+      approved: true,
+    },
+    {
+      name: "missing allowlist",
+      env: { ...MATCHING_ENV, VNEXT_MUTATION_ALLOWLIST_JSON: "" },
+      allowed: false,
+      approved: true,
+    },
+    {
+      name: "missing approved release",
+      env: { ...MATCHING_ENV, VNEXT_MUTATION_APPROVED_RELEASE_SHA: "" },
+      allowed: true,
+      approved: false,
+    },
+    {
+      name: "missing live release",
+      env: { ...MATCHING_ENV, RAILWAY_GIT_COMMIT_SHA: "" },
+      allowed: true,
+      approved: false,
+    },
+  ])("keeps the safety gates independent and fail-closed for $name", ({ env, allowed, approved }) => {
+    expect(isMutationAllowedFor("tenant-a", "shopify", "install-1", "prod-1", env)).toBe(allowed);
+    expect(isApprovedRelease(env)).toBe(approved);
+  });
+
   it("rejects enabled config without a single well-formed allowlist entry", () => {
     expect(getVnextMutationValidationIssues({
       VNEXT_MUTATION_ENABLED: "true",

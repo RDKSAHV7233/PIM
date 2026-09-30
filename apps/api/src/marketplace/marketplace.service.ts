@@ -3651,39 +3651,50 @@ export class MarketplaceService implements OnModuleInit {
       return skip("release_not_approved");
     }
 
-    const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
-    if (!connector.fetchProductTypeSchema || typeof connector.applyControlledMutation !== "function") {
-      return skip("connector_missing_controlled_mutation");
+    try {
+      const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
+      if (!connector.fetchProductTypeSchema || typeof connector.applyControlledMutation !== "function") {
+        return skip("connector_missing_controlled_mutation");
+      }
+
+      const ctx = this.connectorFramework.buildContextForInstallation({
+        ...installation,
+        tenantKey,
+        slug: "shopify",
+        metadata: {},
+      });
+      const targetSchema = await connector.fetchProductTypeSchema(ctx, productPayload.productType);
+      const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
+      const resolvedMapping: ResolvedConnectorMapping = {
+        connectorSlug: "shopify",
+        requiredFields: effective.requiredFields,
+        fieldMap: effective.fieldMap,
+        rawFieldMap: effective.rawFieldMap,
+        source: effective.source,
+      };
+      const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
+      const payload = buildShopifyVnextMutationPayload(projection, correlationId, existingGid);
+
+      const result = await connector.applyControlledMutation(ctx, payload.input, payload.identifier, { correlationId });
+      this.logger.info("shopify_vnext_controlled_mutation_executed", {
+        correlationId,
+        installationId: installation.id,
+        categoryId,
+        productId,
+        sku: projection.identity.sku,
+        schemaVersion: projection.readiness.schemaVersion,
+      });
+      return { outcome: "executed", result, correlationId };
+    } catch (error) {
+      this.logger.warn("shopify_vnext_controlled_mutation_failed", {
+        correlationId,
+        installationId: installation.id,
+        categoryId,
+        productId,
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
+      return { outcome: "skipped", reason: "controlled_mutation_failed", correlationId };
     }
-
-    const ctx = this.connectorFramework.buildContextForInstallation({
-      ...installation,
-      tenantKey,
-      slug: "shopify",
-      metadata: {},
-    });
-    const targetSchema = await connector.fetchProductTypeSchema(ctx, productPayload.productType);
-    const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
-    const resolvedMapping: ResolvedConnectorMapping = {
-      connectorSlug: "shopify",
-      requiredFields: effective.requiredFields,
-      fieldMap: effective.fieldMap,
-      rawFieldMap: effective.rawFieldMap,
-      source: effective.source,
-    };
-    const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
-    const payload = buildShopifyVnextMutationPayload(projection, correlationId, existingGid);
-
-    const result = await connector.applyControlledMutation(ctx, payload.input, payload.identifier, { correlationId });
-    this.logger.info("shopify_vnext_controlled_mutation_executed", {
-      correlationId,
-      installationId: installation.id,
-      categoryId,
-      productId,
-      sku: projection.identity.sku,
-      schemaVersion: projection.readiness.schemaVersion,
-    });
-    return { outcome: "executed", result, correlationId };
   }
 
   /**

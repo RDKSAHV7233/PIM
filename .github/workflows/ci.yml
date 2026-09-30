@@ -267,6 +267,9 @@ jobs:
       - name: Shopify runtime foundation integration test
         run: npm run test:integration:shopify-runtime-foundation
 
+      - name: Shopify vNext mutation safety integration test
+        run: npm run test:integration:shopify-vnext-mutation-safety
+
       - name: Outbound webhook integration test
         run: node apps/api/test/integration/outbound-webhooks.test.cjs
 
