@@ -955,3 +955,79 @@ describe("ShopifyConnector.buildProductSetInput", () => {
     expect((build(BASE) as any).status).toBe("ACTIVE");
   });
 });
+
+describe("ShopifyConnector.applyControlledMutation", () => {
+  let connector: ShopifyConnector;
+  let ctx: ConnectorContext;
+  let graphqlRequest: jest.SpyInstance;
+
+  beforeEach(() => {
+    connector = makeConnector();
+    ctx = makeCtx();
+    jest.spyOn(connector as any, "requireCredential").mockResolvedValue("test-shop.myshopify.com");
+    graphqlRequest = jest.spyOn((connector as any).apiClient, "graphqlRequest").mockResolvedValue({
+      productSet: {
+        product: {
+          id: "gid://shopify/Product/999",
+          handle: "classic-tee-sku-1",
+          status: "ACTIVE",
+        },
+        userErrors: [],
+      },
+    });
+  });
+
+  it("sends the caller-supplied ProductSet input and identifier without rebuilding from ProductPayload", async () => {
+    const input = {
+      title: "Projection Title",
+      handle: "projection-title-sku-1",
+      variants: [{ price: "799.00", inventoryItem: { tracked: false, sku: "SKU-1" } }],
+    };
+    const identifier = { handle: "projection-title-sku-1" };
+
+    const result = await connector.applyControlledMutation(ctx, input, identifier);
+
+    expect(result).toEqual({
+      externalRef: "gid://shopify/Product/999",
+      status: "SUCCESS",
+      isAsync: false,
+    });
+    expect(graphqlRequest).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        shopDomain: "test-shop.myshopify.com",
+        accessToken: "mock-access-token",
+        variables: { input, identifier },
+      }),
+      expect.objectContaining({ onTokenExpired: expect.any(Function) }),
+    );
+  });
+
+  it("does not run the legacy single-variant secondary price update", async () => {
+    const updateDefaultVariantPrice = jest.spyOn(connector as any, "updateDefaultVariantPrice");
+
+    await connector.applyControlledMutation(
+      ctx,
+      { title: "Projection Title", variants: [{ price: "799.00", inventoryItem: { sku: "SKU-1" } }] },
+      { handle: "projection-title-sku-1" },
+    );
+
+    expect(updateDefaultVariantPrice).not.toHaveBeenCalled();
+  });
+
+  it("converts Shopify user errors into ShopifyPublishError issues", async () => {
+    graphqlRequest.mockResolvedValueOnce({
+      productSet: {
+        product: null,
+        userErrors: [{ field: ["input", "title"], message: "Title can't be blank" }],
+      },
+    });
+
+    await expect(
+      connector.applyControlledMutation(ctx, { title: "" }, { handle: "projection-title-sku-1" }),
+    ).rejects.toMatchObject({
+      name: "ShopifyPublishError",
+      issues: [expect.objectContaining({ code: "TITLE_REQUIRED", fieldPath: "input.title" })],
+    });
+  });
+});

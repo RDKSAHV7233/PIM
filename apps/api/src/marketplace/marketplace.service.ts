@@ -30,12 +30,25 @@ import {
   CredentialExpiredError,
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
-import { MarketPrice, ProductPayload } from "../connector-framework/connector.interface";
+import {
+  ConnectorContext,
+  MarketPrice,
+  ProductPayload,
+  ProductTypeSchema,
+  SubmissionRef,
+} from "../connector-framework/connector.interface";
 import { PriceResolutionService } from "./price-resolution.service";
 import { MediaStorageService } from "../media/media-storage.service";
 import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
 import { buildShopifyChannelProjection } from "../connectors/shopify/shopify-channel-projection";
 import { compareProjectionToSource } from "../connectors/shopify/shopify-shadow-comparator";
+import {
+  buildShopifyVnextProductIdentifier,
+  buildShopifyVnextProductSetInput,
+  ShopifyProductSetIdentifierLike,
+  ShopifyProductSetInputLike,
+} from "../connectors/shopify/shopify-vnext-mutation-adapter";
+import { isApprovedRelease, isMutationAllowedFor } from "../common/vnext-mutation-env";
 import type { ResolvedConnectorMapping } from "./mapping-resolution.service";
 import { WooCommercePublishError } from "../connectors/woocommerce/woocommerce.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
@@ -138,6 +151,22 @@ type SubmissionOutcome =
       status: string;
       reason: string;
     };
+
+type ControlledMutationOutcome =
+  | { outcome: "skipped"; reason: string }
+  | { outcome: "executed"; result: SubmissionRef };
+
+type ShopifyControlledMutationConnector = {
+  fetchProductTypeSchema?: (
+    ctx: ConnectorContext,
+    productType?: string,
+  ) => Promise<ProductTypeSchema>;
+  applyControlledMutation: (
+    ctx: ConnectorContext,
+    input: ShopifyProductSetInputLike,
+    identifier: ShopifyProductSetIdentifierLike,
+  ) => Promise<SubmissionRef>;
+};
 
 type AuthoritativeChannelIssue = {
   severity: "error" | "warning";
@@ -3399,9 +3428,22 @@ export class MarketplaceService implements OnModuleInit {
           });
         }
 
-        const publishResult = existingGid
-          ? await this.connectorFramework.update(installation, productPayload, existingGid)
-          : await this.connectorFramework.publish(installation, productPayload);
+        const controlledMutation = connectorSlug === "shopify" && job.categoryId
+          ? await this.attemptShopifyControlledMutation({
+              tenantKey,
+              productId: job.productId,
+              productPayload,
+              categoryId: job.categoryId,
+              installation,
+              existingGid,
+            })
+          : { outcome: "skipped" as const, reason: "not_shopify_or_missing_category" };
+
+        const publishResult = controlledMutation.outcome === "executed"
+          ? controlledMutation.result
+          : existingGid
+            ? await this.connectorFramework.update(installation, productPayload, existingGid)
+            : await this.connectorFramework.publish(installation, productPayload);
 
         // ─── Sprint 14: locale translations (best-effort, warnings only) ─────────
         const localeWarnings: { code: string; fieldPath: string; severity: "warning"; sellerMessage: string }[] = [];
@@ -3573,6 +3615,57 @@ export class MarketplaceService implements OnModuleInit {
       attemptNumber: submission.attemptNumber,
     });
     return outcome;
+  }
+
+  private async attemptShopifyControlledMutation(input: {
+    tenantKey: string;
+    productId: string;
+    productPayload: ProductPayload;
+    categoryId: string;
+    installation: { id: string; connectorId: string };
+    existingGid: string | null;
+  }): Promise<ControlledMutationOutcome> {
+    const { tenantKey, productId, productPayload, categoryId, installation, existingGid } = input;
+    if (!isMutationAllowedFor(tenantKey, "shopify", installation.id, productId)) {
+      return { outcome: "skipped", reason: "allowlist_miss_or_disabled" };
+    }
+    if (!isApprovedRelease()) {
+      return { outcome: "skipped", reason: "release_not_approved" };
+    }
+
+    const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
+    if (!connector.fetchProductTypeSchema || typeof connector.applyControlledMutation !== "function") {
+      return { outcome: "skipped", reason: "connector_missing_controlled_mutation" };
+    }
+
+    const ctx = this.connectorFramework.buildContextForInstallation({
+      ...installation,
+      tenantKey,
+      slug: "shopify",
+      metadata: {},
+    });
+    const targetSchema = await connector.fetchProductTypeSchema(ctx, productPayload.productType);
+    const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
+    const resolvedMapping: ResolvedConnectorMapping = {
+      connectorSlug: "shopify",
+      requiredFields: effective.requiredFields,
+      fieldMap: effective.fieldMap,
+      rawFieldMap: effective.rawFieldMap,
+      source: effective.source,
+    };
+    const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
+    const productSetInput = buildShopifyVnextProductSetInput(projection);
+    const identifier = buildShopifyVnextProductIdentifier(projection, existingGid);
+
+    const result = await connector.applyControlledMutation(ctx, productSetInput, identifier);
+    this.logger.info("shopify_vnext_controlled_mutation_executed", {
+      installationId: installation.id,
+      categoryId,
+      productId,
+      sku: projection.identity.sku,
+      schemaVersion: projection.readiness.schemaVersion,
+    });
+    return { outcome: "executed", result };
   }
 
   /**

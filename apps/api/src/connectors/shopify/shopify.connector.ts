@@ -32,6 +32,10 @@ import {
   SHOPIFY_DEFAULT_ADMIN_API_VERSION,
   SHOPIFY_ADMIN_API_VERSION_DEPRECATE_AFTER,
 } from "./shopify-api-client.service";
+import type {
+  ShopifyProductSetIdentifierLike,
+  ShopifyProductSetInputLike,
+} from "./shopify-vnext-mutation-adapter";
 
 type CredentialRow = {
   id: string;
@@ -775,6 +779,24 @@ export class ShopifyConnector implements ConnectorInterface {
     };
   }
 
+  async applyControlledMutation(
+    ctx: ConnectorContext,
+    input: ShopifyProductSetInputLike,
+    identifier: ShopifyProductSetIdentifierLike,
+  ): Promise<SubmissionRef> {
+    const productRecord = await this.applyControlledProductSet(ctx, input, identifier);
+    this.logger.info("Shopify controlled vNext product sync completed", {
+      installationId: ctx.installationId,
+      shopifyProductId: productRecord.id,
+    });
+
+    return {
+      externalRef: productRecord.id,
+      status: "SUCCESS",
+      isAsync: false,
+    };
+  }
+
   async syncSubmissionStatus(
     ctx: ConnectorContext,
     externalRef: string,
@@ -1396,6 +1418,60 @@ export class ShopifyConnector implements ConnectorInterface {
 
     return {
       id: shopifyProductId,
+      handle: this.normalizeOptionalString(mutation.product.handle),
+      status: this.normalizeOptionalString(mutation.product.status),
+    };
+  }
+
+  private async applyControlledProductSet(
+    ctx: ConnectorContext,
+    input: ShopifyProductSetInputLike,
+    identifier: ShopifyProductSetIdentifierLike,
+  ): Promise<{ id: string; handle: string | null; status: string | null }> {
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+    const response = await this.apiClient.graphqlRequest<ShopifyProductSetResponse>(ctx, {
+      shopDomain,
+      accessToken,
+      query: `
+        mutation ControlledVnextProductSet($input: ProductSetInput!, $identifier: ProductSetIdentifiers!) {
+          productSet(synchronous: true, input: $input, identifier: $identifier) {
+            product {
+              id
+              handle
+              status
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        input,
+        identifier,
+      },
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
+
+    const mutation = response.productSet;
+    const rawUserErrors = Array.isArray(mutation?.userErrors) ? mutation.userErrors : [];
+    if (rawUserErrors.length > 0) {
+      const issues = rawUserErrors.map((ue) =>
+        this.parseShopifyUserError(ue.field, String(ue.message ?? "").trim()),
+      );
+      throw new ShopifyPublishError(
+        issues,
+        `Shopify controlled vNext product sync failed: ${issues.map((i) => i.sellerMessage).join(" | ")}`,
+      );
+    }
+
+    if (!mutation?.product?.id) {
+      throw new Error("Shopify controlled vNext product sync did not return a product id.");
+    }
+
+    return {
+      id: String(mutation.product.id),
       handle: this.normalizeOptionalString(mutation.product.handle),
       status: this.normalizeOptionalString(mutation.product.status),
     };

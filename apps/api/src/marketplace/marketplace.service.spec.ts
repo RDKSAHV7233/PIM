@@ -2947,3 +2947,169 @@ describe("MarketplaceService.runShopifyShadowProjection — Story 4 shadow execu
     expect(capturedCtx!.fetch).toBeUndefined();
   });
 });
+
+describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-002", () => {
+  const ORIGINAL_ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    jest.clearAllMocks();
+  });
+
+  function makeControlledMutationService() {
+    const realCtx = {
+      tenantId: "tenant1",
+      installationId: "inst-1",
+      connectorId: "conn-1",
+      getAccessToken: jest.fn().mockResolvedValue("real-token"),
+      fetch: jest.fn(),
+    };
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      buildContextForInstallation: jest.fn().mockReturnValue(realCtx),
+    };
+    const connector = {
+      fetchProductTypeSchema: jest.fn().mockResolvedValue({
+        productType: "default",
+        requiredAttributes: ["sku", "title", "description", "mainImageUrl"],
+        optionalAttributes: [],
+        validValues: {},
+        schemaVersion: "LOCAL-shopify-default-2026Q3",
+      }),
+      applyControlledMutation: jest.fn().mockResolvedValue({
+        externalRef: "gid://shopify/Product/999",
+        status: "SUCCESS",
+        isAsync: false,
+      }),
+    };
+    const connectorRegistry = {
+      getConnector: jest.fn().mockReturnValue(connector),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const svc = new MarketplaceService(
+      { tenant: jest.fn() } as never,
+      connectorFramework as never,
+      connectorRegistry as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      logger as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    jest.spyOn(svc as any, "getEffectiveMapping").mockResolvedValue({
+      requiredFields: [],
+      fieldMap: {},
+      rawFieldMap: {},
+      source: "system_pack",
+    });
+    return { svc, connectorFramework, connectorRegistry, connector, realCtx, logger };
+  }
+
+  function runControlled(svc: MarketplaceService) {
+    return (
+      svc as unknown as {
+        attemptShopifyControlledMutation: (input: {
+          tenantKey: string;
+          productId: string;
+          productPayload: Record<string, unknown>;
+          categoryId: string;
+          installation: { id: string; connectorId: string };
+          existingGid: string | null;
+        }) => Promise<{ outcome: string; reason?: string; result?: unknown }>;
+      }
+    ).attemptShopifyControlledMutation({
+      tenantKey: "tenant1",
+      productId: "prod-1",
+      productPayload: {
+        sku: "SKU-1",
+        title: "Classic Tee",
+        description: "A tee",
+        brand: "Acme",
+        hsnCode: "61091000",
+        gstRate: 5,
+        mrp: 999,
+        sellingPrice: 799,
+        mainImageUrl: "https://cdn.example.com/tee.jpg",
+        attributes: {},
+        productType: "default",
+      },
+      categoryId: "cat-1",
+      installation: { id: "inst-1", connectorId: "conn-1" },
+      existingGid: null,
+    });
+  }
+
+  it("skips before touching connector code when the vNext mutation flag is disabled", async () => {
+    delete process.env.VNEXT_MUTATION_ENABLED;
+    const { svc, connectorRegistry, connectorFramework } = makeControlledMutationService();
+
+    await expect(runControlled(svc)).resolves.toEqual({
+      outcome: "skipped",
+      reason: "allowlist_miss_or_disabled",
+    });
+    expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+    expect(connectorFramework.buildContextForInstallation).not.toHaveBeenCalled();
+  });
+
+  it("skips on release mismatch even when the allowlist is exact", async () => {
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+    process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
+      tenantKey: "tenant1",
+      connectorSlug: "shopify",
+      installationId: "inst-1",
+      productId: "prod-1",
+    });
+    process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.RAILWAY_GIT_COMMIT_SHA = "bbbbbbbb";
+    const { svc, connectorRegistry } = makeControlledMutationService();
+
+    await expect(runControlled(svc)).resolves.toEqual({
+      outcome: "skipped",
+      reason: "release_not_approved",
+    });
+    expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+  });
+
+  it("builds a projection-derived ProductSet input and calls the narrow controlled mutation method once on exact gates", async () => {
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+    process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
+      tenantKey: "tenant1",
+      connectorSlug: "shopify",
+      installationId: "inst-1",
+      productId: "prod-1",
+    });
+    process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
+    const { svc, connector, connectorFramework, realCtx, logger } = makeControlledMutationService();
+
+    await expect(runControlled(svc)).resolves.toEqual({
+      outcome: "executed",
+      result: { externalRef: "gid://shopify/Product/999", status: "SUCCESS", isAsync: false },
+    });
+    expect(connectorFramework.buildContextForInstallation).toHaveBeenCalledWith({
+      id: "inst-1",
+      connectorId: "conn-1",
+      tenantKey: "tenant1",
+      slug: "shopify",
+      metadata: {},
+    });
+    expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
+    expect(connector.applyControlledMutation).toHaveBeenCalledWith(
+      realCtx,
+      expect.objectContaining({
+        title: "Classic Tee",
+        handle: "classic-tee-sku-1",
+        variants: [expect.objectContaining({ inventoryItem: expect.objectContaining({ sku: "SKU-1" }) })],
+      }),
+      { handle: "classic-tee-sku-1" },
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "shopify_vnext_controlled_mutation_executed",
+      expect.objectContaining({ installationId: "inst-1", productId: "prod-1", sku: "SKU-1" }),
+    );
+  });
+});
