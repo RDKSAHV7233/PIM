@@ -19,6 +19,7 @@ const {
   prepareRailwayDeployRoot,
   resolveApiDatabaseVariables,
   resolveConfig,
+  resolveDeploymentReleaseVariables,
   resolveErrorAuthorityServiceVariables,
   resolveWebSessionAuthVariables,
   setRailwayVariablesAcrossServiceTargets,
@@ -264,6 +265,18 @@ function main() {
       ["ERROR_AUTHORITY_INGEST_TOKEN", "error-authority-ingest-token-minimum-32"],
     ],
     "Railway deploy should derive Error Authority release from the immutable GitHub SHA and include the server-only ingest token when configured.",
+  );
+  assert.deepEqual(
+    resolveDeploymentReleaseVariables({
+      GITHUB_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+    }),
+    [["RAILWAY_GIT_COMMIT_SHA", "260a89cc3475152d27821ae2334389ae88084f67"]],
+    "Railway deploy should sync RAILWAY_GIT_COMMIT_SHA from the immutable GitHub SHA, since `railway up` CLI deploys never auto-populate it (unlike Railway's native GitHub-integration deploys) and the vNext controlled-mutation release-identity gate depends on it.",
+  );
+  assert.deepEqual(
+    resolveDeploymentReleaseVariables({}),
+    [],
+    "Railway deploy should not emit a RAILWAY_GIT_COMMIT_SHA pair when GITHUB_SHA is absent from the deploy environment.",
   );
   assert.deepEqual(
     formatRailwayVariablePairs([

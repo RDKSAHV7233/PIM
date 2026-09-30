@@ -69,6 +69,10 @@ test.describe("channels mappings hydration regression", () => {
       attributes: { color: "red", size: "S" },
     });
 
+    // The wizard only opens the review step once a publish category is known (from the URL or from a published
+    // mapping); this draft is unpublished, so the URL below must carry it.
+    const publishCategoryId = uniqueName("fk-target").toLowerCase();
+
     // Create a real persisted mapping version so the history table + AdvancedDrawer's
     // "Resolved mapping snapshot" panel both render actual data instead of empty states.
     const draft = await apiRequest(
@@ -83,7 +87,7 @@ test.describe("channels mappings hydration regression", () => {
         compatibilityState: "compatible",
         mappingRules: {
           field_mappings: { title: "title", hsnCode: "hsnCode", gstRate: "gstRate" },
-          category: { source: String(category.id), target: uniqueName("fk-target").toLowerCase() },
+          category: { source: String(category.id), target: publishCategoryId },
         },
         fallbackPolicy: { enabled: true, default_category: uniqueName("fk-fallback").toLowerCase() },
         fallbackAckRequired: false,
@@ -96,7 +100,7 @@ test.describe("channels mappings hydration regression", () => {
 
       for (const advancedPanel of ["resolved", "fallback", "json"]) {
         const response = await page.goto(
-          buildMappingsUrl(category.id, product.id, { advancedPanel }),
+          buildMappingsUrl(category.id, product.id, { advancedPanel, publishCategoryId }),
           { waitUntil: "domcontentloaded" },
         );
         expect(response?.status()).toBe(200);

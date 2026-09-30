@@ -2,11 +2,11 @@
 title: RBAC Permissions Matrix
 audience: internal-eng
 status: active
-last_updated: 2026-05-26
+last_updated: 2026-09-30
 owner: Engineering / QA
 ---
 
-Use this document to verify what any role can and cannot do across every product surface. Source of truth: `apps/api/src/common/rbac/roles.ts`, controller `@Roles()` decorators, and `rbac.guard.ts`.
+Use this document to verify what any role can and cannot do across every product surface. Source of truth: `apps/api/src/common/rbac/roles.ts`, controller `@Roles()` decorators, `@AdminBoundaryAccess()` decorators (see section 2a: they can override `@Roles()`), and `rbac.guard.ts`.
 
 ## 1. Role Definitions
 
@@ -49,9 +49,9 @@ Legend: **R** = read, **W** = write/mutate, **—** = denied
 | **Quality — approval queue (read)** | R | R | R | R | R | R | R | R |
 | **Quality — approve / reject** | W | — | — | W | — | — | — | — |
 | **Quality — approval comments** | W | W | W | W | W | W | W | — |
-| **Channels — channel readiness** | R | R | R | R | R | R | R | R |
+| **Channels — channel readiness (see 2a)** | R | R | R | R | R | R | R | R |
 | **Channels — publish / queue export** | W | — | W | — | W | — | — | — |
-| **Channels — channel mappings** | W | — | — | — | W | — | — | — |
+| **Channels — channel mappings (see 2a)** | W | — | — | — | W | — | — | — |
 | **Channels — connector setup** | W | — | — | — | W | W | — | — |
 | **Connectors — definitions (read)** | R | R | R | R | R | R | R | R |
 | **Connectors — install** | W | — | — | — | — | W | — | — |
@@ -71,6 +71,25 @@ Legend: **R** = read, **W** = write/mutate, **—** = denied
 | **Admin — plan & billing** | R/W | R | R | R | R | R | R | R |
 | **Admin — privacy (export/delete)** | W | — | — | — | — | — | — | — |
 | **Platform — tenant search (internal)** | W (ops token) | — | — | — | — | — | — | — |
+
+---
+
+## 2a. Admin-boundary overlay (marketplace routes)
+
+The matrix above reflects `@Roles()`. Routes that also carry `@AdminBoundaryAccess({ capability: "manage_product_data" })` add a second gate that **wins over `@Roles()`**: the caller must hold the `product_admin` admin-boundary role, or be a legacy base-role `admin` (`allowLegacyAdminFallback`). Any other role, including one listed in `@Roles()`, gets `403 ACCESS_POLICY_DENIED / ADMIN_BOUNDARY_FORBIDDEN`. This is deliberate (issue #894; `access-policy.service.spec.ts`, `access-policy-remediation.test.cjs`, `scripts/validate-sensitive-get-policy.cjs`). `product_admin` can only be assigned to users whose base role is `admin` (`workspace-users.service.ts`, `ADMIN_BOUNDARY_ASSIGNED_ROLE_REQUIRES_ADMIN_BASE_ROLE`), so **a `channel_manager`, `editor` or `publisher` cannot obtain it by assignment**.
+
+Consequence for the mapping journey, observed on a local API on 2026-09-30 with identities that have no assigned boundary role (admin passes via the legacy fallback):
+
+| Route | admin | editor | channel_manager | publisher / approver / connector_admin / reviewer / viewer |
+|-------|-------|--------|-----------------|------------------------------------------------------------|
+| `POST /marketplace/connectors/:slug/publish-readiness` (matrix says R for all) | 201 | 403 | 403 | 403 |
+| `POST /marketplace/connectors/:slug/mappings/preflight` | 201 | 403 | 403 | 403 |
+| `GET .../mappings/versions` | 200 | 200 | 200 | 403 |
+| `POST .../mappings/versions` (create draft) | allowed | allowed | allowed | 403 |
+| `POST .../versions/:id/validate`, `/publish`, `/rollback` (`@Roles("admin","editor","channel_manager")`, no boundary gate) | allowed | allowed | allowed | 403 |
+| `POST .../versions/:id/archive` (`@Roles("admin")` plus boundary gate) | allowed | 403 | 403 | 403 |
+
+So the wizard's review step, which calls preflight and publish-readiness, cannot show readiness to any non-admin role. The web app tolerates exactly that refusal on those two calls and says so (decision D8 in `docs/decisions/DR-2026-09-30-mapping-po-cto-rulings.md`). Whether the two evaluation routes should be readable by the roles that can already publish mappings is an open security decision, not something the mapping team changes unilaterally.
 
 ---
 

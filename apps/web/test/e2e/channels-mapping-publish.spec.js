@@ -149,7 +149,7 @@ test.describe("fallback acknowledgement scenarios", () => {
         versionId = String(draft.id);
 
         await loginViaUi(page, "admin");
-        await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+        await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue, showHistory: "1" }), {
           waitUntil: "domcontentloaded",
         });
 
@@ -165,10 +165,10 @@ test.describe("fallback acknowledgement scenarios", () => {
               : null;
             return version?.lifecycleState ?? "";
           },
-          { timeout: 30000 },
+          { timeout: 30000, intervals: [1000] },
         ).toBe("validated");
 
-        await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+        await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue, showHistory: "1" }), {
           waitUntil: "domcontentloaded",
         });
         const validatedRow = page.locator("tbody tr", { hasText: versionId }).first();
@@ -185,6 +185,8 @@ test.describe("fallback acknowledgement scenarios", () => {
           ]);
           await page.goto(
             buildMappingsUrl(category.id, product.id, {
+              step: "review",
+              publishCategoryId: targetCategoryValue,
               showHistory: "1",
               fallbackAcknowledged: "true",
               fallbackAckVersionId: versionId,
@@ -210,7 +212,7 @@ test.describe("fallback acknowledgement scenarios", () => {
               : null;
             return version?.lifecycleState ?? "";
           },
-          { timeout: 30000 },
+          { timeout: 30000, intervals: [1000] },
         ).toBe("published");
       } finally {
         if (versionId) {
@@ -240,6 +242,9 @@ test.describe("fallback acknowledgement scenarios", () => {
 });
 
 test("admin can create, validate, and publish a connector mapping version from the browser", async ({ page }) => {
+  // Save, validate and publish with four page loads and three polls takes about 44 s on its own, right at the 45 s
+  // default.
+  test.setTimeout(120_000);
   const adminToken = await apiLogin("admin");
   const category = await createCategory(adminToken, uniqueName("mapping-publish-cat"));
   const product = await createProduct(adminToken, {
@@ -275,9 +280,15 @@ test("admin can create, validate, and publish a connector mapping version from t
       ["title", "Title"],
       ["hsnCode", "HSN code"],
       ["gstRate", "GST rate"],
-      ["attributes.size", "attributes.size"],
-      ["attributes.color", "attributes.color"],
+      ["attributes.size", "Size (Attribute)"],
+      ["attributes.color", "Color (Attribute)"],
     ];
+    // When the system default already maps every required field the editor collapses those rows under
+    // "Show mapped required fields"; open that section before touching them.
+    const mappedRequiredToggle = page.locator("summary", { hasText: "Show mapped required fields" });
+    if (await mappedRequiredToggle.isVisible()) {
+      await mappedRequiredToggle.click();
+    }
     for (const [targetField, sourceField] of requiredMappings) {
       const fieldSelect = page.locator(`select[name="mapTarget::${targetField}"]`);
       await expect(fieldSelect).toBeVisible();
@@ -299,12 +310,12 @@ test("admin can create, validate, and publish a connector mapping version from t
         : null;
       versionId = draftVersion?.id ?? versionId;
       return draftVersion?.lifecycleState ?? "";
-    }, { timeout: 30000 }).toBe("draft");
+    }, { timeout: 30000, intervals: [1000] }).toBe("draft");
 
     await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue }), {
       waitUntil: "domcontentloaded",
     });
-    await expect(page.getByText("Publish Readiness (Hard Gate)")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Publish Readiness" })).toBeVisible();
     const draftRow = page.locator("tbody tr", { hasText: versionId }).first();
     await expect(draftRow).toBeVisible();
     await submitContainingForm(draftRow.getByRole("button", { name: "Validate" }));
@@ -315,7 +326,7 @@ test("admin can create, validate, and publish a connector mapping version from t
         ? versions.find((candidate) => String(candidate.id) === String(versionId))
         : null;
       return version?.lifecycleState ?? "";
-    }, { timeout: 30000 }).toBe("validated");
+    }, { timeout: 30000, intervals: [1000] }).toBe("validated");
 
     await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue }), {
       waitUntil: "domcontentloaded",
@@ -345,7 +356,7 @@ test("admin can create, validate, and publish a connector mapping version from t
         ? versions.find((candidate) => String(candidate.id) === String(versionId))
         : null;
       return version?.lifecycleState ?? "";
-    }, { timeout: 30000 }).toBe("published");
+    }, { timeout: 30000, intervals: [1000] }).toBe("published");
 
     await page.goto(buildMappingsUrl(category.id, product.id, { step: "review", publishCategoryId: targetCategoryValue }), {
       waitUntil: "domcontentloaded",
