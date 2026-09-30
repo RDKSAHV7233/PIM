@@ -738,6 +738,23 @@ function resolveApiDatabaseVariables(env = process.env) {
   return pairs;
 }
 
+function resolveDeploymentReleaseVariables(env = process.env) {
+  // Railway only auto-injects RAILWAY_GIT_COMMIT_SHA for deploys triggered through
+  // its native GitHub integration. This project deploys via `railway up` (a CLI
+  // file upload from scripts/railway-deploy.cjs), which carries no git context at
+  // deploy time, so that variable is never auto-populated here. The vNext controlled-
+  // mutation release-identity gate (apps/api/src/common/vnext-mutation-env.ts) compares
+  // an approved release SHA against process.env.RAILWAY_GIT_COMMIT_SHA at runtime, so
+  // without this explicit sync that gate would always fail closed (safe, but the
+  // approved-release check could never pass on this project's real deploy path).
+  const releaseSha = optionalEnv("GITHUB_SHA", env);
+  const pairs = [];
+  if (releaseSha) {
+    pairs.push(["RAILWAY_GIT_COMMIT_SHA", releaseSha]);
+  }
+  return pairs;
+}
+
 function resolveErrorAuthorityServiceVariables(env = process.env) {
   const release = optionalEnv("ERROR_AUTHORITY_RELEASE", env) || optionalEnv("GITHUB_SHA", env);
   const ingestToken = optionalEnv("ERROR_AUTHORITY_INGEST_TOKEN", env);
@@ -819,6 +836,27 @@ function setRailwayVariablesAcrossServiceTargets(config, railwayEnv, options) {
     `[railway-deploy] Warning: could not set ${label} (exit ${lastResult?.status ?? "unknown"}). ${failureMessage}`,
   );
   return false;
+}
+
+function setDeploymentReleaseVariables(config, railwayEnv, env = process.env) {
+  const pairs = resolveDeploymentReleaseVariables(env);
+  if (pairs.length === 0) {
+    console.warn(
+      "[railway-deploy] No GITHUB_SHA found in the deploy environment — skipping RAILWAY_GIT_COMMIT_SHA sync. " +
+        "The vNext controlled-mutation release-identity gate will fail closed until this is set.",
+    );
+    return;
+  }
+
+  setRailwayVariablesAcrossServiceTargets(config, railwayEnv, {
+    label: "API deployment release identity",
+    serviceTargets: config.apiServiceTargets,
+    pairs,
+    safeDisplayPairs: pairs.map(([key]) => key),
+    failureMessage:
+      "Set RAILWAY_GIT_COMMIT_SHA manually in Railway before approving a vNext controlled-mutation release SHA that depends on it.",
+    successMessage: "[railway-deploy] API deployment release identity synced successfully.",
+  });
 }
 
 function setErrorAuthorityServiceVariables(config, railwayEnv, env = process.env) {
@@ -920,6 +958,7 @@ function main(env = process.env) {
 
     setApiServiceDatabaseVariables(deployConfig, railwayEnv, env);
     setErrorAuthorityServiceVariables(deployConfig, railwayEnv, env);
+    setDeploymentReleaseVariables(deployConfig, railwayEnv, env);
 
     const deployCommands = buildDeployCommands(deployConfig);
 
@@ -983,6 +1022,7 @@ module.exports = {
   readRailwayVariablesAcrossServiceTargets,
   resolveApiDatabaseVariables,
   resolveConfig,
+  resolveDeploymentReleaseVariables,
   resolveErrorAuthorityServiceVariables,
   resolveWebSessionAuthVariables,
   resolveServiceTargets,
