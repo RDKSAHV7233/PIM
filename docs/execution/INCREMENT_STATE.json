@@ -5085,6 +5085,48 @@
           "notes": "NOT fully green: run as a whole file, the fourth test (create-validate-publish) fails with 429 ThrottlerException because the API allows 300 requests/min per user (app.module.ts ThrottlerModule) and the first three scenarios plus their server-rendered page calls use that budget. Reproduced 6 of 6 whole-file runs; passes alone. A retry-with-backoff in the shared helper and wider poll windows were tried and did not fix it, so they were reverted. Options for a human: raise or skip the throttle in the Playwright API only (API change), split the file, or add a cool-down. journey-connector-first-publish.spec.js:231 still has the stale 'Publish Readiness (Hard Gate)' text; it was skipped in these runs and is untouched."
         }
       ]
+    },
+    {
+      "incrementId": "INC-75",
+      "name": "Mapping review step for roles that fail the admin-boundary gate; PO/CTO rulings",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-REVIEW-READINESS-RESTRICTED-001",
+          "title": "The review step stays usable when preflight/publish-readiness are refused for the caller's role",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "7ea41a6c",
+          "scope": [
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/lib/mapping-access.ts",
+            "apps/web/test/integration/mapping-access-denied-and-rollback-session.test.cjs",
+            "docs/security/rbac-permissions-matrix.md",
+            "docs/decisions/DR-2026-09-30-mapping-po-cto-rulings.md",
+            "docs/decisions/DR-2026-09-30-mapping-journey-followups.md"
+          ],
+          "scope_expansion": [
+            "apps/api/src/marketplace/marketplace.controller.ts -- comment only; it claimed readiness is readable by every role, which the boundary gate contradicts."
+          ],
+          "problem": "Verified on a local API: POST publish-readiness and mappings/preflight return 403 ADMIN_BOUNDARY_FORBIDDEN for editor, channel_manager and every other non-admin role (only base-role admin passes via the legacy fallback). product_admin is assignable only to base-role admin users, so those roles cannot obtain it. The wizard review step called both endpoints unconditionally, so it (and its Validate/Publish actions) was unusable for editor and channel_manager even though the API lets them validate and publish versions.",
+          "proposed_fix": "Web only, no authorization change: tolerateReadinessDenial wraps exactly the two calls, treats classifyMappingLoadFailure(error)==='access_denied' as 'not evaluated' (null) and rethrows everything else; the review step shows a role=status notice (READINESS_RESTRICTED_NOTICE). The RBAC matrix gains section 2a documenting the boundary overlay; a misleading controller comment is corrected; decision record D8-D11 written.",
+          "team_investigation": "Security/access-policy: the gate is deliberate (issue #894, access-policy.service.spec.ts, access-policy-remediation.test.cjs, validate-sensitive-get-policy.cjs), so widening the routes is NOT done here; it is recorded as an open question for the access-policy owner (D8). Product: keep publishing-with-blockers and Blocked-compat publish as is (D9). QA: role table and D9/D10 facts verified on the local API. CTO-lens (analysis, not approval): touches the permission-error path, so a person should decide on the required-team label; the change narrows which 403s are fatal and does not widen access.",
+          "acceptance": [
+            "An editor opening the review step sees the version list, Validate/Publish, and a readiness-unavailable notice.",
+            "401 and TENANT_SUSPENDED behave as before; a role without mapping access still gets the in-page denial.",
+            "No request other than preflight and publish-readiness is tolerated."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-access-denied-and-rollback-session.test.cjs (extended)",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=198 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "Browser on the local scratch app as editor: review step rendered with the notice, one version row and Validate/Publish/Archive actions",
+            "API: blocked draft validates 201 and publishes 201; rollback to blocked 409 rollback_source_blocked; editor archive 403 ADMIN_BOUNDARY_FORBIDDEN"
+          ],
+          "notes": "Not verified: how production users are configured (workspaces whose users are all base-role admin will not see the notice); a channel_manager login in the browser (same code path as editor, not run); the Archive action's runtime error page for editors (only the API 403 was confirmed). Follow-ups recorded in the decision record: hide Archive for non-admin roles (D10), warn when publishing a Blocked version (D9)."
+        }
+      ]
     }
   ]
 }

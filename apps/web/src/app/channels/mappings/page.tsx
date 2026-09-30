@@ -60,7 +60,7 @@ import { getServerSession } from "@/lib/server-session";
 import { formatDate } from "@/lib/format";
 import { isWorkingDraftValidated, selectWorkingDraft, workingDraftFieldMap } from "@/lib/mapping-working-draft";
 import { buildSelectedPublishCategoryOption } from "@/lib/mapping-publish-category";
-import { classifyMappingLoadFailure, describeMappingAccessDenied } from "@/lib/mapping-access";
+import { READINESS_RESTRICTED_NOTICE, classifyMappingLoadFailure, describeMappingAccessDenied } from "@/lib/mapping-access";
 
 export const dynamic = "force-dynamic";
 
@@ -425,6 +425,19 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const shouldFetchVersions = Boolean(hasBaseScope && (wizardQuery.step === "map" || wizardQuery.step === "review" || stepUpAction || stepUpVersionId || wizardQuery.fallbackAckVersionId));
     const shouldFetchReview = Boolean(hasBaseScope && (wizardQuery.step === "review" || stepUpAction || stepUpVersionId));
     const shouldFetchAdvancedShopify = Boolean(connectorSlug === "shopify" && selectedInstallationId && wizardQuery.showAdvanced);
+    // Preflight and publish-readiness sit behind an admin-boundary policy that editors and channel managers do not
+    // pass, although the API lets them validate and publish mapping versions. Losing those two evaluations must not
+    // take the whole review step (and its Validate / Publish actions) away, so a permission refusal on exactly these
+    // two calls is tolerated and reported; every other failure, including 401, still propagates unchanged.
+    let readinessRestricted = false as boolean;
+    const tolerateReadinessDenial = <T,>(request: Promise<T>): Promise<T | null> =>
+      request.catch((error: unknown) => {
+        if (classifyMappingLoadFailure(error) === "access_denied") {
+          readinessRestricted = true;
+          return null;
+        }
+        throw error;
+      });
 
     const [
       mapping,
@@ -452,26 +465,30 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, includeArchived: true }, { role: actorRole, authHeader })
             : Promise.resolve([]),
           shouldFetchReview
-            ? evaluateConnectorMappingPreflight(
-                connectorSlug,
-                {
-                  categoryScope: selectedCategoryId,
-                  installationId: selectedInstallationId || undefined,
-                  fallbackAcknowledged: wizardQuery.fallbackAcknowledged,
-                },
-                { role: actorRole, authHeader },
+            ? tolerateReadinessDenial(
+                evaluateConnectorMappingPreflight(
+                  connectorSlug,
+                  {
+                    categoryScope: selectedCategoryId,
+                    installationId: selectedInstallationId || undefined,
+                    fallbackAcknowledged: wizardQuery.fallbackAcknowledged,
+                  },
+                  { role: actorRole, authHeader },
+                ),
               )
             : Promise.resolve(null),
           shouldFetchReview
-            ? evaluateConnectorPublishReadiness(
-                connectorSlug,
-                {
-                  categoryScope: selectedCategoryId,
-                  installationId: selectedInstallationId || undefined,
-                  productId: selectedProductId || undefined,
-                  fallbackAcknowledged: wizardQuery.fallbackAcknowledged,
-                },
-                { role: actorRole, authHeader },
+            ? tolerateReadinessDenial(
+                evaluateConnectorPublishReadiness(
+                  connectorSlug,
+                  {
+                    categoryScope: selectedCategoryId,
+                    installationId: selectedInstallationId || undefined,
+                    productId: selectedProductId || undefined,
+                    fallbackAcknowledged: wizardQuery.fallbackAcknowledged,
+                  },
+                  { role: actorRole, authHeader },
+                ),
               )
             : Promise.resolve(null),
           shouldFetchAdvancedShopify
@@ -825,6 +842,12 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
               changeMappingHref={changeMappingHref}
               currentStep={currentStep}
             />
+            {readinessRestricted ? (
+              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">{READINESS_RESTRICTED_NOTICE.title}</p>
+                <p className="mt-1">{READINESS_RESTRICTED_NOTICE.body}</p>
+              </div>
+            ) : null}
             <PublishChecklistCard
               channelSelected={Boolean(selectedChannel)}
               connectorAccountSelected={matchingInstallations.length === 0 || Boolean(selectedInstallationId)}

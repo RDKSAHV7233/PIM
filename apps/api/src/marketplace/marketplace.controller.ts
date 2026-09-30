@@ -231,9 +231,12 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/publish-readiness")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  // "Channels — channel readiness" is R for every role per
-  // docs/security/rbac-permissions-matrix.md; the product detail and mapping
-  // wizard pages call this unconditionally regardless of viewer role.
+  // The matrix lists "Channels — channel readiness" as R for every role, and the
+  // product detail and mapping wizard pages call this regardless of role. But the
+  // boundary gate above wins over @Roles: only product_admin or a legacy base-role
+  // admin passes, so every other role gets ADMIN_BOUNDARY_FORBIDDEN and the web app
+  // degrades (docs/security/rbac-permissions-matrix.md section 2a, decision D8).
+  // Whether this should be readable by all roles is an open security decision.
   @Roles(...APP_ROLES)
   evaluateConnectorPublishReadiness(
     @Param("connectorSlug") connectorSlug: string,

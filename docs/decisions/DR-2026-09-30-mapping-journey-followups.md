@@ -25,6 +25,7 @@ Ratified by: ______  Date: ______
 
 ## D5. DEF-25: login redirect target
 - **Decision: close as not reproduced.** `middleware.ts` already sets `next` to the requested path. Reopen with a runtime trace (expired session, mapping page load) if it recurs.
+- **Update (see `DR-2026-09-30-mapping-po-cto-rulings.md`):** the scratch-stack run found DEF-26 (wrong step-up password redirected to login; fixed in #1011), a plausible but unconfirmed cause. Keep open pending a runtime trace.
 
 ## D6. Production hygiene (owner actions, not code)
 1. Archive WooCommerce / "Aa" mapping Versions 1, 2 and 3 (junk scope; Versions 2 and 3 add wrong extra targets). Needs the step-up password. **Do not publish them.**
@@ -32,4 +33,5 @@ Ratified by: ______  Date: ______
 3. The 20 inactive E2E user accounts in the tenant can be reviewed and retired by the admin.
 
 ## D7. Remaining QA plan
-- Roles, step-up, publish, rollback and archive cases were never run. They need a scratch tenant with a second account per role and someone to type the step-up password. Until then these paths are covered only by the existing automated specs.
+- **Update:** these were run on a local scratch stack on 2026-09-30 (`docs/qa/mapping-journey-scratch-stack-qa-run-2026-09-30.md`); see the newer record for what remains uncovered.
+- Original text: roles, step-up, publish, rollback and archive cases were never run. They need a scratch tenant with a second account per role and someone to type the step-up password. Until then these paths are covered only by the existing automated specs.

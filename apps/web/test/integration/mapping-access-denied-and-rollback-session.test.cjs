@@ -70,6 +70,16 @@ function run() {
   assert(/role="alert"/.test(tail) && tail.includes("describeMappingAccessDenied(actorRole, error.body)"), "the denial renders an alert on the page.");
   assert(!/error\.status === 401 \|\| error\.status === 403\)\) \{\s*redirect\(buildLoginRedirect\("\/channels\/mappings"/.test(tail), "the page must no longer send every 403 to login.");
 
+  // Review step: a permission refusal on exactly the two readiness evaluations must not remove the whole step.
+  const { READINESS_RESTRICTED_NOTICE } = loadTsModule("lib", "mapping-access.ts");
+  assert(/not available for your role/.test(READINESS_RESTRICTED_NOTICE.title) && /still validate and publish/.test(READINESS_RESTRICTED_NOTICE.body), "the notice says readiness is unavailable and that validate/publish still work.");
+  assert(/Product exports stay blocked/.test(READINESS_RESTRICTED_NOTICE.body), "the notice does not imply the channel is ready.");
+  const tolerate = page.indexOf("const tolerateReadinessDenial");
+  assert(tolerate !== -1 && page.slice(tolerate, tolerate + 400).includes('classifyMappingLoadFailure(error) === "access_denied"') && page.slice(tolerate, tolerate + 500).includes("throw error;"), "denial is tolerated, everything else rethrown.");
+  assert(/tolerateReadinessDenial\(\s*evaluateConnectorMappingPreflight\(/.test(page) && /tolerateReadinessDenial\(\s*evaluateConnectorPublishReadiness\(/.test(page), "exactly the preflight and publish-readiness calls are wrapped.");
+  assert((page.match(/tolerateReadinessDenial\(/g) ?? []).length === 2, "no other request is wrapped.");
+  assert(page.includes("{readinessRestricted ? (") && page.includes('role="status"'), "the review step shows the notice.");
+
   const actions = fs.readFileSync(path.join(SRC, "app", "actions.ts"), "utf8");
   const start = actions.indexOf("export async function rollbackConnectorMappingVersionAction(");
   const fn = actions.slice(start, actions.indexOf("\n}\n", start));
