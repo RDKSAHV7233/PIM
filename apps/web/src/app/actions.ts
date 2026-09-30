@@ -30,17 +30,10 @@ import {
 } from "@/lib/marketplace-channels";
 import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { classifyRetryFailure, extractErrorCode } from "@/lib/errors";
+import { STEP_UP_ERROR_CODES, isStepUpErrorBody } from "@/lib/step-up-errors";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
-const STEP_UP_ERROR_CODES = new Set([
-  "STEP_UP_REQUIRED",
-  "STEP_UP_INVALID_CREDENTIALS",
-  "STEP_UP_TOKEN_INVALID",
-  "STEP_UP_TOKEN_SESSION_MISMATCH",
-  "STEP_UP_SCOPE_MISMATCH",
-  "STEP_UP_PASSWORD_REQUIRED",
-]);
 const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"]);
 
 function rethrowRedirectError(error: unknown): void {
@@ -475,6 +468,11 @@ function withPlanLimitQuery(basePath: string, error: unknown): string | null {
 // existing rethrowRedirectError convention.
 function resolveSessionExpiredRedirect(basePath: string, error: unknown): string | null {
   if (!(error instanceof ApiHttpError) || error.status !== 401) {
+    return null;
+  }
+  // A wrong step-up password (401 STEP_UP_INVALID_CREDENTIALS) and other step-up failures are 401s too, but the
+  // session is fine: the action reports them on the wizard instead of sending the operator to sign in again.
+  if (isStepUpErrorBody(error.body)) {
     return null;
   }
   return buildLoginRedirect(basePath, error);

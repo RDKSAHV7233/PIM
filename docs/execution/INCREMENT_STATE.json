@@ -4931,6 +4931,47 @@
           "notes": "Post-deploy check: Shopify / T-Shirt Step 1 should list only Aa, BB and any real categories. The tenant data itself is unchanged; deleting it is an admin decision."
         }
       ]
+    },
+    {
+      "incrementId": "INC-71",
+      "name": "Mapping Journey Scratch-Stack QA Follow-up (wrong step-up password treated as expired session)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-STEP-UP-WRONG-PASSWORD-001",
+          "title": "A wrong step-up password on Publish/Archive is treated as an expired session and logs the operator out of the page",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "9379377c",
+          "scope": [
+            "apps/web/src/lib/step-up-errors.ts",
+            "apps/web/src/app/actions.ts",
+            "apps/web/test/integration/mapping-step-up-wrong-password.test.cjs",
+            "docs/qa/mapping-journey-scratch-stack-qa-run-2026-09-30.md"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Scratch-stack QA (2026-09-30, local API + web, seeded test users): entering a wrong step-up password on Publish sent the browser to the login page and, being signed in, on to /dashboard, instead of showing 'Step-up re-authentication failed'. The API returns 401 {\"error\":\"STEP_UP_INVALID_CREDENTIALS\"}; resolveSessionExpiredRedirect treated every 401 ApiHttpError as an expired session and ran before withStepUpErrorQuery in the publish and archive catch blocks.",
+          "proposed_fix": "Move the step-up code list to lib/step-up-errors.ts and make resolveSessionExpiredRedirect return null for a 401 whose body carries a step-up code. The catch-block order is unchanged, so session-expiry handling still runs first (BUG-AUTH-STALE-SESSION-001); a genuine expired session ({\"error\":\"Unauthorized\"}) still redirects to sign-in.",
+          "team_investigation": "Engineering: first tried reordering the two catch blocks; the locked handle-session-expired-action-migration test correctly rejected that because it protects the session-first rule, so the classifier was fixed instead. QA: reproduced with the exact API response, verified in the browser after the fix (operator stays on the wizard with the failure message, the version stays Ready to publish, and the correct password then publishes). CTO-lens (analysis, not approval): touches the auth/session error path, so a person should decide on the required-team label; the change only narrows which 401s count as expiry.",
+          "acceptance": [
+            "A 401 with a step-up error code is not treated as an expired session.",
+            "A 401 without one (expired session) still redirects to sign-in.",
+            "Publish and Archive report step-up failures on the wizard."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-step-up-wrong-password.test.cjs (new; helper executed as code with a wrong-password body and an expired-session body, plus wiring contracts)",
+            "node apps/web/test/integration/handle-session-expired-action-migration.test.cjs (locked test, passes unmodified)",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=196 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)",
+            "Browser check on the local scratch app: wrong password stays on the mapping page with the failure message; correct password publishes"
+          ],
+          "notes": "Publish/archive share the fix through the classifier. Rollback has no session-expiry handling at all (an expired session there reaches the generic error page); left unchanged and noted in the scratch-stack QA doc."
+        }
+      ]
     }
   ]
 }
