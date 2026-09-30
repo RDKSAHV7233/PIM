@@ -510,7 +510,7 @@ export function PublishReadinessCard({
       <div className="mt-2 grid gap-3 text-sm text-slate-700">
         <p className="text-xs text-slate-500">
           {isBlocked
-            ? "Publish remains blocked until mapping completeness and product data readiness are both clear."
+            ? "Publishing products to this channel stays blocked until mapping completeness and product data readiness are both clear."
             : "Mapping completeness and product data readiness are both clear."}
         </p>
         <div>

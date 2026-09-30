@@ -429,8 +429,8 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       mapping,
       categoryAttributes,
       resolved,
-      taxonomyMatches,
-      unmappedCategories,
+      taxonomyMatchesRaw,
+      unmappedCategoriesRaw,
       versions,
       preflight,
       readiness,
@@ -479,6 +479,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           selectedProductId ? Promise.resolve([]) : getProductListPage({ slim: true, limit: 200 }, { role: actorRole, authHeader }).then((page) => page.items).catch(() => []),
         ])
       : [null, [], null, [], [], [], null, null, null, []];
+    // The source-category picker already hides test fixtures; do the same for the publish-category lists.
+    const taxonomyMatches = filterTestData(taxonomyMatchesRaw, true);
+    const unmappedCategories = filterTestData(unmappedCategoriesRaw, true);
     const sampleProducts = filterTestData(sampleProductsRaw, true);
     const categorySampleProduct =
       hasBaseScope

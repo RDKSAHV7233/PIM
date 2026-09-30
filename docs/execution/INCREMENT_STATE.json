@@ -4839,6 +4839,98 @@
           "notes": "DEF-24 (audit trail records read-only POSTs as mutations) and DEF-25 (session-expiry redirect target) were investigated and deliberately NOT changed: the first alters what the audit trail records and needs required-team approval; the second could not be reproduced from code and needs a runtime trace. Both are written up in docs/qa/mapping-journey-extended-qa-run-2026-09-30.md."
         }
       ]
+    },
+    {
+      "incrementId": "INC-70",
+      "name": "Mapping Journey Follow-ups (audit summary classification, export wording, test-data in publish lists)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-ADMIN-AUDIT-EVALUATION-COUNT-001",
+          "title": "Audit page counts read-only readiness/preflight POSTs as 'Mutation events'",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "29aef762",
+          "scope": [
+            "apps/web/src/lib/audit-event-kind.ts",
+            "apps/web/src/app/admin/audit/page.tsx",
+            "apps/web/test/integration/mapping-followups-def05-17-24.test.cjs",
+            "docs/decisions/DR-2026-09-30-mapping-journey-followups.md"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Extended QA (2026-09-30): the audit interceptor records every non-GET request by verb, and each view of the mapping review step writes POST publish-readiness and POST mappings/preflight, so 'Mutation events 37' on one page was mostly evaluations (DEF-24).",
+          "proposed_fix": "isEvaluationEvent / isMutationEvent classify the two evaluation endpoints; the audit page shows 'Mutation events' without them and a separate 'Evaluations' chip. The API interceptor and the recorded rows are unchanged.",
+          "team_investigation": "Engineering: the count is computed in the web audit page from the current page of rows; the API records are the evidence and were deliberately left untouched. Required-team lens (proposed, not an approval by any person; see the decision record D1): options that stop recording or change the recorded action were rejected because they alter the audit trail; classifying at display time needs no governance change. CTO-lens: display-only.",
+          "acceptance": [
+            "publish-readiness and mappings/preflight POSTs are shown as Evaluations, not Mutation events.",
+            "Creating or publishing a mapping version, PATCH and DELETE remain Mutation events."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-followups-def05-17-24.test.cjs (new; audit classifier executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (195/195 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-EXPORT-WORDING-001",
+          "title": "'Publish remains blocked' is ambiguous next to an enabled mapping Publish button",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "29aef762",
+          "scope": [
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/components/channel/mapping-blocker-bar.tsx",
+            "apps/web/test/integration/mapping-followups-def05-17-24.test.cjs",
+            "docs/decisions/DR-2026-09-30-mapping-journey-followups.md"
+          ],
+          "scope_expansion": [
+            "apps/web/test/integration/mapping-workflow-ui.test.cjs and mapping-a11y-copy-polish.test.cjs -- they pinned the old sentence; intent unchanged."
+          ],
+          "problem": "Extended QA (2026-09-30): the Readiness card said 'Publish remains blocked' while the mapping's Publish button was enabled; 'publish' there means publishing products to the channel (exports hard-block on readiness), not making the mapping live (DEF-17).",
+          "proposed_fix": "'Publishing products to this channel stays blocked until ...'; the blocker bar says 'blocking product publishing'. Behaviour unchanged: publishing a mapping with blockers stays allowed (channels-mapping-publish-complex-blockers.spec.js).",
+          "team_investigation": "Engineering: only the two direct statements were reworded; other uses (for example the product-context banner 'blocking publish for <product>') already refer to product publishing. CTO-lens: wording only.",
+          "acceptance": [
+            "The readiness card and blocker bar name what is blocked."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-followups-def05-17-24.test.cjs (new; audit classifier executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (195/195 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-PUBLISH-LIST-TESTDATA-001",
+          "title": "About 65 'E2E Test Category' rows appear in the publish-category lists",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "29aef762",
+          "scope": [
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-followups-def05-17-24.test.cjs",
+            "docs/decisions/DR-2026-09-30-mapping-journey-followups.md"
+          ],
+          "problem": "Extended QA (2026-09-29/30): the Step 1 publish-category cards and the Step 2 dropdown listed about 65 E2E fixture categories on the live tenant while the source-category picker already hid test data (DEF-05).",
+          "proposed_fix": "Apply the existing filterTestData(..., true) to the taxonomy search results and the unmapped list on the mappings page.",
+          "team_investigation": "Engineering: reused the same filter and patterns the source picker uses ('e2e test category' is already in the prefix list); no new patterns. No tenant data is deleted (decision record D3). CTO-lens: display-only.",
+          "acceptance": [
+            "E2E fixture categories no longer appear in the publish-category cards or dropdown."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-followups-def05-17-24.test.cjs (new; audit classifier executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (195/195 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ],
+          "notes": "Post-deploy check: Shopify / T-Shirt Step 1 should list only Aa, BB and any real categories. The tenant data itself is unchanged; deleting it is an admin decision."
+        }
+      ]
     }
   ]
 }

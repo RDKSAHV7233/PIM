@@ -13,6 +13,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
 import { isSystemAdminBoundary } from "@/lib/role-capabilities";
 import { formatDateTime } from "@/lib/format";
+import { isEvaluationEvent, isMutationEvent } from "@/lib/audit-event-kind";
 import { SystemAdminRequiredCard } from "@/components/ui/system-admin-required-card";
 
 export const dynamic = "force-dynamic";
@@ -224,9 +225,10 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
     const topEntityEntries = Object.entries(entityCounts)
       .sort((left, right) => right[1] - left[1])
       .slice(0, 3);
-    const mutationEvents = events.items.filter(
-      (event) => event.action === "POST" || event.action === "PATCH" || event.action === "DELETE",
-    ).length;
+    // Read-only evaluation POSTs (readiness, preflight) are recorded like any non-GET request but change nothing,
+    // so they are counted separately instead of inflating "Mutation events".
+    const mutationEvents = events.items.filter(isMutationEvent).length;
+    const evaluationEvents = events.items.filter(isEvaluationEvent).length;
     const accessEvents = events.items.filter(
       (event) => event.entityType === "auth" || event.entityType === "privacy" || event.entityType === "plan",
     ).length;
@@ -355,6 +357,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
               </p>
               <div className="flex flex-wrap gap-2">
                 <StatusChip label={`Mutation events ${mutationEvents}`} tone={mutationEvents > 0 ? "info" : "neutral"} />
+                <StatusChip label={`Evaluations ${evaluationEvents}`} tone="neutral" />
                 <StatusChip label={`Access + policy ${accessEvents}`} tone={accessEvents > 0 ? "danger" : "neutral"} />
               </div>
             </div>

@@ -67,7 +67,7 @@ function run() {
       editorSource.includes("Blocked-state recovery") &&
       editorSource.includes("Open connector health") &&
       editorSource.includes("Open payload preview") &&
-      editorSource.includes("Publish remains blocked until mapping completeness and product data readiness are both clear."),
+      editorSource.includes("Publishing products to this channel stays blocked until mapping completeness and product data readiness are both clear."),
     "Publish readiness must be anchored as the third step with explicit sequencing guidance and blocked-state recovery links.",
   );
   assert(

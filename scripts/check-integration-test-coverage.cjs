@@ -171,6 +171,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-dirty-state-ui.test.cjs",
   "mapping-edge-cases-def18-23.test.cjs",
   "mapping-editor-component.test.cjs",
+  "mapping-followups-def05-17-24.test.cjs",
   "mapping-editor-prop-contract.test.cjs",
   "mapping-lazy-panels.test.cjs",
   "mapping-a11y-copy-polish.test.cjs",

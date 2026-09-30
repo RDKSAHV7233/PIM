@@ -19,11 +19,11 @@ export function MappingBlockerBar({
       <div className="flex flex-wrap items-center gap-3">
         <p
           className="text-xs font-semibold text-amber-900"
-          title="These items must be resolved before publish can clear. Click any blocker to jump to the fix."
+          title="These items must be resolved before products can be published to this channel. Click any blocker to jump to the fix."
         >
           {blockers.length} blocker{blockers.length !== 1 ? "s" : ""}
           {warnings.length > 0 ? ` · ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}` : ""}
-          {" "}blocking publish
+          {" "}blocking product publishing
         </p>
         <div className="flex flex-wrap gap-2">
           {blockers.slice(0, 3).map((code) => (

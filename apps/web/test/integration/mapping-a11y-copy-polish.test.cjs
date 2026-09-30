@@ -66,8 +66,8 @@ function run() {
   const editor = read("components", "channel", "mapping-editor.tsx");
   assert(!editor.includes('? "ok" : "blocked"'), "raw lowercase 'ok'/'blocked' chip labels must be gone (DEF-14).");
   assert(
-    editor.includes("{isBlocked\n            ? \"Publish remains blocked until") && editor.includes("are both clear.\"\n            : \"Mapping completeness and product data readiness are both clear.\"}"),
-    "the 'Publish remains blocked' sentence must only show while something is blocked (DEF-14).",
+    editor.includes("{isBlocked\n            ? \"Publishing products to this channel stays blocked until") && editor.includes("are both clear.\"\n            : \"Mapping completeness and product data readiness are both clear.\"}"),
+    "the 'stays blocked' sentence must only show while something is blocked (DEF-14; reworded in DEF-17).",
   );
 
   // ---- DEF-13: summary tap targets on the mapping page ----
