@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-30T00:00",
+    "lastUpdated": "2026-09-28T16:45",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -4934,6 +4934,125 @@
     },
     {
       "incrementId": "INC-71",
+      "name": "Mapping Journey Scratch-Stack QA Follow-up (wrong step-up password treated as expired session)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-STEP-UP-WRONG-PASSWORD-001",
+          "title": "A wrong step-up password on Publish/Archive is treated as an expired session and logs the operator out of the page",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "9379377c",
+          "scope": [
+            "apps/web/src/lib/step-up-errors.ts",
+            "apps/web/src/app/actions.ts",
+            "apps/web/test/integration/mapping-step-up-wrong-password.test.cjs",
+            "docs/qa/mapping-journey-scratch-stack-qa-run-2026-09-30.md"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Scratch-stack QA (2026-09-30, local API + web, seeded test users): entering a wrong step-up password on Publish sent the browser to the login page and, being signed in, on to /dashboard, instead of showing 'Step-up re-authentication failed'. The API returns 401 {\"error\":\"STEP_UP_INVALID_CREDENTIALS\"}; resolveSessionExpiredRedirect treated every 401 ApiHttpError as an expired session and ran before withStepUpErrorQuery in the publish and archive catch blocks.",
+          "proposed_fix": "Move the step-up code list to lib/step-up-errors.ts and make resolveSessionExpiredRedirect return null for a 401 whose body carries a step-up code. The catch-block order is unchanged, so session-expiry handling still runs first (BUG-AUTH-STALE-SESSION-001); a genuine expired session ({\"error\":\"Unauthorized\"}) still redirects to sign-in.",
+          "team_investigation": "Engineering: first tried reordering the two catch blocks; the locked handle-session-expired-action-migration test correctly rejected that because it protects the session-first rule, so the classifier was fixed instead. QA: reproduced with the exact API response, verified in the browser after the fix (operator stays on the wizard with the failure message, the version stays Ready to publish, and the correct password then publishes). CTO-lens (analysis, not approval): touches the auth/session error path, so a person should decide on the required-team label; the change only narrows which 401s count as expiry.",
+          "acceptance": [
+            "A 401 with a step-up error code is not treated as an expired session.",
+            "A 401 without one (expired session) still redirects to sign-in.",
+            "Publish and Archive report step-up failures on the wizard."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-step-up-wrong-password.test.cjs (new; helper executed as code with a wrong-password body and an expired-session body, plus wiring contracts)",
+            "node apps/web/test/integration/handle-session-expired-action-migration.test.cjs (locked test, passes unmodified)",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=196 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)",
+            "Browser check on the local scratch app: wrong password stays on the mapping page with the failure message; correct password publishes"
+          ],
+          "notes": "Publish/archive share the fix through the classifier. Rollback has no session-expiry handling at all (an expired session there reaches the generic error page); left unchanged and noted in the scratch-stack QA doc."
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-72",
+      "name": "Mapping Journey Scratch-Stack Follow-up (role denial message, rollback session expiry)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-ACCESS-DENIED-ROLLBACK-SESSION-001",
+          "title": "A role without mapping access is explained on the page instead of being bounced to the dashboard; rollback handles expired sessions",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "46420946",
+          "scope": [
+            "apps/web/src/lib/mapping-access.ts",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/app/actions.ts",
+            "apps/web/test/integration/mapping-access-denied-and-rollback-session.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3).",
+            "apps/web/test/e2e/journey-bulk-import-to-mapping.spec.js -- step 8 passed only by accident after the old 403 redirect (a dashboard heading matched its loose locator); it now also accepts the explicit permission alert. Found by the first CI run of this PR."
+          ],
+          "problem": "DEF-28: the mappings page sent every 401/403 to /login?reason=forbidden; /login redirects a signed-in user to /dashboard, so a viewer landed on the dashboard with only a generic 'restricted' banner. Rollback: rollbackConnectorMappingVersionAction never called handleSessionExpired, unlike publish and archive.",
+          "proposed_fix": "lib/mapping-access.ts classifies a load failure: 401 and TENANT_SUSPENDED still redirect via buildLoginRedirect; any other 403 renders an in-page alert naming the roles with access. Rollback calls handleSessionExpired first in its catch block, before step-up handling (same order as publish/archive).",
+          "team_investigation": "QA: reproduced on the local scratch stack as viewer. UX: message names the roles and the user's own role, with a link back to Channels; the sidebar already hides the Mappings link for these roles. CTO-lens (analysis, not approval): touches the auth/permission error path, so a person should decide on the required-team label; the change only stops a 403 from being treated as a sign-in problem, it does not widen access.",
+          "acceptance": [
+            "A 403 for a signed-in role renders an explanation on /channels/mappings.",
+            "A 401 still redirects to sign-in with reason=session_expired.",
+            "A suspended tenant still routes through the login helper.",
+            "An expired session during rollback redirects to sign-in."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-access-denied-and-rollback-session.test.cjs (helper executed as code plus wiring contracts)",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=197 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "Browser on the local scratch app: viewer stays on /channels/mappings with the explanation; editor still gets the wizard; a stale session still redirects to login with session_expired"
+          ],
+          "notes": "The rollback expiry path is covered by the source-contract test only; it was not exercised in a browser."
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-73",
+      "name": "Playwright Local Role Identities (test-harness fix)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-QA-PLAYWRIGHT-ENV-ROLE-IDENTITIES-001",
+          "title": "Tracked .env.playwright declares all eight app roles so the rbac specs can log in as publisher, approver and connector_admin",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "82597d59",
+          "scope": [
+            ".env.playwright",
+            "apps/web/test/integration/playwright-env-role-identities.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Found by the mapping scratch-stack QA run (2026-09-30). .env.playwright overrides PLAYWRIGHT_AUTH_IDENTITIES_JSON with five roles; specs default publisher/approver/connector_admin to <role>@vexa-pim.local, which the override does not contain. An unknown identity resolves to viewer, so rbac-role-enforcement (publisher, approver, connector_admin) and rbac-admin-boundary-roles (connector_admin) failed waiting for their role badge.",
+          "proposed_fix": "Add PLAYWRIGHT_PUBLISHER_USER / APPROVER_USER / CONNECTOR_ADMIN_USER (@test.com, same convention as the existing five) and matching identity entries. Existing ids are unchanged so nobody's local workflow breaks. New test keeps the eight roles, their user vars, the identity directory and the spec helpers consistent.",
+          "team_investigation": "Engineering: the file is consumed only through dotenv-cli (docs/getting-started.md, npm test:e2e), never by CI, which builds its own identities; so this is a local-harness change with no runtime or CI effect. Alternative considered and rejected: deleting the override so the script defaults apply, which would rename the admin/editor/reviewer/viewer ids that local users already rely on. QA: reproduced by logging in as an unknown identity (viewer role). CTO-lens (analysis, not approval): test-only, one risk domain, no auth code or production data touched.",
+          "acceptance": [
+            "All eight PLAYWRIGHT_*_USER vars are declared and distinct.",
+            "Every var has an identity with the matching role and the default tenant.",
+            "No orphan identities.",
+            "rbac-role-enforcement and rbac-admin-boundary-roles pass locally."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/playwright-env-role-identities.test.cjs (fails on the previous file with PLAYWRIGHT_PUBLISHER_USER must be declared; passes now)",
+            "node scripts/check-integration-test-coverage.cjs (clean)",
+            "npx playwright test rbac-role-enforcement.spec.js rbac-admin-boundary-roles.spec.js against the local stack: 12 passed (4 of these failed before)"
+          ],
+          "notes": "Not changed: admin@pim1.local still has no assigned admin-boundary roles in this file (the script default gives admin product_admin/system_admin); the rbac specs pass with the legacy admin fallback. The other local Playwright failures (publish, hydration, shopify sku setup) are unrelated and untouched."
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-74",
       "name": "Shopify Shadow Sprint Restart Ledger Backfill",
       "status": "completed",
       "evidence": [
@@ -5111,7 +5230,7 @@
       ]
     },
     {
-      "incrementId": "INC-72",
+      "incrementId": "INC-75",
       "name": "Shopify vNext Controlled Mutation Gating Primitives",
       "status": "completed",
       "stories": [
@@ -5154,7 +5273,7 @@
       ]
     },
     {
-      "incrementId": "INC-73",
+      "incrementId": "INC-76",
       "name": "Shopify vNext Controlled Mutation Adapter Wiring",
       "status": "completed",
       "stories": [
@@ -5199,7 +5318,7 @@
       ]
     },
     {
-      "incrementId": "INC-74",
+      "incrementId": "INC-77",
       "name": "Shopify vNext Controlled Mutation Correlation IDs",
       "status": "completed",
       "stories": [
@@ -5241,7 +5360,7 @@
       ]
     },
     {
-      "incrementId": "INC-75",
+      "incrementId": "INC-78",
       "name": "Shopify vNext Controlled Mutation Rollback Readiness",
       "status": "completed",
       "stories": [
@@ -5282,7 +5401,7 @@
       ]
     },
     {
-      "incrementId": "INC-76",
+      "incrementId": "INC-79",
       "name": "Shopify vNext Controlled Mutation Safety Proofs",
       "status": "completed",
       "stories": [
@@ -5324,5 +5443,5 @@
         }
       ]
     }
-  ]
+]
 }

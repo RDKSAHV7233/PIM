@@ -385,6 +385,10 @@ test.describe("Journey: Bulk Import → Catalog → Quality → Bulk Edit → Ch
         .locator('[class*="checklist"], [class*="readiness"], [class*="check"]')
         .or(page.getByRole("heading", { name: /review|publish|readiness/i }))
         .or(page.getByRole("heading", { name: "Step 2: Map Required Fields" }))
+        // The review step's preflight and readiness calls sit behind an admin-boundary policy, so a plain
+        // channel_manager identity (no assigned admin-boundary role) is refused. The page now says so in an alert
+        // instead of bouncing the user to the dashboard, whose headings used to satisfy the locator above by accident.
+        .or(page.getByRole("alert").filter({ hasText: /needs a permission your account does not have|cannot open channel mappings/i }))
         .first(),
     ).toBeVisible({ timeout: 15_000 });
   });
