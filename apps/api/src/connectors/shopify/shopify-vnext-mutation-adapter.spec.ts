@@ -1,5 +1,6 @@
 import type { ShopifyChannelProjection } from "./shopify-channel-projection";
 import {
+  buildShopifyVnextMutationPayload,
   buildShopifyVnextProductIdentifier,
   buildShopifyVnextProductSetInput,
 } from "./shopify-vnext-mutation-adapter";
@@ -161,5 +162,20 @@ describe("buildShopifyVnextProductIdentifier", () => {
 
   it("falls back to the projection-derived handle", () => {
     expect(buildShopifyVnextProductIdentifier(projection())).toEqual({ handle: "classic-tee-sku-1" });
+  });
+});
+
+describe("buildShopifyVnextMutationPayload", () => {
+  it("threads correlationId alongside the Shopify payload without embedding it in ProductSetInput", () => {
+    const payload = buildShopifyVnextMutationPayload(
+      projection(),
+      "vnext_12345678-1234-4234-9234-123456789abc",
+      "gid://shopify/Product/123",
+    );
+
+    expect(payload.correlationId).toBe("vnext_12345678-1234-4234-9234-123456789abc");
+    expect(payload.identifier).toEqual({ id: "gid://shopify/Product/123" });
+    expect(payload.input).toEqual(expect.objectContaining({ title: "Classic Tee" }));
+    expect(JSON.stringify(payload.input)).not.toContain("vnext_12345678");
   });
 });

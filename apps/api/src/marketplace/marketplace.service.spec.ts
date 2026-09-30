@@ -3019,7 +3019,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
           categoryId: string;
           installation: { id: string; connectorId: string };
           existingGid: string | null;
-        }) => Promise<{ outcome: string; reason?: string; result?: unknown }>;
+        }) => Promise<{ outcome: string; reason?: string; result?: unknown; correlationId?: string }>;
       }
     ).attemptShopifyControlledMutation({
       tenantKey: "tenant1",
@@ -3049,7 +3049,8 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
 
     await expect(runControlled(svc)).resolves.toEqual({
       outcome: "skipped",
-      reason: "allowlist_miss_or_disabled",
+      reason: "disabled",
+      correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
     });
     expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
     expect(connectorFramework.buildContextForInstallation).not.toHaveBeenCalled();
@@ -3065,13 +3066,22 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     });
     process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
     process.env.RAILWAY_GIT_COMMIT_SHA = "bbbbbbbb";
-    const { svc, connectorRegistry } = makeControlledMutationService();
+    const { svc, connectorRegistry, logger } = makeControlledMutationService();
 
-    await expect(runControlled(svc)).resolves.toEqual({
+    const outcome = await runControlled(svc);
+    expect(outcome).toEqual({
       outcome: "skipped",
       reason: "release_not_approved",
+      correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
     });
     expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      "shopify_vnext_controlled_mutation_skipped",
+      expect.objectContaining({
+        correlationId: outcome.correlationId,
+        reason: "release_not_approved",
+      }),
+    );
   });
 
   it("builds a projection-derived ProductSet input and calls the narrow controlled mutation method once on exact gates", async () => {
@@ -3086,9 +3096,11 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
     const { svc, connector, connectorFramework, realCtx, logger } = makeControlledMutationService();
 
-    await expect(runControlled(svc)).resolves.toEqual({
+    const outcome = await runControlled(svc);
+    expect(outcome).toEqual({
       outcome: "executed",
       result: { externalRef: "gid://shopify/Product/999", status: "SUCCESS", isAsync: false },
+      correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
     });
     expect(connectorFramework.buildContextForInstallation).toHaveBeenCalledWith({
       id: "inst-1",
@@ -3106,10 +3118,16 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
         variants: [expect.objectContaining({ inventoryItem: expect.objectContaining({ sku: "SKU-1" }) })],
       }),
       { handle: "classic-tee-sku-1" },
+      { correlationId: outcome.correlationId },
     );
     expect(logger.info).toHaveBeenCalledWith(
       "shopify_vnext_controlled_mutation_executed",
-      expect.objectContaining({ installationId: "inst-1", productId: "prod-1", sku: "SKU-1" }),
+      expect.objectContaining({
+        correlationId: outcome.correlationId,
+        installationId: "inst-1",
+        productId: "prod-1",
+        sku: "SKU-1",
+      }),
     );
   });
 });

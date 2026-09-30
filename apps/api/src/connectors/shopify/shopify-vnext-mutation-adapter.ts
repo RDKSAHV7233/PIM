@@ -2,6 +2,11 @@ import type { ShopifyChannelProjection } from "./shopify-channel-projection";
 
 export type ShopifyProductSetInputLike = Record<string, unknown>;
 export type ShopifyProductSetIdentifierLike = { id: string } | { handle: string };
+export type ShopifyVnextMutationPayload = {
+  correlationId: string;
+  input: ShopifyProductSetInputLike;
+  identifier: ShopifyProductSetIdentifierLike;
+};
 
 const DEFAULT_CUSTOM_ID_NAMESPACE = "pim_connector";
 const DEFAULT_CUSTOM_ID_KEY = "sku";
@@ -201,4 +206,16 @@ export function buildShopifyVnextProductIdentifier(
     return { id: normalizedExternalRef };
   }
   return { handle: buildHandleFromProjection(projection) };
+}
+
+export function buildShopifyVnextMutationPayload(
+  projection: ShopifyChannelProjection,
+  correlationId: string,
+  externalRef?: string | null,
+): ShopifyVnextMutationPayload {
+  return {
+    correlationId,
+    input: buildShopifyVnextProductSetInput(projection),
+    identifier: buildShopifyVnextProductIdentifier(projection, externalRef),
+  };
 }

@@ -43,12 +43,12 @@ import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from 
 import { buildShopifyChannelProjection } from "../connectors/shopify/shopify-channel-projection";
 import { compareProjectionToSource } from "../connectors/shopify/shopify-shadow-comparator";
 import {
-  buildShopifyVnextProductIdentifier,
-  buildShopifyVnextProductSetInput,
+  buildShopifyVnextMutationPayload,
   ShopifyProductSetIdentifierLike,
   ShopifyProductSetInputLike,
 } from "../connectors/shopify/shopify-vnext-mutation-adapter";
-import { isApprovedRelease, isMutationAllowedFor } from "../common/vnext-mutation-env";
+import { createVnextCorrelationId } from "../common/vnext-correlation";
+import { isApprovedRelease, isMutationAllowedFor, isVnextMutationEnabled } from "../common/vnext-mutation-env";
 import type { ResolvedConnectorMapping } from "./mapping-resolution.service";
 import { WooCommercePublishError } from "../connectors/woocommerce/woocommerce.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
@@ -153,8 +153,8 @@ type SubmissionOutcome =
     };
 
 type ControlledMutationOutcome =
-  | { outcome: "skipped"; reason: string }
-  | { outcome: "executed"; result: SubmissionRef };
+  | { outcome: "skipped"; reason: string; correlationId: string }
+  | { outcome: "executed"; result: SubmissionRef; correlationId: string };
 
 type ShopifyControlledMutationConnector = {
   fetchProductTypeSchema?: (
@@ -165,6 +165,7 @@ type ShopifyControlledMutationConnector = {
     ctx: ConnectorContext,
     input: ShopifyProductSetInputLike,
     identifier: ShopifyProductSetIdentifierLike,
+    options?: { correlationId?: string },
   ) => Promise<SubmissionRef>;
 };
 
@@ -3626,16 +3627,33 @@ export class MarketplaceService implements OnModuleInit {
     existingGid: string | null;
   }): Promise<ControlledMutationOutcome> {
     const { tenantKey, productId, productPayload, categoryId, installation, existingGid } = input;
+    const correlationId = createVnextCorrelationId();
+    const skip = (reason: string, log = true): ControlledMutationOutcome => {
+      if (log) {
+        this.logger.info("shopify_vnext_controlled_mutation_skipped", {
+          correlationId,
+          installationId: installation.id,
+          categoryId,
+          productId,
+          reason,
+        });
+      }
+      return { outcome: "skipped", reason, correlationId };
+    };
+
+    if (!isVnextMutationEnabled()) {
+      return skip("disabled", false);
+    }
     if (!isMutationAllowedFor(tenantKey, "shopify", installation.id, productId)) {
-      return { outcome: "skipped", reason: "allowlist_miss_or_disabled" };
+      return skip("allowlist_miss");
     }
     if (!isApprovedRelease()) {
-      return { outcome: "skipped", reason: "release_not_approved" };
+      return skip("release_not_approved");
     }
 
     const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
     if (!connector.fetchProductTypeSchema || typeof connector.applyControlledMutation !== "function") {
-      return { outcome: "skipped", reason: "connector_missing_controlled_mutation" };
+      return skip("connector_missing_controlled_mutation");
     }
 
     const ctx = this.connectorFramework.buildContextForInstallation({
@@ -3654,18 +3672,18 @@ export class MarketplaceService implements OnModuleInit {
       source: effective.source,
     };
     const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
-    const productSetInput = buildShopifyVnextProductSetInput(projection);
-    const identifier = buildShopifyVnextProductIdentifier(projection, existingGid);
+    const payload = buildShopifyVnextMutationPayload(projection, correlationId, existingGid);
 
-    const result = await connector.applyControlledMutation(ctx, productSetInput, identifier);
+    const result = await connector.applyControlledMutation(ctx, payload.input, payload.identifier, { correlationId });
     this.logger.info("shopify_vnext_controlled_mutation_executed", {
+      correlationId,
       installationId: installation.id,
       categoryId,
       productId,
       sku: projection.identity.sku,
       schemaVersion: projection.readiness.schemaVersion,
     });
-    return { outcome: "executed", result };
+    return { outcome: "executed", result, correlationId };
   }
 
   /**

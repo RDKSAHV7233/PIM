@@ -985,7 +985,7 @@ describe("ShopifyConnector.applyControlledMutation", () => {
     };
     const identifier = { handle: "projection-title-sku-1" };
 
-    const result = await connector.applyControlledMutation(ctx, input, identifier);
+    const result = await connector.applyControlledMutation(ctx, input, identifier, { correlationId: "vnext-test-1" });
 
     expect(result).toEqual({
       externalRef: "gid://shopify/Product/999",
@@ -1000,6 +1000,14 @@ describe("ShopifyConnector.applyControlledMutation", () => {
         variables: { input, identifier },
       }),
       expect.objectContaining({ onTokenExpired: expect.any(Function) }),
+    );
+    expect((connector as any).logger.info).toHaveBeenCalledWith(
+      "Shopify controlled vNext product sync completed",
+      expect.objectContaining({
+        correlationId: "vnext-test-1",
+        installationId: "install-1",
+        shopifyProductId: "gid://shopify/Product/999",
+      }),
     );
   });
 

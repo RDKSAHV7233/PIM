@@ -783,9 +783,11 @@ export class ShopifyConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     input: ShopifyProductSetInputLike,
     identifier: ShopifyProductSetIdentifierLike,
+    options: { correlationId?: string } = {},
   ): Promise<SubmissionRef> {
     const productRecord = await this.applyControlledProductSet(ctx, input, identifier);
     this.logger.info("Shopify controlled vNext product sync completed", {
+      correlationId: options.correlationId,
       installationId: ctx.installationId,
       shopifyProductId: productRecord.id,
     });
