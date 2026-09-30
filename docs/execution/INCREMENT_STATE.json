@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-28T16:45",
+    "lastUpdated": "2026-09-30T00:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -4929,6 +4929,184 @@
             "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
           ],
           "notes": "Post-deploy check: Shopify / T-Shirt Step 1 should list only Aa, BB and any real categories. The tenant data itself is unchanged; deleting it is an admin decision."
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-71",
+      "name": "Shopify Shadow Sprint Restart Ledger Backfill",
+      "status": "completed",
+      "evidence": [
+        "https://github.com/Vexaap/PIM/pull/995",
+        "https://github.com/Vexaap/PIM/pull/996",
+        "https://github.com/Vexaap/PIM/pull/997",
+        "https://github.com/Vexaap/PIM/pull/998",
+        "https://github.com/Vexaap/PIM/pull/999",
+        "https://github.com/Vexaap/PIM/pull/1000"
+      ],
+      "notes": [
+        "Backfills the Shopify shadow-sprint restart PRs that were squash-merged before ledger entries were added.",
+        "Operator-reported live verification on 2026-09-30 covered 4 production fixtures with comparisonMatches=true and missingRequiredFields=[] for each fixture.",
+        "SHOPIFY_SHADOW_PROJECTION_ENABLED is a raw process.env read and is not present in env-validation.ts; this is accepted for the read-only shadow path and must not be repeated for the controlled mutation gate.",
+        "APP_ENV reports staging on the production-serving Railway instance; shadow reliance on it is harmless because the path is non-mutating, but mutation gates must use release identity instead."
+      ],
+      "stories": [
+        {
+          "storyId": "ST-CON-SHOPIFY-TARGET-SCHEMA-001",
+          "title": "Implement Shopify fetchProductTypeSchema target schema vNext",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "b310d488",
+          "scope": [
+            "apps/api/src/connectors/shopify/shopify-category-rules.ts",
+            "apps/api/src/connectors/shopify/shopify-category-rules.spec.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.ts",
+            "apps/api/src/connectors/shopify/shopify.connector.spec.ts"
+          ],
+          "tests_passed": [
+            "PR #995: 13 new shopify-category-rules.spec.ts tests covering category lookup, field-rule integrity, ProductTypeSchema conversion, and ADR-0008 schemaVersion format.",
+            "PR #995: 3 new ShopifyConnector fetchProductTypeSchema delegation tests for unknown, apparel, and empty product types.",
+            "PR #995: standalone runtime verification of the target-schema logic; CI build/backend-tests were the authoritative suite because the local Prisma client setup was pre-existing broken."
+          ],
+          "acceptance": [
+            "Shopify has a tested local ProductTypeSchema registry for vNext shadow work.",
+            "Base required fields match the connector's existing REQUIRED_FIELDS list.",
+            "Apparel color, size, and material are optional/recommended, not claimed as destination-required.",
+            "ShopifyConnector.fetchProductTypeSchema delegates to the registry without adding shadow execution or comparator logic.",
+            "ADR-0008 api_fetched intent is documented as follow-up; the local registry is an interim stopgap."
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPING-RESOLUTION-BOUNDARY-001",
+          "title": "Add MappingResolutionService boundary for connector mapping resolution",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "743826c4",
+          "scope": [
+            "apps/api/src/marketplace/mapping-resolution.service.ts",
+            "apps/api/src/marketplace/mapping-resolution.service.spec.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.module.ts"
+          ],
+          "tests_passed": [
+            "PR #996: parity tests for system_pack fallback, saved_template, connector_mapping_version bridge, and installationId propagation.",
+            "PR #996: unknown connector slug test throws instead of silently resolving nothing.",
+            "PR #996: local tsc noEmit reported the same pre-existing stale-Prisma baseline with zero new errors in touched files; CI build/backend-tests were the authoritative suite."
+          ],
+          "acceptance": [
+            "MappingResolutionService.resolveForConnector delegates to MarketplaceService.getEffectiveMapping.",
+            "MarketplaceService remains the legacy mapping authority during migration.",
+            "No duplicated precedence rules were introduced.",
+            "No publish-path, payload, or remote-mutation behavior changed.",
+            "No new call sites bypass the resolution boundary except existing MarketplaceService internals."
+          ]
+        },
+        {
+          "storyId": "ST-CON-SHOPIFY-CHANNEL-PROJECTION-001",
+          "title": "Add bounded Shopify ChannelProjection",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "dccde25d",
+          "scope": [
+            "apps/api/src/connectors/shopify/shopify-channel-projection.ts",
+            "apps/api/src/connectors/shopify/shopify-channel-projection.spec.ts"
+          ],
+          "tests_passed": [
+            "PR #997: 11 projection tests covering simple product, variants, media, optional unmapped fields, mapped attributes, taxonomy, readiness, null normalization, transport-key exclusion, determinism, and regression #992.",
+            "PR #997: local tsc noEmit against build and spec tsconfigs matched the known stale-Prisma baseline with zero errors in the new files; CI build/backend-tests were the authoritative suite."
+          ],
+          "acceptance": [
+            "ChannelProjection consumes ProductPayload, ProductTypeSchema, and ResolvedConnectorMapping.",
+            "Projection preserves canonical product semantics and covers variants, media, taxonomy, attributes, and readiness.",
+            "Projection is deterministic and side-effect free.",
+            "Projection does not call Shopify, fetch, credentials, MarketplaceService, or mapping precedence again.",
+            "Projection excludes Shopify GraphQL/REST DTO shapes and leaves existing publish/update behavior untouched."
+          ]
+        },
+        {
+          "storyId": "ST-CON-SHOPIFY-SHADOW-WIRING-001",
+          "title": "Wire non-mutating Shopify shadow projection beside real publish",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "268c6c25",
+          "scope": [
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.service.spec.ts"
+          ],
+          "tests_passed": [
+            "PR #998: 6 shadow-wiring tests covering non-staging skip, staging without flag skip, projection logging when gated on, missing-field readiness, caught internal failure, and no fetch implementation in the shadow ConnectorContext.",
+            "PR #998: local tsc noEmit including specs matched the known baseline with zero new shadow-related errors; CI build/backend-tests were the authoritative suite.",
+            "2026-09-30 live verification evidence: 4 production fixtures ran the shadow path with comparisonMatches=true and missingRequiredFields=[] for each fixture."
+          ],
+          "acceptance": [
+            "Shadow projection runs only for Shopify submissions with a category and only when the staging plus SHOPIFY_SHADOW_PROJECTION_ENABLED gates pass.",
+            "Shadow ConnectorContext has no fetch implementation, so remote mutation cannot happen from this path.",
+            "Shadow failures are caught and logged without changing the real submission outcome.",
+            "productPayload is read but never mutated.",
+            "Mapping resolution reuses MarketplaceService.getEffectiveMapping to avoid circular Nest dependency while preserving the same authority MappingResolutionService delegates to."
+          ],
+          "notes": [
+            "The APP_ENV staging gate is accepted only for this read-only shadow path. Controlled mutation must not reuse APP_ENV as a production/staging boundary."
+          ]
+        },
+        {
+          "storyId": "ST-CON-SHOPIFY-SHADOW-COMPARATOR-001",
+          "title": "Add semantic comparator and wire it into Shopify shadow execution",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "86e9e1bf",
+          "scope": [
+            "apps/api/src/connectors/shopify/shopify-shadow-comparator.ts",
+            "apps/api/src/connectors/shopify/shopify-shadow-comparator.spec.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.service.spec.ts"
+          ],
+          "tests_passed": [
+            "PR #999: 9 comparator tests covering matching well-formed projections and mismatch detection for identity, content, variant count, mapped attribute drift, readiness false positives/negatives, and multi-mismatch collection.",
+            "PR #999: 1 marketplace wiring test confirming comparisonMatches surfaces through the real shadow pipeline.",
+            "PR #999: standalone comparator/projection logic script passed 6 logic checks when local node_modules was unavailable; CI build/backend-tests were the authoritative suite.",
+            "2026-09-30 live verification evidence: 4 production fixtures reported comparisonMatches=true and missingRequiredFields=[]."
+          ],
+          "acceptance": [
+            "Comparator compares ChannelProjection against its canonical ProductPayload source, not Shopify wire-level GraphQL payloads.",
+            "Canonical fields, variants, mapped attributes, and readiness classifications are checked for semantic drift.",
+            "comparisonMatches is logged on the existing shadow info line.",
+            "Mismatches log a dedicated warning with mismatch details.",
+            "Comparator failures remain inside the existing shadow try/catch and never affect the real publish/update call."
+          ],
+          "notes": [
+            "This completes the non-mutating shadow sprint and does not authorize vNext to write to Shopify.",
+            "Live shadow evidence indicates the pipeline is ready for controlled mutation review, not controlled mutation enablement."
+          ]
+        },
+        {
+          "storyId": "ST-CON-SHOPIFY-SHADOW-TEST-HARDENING-001",
+          "title": "Replace fragile fixed-offset marketplace isolation tests with AST and behavioral checks",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "37daaaed",
+          "scope": [
+            "apps/api/src/marketplace/publish-remediation.spec.ts"
+          ],
+          "tests_passed": [
+            "PR #1000: replaced 7 fixed-character-offset External identity isolation tests with one behavioral sync-state test and six TypeScript-AST-bounded structural checks.",
+            "PR #1000: standalone parseMethodSource/findCallExpressionInSource verification passed against marketplace.service.ts.",
+            "PR #1000: injected 50 unrelated lines before recordConnectorSubmission and confirmed AST-extracted text was byte-for-byte identical before and after.",
+            "PR #1000: TypeScript transpileModule parse-only syntax check passed for the edited spec file; CI build/backend-tests were the authoritative suite."
+          ],
+          "acceptance": [
+            "Fixed-offset source tests for the targeted external-identity invariants are removed.",
+            "GID installation isolation is structurally verified by AST-bounded method extraction.",
+            "Sync-state installation isolation is behaviorally verified.",
+            "marketplace.service.ts and production behavior are unchanged.",
+            "The PR #998 line-shift failure mode cannot recur for these tests."
+          ]
         }
       ]
     }
