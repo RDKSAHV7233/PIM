@@ -1,8 +1,10 @@
 import type { ShopifyChannelProjection } from "./shopify-channel-projection";
 import {
+  buildCompensatingWritePayload,
   buildShopifyVnextMutationPayload,
   buildShopifyVnextProductIdentifier,
   buildShopifyVnextProductSetInput,
+  ShopifyRollbackSnapshot,
 } from "./shopify-vnext-mutation-adapter";
 
 function projection(overrides: Partial<ShopifyChannelProjection> = {}): ShopifyChannelProjection {
@@ -177,5 +179,134 @@ describe("buildShopifyVnextMutationPayload", () => {
     expect(payload.identifier).toEqual({ id: "gid://shopify/Product/123" });
     expect(payload.input).toEqual(expect.objectContaining({ title: "Classic Tee" }));
     expect(JSON.stringify(payload.input)).not.toContain("vnext_12345678");
+  });
+});
+
+describe("buildCompensatingWritePayload", () => {
+  const SNAPSHOT: ShopifyRollbackSnapshot = {
+    capturedAt: "2026-09-30T10:00:00.000Z",
+    product: {
+      id: "gid://shopify/Product/123",
+      title: "Before Title",
+      handle: "before-title-sku-1",
+      descriptionHtml: "<p>Before description</p>",
+      status: "ACTIVE",
+      vendor: "Before Vendor",
+      productType: "before-type",
+      tags: ["before", "rollback"],
+      seo: { title: "Before SEO", description: "Before SEO description" },
+      options: [
+        { name: "Size", position: 1, values: ["S", "M"] },
+        { name: "Color", position: 2, values: ["Black"] },
+      ],
+      variants: [
+        {
+          id: "gid://shopify/ProductVariant/1",
+          sku: "SKU-BEFORE",
+          price: "799.00",
+          compareAtPrice: "999.00",
+          barcode: "12345",
+          inventoryPolicy: "CONTINUE",
+          taxable: true,
+          selectedOptions: [
+            { name: "Size", value: "S" },
+            { name: "Color", value: "Black" },
+          ],
+          inventoryItem: {
+            id: "gid://shopify/InventoryItem/1",
+            sku: "SKU-BEFORE",
+            tracked: true,
+          },
+        },
+        {
+          id: "gid://shopify/ProductVariant/2",
+          sku: "SKU-BEFORE-M",
+          price: "849.00",
+          compareAtPrice: null,
+          barcode: null,
+          inventoryPolicy: "DENY",
+          taxable: false,
+          selectedOptions: [
+            { name: "Size", value: "M" },
+            { name: "Color", value: "Black" },
+          ],
+          inventoryItem: {
+            id: "gid://shopify/InventoryItem/2",
+            sku: "SKU-BEFORE-M",
+            tracked: false,
+          },
+        },
+      ],
+      images: [
+        {
+          id: "gid://shopify/ProductImage/1",
+          src: "https://cdn.example.com/before.jpg",
+          altText: "Before image",
+        },
+      ],
+    },
+  };
+
+  it("builds a compensating ProductSet payload from the captured Shopify state", () => {
+    const payload = buildCompensatingWritePayload(SNAPSHOT, "vnext_rollback-1");
+
+    expect(payload.correlationId).toBe("vnext_rollback-1");
+    expect(payload.identifier).toEqual({ id: "gid://shopify/Product/123" });
+    expect(payload.input).toEqual(expect.objectContaining({
+      title: "Before Title",
+      handle: "before-title-sku-1",
+      descriptionHtml: "<p>Before description</p>",
+      status: "ACTIVE",
+      vendor: "Before Vendor",
+      productType: "before-type",
+      tags: ["before", "rollback"],
+      seo: { title: "Before SEO", description: "Before SEO description" },
+    }));
+    expect(payload.input.variants).toEqual([
+      {
+        price: "799.00",
+        compareAtPrice: "999.00",
+        inventoryPolicy: "CONTINUE",
+        taxable: true,
+        inventoryItem: { tracked: true, sku: "SKU-BEFORE" },
+        barcode: "12345",
+        optionValues: [
+          { optionName: "Size", name: "S" },
+          { optionName: "Color", name: "Black" },
+        ],
+      },
+      {
+        price: "849.00",
+        inventoryPolicy: "DENY",
+        taxable: false,
+        inventoryItem: { tracked: false, sku: "SKU-BEFORE-M" },
+        optionValues: [
+          { optionName: "Size", name: "M" },
+          { optionName: "Color", name: "Black" },
+        ],
+      },
+    ]);
+    expect(payload.input.productOptions).toEqual([
+      { name: "Size", position: 1, values: [{ name: "S" }, { name: "M" }] },
+      { name: "Color", position: 2, values: [{ name: "Black" }] },
+    ]);
+    expect(payload.input.files).toEqual([
+      {
+        originalSource: "https://cdn.example.com/before.jpg",
+        alt: "Before image",
+        contentType: "IMAGE",
+        filename: "product-image.jpg",
+      },
+    ]);
+  });
+
+  it("does not include rollback snapshot metadata inside the Shopify input", () => {
+    const payload = buildCompensatingWritePayload(SNAPSHOT, "vnext_rollback-1");
+    const serializedInput = JSON.stringify(payload.input);
+
+    expect(serializedInput).not.toContain("capturedAt");
+    expect(serializedInput).not.toContain("vnext_rollback-1");
+    expect(serializedInput).not.toContain("gid://shopify/ProductVariant/1");
+    expect(serializedInput).not.toContain("gid://shopify/ProductImage/1");
   });
 });

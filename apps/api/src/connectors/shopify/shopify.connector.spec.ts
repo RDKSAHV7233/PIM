@@ -1039,3 +1039,159 @@ describe("ShopifyConnector.applyControlledMutation", () => {
     });
   });
 });
+
+describe("ShopifyConnector.captureRollbackSnapshot", () => {
+  async function buildEncryptedRow(value: string) {
+    const { encryptCredentialValue, loadCredentialEncryptionKeys, resolveCurrentCredentialKeyVersion } =
+      await import("../../connector-installer/credential-encryption.util");
+    const keys = loadCredentialEncryptionKeys(process.env);
+    const ver = resolveCurrentCredentialKeyVersion(process.env);
+    const cipher = encryptCredentialValue(value, keys.get(ver)!, ver);
+    return { encryptedValue: cipher, keyVersion: "v1", status: "ACTIVE", expiresAt: null, failureReason: null };
+  }
+
+  function setUpConnectorWithCredential() {
+    const connector = makeConnector();
+    const db = (connector as any).prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter - test mock, no real DB access
+    db.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+      if (sql.includes("connector_credentials")) {
+        return [await buildEncryptedRow("test-store.myshopify.com")];
+      }
+      return [];
+    });
+    const apiClient = (connector as any).apiClient as ShopifyApiClient;
+    return { connector, apiClient };
+  }
+
+  it("captures current Shopify state read-only for rollback", async () => {
+    const { connector, apiClient } = setUpConnectorWithCredential();
+    const graphqlRequest = jest.fn().mockResolvedValue({
+      node: {
+        id: "gid://shopify/Product/123",
+        title: "Before Title",
+        handle: "before-title-sku-1",
+        descriptionHtml: "<p>Before</p>",
+        status: "ACTIVE",
+        vendor: "Before Vendor",
+        productType: "before-type",
+        tags: ["before"],
+        seo: { title: "Before SEO", description: "Before SEO description" },
+        options: [
+          { name: "Size", position: 1, values: ["S", "M"] },
+          { name: "Color", position: 2, values: ["Black"] },
+        ],
+        variants: {
+          nodes: [
+            {
+              id: "gid://shopify/ProductVariant/1",
+              sku: "SKU-BEFORE",
+              price: "799.00",
+              compareAtPrice: "999.00",
+              barcode: "12345",
+              inventoryPolicy: "CONTINUE",
+              taxable: true,
+              selectedOptions: [
+                { name: "Size", value: "S" },
+                { name: "Color", value: "Black" },
+              ],
+              inventoryItem: {
+                id: "gid://shopify/InventoryItem/1",
+                sku: "SKU-BEFORE",
+                tracked: true,
+              },
+            },
+          ],
+        },
+        images: {
+          nodes: [
+            {
+              id: "gid://shopify/ProductImage/1",
+              src: "https://cdn.example.com/before.jpg",
+              altText: "Before image",
+            },
+          ],
+        },
+      },
+    });
+    (apiClient as any).graphqlRequest = graphqlRequest;
+
+    const snapshot = await connector.captureRollbackSnapshot(
+      makeCtx(),
+      "gid://shopify/Product/123",
+      { correlationId: "vnext_rollback-1" },
+    );
+
+    expect(snapshot.product).toEqual({
+      id: "gid://shopify/Product/123",
+      title: "Before Title",
+      handle: "before-title-sku-1",
+      descriptionHtml: "<p>Before</p>",
+      status: "ACTIVE",
+      vendor: "Before Vendor",
+      productType: "before-type",
+      tags: ["before"],
+      seo: { title: "Before SEO", description: "Before SEO description" },
+      options: [
+        { name: "Size", position: 1, values: ["S", "M"] },
+        { name: "Color", position: 2, values: ["Black"] },
+      ],
+      variants: [
+        {
+          id: "gid://shopify/ProductVariant/1",
+          sku: "SKU-BEFORE",
+          price: "799.00",
+          compareAtPrice: "999.00",
+          barcode: "12345",
+          inventoryPolicy: "CONTINUE",
+          taxable: true,
+          selectedOptions: [
+            { name: "Size", value: "S" },
+            { name: "Color", value: "Black" },
+          ],
+          inventoryItem: {
+            id: "gid://shopify/InventoryItem/1",
+            sku: "SKU-BEFORE",
+            tracked: true,
+          },
+        },
+      ],
+      images: [
+        {
+          id: "gid://shopify/ProductImage/1",
+          src: "https://cdn.example.com/before.jpg",
+          altText: "Before image",
+        },
+      ],
+    });
+    expect(graphqlRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        query: expect.stringContaining("query GetProductRollbackSnapshot"),
+        variables: { id: "gid://shopify/Product/123" },
+      }),
+      expect.anything(),
+    );
+    expect(String(graphqlRequest.mock.calls[0][1].query)).not.toContain("mutation");
+    expect(String(graphqlRequest.mock.calls[0][1].query)).toContain("selectedOptions");
+    expect(String(graphqlRequest.mock.calls[0][1].query)).toContain("inventoryItem");
+    expect((connector as any).logger.info).toHaveBeenCalledWith(
+      "Shopify controlled vNext rollback snapshot captured",
+      expect.objectContaining({
+        correlationId: "vnext_rollback-1",
+        shopifyProductId: "gid://shopify/Product/123",
+        variantCount: 1,
+        imageCount: 1,
+      }),
+    );
+  });
+
+  it("fails closed when Shopify does not return the product", async () => {
+    const { connector, apiClient } = setUpConnectorWithCredential();
+    (apiClient as any).graphqlRequest = jest.fn().mockResolvedValue({ node: null });
+
+    await expect(
+      connector.captureRollbackSnapshot(makeCtx(), "gid://shopify/Product/missing"),
+    ).rejects.toThrow("Shopify rollback snapshot could not find the product.");
+  });
+});

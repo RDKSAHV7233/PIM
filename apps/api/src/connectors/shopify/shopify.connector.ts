@@ -35,6 +35,7 @@ import {
 import type {
   ShopifyProductSetIdentifierLike,
   ShopifyProductSetInputLike,
+  ShopifyRollbackSnapshot,
 } from "./shopify-vnext-mutation-adapter";
 
 type CredentialRow = {
@@ -205,18 +206,30 @@ type ShopifyProductStateQueryResponse = {
     productType?: string;
     tags?: string[];
     seo?: { title?: string; description?: string } | null;
+    options?: Array<{
+      name?: string;
+      position?: number | null;
+      values?: string[];
+    }> | null;
     variants?: {
       nodes?: Array<{
+        id?: string;
         price?: string;
         compareAtPrice?: string | null;
         barcode?: string | null;
         sku?: string | null;
         inventoryPolicy?: string;
         taxable?: boolean;
+        selectedOptions?: Array<{ name?: string; value?: string }> | null;
+        inventoryItem?: {
+          id?: string;
+          sku?: string | null;
+          tracked?: boolean | null;
+        } | null;
       }>;
     } | null;
     images?: {
-      nodes?: Array<{ src?: string; altText?: string | null }>;
+      nodes?: Array<{ id?: string; src?: string; altText?: string | null }>;
     } | null;
   } | null;
 };
@@ -1859,6 +1872,111 @@ export class ShopifyConnector implements ConnectorInterface {
 
     const changes = candidates.filter((c): c is ShopifyProductChangeItem => c !== null);
     return { hasExistingProduct: true, noChanges: changes.length === 0, changes };
+  }
+
+  async captureRollbackSnapshot(
+    ctx: ConnectorContext,
+    shopifyGid: string,
+    options: { correlationId?: string } = {},
+  ): Promise<ShopifyRollbackSnapshot> {
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+    const response = await this.apiClient.graphqlRequest<ShopifyProductStateQueryResponse>(ctx, {
+      shopDomain,
+      accessToken,
+      query: `
+        query GetProductRollbackSnapshot($id: ID!) {
+          node(id: $id) {
+            ... on Product {
+              id title handle descriptionHtml status vendor productType tags
+              seo { title description }
+              options { name position values }
+              variants(first: 100) {
+                nodes {
+                  id
+                  price
+                  compareAtPrice
+                  barcode
+                  sku
+                  inventoryPolicy
+                  taxable
+                  selectedOptions { name value }
+                  inventoryItem { id sku tracked }
+                }
+              }
+              images(first: 50) { nodes { id src altText } }
+            }
+          }
+        }
+      `,
+      variables: { id: shopifyGid },
+    }, { onTokenExpired: (c) => this.expireAccessToken(c) });
+
+    const node = response.node;
+    if (!node?.id) {
+      throw new Error("Shopify rollback snapshot could not find the product.");
+    }
+
+    const snapshot: ShopifyRollbackSnapshot = {
+      capturedAt: new Date().toISOString(),
+      product: {
+        id: String(node.id),
+        title: this.normalizeOptionalString(node.title),
+        handle: this.normalizeOptionalString(node.handle),
+        descriptionHtml: this.normalizeOptionalString(node.descriptionHtml),
+        status: this.normalizeOptionalString(node.status),
+        vendor: this.normalizeOptionalString(node.vendor),
+        productType: this.normalizeOptionalString(node.productType),
+        tags: Array.isArray(node.tags) ? node.tags.map((tag) => String(tag ?? "").trim()).filter(Boolean) : [],
+        seo: node.seo
+          ? {
+              title: this.normalizeOptionalString(node.seo.title),
+              description: this.normalizeOptionalString(node.seo.description),
+            }
+          : null,
+        options: (node.options ?? []).map((option) => ({
+          name: this.normalizeOptionalString(option.name) ?? "",
+          position: typeof option.position === "number" ? option.position : null,
+          values: Array.isArray(option.values)
+            ? option.values.map((value) => String(value ?? "").trim()).filter(Boolean)
+            : [],
+        })).filter((option) => option.name),
+        variants: (node.variants?.nodes ?? []).map((variant) => ({
+          id: this.normalizeOptionalString(variant.id),
+          sku: this.normalizeOptionalString(variant.sku),
+          price: this.normalizeOptionalString(variant.price),
+          compareAtPrice: this.normalizeOptionalString(variant.compareAtPrice),
+          barcode: this.normalizeOptionalString(variant.barcode),
+          inventoryPolicy: this.normalizeOptionalString(variant.inventoryPolicy),
+          taxable: typeof variant.taxable === "boolean" ? variant.taxable : null,
+          selectedOptions: (variant.selectedOptions ?? []).map((option) => ({
+            name: this.normalizeOptionalString(option.name) ?? "",
+            value: this.normalizeOptionalString(option.value) ?? "",
+          })).filter((option) => option.name && option.value),
+          inventoryItem: variant.inventoryItem
+            ? {
+                id: this.normalizeOptionalString(variant.inventoryItem.id),
+                sku: this.normalizeOptionalString(variant.inventoryItem.sku),
+                tracked: typeof variant.inventoryItem.tracked === "boolean" ? variant.inventoryItem.tracked : null,
+              }
+            : null,
+        })),
+        images: (node.images?.nodes ?? []).map((image) => ({
+          id: this.normalizeOptionalString(image.id),
+          src: this.normalizeOptionalString(image.src),
+          altText: this.normalizeOptionalString(image.altText),
+        })),
+      },
+    };
+
+    this.logger.info("Shopify controlled vNext rollback snapshot captured", {
+      correlationId: options.correlationId,
+      installationId: ctx.installationId,
+      shopifyProductId: snapshot.product.id,
+      variantCount: snapshot.product.variants.length,
+      imageCount: snapshot.product.images.length,
+    });
+    return snapshot;
   }
 
   private buildVariantInput(

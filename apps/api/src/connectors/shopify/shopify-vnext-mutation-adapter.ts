@@ -8,6 +8,57 @@ export type ShopifyVnextMutationPayload = {
   identifier: ShopifyProductSetIdentifierLike;
 };
 
+export type ShopifyRollbackSnapshotSelectedOption = {
+  name: string;
+  value: string;
+};
+
+export type ShopifyRollbackSnapshotProductOption = {
+  name: string;
+  position?: number | null;
+  values: string[];
+};
+
+export type ShopifyRollbackSnapshotVariant = {
+  id?: string | null;
+  sku?: string | null;
+  price?: string | null;
+  compareAtPrice?: string | null;
+  barcode?: string | null;
+  inventoryPolicy?: string | null;
+  taxable?: boolean | null;
+  selectedOptions: ShopifyRollbackSnapshotSelectedOption[];
+  inventoryItem?: {
+    id?: string | null;
+    sku?: string | null;
+    tracked?: boolean | null;
+  } | null;
+};
+
+export type ShopifyRollbackSnapshotImage = {
+  id?: string | null;
+  src?: string | null;
+  altText?: string | null;
+};
+
+export type ShopifyRollbackSnapshot = {
+  capturedAt: string;
+  product: {
+    id: string;
+    title?: string | null;
+    handle?: string | null;
+    descriptionHtml?: string | null;
+    status?: string | null;
+    vendor?: string | null;
+    productType?: string | null;
+    tags: string[];
+    seo?: { title?: string | null; description?: string | null } | null;
+    options: ShopifyRollbackSnapshotProductOption[];
+    variants: ShopifyRollbackSnapshotVariant[];
+    images: ShopifyRollbackSnapshotImage[];
+  };
+};
+
 const DEFAULT_CUSTOM_ID_NAMESPACE = "pim_connector";
 const DEFAULT_CUSTOM_ID_KEY = "sku";
 const DEFAULT_PIM_METAFIELD_NAMESPACE = "pim_connector";
@@ -169,6 +220,63 @@ function buildImageFilename(url: string, index: number): { filename: string } | 
   return { filename: index === 0 ? `product-image.${extMatch}` : `product-image-${index + 1}.${extMatch}` };
 }
 
+function buildRollbackProductOptions(product: ShopifyRollbackSnapshot["product"]): Array<Record<string, unknown>> {
+  const options: Array<Record<string, unknown>> = [];
+  product.options.forEach((option, index) => {
+    const name = normalizeOptionalString(option.name);
+    if (!name) {
+      return;
+    }
+    const values = option.values
+      .map((value) => normalizeOptionalString(value))
+      .filter((value): value is string => Boolean(value))
+      .map((name) => ({ name }));
+    options.push({
+      name,
+      position: option.position ?? index + 1,
+      values: values.length > 0 ? values : [{ name: "Default Title" }],
+    });
+  });
+
+  return options.length > 0
+    ? options
+    : [{ name: "Title", position: 1, values: [{ name: "Default Title" }] }];
+}
+
+function buildRollbackVariantOptionValues(
+  variant: ShopifyRollbackSnapshotVariant,
+): Array<Record<string, unknown>> {
+  const optionValues: Array<Record<string, unknown>> = [];
+  variant.selectedOptions.forEach((option) => {
+    const optionName = normalizeOptionalString(option.name);
+    const name = normalizeOptionalString(option.value);
+    if (optionName && name) {
+      optionValues.push({ optionName, name });
+    }
+  });
+
+  return optionValues.length > 0
+    ? optionValues
+    : [{ optionName: "Title", name: "Default Title" }];
+}
+
+function buildRollbackFiles(product: ShopifyRollbackSnapshot["product"]): Array<Record<string, unknown>> {
+  const files: Array<Record<string, unknown>> = [];
+  product.images.forEach((image, index) => {
+    const originalSource = normalizeOptionalString(image.src);
+    if (!originalSource) {
+      return;
+    }
+    files.push({
+      originalSource,
+      alt: normalizeOptionalString(image.altText) ?? String(product.title ?? ""),
+      contentType: "IMAGE",
+      ...buildImageFilename(originalSource, index),
+    });
+  });
+  return files;
+}
+
 export function buildShopifyVnextProductSetInput(
   projection: ShopifyChannelProjection,
 ): ShopifyProductSetInputLike {
@@ -217,5 +325,67 @@ export function buildShopifyVnextMutationPayload(
     correlationId,
     input: buildShopifyVnextProductSetInput(projection),
     identifier: buildShopifyVnextProductIdentifier(projection, externalRef),
+  };
+}
+
+export function buildCompensatingWritePayload(
+  snapshot: ShopifyRollbackSnapshot,
+  correlationId: string,
+): ShopifyVnextMutationPayload {
+  const product = snapshot.product;
+  const variants = product.variants.length > 0
+    ? product.variants
+    : [{
+        sku: undefined,
+        price: undefined,
+        compareAtPrice: undefined,
+        barcode: undefined,
+        selectedOptions: [{ name: "Title", value: "Default Title" }],
+      }];
+  const files = buildRollbackFiles(product);
+  const input: ShopifyProductSetInputLike = {
+    title: String(product.title ?? ""),
+    ...(normalizeOptionalString(product.handle) ? { handle: normalizeOptionalString(product.handle) } : {}),
+    descriptionHtml: String(product.descriptionHtml ?? ""),
+    ...(normalizeOptionalString(product.status) ? { status: normalizeOptionalString(product.status) } : {}),
+    ...(normalizeOptionalString(product.vendor) ? { vendor: normalizeOptionalString(product.vendor) } : {}),
+    ...(normalizeOptionalString(product.productType) ? { productType: normalizeOptionalString(product.productType) } : {}),
+    ...(Array.isArray(product.tags) && product.tags.length > 0
+      ? { tags: product.tags.map((tag) => String(tag ?? "").trim()).filter(Boolean) }
+      : {}),
+    ...(product.seo?.title || product.seo?.description
+      ? {
+          seo: {
+            ...(normalizeOptionalString(product.seo.title) ? { title: normalizeOptionalString(product.seo.title) } : {}),
+            ...(normalizeOptionalString(product.seo.description) ? { description: normalizeOptionalString(product.seo.description) } : {}),
+          },
+        }
+      : {}),
+    productOptions: buildRollbackProductOptions(product),
+    variants: variants.map((variant) => ({
+      ...(normalizeOptionalString(variant.price) ? { price: normalizeOptionalString(variant.price) } : {}),
+      ...(normalizeOptionalString(variant.compareAtPrice)
+        ? { compareAtPrice: normalizeOptionalString(variant.compareAtPrice) }
+        : {}),
+      ...(normalizeOptionalString(variant.inventoryPolicy)
+        ? { inventoryPolicy: normalizeOptionalString(variant.inventoryPolicy) }
+        : {}),
+      ...(typeof variant.taxable === "boolean" ? { taxable: variant.taxable } : {}),
+      inventoryItem: {
+        tracked: typeof variant.inventoryItem?.tracked === "boolean" ? variant.inventoryItem.tracked : false,
+        ...(normalizeOptionalString(variant.inventoryItem?.sku ?? variant.sku)
+          ? { sku: normalizeOptionalString(variant.inventoryItem?.sku ?? variant.sku) }
+          : {}),
+      },
+      ...(normalizeOptionalString(variant.barcode) ? { barcode: normalizeOptionalString(variant.barcode) } : {}),
+      optionValues: buildRollbackVariantOptionValues(variant),
+    })),
+    ...(files.length > 0 ? { files } : {}),
+  };
+
+  return {
+    correlationId,
+    input,
+    identifier: { id: product.id },
   };
 }
