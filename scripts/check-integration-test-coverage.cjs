@@ -182,6 +182,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-step-up-ui.test.cjs",
   "mapping-step-up-wrong-password.test.cjs",
   "mapping-access-denied-and-rollback-session.test.cjs",
+  "playwright-env-role-identities.test.cjs",
   "mapping-structured-editor.test.cjs",
   "mapping-version-label.test.cjs",
   "mapping-workflow-ui.test.cjs",

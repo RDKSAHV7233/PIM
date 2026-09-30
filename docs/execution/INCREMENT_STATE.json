@@ -5013,6 +5013,43 @@
           "notes": "The rollback expiry path is covered by the source-contract test only; it was not exercised in a browser."
         }
       ]
+    },
+    {
+      "incrementId": "INC-73",
+      "name": "Playwright Local Role Identities (test-harness fix)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-QA-PLAYWRIGHT-ENV-ROLE-IDENTITIES-001",
+          "title": "Tracked .env.playwright declares all eight app roles so the rbac specs can log in as publisher, approver and connector_admin",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "82597d59",
+          "scope": [
+            ".env.playwright",
+            "apps/web/test/integration/playwright-env-role-identities.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Found by the mapping scratch-stack QA run (2026-09-30). .env.playwright overrides PLAYWRIGHT_AUTH_IDENTITIES_JSON with five roles; specs default publisher/approver/connector_admin to <role>@vexa-pim.local, which the override does not contain. An unknown identity resolves to viewer, so rbac-role-enforcement (publisher, approver, connector_admin) and rbac-admin-boundary-roles (connector_admin) failed waiting for their role badge.",
+          "proposed_fix": "Add PLAYWRIGHT_PUBLISHER_USER / APPROVER_USER / CONNECTOR_ADMIN_USER (@test.com, same convention as the existing five) and matching identity entries. Existing ids are unchanged so nobody's local workflow breaks. New test keeps the eight roles, their user vars, the identity directory and the spec helpers consistent.",
+          "team_investigation": "Engineering: the file is consumed only through dotenv-cli (docs/getting-started.md, npm test:e2e), never by CI, which builds its own identities; so this is a local-harness change with no runtime or CI effect. Alternative considered and rejected: deleting the override so the script defaults apply, which would rename the admin/editor/reviewer/viewer ids that local users already rely on. QA: reproduced by logging in as an unknown identity (viewer role). CTO-lens (analysis, not approval): test-only, one risk domain, no auth code or production data touched.",
+          "acceptance": [
+            "All eight PLAYWRIGHT_*_USER vars are declared and distinct.",
+            "Every var has an identity with the matching role and the default tenant.",
+            "No orphan identities.",
+            "rbac-role-enforcement and rbac-admin-boundary-roles pass locally."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/playwright-env-role-identities.test.cjs (fails on the previous file with PLAYWRIGHT_PUBLISHER_USER must be declared; passes now)",
+            "node scripts/check-integration-test-coverage.cjs (clean)",
+            "npx playwright test rbac-role-enforcement.spec.js rbac-admin-boundary-roles.spec.js against the local stack: 12 passed (4 of these failed before)"
+          ],
+          "notes": "Not changed: admin@pim1.local still has no assigned admin-boundary roles in this file (the script default gives admin product_admin/system_admin); the rbac specs pass with the legacy admin fallback. The other local Playwright failures (publish, hydration, shopify sku setup) are unrelated and untouched."
+        }
+      ]
     }
   ]
 }
