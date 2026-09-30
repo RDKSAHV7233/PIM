@@ -502,11 +502,13 @@ export function PublishReadinessCard({
       <CardTitle>Publish Readiness</CardTitle>
       <div className="mt-2 grid gap-3 text-sm text-slate-700">
         <p className="text-xs text-slate-500">
-          Publish remains blocked until mapping completeness and product data readiness are both clear.
+          {isBlocked
+            ? "Publish remains blocked until mapping completeness and product data readiness are both clear."
+            : "Mapping completeness and product data readiness are both clear."}
         </p>
         <div>
           <p className="font-medium">Mapping completeness</p>
-          <StatusChip label={mappingCompletenessOk ? "ok" : "blocked"} tone={mappingCompletenessOk ? "success" : "danger"} />
+          <StatusChip label={mappingCompletenessOk ? "Ready" : "Blocked"} tone={mappingCompletenessOk ? "success" : "danger"} />
           <p className="mt-1 text-xs text-slate-500">
             Required category attributes missing from mappings: {missingRequiredMappings.length}
           </p>
@@ -528,7 +530,7 @@ export function PublishReadinessCard({
         )}
         <div>
           <p className="font-medium">Product data readiness</p>
-          <StatusChip label={productDataReadinessOk ? "ok" : "blocked"} tone={productDataReadinessOk ? "success" : "danger"} />
+          <StatusChip label={productDataReadinessOk ? "Ready" : "Blocked"} tone={productDataReadinessOk ? "success" : "danger"} />
           <p className="mt-1 text-xs text-slate-500">
             Channel-required product values missing: {missingRequiredProductValues.length}
           </p>
@@ -583,7 +585,7 @@ export function PublishReadinessCard({
           </div>
         ) : null}
         <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
-          <summary className="cursor-pointer text-sm font-medium text-slate-800">Blockers and warnings</summary>
+          <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-800">Blockers and warnings</summary>
           <div className="mt-2 space-y-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preflight blockers</p>

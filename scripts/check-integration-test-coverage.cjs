@@ -172,6 +172,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-editor-component.test.cjs",
   "mapping-editor-prop-contract.test.cjs",
   "mapping-lazy-panels.test.cjs",
+  "mapping-a11y-copy-polish.test.cjs",
   "mapping-readiness-version-context-ui.test.cjs",
   "mapping-scope-label-clarity.test.cjs",
   "mapping-required-banner-ui.test.cjs",

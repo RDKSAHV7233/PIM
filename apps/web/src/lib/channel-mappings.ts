@@ -14,6 +14,7 @@ import {
   mapMarketplaceChannelToConnectorSlug,
   normalizeMarketplaceChannel,
 } from "@/lib/marketplace-channels";
+import { labelUndefinedSourceField } from "@/lib/mapping-source-field-label";
 
 export type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
 export type ConnectorTaxonomyOption = Pick<ConnectorTaxonomyItem, "id" | "path" | "requiredAttributes">;
@@ -397,7 +398,7 @@ function buildSourceFieldOptions(
   }
   for (const sourceField of Object.keys(currentFieldMap)) {
     if (!options.has(sourceField)) {
-      options.set(sourceField, sourceField);
+      options.set(sourceField, labelUndefinedSourceField(sourceField));
     }
   }
   return Array.from(options.entries())

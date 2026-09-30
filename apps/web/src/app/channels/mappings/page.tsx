@@ -63,6 +63,8 @@ import { buildSelectedPublishCategoryOption } from "@/lib/mapping-publish-catego
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Channel Mapping | Vexa PIM" };
+
 interface ChannelsMappingsPageProps {
   searchParams: Promise<MappingWizardQueryState>;
 }
@@ -244,7 +246,7 @@ function AdvancedDrawer({
           Advanced controls are available for compatibility, fallback behavior, resolved mapping inspection, JSON overrides, and connector-specific diagnostics. These tools are intentionally outside the primary authoring flow.
         </div>
         <details open={advancedPanel === "resolved"} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <summary className="cursor-pointer text-sm font-medium text-slate-900">Resolved mapping snapshot</summary>
+          <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-900">Resolved mapping snapshot</summary>
           <div className="mt-3">
             <ResolvedMappingSnapshotCard
               mapping={mapping}
@@ -255,7 +257,7 @@ function AdvancedDrawer({
           </div>
         </details>
         <details open={advancedPanel === "fallback"} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <summary className="cursor-pointer text-sm font-medium text-slate-900">Fallback and compatibility defaults</summary>
+          <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-900">Fallback and compatibility defaults</summary>
           <div className="mt-3 space-y-2 text-sm text-slate-700">
             <p>Selected publish category: {selectedTargetCategory || "Not selected"}</p>
             <pre className="overflow-x-auto rounded-md bg-slate-900 px-3 py-2 text-xs text-slate-100">{fallbackPolicyDefault}</pre>
@@ -263,7 +265,7 @@ function AdvancedDrawer({
         </details>
         {shopifyConfig && selectedInstallationId ? (
           <details open={advancedPanel === "diagnostics"} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <summary className="cursor-pointer text-sm font-medium text-slate-900">Shopify diagnostics</summary>
+            <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-900">Shopify diagnostics</summary>
             <div className="mt-3 space-y-4">
               {shopifyConfig.collections.length > 0 ? (
                 <Card id="shopify-collections">
@@ -339,7 +341,7 @@ function AdvancedDrawer({
           </details>
         ) : null}
         <details open={advancedPanel === "json"} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <summary className="cursor-pointer text-sm font-medium text-slate-900">JSON and legacy diagnostics</summary>
+          <summary className="cursor-pointer py-1.5 text-sm font-medium text-slate-900">JSON and legacy diagnostics</summary>
           <div className="mt-3 space-y-4">
             <LegacyTemplateCompatibilityCard />
             {connectorDetail ? (
@@ -842,6 +844,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
               canWrite={canWrite}
               connectorSlug={connectorSlug}
               installationId={selectedInstallationId || undefined}
+              categoryScopeLabel={selectedCategoryPath ? { id: selectedCategoryId, label: selectedCategoryPath } : undefined}
               versions={versions}
               redirectTo={viewModel.redirectTo}
               stepUpAction={stepUpAction}

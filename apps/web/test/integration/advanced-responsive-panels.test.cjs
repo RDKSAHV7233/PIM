@@ -23,8 +23,7 @@ function run() {
     versionSource.includes("md:hidden") &&
       versionSource.includes("mobileHide: true") &&
       versionSource.includes("presentLifecycleState(version.lifecycleState)") &&
-      versionSource.includes("presentCompatibilityState(version.compatibilityState)") &&
-      versionSource.includes("no version action depends on horizontal scroll"),
+      versionSource.includes("presentCompatibilityState(version.compatibilityState)"),
     "Version manager must surface lifecycle and compatibility state inside the mobile summary while hiding redundant desktop-only columns on small screens.",
   );
   assert(

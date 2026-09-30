@@ -73,10 +73,10 @@ function run() {
   assert(
     editorSource.includes("const mappingCompletenessOk = Boolean(readiness) && missingRequiredMappings.length === 0;") &&
       editorSource.includes("const productDataReadinessOk = Boolean(readiness) && missingRequiredProductValues.length === 0;") &&
-      editorSource.includes('label={mappingCompletenessOk ? "ok" : "blocked"}') &&
-      editorSource.includes('label={productDataReadinessOk ? "ok" : "blocked"}') &&
-      !editorSource.includes('label={preflight?.ok ? "ok" : "blocked"}') &&
-      !editorSource.includes('label={readiness?.ok ? "ok" : "blocked"}'),
+      editorSource.includes('label={mappingCompletenessOk ? "Ready" : "Blocked"}') &&
+      editorSource.includes('label={productDataReadinessOk ? "Ready" : "Blocked"}') &&
+      !editorSource.includes('label={preflight?.ok ? "Ready" : "Blocked"}') &&
+      !editorSource.includes('label={readiness?.ok ? "Ready" : "Blocked"}'),
     "Publish readiness chips must use each gate's own evidence instead of blended preflight or aggregate readiness state.",
   );
 

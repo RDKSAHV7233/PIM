@@ -100,10 +100,17 @@ export function MappingDirtyNavigationGuard() {
       onClose={stayInWizard}
     >
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={stayInWizard}>
+        {/* Staying is the safe, expected choice, so it carries the primary emphasis; leaving discards edits and is
+            styled as a quiet destructive action rather than the dominant button. */}
+        <Button type="button" variant="primary" onClick={stayInWizard}>
           Stay on this step
         </Button>
-        <Button type="button" variant="destructive" onClick={leaveWithoutSaving}>
+        <Button
+          type="button"
+          variant="secondary"
+          className="border-red-200 text-red-700 hover:bg-red-50"
+          onClick={leaveWithoutSaving}
+        >
           Leave without saving
         </Button>
       </div>

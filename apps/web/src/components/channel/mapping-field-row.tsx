@@ -41,6 +41,7 @@ export function MappingFieldRowControls({
           name={`${fieldInputPrefix}${row.targetField}`}
           defaultValue={row.selectedSource}
           onChange={(e) => setSelectedSource(e.target.value)}
+          aria-label={`PIM field for ${row.targetField}`}
           aria-describedby={`${samplePreviewId} ${mappingStatusId}`}
           className="max-w-full"
         >

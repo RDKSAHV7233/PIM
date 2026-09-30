@@ -4465,6 +4465,134 @@
           "notes": "commit is the pre-squash fix commit; the merge commit replaces it once merged. DEF-07 (Archive enabled on the live version) was investigated and is NOT changed: the API deliberately allows archiving a published version (connector-mapping.service.spec.ts), so any confirmation prompt is a product decision."
         }
       ]
+    },
+    {
+      "incrementId": "INC-66",
+      "name": "Mapping Journey Live-QA Follow-ups (accessibility names and ids, dialog emphasis, copy polish)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-A11Y-NAMES-IDS-001",
+          "title": "Mapping selects share one accessible name and version-manager form ids are duplicated across the desktop and mobile copies",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "0fa3c4a9",
+          "scope": [
+            "apps/web/src/components/channel/mapping-field-row.tsx",
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/test/integration/mapping-a11y-copy-polish.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Live QA (2026-09-29): all 18 mapping selects had the accessible name 'PIM field' (the channel field name was not in the name), and the page had 43 duplicate element ids because DataGrid renders each row into both a desktop table and a mobile card list while the version manager's step-up, archive-reason and rollback-reason ids ignored the view.",
+          "proposed_fix": "aria-label 'PIM field for <channel field>' on each select (the visible label text stays contained in the name); thread the DataGrid view into the actions column and suffix the affected ids with it. The Step-up re-authentication label text is unchanged, so the e2e getByLabel selectors still resolve within their panel.",
+          "team_investigation": "Engineering: DataGrid already passes `view` to render() for exactly this reason (see its PIM#600 comment); the version manager just did not use it. Accessibility: aria-label overrides the hidden mobile-only label, and the visible text 'PIM field' is a prefix of the new name. CTO-lens (analysis, not approval): presentational; no form field name or action changes, so submissions are unaffected.",
+          "acceptance": [
+            "Each mapping select's accessible name includes its channel field.",
+            "No element id is shared between the desktop and mobile copies of a version row."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-a11y-copy-polish.test.cjs (new; label helper executed as code plus source contracts; fails against origin/main sources)",
+            "node apps/web/test/integration/run-all.cjs (192/192 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-DIALOG-TARGETS-001",
+          "title": "Unsaved-changes dialog makes discarding the dominant action; advanced-drawer summaries are 20px tall",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "0fa3c4a9",
+          "scope": [
+            "apps/web/src/components/channel/mapping-dirty-navigation-guard.tsx",
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-a11y-copy-polish.test.cjs"
+          ],
+          "problem": "Live QA (2026-09-29): in the dialog the red 'Leave without saving' button was more prominent than 'Stay on this step'; four advanced-drawer summaries and the 'Blockers and warnings' summary measured 20px tall (below the 24px WCAG 2.2 AA target size).",
+          "proposed_fix": "Stay = primary button; Leave = secondary button with red text/border. Add py-1.5 to those summaries.",
+          "team_investigation": "UX: the safe, expected choice should carry the emphasis; discarding stays clearly destructive by colour. The guard's beforeunload handler is unchanged (the QA note that a URL change did not prompt was a false positive: browsers only show that prompt after a real user gesture, which a scripted edit does not provide, so DEF-09 needed no change). CTO-lens: presentational.",
+          "acceptance": [
+            "'Stay on this step' is the primary button.",
+            "The guard still registers beforeunload.",
+            "The listed summaries have vertical padding."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-a11y-copy-polish.test.cjs (new; label helper executed as code plus source contracts; fails against origin/main sources)",
+            "node apps/web/test/integration/run-all.cjs (192/192 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-COPY-LABELS-001",
+          "title": "Developer copy, raw 'ok'/'blocked' chips, raw ids and raw attribute keys shown to operators",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "0fa3c4a9",
+          "scope": [
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/lib/mapping-source-field-label.ts",
+            "apps/web/src/lib/channel-mappings.ts",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-a11y-copy-polish.test.cjs"
+          ],
+          "scope_expansion": [
+            "apps/web/test/integration/mapping-workflow-ui.test.cjs -- its chip-label assertions pinned the removed lowercase 'ok'/'blocked' strings; intent (chips use each gate's own evidence) unchanged.",
+            "apps/web/test/integration/advanced-responsive-panels.test.cjs -- dropped the assertion that pinned the developer sentence 'no version action depends on horizontal scroll'; mobile actions remain covered by version-manager-mobile-actions.test.cjs."
+          ],
+          "problem": "Live QA (2026-09-29): every mobile version row showed 'Mobile view keeps validate, publish, archive, and rollback controls stacked here...'; readiness chips read 'ok'/'blocked'; 'Publish remains blocked until...' was shown while nothing was blocked; the version Scope column showed a raw cuid; and a saved mapping to a PIM attribute without a definition showed the raw key 'attributes.size'.",
+          "proposed_fix": "Remove the developer sentence; chips read Ready/Blocked; the blocked sentence only renders while blocked (its exact text is kept); the Scope column shows the category path when known; labelUndefinedSourceField turns 'attributes.size' into 'Size (Attribute)'.",
+          "team_investigation": "Engineering: all strings were literal; the version Scope value equals the selected category id by construction (versions are fetched with categoryScope), so the label is only applied on an exact id match. Not changed: (a) two 'Step 3' headings, because the 'Step 3: Validate and publish' heading is asserted by an e2e spec and a locked integration test; (b) duplicate 'Open catalog mapping' link labels on the connector portfolio, which sit in separate connector cards and differ because one connector is not installed; (c) Amazon-style optional fields (brand_name, item_name, size_name, tax_rate) listed on the Shopify lane, which come from stored mapping/template data and need a product decision. CTO-lens: presentational.",
+          "acceptance": [
+            "No developer copy in version rows.",
+            "Readiness chips read Ready/Blocked.",
+            "The Scope column shows the category path.",
+            "attributes.size renders as 'Size (Attribute)'."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-a11y-copy-polish.test.cjs (new; label helper executed as code plus source contracts; fails against origin/main sources)",
+            "node apps/web/test/integration/run-all.cjs (192/192 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-NAV-A11Y-SIDEBAR-TITLE-TARGET-001",
+          "title": "Sidebar active item has no aria-current, the mapping page has the generic document title, breadcrumb links are 16px tall",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "7f6f65ad",
+          "scope": [
+            "apps/web/src/components/nav/app-sidebar.tsx",
+            "apps/web/src/components/ui/page-header.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-a11y-copy-polish.test.cjs"
+          ],
+          "problem": "Live QA (2026-09-29): the active sidebar item was distinguished by CSS class only (no aria-current); document.title was 'Vexa PIM' on the mapping page; breadcrumb links measured 16px tall.",
+          "proposed_fix": "aria-current='page' on the active sidebar link; export a page title 'Channel Mapping | Vexa PIM' from the mapping page; [&_a]:inline-block [&_a]:py-1 on the PageHeader breadcrumb container.",
+          "team_investigation": "Engineering: the active state is already computed (selectActiveHref), so the attribute is a one-line addition. Only three pages in the app set a title (layout, contact, account-suspended), so the missing title is a wider gap; this change is deliberately limited to the mapping journey's page. The breadcrumb padding is in the shared PageHeader, so it applies to every page that passes a breadcrumb (about 8px taller link boxes). CTO-lens (analysis, not approval): presentational; no routing or data change.",
+          "acceptance": [
+            "The active sidebar link exposes aria-current='page'.",
+            "The mapping page has its own document title.",
+            "PageHeader breadcrumb links have vertical padding."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-a11y-copy-polish.test.cjs (new; source contracts, failing against origin/main sources)",
+            "node apps/web/test/integration/run-all.cjs (192/192 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean)"
+          ],
+          "notes": "Not changed: app-wide page titles (only 3 pages define one). Post-deploy verification: document.title on /channels/mappings, aria-current on the Mappings link, and breadcrumb link height at 375px."
+        }
+      ]
     }
   ]
 }

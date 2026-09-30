@@ -93,6 +93,7 @@ function ProtectedMappingActionForm({
   pendingLabel,
   redirectTo,
   versionId,
+  idSuffix,
   children,
 }: {
   action: (formData: FormData) => Promise<void>;
@@ -106,6 +107,9 @@ function ProtectedMappingActionForm({
   pendingLabel: string;
   redirectTo: string;
   versionId: string;
+  // DataGrid renders each row into both the desktop table and the mobile card list, so element ids
+  // must carry the view or the two copies share an id (invalid HTML; the label binds to the first).
+  idSuffix: string;
   children?: ReactNode;
 }) {
   if (disabled) {
@@ -125,11 +129,11 @@ function ProtectedMappingActionForm({
         <input type="hidden" name="redirectTo" value={redirectTo} />
         {installationId ? <input type="hidden" name="installationId" value={installationId} /> : null}
         <div className="space-y-1">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`${label}-${versionId}`}>
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`${label}-${versionId}-${idSuffix}`}>
             Step-up re-authentication
           </label>
           <Input
-            id={`${label}-${versionId}`}
+            id={`${label}-${versionId}-${idSuffix}`}
             name="stepUpPassword"
             type="password"
             autoComplete="current-password"
@@ -157,11 +161,14 @@ export function VersionManagerCard({
   fallbackAcknowledged,
   fallbackAckVersionId,
   fallbackAckError,
+  categoryScopeLabel,
 }: {
   actorRole: AppRole;
   canWrite: boolean;
   connectorSlug: string;
   installationId?: string;
+  // Versions carry the source category's raw id as their scope; show its path when we know it.
+  categoryScopeLabel?: { id: string; label: string };
   versions: ConnectorMappingVersion[];
   redirectTo: string;
   stepUpAction: ProtectedMappingActionKind | "";
@@ -227,7 +234,8 @@ export function VersionManagerCard({
       key: "scope",
       header: "Scope",
       cellClassName: "align-top",
-      render: (version) => version.categoryScope,
+      render: (version) =>
+        categoryScopeLabel && version.categoryScope === categoryScopeLabel.id ? categoryScopeLabel.label : version.categoryScope,
     },
     {
       key: "lifecycle",
@@ -276,7 +284,7 @@ export function VersionManagerCard({
       key: "actions",
       header: "Actions",
       cellClassName: "align-top",
-      render: (version) =>
+      render: (version, view) =>
         canWrite ? (
           <div className="flex flex-wrap gap-2">
             <form action={validateConnectorMappingVersionAction}>
@@ -326,9 +334,6 @@ export function VersionManagerCard({
                 ) : null}
               </form>
             ) : null}
-            <p className="w-full text-[11px] text-slate-500 md:hidden">
-              Mobile view keeps validate, publish, archive, and rollback controls stacked here so no version action depends on horizontal scroll.
-            </p>
             {version.fallbackAckRequired && fallbackAcknowledged && fallbackAckVersionId === version.id ? (
               <form action={setMappingFallbackAcknowledgementAction}>
                 <input type="hidden" name="redirectTo" value={redirectTo} />
@@ -357,6 +362,7 @@ export function VersionManagerCard({
               pendingLabel="Publishing..."
               redirectTo={redirectTo}
               versionId={version.id}
+              idSuffix={view}
             >
               <input type="hidden" name="confirm" value="true" />
               <input type="hidden" name="fallbackAckRequired" value={version.fallbackAckRequired ? "true" : "false"} />
@@ -387,12 +393,13 @@ export function VersionManagerCard({
               pendingLabel="Archiving..."
               redirectTo={redirectTo}
               versionId={version.id}
+              idSuffix={view}
             >
               <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`archive-reason-${version.id}`}>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`archive-reason-${version.id}-${view}`}>
                   Archive reason
                 </label>
-                <Input id={`archive-reason-${version.id}`} name="reason" defaultValue="archived_from_mapping_manager" required />
+                <Input id={`archive-reason-${version.id}-${view}`} name="reason" defaultValue="archived_from_mapping_manager" required />
               </div>
             </ProtectedMappingActionForm>
             {(version.lifecycleState === "superseded" || version.lifecycleState === "archived") && (
@@ -408,13 +415,14 @@ export function VersionManagerCard({
                 pendingLabel="Rolling back..."
                 redirectTo={redirectTo}
                 versionId={version.id}
+                idSuffix={view}
               >
                 <input type="hidden" name="confirm" value="true" />
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`rollback-reason-${version.id}`}>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`rollback-reason-${version.id}-${view}`}>
                     Rollback reason
                   </label>
-                  <Input id={`rollback-reason-${version.id}`} name="reason" defaultValue="restore_prior_known_good_mapping" required />
+                  <Input id={`rollback-reason-${version.id}-${view}`} name="reason" defaultValue="restore_prior_known_good_mapping" required />
                 </div>
               </ProtectedMappingActionForm>
             )}
