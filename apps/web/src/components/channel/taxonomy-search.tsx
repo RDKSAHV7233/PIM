@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { ConnectorInstallation, MarketplaceChannel } from "@/lib/api";
 import { buildMappingRoute, type ConnectorTaxonomyOption, type MappingWizardState } from "@/lib/channel-mappings";
+import { MAX_TAXONOMY_QUERY_LENGTH } from "@/lib/mapping-taxonomy-query";
 
 type ScopeBaseState = Partial<MappingWizardState>;
 
@@ -133,6 +134,7 @@ export function MappingsFilterCard({
               id="mapping-taxonomy-q"
               name="taxonomyQ"
               defaultValue={taxonomyQ}
+              maxLength={MAX_TAXONOMY_QUERY_LENGTH}
               placeholder="Filter target category path..."
               aria-describedby="mapping-taxonomy-q-help"
             />
@@ -158,6 +160,17 @@ export function MappingsFilterCard({
           ) : null}
           {productWarning ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">{productWarning}</div>
+          ) : null}
+          {selectedChannel && installations.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-700">
+              No connector account is installed for{" "}
+              {channels.find((channel) => channel.channel === selectedChannel)?.displayName ?? selectedChannel}. A mapping saved
+              now applies to every account you connect later.{" "}
+              <Link href="/channels/connectors" className="font-medium underline underline-offset-2">
+                Connect an account
+              </Link>{" "}
+              before publishing to the channel.
+            </div>
           ) : null}
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current scope</p>
@@ -215,25 +228,28 @@ export function MappingsFilterCard({
 }
 
 export function TaxonomyAlignmentCard({
-  connectorSlug,
+  channelLabel,
   taxonomyMatches,
   unmappedCategories,
   selectedPublishCategoryId,
   baseState,
 }: {
-  connectorSlug: string;
+  channelLabel: string;
   taxonomyMatches: ConnectorTaxonomyOption[];
   unmappedCategories: ConnectorTaxonomyOption[];
   selectedPublishCategoryId?: string;
   baseState: ScopeBaseState;
 }) {
-  const categories = taxonomyMatches.length > 0 ? taxonomyMatches : unmappedCategories;
+  // With a filter applied, list only its matches: falling back to the unfiltered list made a search with no
+  // results look like it had been ignored.
+  const taxonomyQ = baseState.taxonomyQ ?? "";
+  const categories = taxonomyQ ? taxonomyMatches : taxonomyMatches.length > 0 ? taxonomyMatches : unmappedCategories;
 
   return (
     <Card>
       <CardTitle>Publish Category Options</CardTitle>
       <p className="mt-2 text-sm text-slate-600">
-        Pick the target category for {connectorSlug}. The required channel attributes below will shape the draft you create next.
+        Pick the target category for {channelLabel}. The required channel attributes below will shape the draft you create next.
       </p>
       <div className="mt-4 space-y-3">
         {categories.length > 0 ? (
@@ -267,7 +283,19 @@ export function TaxonomyAlignmentCard({
           })
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
-            Search the target taxonomy to choose the publish category for this mapping.
+            {taxonomyQ ? (
+              <>
+                No categories match “{taxonomyQ}”.{" "}
+                <Link
+                  href={buildMappingRoute({ ...baseState, step: "scope", taxonomyQ: "" })}
+                  className="font-medium text-slate-700 underline underline-offset-2"
+                >
+                  Clear the filter
+                </Link>
+              </>
+            ) : (
+              "Search the target taxonomy to choose the publish category for this mapping."
+            )}
           </div>
         )}
       </div>

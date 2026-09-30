@@ -37,7 +37,7 @@ export function WorkflowStepper({ steps, className }: { steps: WorkflowStep[]; c
                   aria-hidden="true"
                   className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold",
-                    step.tone === "complete" && "bg-emerald-500 text-white",
+                    step.tone === "complete" && "bg-emerald-700 text-white",
                     step.tone === "current" && "bg-slate-900 text-white",
                     step.tone === "pending" && "border-2 border-slate-200 text-slate-400",
                     step.tone === "rejected" && "bg-rose-500 text-white",
@@ -52,7 +52,7 @@ export function WorkflowStepper({ steps, className }: { steps: WorkflowStep[]; c
                       "block text-xs leading-tight",
                       step.tone === "complete" && "text-emerald-700",
                       step.tone === "current" && "font-semibold text-slate-900",
-                      step.tone === "pending" && "text-slate-400",
+                      step.tone === "pending" && "text-slate-500",
                       step.tone === "rejected" && "font-semibold text-rose-700",
                     )}
                   >

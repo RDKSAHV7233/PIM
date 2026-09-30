@@ -58,7 +58,7 @@ import { canManageChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
 import { formatDate } from "@/lib/format";
-import { selectWorkingDraft, workingDraftFieldMap } from "@/lib/mapping-working-draft";
+import { isWorkingDraftValidated, selectWorkingDraft, workingDraftFieldMap } from "@/lib/mapping-working-draft";
 import { buildSelectedPublishCategoryOption } from "@/lib/mapping-publish-category";
 
 export const dynamic = "force-dynamic";
@@ -152,7 +152,7 @@ const CHECKLIST_GUIDANCE: Record<string, string> = {
   "Connector account selected": "Go back to Step 1 and choose a connector account.",
   "Publish category selected": "Go back to Step 1 and select a publish category.",
   "Required fields mapped": "Go back to Step 2 and map all required fields in the draft, then save.",
-  "Draft validated": "Save your mapping draft, then validate it using the version manager below.",
+  "Draft validated": "Validate your newest draft (the most recently saved version) using the version manager below.",
   "Readiness passed": "Validate and publish the mapping draft, then resolve any blockers shown below.",
   "Fallback acknowledged if needed": "Acknowledge fallback usage in the readiness section below.",
   "Active version impact shown": "No published version exists yet. Validate and publish your first draft.",
@@ -551,6 +551,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       fallbackAckError: wizardQuery.fallbackAckError,
       showAdvanced: wizardQuery.showAdvanced,
       advancedPanel: wizardQuery.advancedPanel,
+      showAllVersions: wizardQuery.showAllVersions,
       stepUpAction,
       stepUpError: wizardQuery.stepUpError,
       stepUpVersionId,
@@ -629,7 +630,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       : 0;
     const requiredMappingsReady = viewModel ? mappedRequiredCount === viewModel.requiredTargetFields.length : false;
     const activeVersionShown = versions.some((version) => version.lifecycleState === "published");
-    const draftValidated = versions.some((version) => version.lifecycleState === "validated" || version.lifecycleState === "published");
+    const draftValidated = isWorkingDraftValidated(versions);
     const readinessPassed = Boolean((preflight?.ok ?? false) && (readiness?.ok ?? false));
     const fallbackSatisfied = !preflight?.fallbackAckRequired && !readiness?.blockers.includes("fallback_ack_required")
       ? true
@@ -667,7 +668,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         <MappingStepUpAlert message={stepDowngradeAlert} />
         <MappingDirtyNavigationGuard />
         <div className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operator flow</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Operator flow</p>
           <WorkflowStepper steps={mappingWorkflowSteps} />
         </div>
 
@@ -695,7 +696,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             />
             {selectedChannel ? (
               <TaxonomyAlignmentCard
-                connectorSlug={connectorSlug}
+                channelLabel={selectedChannelRecord?.displayName ?? selectedChannel}
                 taxonomyMatches={taxonomyMatches as ConnectorTaxonomyOption[]}
                 unmappedCategories={unmappedCategories as ConnectorTaxonomyOption[]}
                 selectedPublishCategoryId={selectedPublishCategoryId}
@@ -848,6 +849,8 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
               connectorSlug={connectorSlug}
               installationId={selectedInstallationId || undefined}
               categoryScopeLabel={selectedCategoryPath ? { id: selectedCategoryId, label: selectedCategoryPath } : undefined}
+              showAllVersions={wizardQuery.showAllVersions}
+              allVersionsHref={buildMappingRoute({ ...baseWizardState, step: "review", showAllVersions: true })}
               versions={versions}
               redirectTo={viewModel.redirectTo}
               stepUpAction={stepUpAction}

@@ -39,6 +39,19 @@ export function selectWorkingDraft<T extends MappingVersionLike>(versions: T[]):
   return working;
 }
 
+/**
+ * Whether the mapping is ready to publish as far as validation goes. The checklist used to pass when ANY
+ * version in the scope was validated or published, even if the operator's newest draft was not validated.
+ * Judge the newest working draft; with no newer draft, a live version counts as validated.
+ */
+export function isWorkingDraftValidated(versions: MappingVersionLike[]): boolean {
+  const working = selectWorkingDraft(versions);
+  if (working) {
+    return working.lifecycleState === "validated";
+  }
+  return versions.some((version) => version.lifecycleState === "published");
+}
+
 /** The working draft's source -> target field map, or null when it has none. */
 export function workingDraftFieldMap(version: MappingVersionLike | null): Record<string, FieldMapValue> | null {
   const raw = version?.mappingRules?.field_mappings;

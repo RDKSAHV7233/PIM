@@ -22,6 +22,7 @@ import {
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { computeVersionOrdinals } from "@/lib/mapping-version-label";
 import { pickActiveVersion, presentInstallationScope } from "@/lib/mapping-version-scope";
+import { selectVisibleVersions } from "@/lib/mapping-version-window";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -162,6 +163,8 @@ export function VersionManagerCard({
   fallbackAckVersionId,
   fallbackAckError,
   categoryScopeLabel,
+  showAllVersions = false,
+  allVersionsHref,
 }: {
   actorRole: AppRole;
   canWrite: boolean;
@@ -169,6 +172,9 @@ export function VersionManagerCard({
   installationId?: string;
   // Versions carry the source category's raw id as their scope; show its path when we know it.
   categoryScopeLabel?: { id: string; label: string };
+  // Long histories render only the newest versions plus anything live or validated until expanded.
+  showAllVersions?: boolean;
+  allVersionsHref?: string;
   versions: ConnectorMappingVersion[];
   redirectTo: string;
   stepUpAction: ProtectedMappingActionKind | "";
@@ -192,6 +198,7 @@ export function VersionManagerCard({
   const activeVersion = pickActiveVersion(versions, installationId);
   const otherLiveVersions = publishedVersions.filter((version) => version.id !== activeVersion?.id);
   const versionOrdinals = computeVersionOrdinals(versions);
+  const { visible: visibleVersions, hiddenCount } = selectVisibleVersions(versions, { showAll: showAllVersions });
   const columns: Column<ConnectorMappingVersion>[] = [
     {
       key: "version",
@@ -486,13 +493,22 @@ export function VersionManagerCard({
         <DataGrid
           className=""
           columns={columns}
-          rows={versions}
+          rows={visibleVersions}
           getRowKey={(version) => version.id}
           rowClassName="align-top"
           caption="Mapping version history"
           emptyState={<p className="rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">No mapping versions found for this connector/category scope.</p>}
         />
       </div>
+      {hiddenCount > 0 && allVersionsHref ? (
+        <p className="mt-3 text-xs text-slate-600">
+          Showing {visibleVersions.length} of {versions.length} versions (the newest, plus any live or validated).{" "}
+          <a href={allVersionsHref} className="font-medium text-slate-800 underline underline-offset-2">
+            Show all {versions.length} versions
+          </a>{" "}
+          to reach older or archived ones, for example to roll back.
+        </p>
+      ) : null}
     </Card>
   );
 }

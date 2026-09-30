@@ -4691,6 +4691,154 @@
           "notes": "Post-deploy verification needs one deliberate double-click on a junk scope, which creates drafts; it is best done by the team on a scratch scope."
         }
       ]
+    },
+    {
+      "incrementId": "INC-69",
+      "name": "Mapping Journey Extended-QA Follow-ups (search edges, no-account guidance, checklist accuracy, contrast, version window)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-SEARCH-EDGES-001",
+          "title": "A 500-character publish-category search crashes the page; a search with no matches shows the unfiltered list",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "89ec6435",
+          "scope": [
+            "apps/web/src/lib/mapping-taxonomy-query.ts",
+            "apps/web/src/lib/channel-mappings.ts",
+            "apps/web/src/components/channel/taxonomy-search.tsx",
+            "apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Extended QA (2026-09-30): taxonomyQ of 500 characters ended on 'Something went wrong' because ConnectorTaxonomySearchQueryDto has @MaxLength(255) and the API returned 400; a search for 'zzzznomatch' listed every category and gave no message (DEF-20, DEF-21).",
+          "proposed_fix": "clampTaxonomyQuery (255, matches the DTO) in parseMappingWizardState and maxLength on the input; with a filter set, list only its matches, show 'No categories match ...' and a clear-filter link.",
+          "team_investigation": "Engineering: read the DTO and the controller; the limit is on the API so the web must not forward longer values. TaxonomyAlignmentCard fell back to the unmapped list whenever matches were empty, which is right with no filter and wrong with one. CTO-lens (analysis, not approval): web-only, no API change.",
+          "acceptance": [
+            "A query over 255 characters is cut to 255 and the page renders.",
+            "A filter with no results says so and offers to clear it."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs (new; helpers executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (194/194 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-NO-ACCOUNT-GUIDANCE-001",
+          "title": "Lanes with no connector account give no guidance and show the raw slug 'amazon-in'",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "89ec6435",
+          "scope": [
+            "apps/web/src/components/channel/taxonomy-search.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs"
+          ],
+          "problem": "Extended QA (2026-09-30): Amazon, Flipkart and Meesho with no installed account showed only 'No installed connector account' on Step 1 and the help text said 'amazon-in' (DEF-19).",
+          "proposed_fix": "A note explains that a mapping saved now applies to accounts connected later and links to the connector portfolio; TaxonomyAlignmentCard takes channelLabel (the display name) instead of the connector slug.",
+          "team_investigation": "Engineering: proceeding without an account is intentional (scopeComplete allows it and the API stores a slug-scoped, all-accounts version), so the fix is guidance, not a block. Not changed: the publish-category list for these lanes is the tenant's own category set (data, not UI). CTO-lens: presentational.",
+          "acceptance": [
+            "A lane with no account shows the explanation and a link to connect one.",
+            "The category card names the channel by its display name."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs (new; helpers executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (194/194 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-CHECKLIST-VALIDATED-001",
+          "title": "'Draft validated: Pass' is satisfied by any validated or published version, not the newest draft",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "89ec6435",
+          "scope": [
+            "apps/web/src/lib/mapping-working-draft.ts",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs"
+          ],
+          "problem": "Extended QA (2026-09-30): with Version 1 validated and newer Versions 2 and 3 still drafts, the Review checklist said 'Draft validated: Pass' (DEF-18).",
+          "proposed_fix": "isWorkingDraftValidated judges selectWorkingDraft (the newest non-archived draft/validated version newer than the latest published one); with no newer unpublished version a live version counts as validated. Guidance text updated.",
+          "team_investigation": "Engineering: reused selectWorkingDraft so Step 2 and the checklist agree on which version is the working one. Publish itself still acts on the specific version chosen in the manager; only the checklist row changed. CTO-lens: presentational.",
+          "acceptance": [
+            "A newer unvalidated draft makes the row Blocked even if an older version is validated.",
+            "A validated newest draft, or only a live version, passes."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs (new; helpers executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (194/194 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-CONTRAST-STEPPER-001",
+          "title": "Completed stepper check marks (2.54:1), pending step labels and the 'Operator flow' label fail contrast",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "89ec6435",
+          "scope": [
+            "apps/web/src/components/ui/workflow-stepper.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs"
+          ],
+          "problem": "Extended QA contrast audit (2026-09-30, Step 3, 411 text elements): white on emerald-500 measured 2.54:1 and 'Operator flow' 4.48:1; pending step labels (slate-400) are lower still on Steps 1 and 2 (DEF-22).",
+          "proposed_fix": "Completed circle bg-emerald-700 (about 5.5:1), pending label text-slate-500, 'Operator flow' text-slate-600.",
+          "team_investigation": "Design/QA: WorkflowStepper is shared, so the darker green and pending label colour also apply to other pages that use it (for example the import wizard); the change is a shade, not a layout change. CTO-lens: presentational.",
+          "acceptance": [
+            "Completed step marks and pending labels meet 4.5:1.",
+            "The 'Operator flow' label meets 4.5:1."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs (new; helpers executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (194/194 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ]
+        },
+        {
+          "storyId": "ST-CON-MAPPINGS-VERSION-WINDOW-001",
+          "title": "Step 3 renders every version twice, so a long history makes the page several hundred KB",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "89ec6435",
+          "scope": [
+            "apps/web/src/lib/mapping-version-window.ts",
+            "apps/web/src/lib/channel-mappings.ts",
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs"
+          ],
+          "scope_expansion": [
+            "apps/web/test/integration/version-manager-mobile-actions.test.cjs -- it pinned the literal rows={versions}; now accepts rows={visibleVersions}. Its purpose (one DataGrid whose actions column serves every viewport) is unchanged."
+          ],
+          "problem": "Extended QA (2026-09-30): the Review step HTML was about 544 KB for 16 versions because DataGrid renders each row into a desktop table and a mobile card list, each with its own action forms; it grows with the history (DEF-23).",
+          "proposed_fix": "selectVisibleVersions shows the newest 10 plus every live or validated version; a 'Show all N versions' link sets allVersions=1 (new wizard flag). Ordinals still cover the full history; header counts use all versions.",
+          "team_investigation": "Engineering: the duplicate rendering is DataGrid's responsive design (PIM#622), so reducing the row count is the safe lever. Older, archived and superseded versions (rollback targets) are one click away. CTO-lens: presentational; the row set changes only for scopes with more than 10 versions. Not measured after the change (would need a deploy).",
+          "acceptance": [
+            "More than 10 versions: the newest 10 plus live and validated ones are listed with a show-all link.",
+            "Show all lists every version.",
+            "Ten or fewer versions are unchanged."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-edge-cases-def18-23.test.cjs (new; helpers executed as code plus wiring contracts; the wiring contracts failed before the change)",
+            "node apps/web/test/integration/run-all.cjs (194/194 on this branch)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "node scripts/check-integration-test-coverage.cjs (clean after registering the new test)"
+          ],
+          "notes": "DEF-24 (audit trail records read-only POSTs as mutations) and DEF-25 (session-expiry redirect target) were investigated and deliberately NOT changed: the first alters what the audit trail records and needs required-team approval; the second could not be reproduced from code and needs a runtime trace. Both are written up in docs/qa/mapping-journey-extended-qa-run-2026-09-30.md."
+        }
+      ]
     }
   ]
 }

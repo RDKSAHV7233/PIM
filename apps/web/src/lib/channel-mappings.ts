@@ -16,6 +16,7 @@ import {
 } from "@/lib/marketplace-channels";
 import { labelUndefinedSourceField } from "@/lib/mapping-source-field-label";
 import { requiredCoverageBySource } from "@/lib/mapping-required-coverage";
+import { clampTaxonomyQuery } from "@/lib/mapping-taxonomy-query";
 
 export type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
 export type ConnectorTaxonomyOption = Pick<ConnectorTaxonomyItem, "id" | "path" | "requiredAttributes">;
@@ -41,6 +42,7 @@ export interface MappingWizardQueryState {
   showHistory?: string;
   showAdvanced?: string;
   advancedPanel?: string;
+  allVersions?: string;
   step?: string;
 }
 
@@ -60,6 +62,7 @@ export interface MappingWizardState {
   taxonomyQ: string;
   showAdvanced: boolean;
   advancedPanel: MappingAdvancedPanel | "";
+  showAllVersions: boolean;
 }
 
 function normalizedWizardStep(value: string): MappingWizardStep | "" {
@@ -115,9 +118,10 @@ export function parseMappingWizardState(query: MappingWizardQueryState): Mapping
     stepUpAction,
     stepUpError: String(query.stepUpError ?? "").trim(),
     stepUpVersionId,
-    taxonomyQ: String(query.taxonomyQ ?? "").trim(),
+    taxonomyQ: clampTaxonomyQuery(query.taxonomyQ),
     showAdvanced: requestedAdvanced,
     advancedPanel,
+    showAllVersions: String(query.allVersions ?? "").trim() === "1",
   };
 }
 
@@ -153,6 +157,7 @@ export function buildMappingRoute(state: Partial<MappingWizardState> & { step?: 
     ["fallbackAckError", state.fallbackAckError],
     ["showAdvanced", state.showAdvanced ? "true" : ""],
     ["advancedPanel", state.advancedPanel],
+    ["allVersions", state.showAllVersions ? "1" : ""],
     ["stepUpAction", state.stepUpAction],
     ["stepUpError", state.stepUpError],
     ["stepUpVersionId", state.stepUpVersionId],

@@ -62,3 +62,15 @@ Archive all three (junk scope) when convenient. Archiving needs the step-up pass
 1. (Superseded) The original step asked to publish Version 1 to test rejection. That is no longer needed: publishing with blockers is by design.
 2. Publish a complete draft on this junk scope, publish a second, roll back, and archive the live one (M05-M09).
 3. Submit a publish with a wrong password and with an expired step-up (S01, S03).
+
+## Status after the DEF-18 to DEF-25 sprint
+| ID | Status |
+|---|---|
+| DEF-18 | Fixed: "Draft validated" now judges the newest working draft. |
+| DEF-19 | Fixed: guidance and a link to connect an account; channel display name instead of the raw slug. The lists of publish categories for lanes with no account are still the tenant's own categories (data, not changed). |
+| DEF-20 | Fixed: "No categories match ..." with a clear-filter link. |
+| DEF-21 | Fixed: the search text is clamped to the API's 255-character limit. |
+| DEF-22 | Fixed: stepper check mark, pending labels and the "Operator flow" label pass 4.5:1. |
+| DEF-23 | Fixed: Step 3 shows the newest 10 versions plus anything live or validated, with "Show all N versions". |
+| DEF-24 | **Not changed, needs a decision.** `common/audit/audit-log.interceptor.ts` records every non-GET request by HTTP verb, so the read-only `preflight` and `publish-readiness` POSTs are logged as mutations. Options: (a) skip audit for a short allowlist of evaluation endpoints, (b) keep logging but tag them as evaluations so the "Mutation events" count excludes them, (c) leave as is. Any of these changes what the audit trail records, so it needs required-team (security/governance) approval. |
+| DEF-25 | **Not changed, not reproduced from code.** `middleware.ts` already sets `next` to the requested pathname when no token exists. The `next=%2Fdashboard` seen on 2026-09-30 came from a request to `/dashboard`; the redirect from the mapping page to `/dashboard` mid-session was not traced. It needs a runtime reproduction with an expired session (auth/session domain, required-team approval). |

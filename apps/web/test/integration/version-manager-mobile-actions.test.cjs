@@ -65,8 +65,8 @@ function run() {
   // The single DataGrid call must still be wired to the real columns array (which carries the
   // "actions" column with Validate/Publish/Archive/Rollback) and the real versions data.
   assert(
-    /<DataGrid[\s\S]{0,200}columns=\{columns\}[\s\S]{0,200}rows=\{versions\}/.test(source),
-    "PIM#622: the single <DataGrid> must be wired to columns={columns} and rows={versions} — " +
+    /<DataGrid[\s\S]{0,200}columns=\{columns\}[\s\S]{0,200}rows=\{(?:versions|visibleVersions)\}/.test(source),
+    "PIM#622: the single <DataGrid> must be wired to columns={columns} and rows={versions} (or the windowed visibleVersions) — " +
       "the fix's whole premise is that DataGrid's own responsive rendering (which includes the " +
       "actions column) now handles every viewport width.",
   );

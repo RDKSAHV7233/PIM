@@ -169,6 +169,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-account-scope-contract.test.cjs",
   "mapping-canonical-ui.test.cjs",
   "mapping-dirty-state-ui.test.cjs",
+  "mapping-edge-cases-def18-23.test.cjs",
   "mapping-editor-component.test.cjs",
   "mapping-editor-prop-contract.test.cjs",
   "mapping-lazy-panels.test.cjs",
