@@ -3,6 +3,7 @@ import {
   getErrorAuthorityIngestTokenValidationIssue,
   getErrorAuthorityReleaseValidationIssue,
 } from "./error-authority-env";
+import { getVnextMutationValidationIssues } from "./vnext-mutation-env";
 
 type AppEnv = "development" | "staging" | "production";
 type BoolText = "true" | "false";
@@ -83,6 +84,9 @@ export interface ValidatedEnv {
   ERROR_AUTHORITY_REF_SECRET?: string;
   OBSERVABILITY_DB_POOL_APP_NAME?: string;
   ERROR_AUTHORITY_RETENTION_DAYS: number;
+  VNEXT_MUTATION_ENABLED: BoolText;
+  VNEXT_MUTATION_ALLOWLIST_JSON?: string;
+  VNEXT_MUTATION_APPROVED_RELEASE_SHA?: string;
   OPS_ALERT_WEBHOOK_URL?: string;
   OPS_ALERT_SLACK_WEBHOOK_URL?: string;
   OPS_ALERT_SECONDARY_WEBHOOK_URL?: string;
@@ -207,6 +211,9 @@ const EnvSchema = z.object({
   ERROR_AUTHORITY_REF_SECRET: z.string().min(32).optional(),
   OBSERVABILITY_DB_POOL_APP_NAME: OptionalTrimmedText,
   ERROR_AUTHORITY_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+  VNEXT_MUTATION_ENABLED: z.enum(["true", "false"] as const).default("false"),
+  VNEXT_MUTATION_ALLOWLIST_JSON: OptionalTrimmedText,
+  VNEXT_MUTATION_APPROVED_RELEASE_SHA: OptionalTrimmedText,
   OPS_ALERT_WEBHOOK_URL: OptionalTrimmedText,
   OPS_ALERT_SLACK_WEBHOOK_URL: OptionalTrimmedText,
   OPS_ALERT_SECONDARY_WEBHOOK_URL: OptionalTrimmedText,
@@ -303,6 +310,9 @@ export function validateEnv(): ValidatedEnv {
       if (releaseIssue) {
         issues.push(`ERROR_AUTHORITY_RELEASE: ${releaseIssue}`);
       }
+    }
+    for (const issue of getVnextMutationValidationIssues(data)) {
+      issues.push(issue);
     }
     if (data.OPS_ALERT_WEBHOOK_URL) {
       const parsedOpsAlertUrl = z.string().url().safeParse(data.OPS_ALERT_WEBHOOK_URL);

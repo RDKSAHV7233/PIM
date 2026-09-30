@@ -602,6 +602,36 @@ console.log("RELEASE_ACCESSOR_PASSED");
   }
 }
 
+async function runCaseVnextMutationRequiresAllowlistAndRelease(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      VNEXT_MUTATION_ENABLED: "true",
+      VNEXT_MUTATION_ALLOWLIST_JSON: "",
+      VNEXT_MUTATION_APPROVED_RELEASE_SHA: "",
+    },
+    "VNEXT_MUTATION_ALLOWLIST_JSON",
+    "Expected startup to fail when vNext mutation is enabled without an allowlist.",
+  );
+}
+
+async function runCaseVnextMutationAcceptsSingleAllowlistAndRelease(baseEnv) {
+  await runValidationOnlySuccessCase(
+    baseEnv,
+    {
+      VNEXT_MUTATION_ENABLED: "true",
+      VNEXT_MUTATION_ALLOWLIST_JSON: JSON.stringify({
+        tenantKey: "tenant-a",
+        connectorSlug: "shopify",
+        installationId: "install-1",
+        productId: "prod-1",
+      }),
+      VNEXT_MUTATION_APPROVED_RELEASE_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+    },
+    "Expected startup validation to accept one exact vNext mutation allowlist entry plus an approved release SHA.",
+  );
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -625,6 +655,8 @@ async function run() {
   await runCaseStagingErrorAuthorityRequiresIngestToken(baseEnv);
   await runCaseStagingErrorAuthorityAcceptsReleaseAndToken(baseEnv);
   await runCaseDevErrorAuthorityUsesLocalReleaseFallback(baseEnv);
+  await runCaseVnextMutationRequiresAllowlistAndRelease(baseEnv);
+  await runCaseVnextMutationAcceptsSingleAllowlistAndRelease(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
   console.log(
@@ -649,6 +681,8 @@ async function run() {
           "staging_error_authority_requires_ingest_token",
           "staging_error_authority_accepts_release_and_token",
           "development_error_authority_uses_local_release_fallback",
+          "vnext_mutation_requires_allowlist_and_release",
+          "vnext_mutation_accepts_single_allowlist_and_release",
           "valid_env_starts_api",
         ],
         checkedAt: new Date().toISOString(),

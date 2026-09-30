@@ -92,4 +92,48 @@ describe("validateEnv - credential encryption key versioning", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy.mock.calls.flat().join("\n")).toContain("PIM_AUTH_PASSWORD");
   });
+
+  it("keeps vNext mutation disabled by default without requiring allowlist config", () => {
+    process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = "a".repeat(32);
+    process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+
+    const result = validateEnv();
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(result.VNEXT_MUTATION_ENABLED).toBe("false");
+    expect(result.VNEXT_MUTATION_ALLOWLIST_JSON).toBeUndefined();
+    expect(result.VNEXT_MUTATION_APPROVED_RELEASE_SHA).toBeUndefined();
+  });
+
+  it("fails startup when vNext mutation is enabled without an allowlist and approved release", () => {
+    process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = "a".repeat(32);
+    process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+
+    expect(() => validateEnv()).toThrow("PROCESS_EXIT");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = errorSpy.mock.calls.flat().join("\n");
+    expect(output).toContain("VNEXT_MUTATION_ALLOWLIST_JSON");
+    expect(output).toContain("VNEXT_MUTATION_APPROVED_RELEASE_SHA");
+  });
+
+  it("accepts a single exact vNext mutation allowlist entry with an approved release SHA", () => {
+    process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = "a".repeat(32);
+    process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+    process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
+      tenantKey: "tenant-a",
+      connectorSlug: "shopify",
+      installationId: "install-1",
+      productId: "prod-1",
+    });
+    process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "260a89cc3475152d27821ae2334389ae88084f67";
+
+    const result = validateEnv();
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(result.VNEXT_MUTATION_ENABLED).toBe("true");
+    expect(result.VNEXT_MUTATION_ALLOWLIST_JSON).toBe(process.env.VNEXT_MUTATION_ALLOWLIST_JSON);
+    expect(result.VNEXT_MUTATION_APPROVED_RELEASE_SHA).toBe(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA);
+  });
 });
