@@ -181,6 +181,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-required-banner-ui.test.cjs",
   "mapping-step-up-ui.test.cjs",
   "mapping-step-up-wrong-password.test.cjs",
+  "mapping-access-denied-and-rollback-session.test.cjs",
   "mapping-structured-editor.test.cjs",
   "mapping-version-label.test.cjs",
   "mapping-workflow-ui.test.cjs",

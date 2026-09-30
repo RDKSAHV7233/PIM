@@ -1815,6 +1815,7 @@ export async function rollbackConnectorMappingVersionAction(formData: FormData) 
       },
     );
   } catch (error: unknown) {
+    handleSessionExpired(error, redirectTo);
     const redirectPath = withStepUpErrorQuery(redirectTo, "rollback", versionId, error);
     if (redirectPath) {
       redirect(redirectPath);

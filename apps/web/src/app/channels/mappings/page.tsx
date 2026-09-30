@@ -60,6 +60,7 @@ import { getServerSession } from "@/lib/server-session";
 import { formatDate } from "@/lib/format";
 import { isWorkingDraftValidated, selectWorkingDraft, workingDraftFieldMap } from "@/lib/mapping-working-draft";
 import { buildSelectedPublishCategoryOption } from "@/lib/mapping-publish-category";
+import { classifyMappingLoadFailure, describeMappingAccessDenied } from "@/lib/mapping-access";
 
 export const dynamic = "force-dynamic";
 
@@ -880,8 +881,31 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/channels/mappings", error));
+    if (error instanceof ApiHttpError) {
+      const failure = classifyMappingLoadFailure(error);
+      if (failure === "sign_in") {
+        redirect(buildLoginRedirect("/channels/mappings", error));
+      }
+      if (failure === "access_denied") {
+        const denied = describeMappingAccessDenied(actorRole, error.body);
+        return (
+          <div className="space-y-4">
+            <PageHeader
+              title="Channel Mapping"
+              breadcrumb={
+                <>
+                  <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<span className="font-semibold text-slate-700">Mappings</span>
+                </>
+              }
+            />
+            <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">{denied.title}</p>
+              <p className="mt-1">{denied.body}</p>
+              <Link href="/channels" className="mt-2 inline-block py-1 font-medium underline">Back to Channels</Link>
+            </div>
+          </div>
+        );
+      }
     }
     throw error;
   }

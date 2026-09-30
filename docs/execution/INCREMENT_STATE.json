@@ -4972,6 +4972,47 @@
           "notes": "Publish/archive share the fix through the classifier. Rollback has no session-expiry handling at all (an expired session there reaches the generic error page); left unchanged and noted in the scratch-stack QA doc."
         }
       ]
+    },
+    {
+      "incrementId": "INC-72",
+      "name": "Mapping Journey Scratch-Stack Follow-up (role denial message, rollback session expiry)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-ACCESS-DENIED-ROLLBACK-SESSION-001",
+          "title": "A role without mapping access is explained on the page instead of being bounced to the dashboard; rollback handles expired sessions",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "46420946",
+          "scope": [
+            "apps/web/src/lib/mapping-access.ts",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/app/actions.ts",
+            "apps/web/test/integration/mapping-access-denied-and-rollback-session.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3).",
+            "apps/web/test/e2e/journey-bulk-import-to-mapping.spec.js -- step 8 passed only by accident after the old 403 redirect (a dashboard heading matched its loose locator); it now also accepts the explicit permission alert. Found by the first CI run of this PR."
+          ],
+          "problem": "DEF-28: the mappings page sent every 401/403 to /login?reason=forbidden; /login redirects a signed-in user to /dashboard, so a viewer landed on the dashboard with only a generic 'restricted' banner. Rollback: rollbackConnectorMappingVersionAction never called handleSessionExpired, unlike publish and archive.",
+          "proposed_fix": "lib/mapping-access.ts classifies a load failure: 401 and TENANT_SUSPENDED still redirect via buildLoginRedirect; any other 403 renders an in-page alert naming the roles with access. Rollback calls handleSessionExpired first in its catch block, before step-up handling (same order as publish/archive).",
+          "team_investigation": "QA: reproduced on the local scratch stack as viewer. UX: message names the roles and the user's own role, with a link back to Channels; the sidebar already hides the Mappings link for these roles. CTO-lens (analysis, not approval): touches the auth/permission error path, so a person should decide on the required-team label; the change only stops a 403 from being treated as a sign-in problem, it does not widen access.",
+          "acceptance": [
+            "A 403 for a signed-in role renders an explanation on /channels/mappings.",
+            "A 401 still redirects to sign-in with reason=session_expired.",
+            "A suspended tenant still routes through the login helper.",
+            "An expired session during rollback redirects to sign-in."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-access-denied-and-rollback-session.test.cjs (helper executed as code plus wiring contracts)",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=197 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "Browser on the local scratch app: viewer stays on /channels/mappings with the explanation; editor still gets the wizard; a stale session still redirects to login with session_expired"
+          ],
+          "notes": "The rollback expiry path is covered by the source-contract test only; it was not exercised in a browser."
+        }
+      ]
     }
   ]
 }
