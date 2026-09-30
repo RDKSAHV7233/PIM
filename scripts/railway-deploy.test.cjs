@@ -12,6 +12,7 @@ const {
   classifyDeployTargets,
   findOverlappingServiceTargets,
   formatRailwayVariablePairs,
+  isRetryableRailwayCliResult,
   isRetryableRailwayDeployError,
   normalizeRailwayVariablesPayload,
   normalizeServiceTarget,
@@ -178,6 +179,22 @@ function main() {
     false,
     "Non-timeout Railway failures should not be retried",
   );
+  assert.equal(
+    isRetryableRailwayCliResult({
+      status: 1,
+      stderr: "Failed to fetch: error decoding response body\nCaused by:\n    expected value at line 1 column 1",
+    }),
+    true,
+    "Railway CLI response decoding failures should be retryable for variable operations.",
+  );
+  assert.equal(
+    isRetryableRailwayCliResult({
+      status: 1,
+      stderr: "Unauthorized. Please check that your RAILWAY_TOKEN is valid.",
+    }),
+    false,
+    "Railway auth failures should not be retried for variable operations.",
+  );
 
   const legacyConfig = resolveConfig(
     {
@@ -312,6 +329,47 @@ function main() {
       "--service",
     ],
   );
+
+  const originalSpawnSyncForTransientVariableSet = childProcess.spawnSync;
+  let transientVariableSetCalls = 0;
+  childProcess.spawnSync = () => {
+    transientVariableSetCalls += 1;
+    if (transientVariableSetCalls === 1) {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: "Failed to fetch: error decoding response body\nCaused by:\n    expected value at line 1 column 1",
+        error: null,
+      };
+    }
+    return {
+      status: 0,
+      stdout: "Variables set successfully\n",
+      stderr: "",
+      error: null,
+    };
+  };
+  try {
+    assert.equal(
+      setRailwayVariablesAcrossServiceTargets(
+        { ...config, deployRetries: 2, deployRetryDelayMs: 0 },
+        { RAILWAY_TOKEN: "token_123" },
+        {
+          label: "web service env vars",
+          serviceTargets: ["app-vexa"],
+          pairs: [["PIM_API_BASE_URL", "https://api.example.test/api/v1"]],
+          safeDisplayPairs: ["PIM_API_BASE_URL=https://api.example.test/api/v1"],
+          failureMessage: "manual fallback required",
+          successMessage: "transient retry sync succeeded",
+        },
+      ),
+      true,
+      "Railway variable sync should retry transient CLI fetch/JSON decode failures.",
+    );
+  } finally {
+    childProcess.spawnSync = originalSpawnSyncForTransientVariableSet;
+  }
+  assert.equal(transientVariableSetCalls, 2);
 
   assert.deepEqual(
     resolveErrorAuthorityServiceVariables({

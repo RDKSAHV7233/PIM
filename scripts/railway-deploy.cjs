@@ -303,6 +303,25 @@ function isRetryableRailwayDeployError(error) {
   );
 }
 
+function isRetryableRailwayCliResult(result) {
+  const combined = [
+    result && typeof result === "object" ? String(result.error?.message ?? "") : "",
+    result && typeof result === "object" ? String(result.error?.code ?? "") : "",
+    result && typeof result === "object" ? String(result.stdout ?? "") : "",
+    result && typeof result === "object" ? String(result.stderr ?? "") : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return (
+    combined.includes("etimedout") ||
+    combined.includes("timed out") ||
+    combined.includes("failed to fetch") ||
+    combined.includes("fetch_error") ||
+    combined.includes("error decoding response body") ||
+    combined.includes("expected value at line 1 column 1")
+  );
+}
+
 function isServiceNotFoundRailwayError(error) {
   const combined = [
     error instanceof Error ? error.message : String(error),
@@ -332,6 +351,28 @@ function sleep(ms) {
     return;
   }
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function runRailwayCommandCaptureWithRetry(config, args, options) {
+  const maxAttempts = Math.max(1, Number(config.deployRetries) || 1);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = childProcess.spawnSync(config.railwayBin, args, {
+      cwd: options.cwd,
+      env: options.env,
+      encoding: "utf8",
+    });
+    if (!result.error && result.status === 0) {
+      return result;
+    }
+    if (!isRetryableRailwayCliResult(result) || attempt === maxAttempts) {
+      return result;
+    }
+    console.warn(
+      `[railway-deploy] ${options.label} Railway CLI call failed with a transient fetch/response error on attempt ${attempt}/${maxAttempts}. Retrying in ${config.deployRetryDelayMs}ms...`,
+    );
+    sleep(config.deployRetryDelayMs);
+  }
+  throw new Error(`[railway-deploy] ${options.label} retry loop exited unexpectedly.`);
 }
 
 function runDeployCommandWithRetry(command, options) {
@@ -612,10 +653,10 @@ function readRailwayVariablesAcrossServiceTargets(config, railwayEnv, serviceTar
       config.projectId,
       "--json",
     ];
-    const result = childProcess.spawnSync(config.railwayBin, args, {
+    const result = runRailwayCommandCaptureWithRetry(config, args, {
       cwd: config.repoRoot,
       env: railwayEnv,
-      encoding: "utf8",
+      label,
     });
     lastResult = result;
     if (!result.error && result.status === 0) {
@@ -780,10 +821,10 @@ function setRailwayVariablesAcrossServiceTargets(config, railwayEnv, options) {
     ];
 
     console.log(`[railway-deploy] Setting ${label} on '${serviceTarget}': ${safeDisplayPairs.join(" ")}`);
-    const result = childProcess.spawnSync(config.railwayBin, args, {
+    const result = runRailwayCommandCaptureWithRetry(config, args, {
       cwd: config.repoRoot,
       env: railwayEnv,
-      encoding: "utf8",
+      label,
     });
     lastResult = result;
     if (result.stdout) {
@@ -974,6 +1015,7 @@ module.exports = {
   findOverlappingServiceTargets,
   formatRailwayVariablePairs,
   getChangedFiles,
+  isRetryableRailwayCliResult,
   isRetryableRailwayDeployError,
   isServiceNotFoundRailwayError,
   main,
