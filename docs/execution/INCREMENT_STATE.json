@@ -4096,6 +4096,92 @@
       ]
     },
     {
+      "incrementId": "INC-62",
+      "name": "ADR-0008 §2 Quarterly Schema Review — Meesho / Myntra / Nykaa (2026-Q4)",
+      "status": "in_progress",
+      "reviewPlan": "docs/execution/ADR0008_QUARTERLY_REVIEW_2026-Q4.md",
+      "openedDate": "2026-10-01",
+      "blockedBy": "partner/PO template verification — cannot update templateVerifiedAt without real marketplace comparison",
+      "stories": [
+        {
+          "storyId": "ST-INC62-01",
+          "title": "Quarterly review and templateVerifiedAt update for Meesho (7 templates — kurtis/tshirts/sarees/casual-shoes/leggings/home-decor/general)",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "PO",
+          "blockedBy": "Requires PO to re-download templates from supplier.meesho.com and diff column headers/allowedValues against code baseline",
+          "acceptance": [
+            "PO downloads current Meesho category templates and completes diff checklist in ADR0008_QUARTERLY_REVIEW_2026-Q4.md",
+            "templateVerifiedAt updated to verification date for all 7 templates in meesho-category-templates.ts",
+            "node scripts/generate-connector-inventory.cjs — meesho schema-template-stale INFO cleared",
+            "If structural changes found: columns/allowedValues updated and schemaVersion bumped"
+          ]
+        },
+        {
+          "storyId": "ST-INC62-02",
+          "title": "Quarterly review and templateVerifiedAt update for Myntra (4 categories — apparel/footwear/ethnic-wear/default)",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "PO + Myntra account manager",
+          "blockedBy": "Requires Myntra account-manager kickoff (gate ST-MYNTRA-001) and Postman collection/sandbox verification of allowedValues",
+          "acceptance": [
+            "Myntra account manager confirms current field spec for apparel/footwear/ethnic-wear",
+            "allowedValues verified against Listing Management API in sandbox",
+            "[NEEDS_PARTNER_CONFIRMATION] annotations removed from myntra-category-rules.ts",
+            "templateVerifiedAt updated to verification date for all 4 categories",
+            "node scripts/generate-connector-inventory.cjs — myntra schema-template-stale INFO cleared"
+          ]
+        },
+        {
+          "storyId": "ST-INC62-03",
+          "title": "Quarterly review and templateVerifiedAt update for Nykaa (6 templates — lipstick/foundation/skincare/haircare/personal-care/default)",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "PO",
+          "blockedBy": "Requires PO to re-download templates from seller.nykaa.com using real seller account and diff column headers/allowedValues",
+          "acceptance": [
+            "PO downloads current Nykaa category templates using real seller.nykaa.com account and completes diff checklist",
+            "[NEEDS_PO_VERIFICATION from real seller account] annotations removed from nykaa-category-templates.ts",
+            "templateVerifiedAt updated to verification date for all 6 templates",
+            "node scripts/generate-connector-inventory.cjs — nykaa schema-template-stale INFO cleared"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-61",
+      "name": "ADR-0008 §1 ProductTypeSchema bridges — Myntra + Nykaa",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-INC61-01",
+          "title": "Add ruleToProductTypeSchema bridge to myntra-category-rules + wire fetchProductTypeSchema in myntra.connector.ts",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "7f3ea77",
+          "tests_passed": [
+            "npx tsc --noEmit -p apps/api/tsconfig.json",
+            "node scripts/generate-connector-inventory.cjs — 0 WARNINGs, 0 ERRORs"
+          ],
+          "acceptance": "hasBridge=true for myntra; fetchProductTypeSchema() present in MyntraConnector"
+        },
+        {
+          "storyId": "ST-INC61-02",
+          "title": "Add templateToProductTypeSchema bridge to nykaa-category-templates + wire fetchProductTypeSchema in nykaa.connector.ts",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "7f3ea77",
+          "tests_passed": [
+            "npx tsc --noEmit -p apps/api/tsconfig.json",
+            "node scripts/generate-connector-inventory.cjs — 0 WARNINGs, 0 ERRORs"
+          ],
+          "acceptance": "hasBridge=true for nykaa; fetchProductTypeSchema() present in NykaaConnector"
+        }
+      ]
+    },
+    {
       "incrementId": "INC-60",
       "name": "Amazon India implementationStatus Promotion — stub → full",
       "status": "completed",

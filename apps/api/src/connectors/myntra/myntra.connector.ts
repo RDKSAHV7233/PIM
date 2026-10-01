@@ -31,11 +31,12 @@ import {
   ConnectorInterface,
   ConnectorIssue,
   ProductPayload,
+  ProductTypeSchema,
   SubmissionRef,
   SubmissionStatusUpdate,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
-import { getMyntraCategoryRule } from './myntra-category-rules';
+import { getMyntraCategoryRule, ruleToProductTypeSchema } from './myntra-category-rules';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 
@@ -248,6 +249,15 @@ export class MyntraConnector implements ConnectorInterface {
     } catch {
       return { outcome: 'unavailable', reasonCode: 'UNKNOWN_NETWORK_ERROR' };
     }
+  }
+
+  // ─── ADR-0008 §1 bridge ───────────────────────────────────────────────────────
+
+  async fetchProductTypeSchema(
+    _ctx: ConnectorContext,
+    productType: string,
+  ): Promise<ProductTypeSchema> {
+    return ruleToProductTypeSchema(getMyntraCategoryRule(productType));
   }
 
   // ─── required: validateProduct ───────────────────────────────────────────────

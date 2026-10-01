@@ -25,6 +25,7 @@ import {
   ConnectorIssue,
   ExportFile,
   ProductPayload,
+  ProductTypeSchema,
   ProductVariantPayload,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
@@ -32,6 +33,7 @@ import {
   getNykaaCategoryTemplate,
   isNykaaTemplateStale,
   NykaaCategoryTemplate,
+  templateToProductTypeSchema,
 } from './nykaa-category-templates';
 
 // ─── error map ────────────────────────────────────────────────────────────────
@@ -162,6 +164,15 @@ export class NykaaConnector implements ConnectorInterface {
     // The UI shows a "manual upload" notice rather than a credential-entry form.
     // Update this method and return true when Nykaa v2 API credentials arrive.
     return false;
+  }
+
+  // ─── ADR-0008 §1 bridge ───────────────────────────────────────────────────────
+
+  async fetchProductTypeSchema(
+    _ctx: ConnectorContext,
+    productType: string,
+  ): Promise<ProductTypeSchema> {
+    return templateToProductTypeSchema(getNykaaCategoryTemplate(productType));
   }
 
   async validateProduct(

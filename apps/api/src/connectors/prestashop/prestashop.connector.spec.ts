@@ -1,6 +1,15 @@
 import type { ConnectorContext, ProductPayload } from "../../connector-framework/connector.interface";
 import { PrestaShopConnector, PrestaShopPublishError } from "./prestashop.connector";
 
+// Prevent real DNS lookups from url-safety's validateConnectorTargetUrl.
+// Without this, resolve4/resolve6 calls for non-resolving fixture hosts
+// (shop.example.com) can hang or time out in CI network environments,
+// causing test timeouts and cascading mock-state corruption across tests.
+jest.mock("../../common/security/url-safety", () => ({
+  validateConnectorTargetUrl: jest.fn().mockResolvedValue("https://shop.example.com"),
+  validateWebhookTargetUrl: jest.fn().mockResolvedValue("https://shop.example.com"),
+}));
+
 const TEST_KEY = "f".repeat(64);
 
 function makeConnectorWithDb(mockDbClient: any) {

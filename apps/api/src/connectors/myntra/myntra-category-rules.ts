@@ -1,4 +1,5 @@
 // apps/api/src/connectors/myntra/myntra-category-rules.ts
+import { ProductTypeSchema } from '../../connector-framework/connector.interface';
 //
 // Fashion attribute validation rules for Myntra Listing Management.
 //
@@ -275,4 +276,24 @@ const DEFAULT_RULE: MyntraCategoryRule = {
 export function getMyntraCategoryRule(productType: string): MyntraCategoryRule {
   const key = String(productType ?? '').trim().toLowerCase();
   return MYNTRA_CATEGORY_RULES[key] ?? DEFAULT_RULE;
+}
+
+// ─── ADR-0008 §1 bridge ───────────────────────────────────────────────────────
+
+export function ruleToProductTypeSchema(rule: MyntraCategoryRule): ProductTypeSchema {
+  const requiredAttributes = rule.fields.filter((f) => f.required).map((f) => f.fieldPath);
+  const optionalAttributes = rule.fields.filter((f) => !f.required).map((f) => f.fieldPath);
+  const validValues: Record<string, string[]> = {};
+  for (const field of rule.fields) {
+    if (field.allowedValues && field.allowedValues.length > 0) {
+      validValues[field.fieldPath] = field.allowedValues;
+    }
+  }
+  return {
+    productType: rule.slug,
+    requiredAttributes,
+    optionalAttributes,
+    validValues,
+    schemaVersion: `LOCAL-${rule.templateVerifiedAt}`,
+  };
 }

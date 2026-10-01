@@ -1,4 +1,5 @@
 // apps/api/src/connectors/nykaa/nykaa-category-templates.ts
+import { ProductTypeSchema } from '../../connector-framework/connector.interface';
 //
 // Category-specific Excel template definitions for Nykaa Seller Portal upload.
 //
@@ -370,4 +371,24 @@ export function isNykaaTemplateStale(template: NykaaCategoryTemplate): boolean {
   const verifiedAt = new Date(template.templateVerifiedAt);
   const staleAfterMs = 60 * 24 * 60 * 60 * 1000; // 60 days
   return Date.now() - verifiedAt.getTime() > staleAfterMs;
+}
+
+// ─── ADR-0008 §1 bridge ───────────────────────────────────────────────────────
+
+export function templateToProductTypeSchema(template: NykaaCategoryTemplate): ProductTypeSchema {
+  const requiredAttributes = template.columns.filter((c) => c.required).map((c) => c.key);
+  const optionalAttributes = template.columns.filter((c) => !c.required).map((c) => c.key);
+  const validValues: Record<string, string[]> = {};
+  for (const col of template.columns) {
+    if (col.allowedValues && col.allowedValues.length > 0) {
+      validValues[col.key] = col.allowedValues;
+    }
+  }
+  return {
+    productType: template.slug,
+    requiredAttributes,
+    optionalAttributes,
+    validValues,
+    schemaVersion: `LOCAL-${template.templateVerifiedAt}`,
+  };
 }
