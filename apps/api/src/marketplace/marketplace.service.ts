@@ -3957,9 +3957,9 @@ export class MarketplaceService implements OnModuleInit {
       if (!existingGid) {
         failClosed("missing_existing_product_gid");
       }
-      const fetchProductTypeSchema = connector.fetchProductTypeSchema!;
-      const applyControlledMutation = connector.applyControlledMutation!;
-      const captureRollbackSnapshot = connector.captureRollbackSnapshot!;
+      const fetchProductTypeSchema = connector.fetchProductTypeSchema!.bind(connector);
+      const applyControlledMutation = connector.applyControlledMutation!.bind(connector);
+      const captureRollbackSnapshot = connector.captureRollbackSnapshot!.bind(connector);
       const productGid = existingGid!;
 
       const ctx = this.connectorFramework.buildContextForInstallation({
