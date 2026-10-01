@@ -52,10 +52,30 @@
 // Or set ADMIN_TOKEN (e.g. your browser session's pim_access_token cookie
 // value) instead of WORKSPACE_SLUG/ADMIN_USER_ID/ADMIN_PASSWORD.
 
-const SYNTHETIC_DOMAINS = ["@pim1.test", "@vexa-pim.local"];
+// 2026-10-01 addition: a live dry-run against production (1,855 total users,
+// 1,834 inactive — the backlog had grown far past the ~300 estimated on
+// 2026-09-26) flagged 17 more inactive accounts on three domains this list
+// didn't cover yet, all prefixed `res05b-` and dated 2026-08-26/27 — tied to
+// the RES-05B k6 load-test credential-distribution effort (see
+// scripts/res-05b-k6-load-proof.js and the dedicated
+// PIM1-res-05b-k6-credential-distribution-20260827 worktree), a project
+// closed on 2026-08-29 with zero open issues. Same leak class: a load-test
+// setup step created real AuthIdentity rows and nothing ever deleted them.
+const SYNTHETIC_DOMAINS = [
+  "@pim1.test",
+  "@vexa-pim.local",
+  "@pim1.local",
+  "@load.local",
+  "@vexa.local",
+];
 const PAGE_LIMIT = 200;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 500;
+// At ~50 or ~300 accounts, firing purge calls back-to-back with no delay
+// didn't matter. At 1,800+, hammering an admin endpoint with zero spacing
+// risks tripping a rate limiter partway through the run and turning a clean
+// purge into a confusing pile of partial failures — so pace it.
+const PURGE_THROTTLE_MS = 150;
 
 function parseArgs(argv) {
   return { execute: argv.slice(2).includes("--execute") };
@@ -217,6 +237,7 @@ async function main() {
   const failures = [];
   for (const u of purgeable) {
     try {
+      await sleep(PURGE_THROTTLE_MS);
       const res = await purgeUser(apiBase, token, u.userId);
       if (res.status === 200) {
         purged += 1;

@@ -144,10 +144,48 @@ async function testTransientFailureIsRetriedNotDropped() {
   console.log("testTransientFailureIsRetriedNotDropped passed");
 }
 
+// 2026-10-01: a live dry-run against production found 17 more leftover
+// accounts on three domains the original two-domain list didn't cover —
+// res05b-* prefixed, tied to the closed RES-05B k6 load-test effort. This
+// locks in that the extended list actually catches them.
+const RES05B_PAGE = [
+  { userId: "res05b-admin-1787821844890-e587bcfa@pim1.local", isActive: false, createdAt: "2026-08-27" },
+  { userId: "res05b-load-1787797378-1@load.local", isActive: false, createdAt: "2026-08-27" },
+  { userId: "res05b-closer-super-1787765754@vexa.local", isActive: false, createdAt: "2026-08-26" },
+  { userId: "admin@realcompany.com", isActive: true, createdAt: "2026-01-01" },
+];
+
+async function testRes05bDomainsAreCaught() {
+  global.fetch = async (url, opts) => {
+    const u = new URL(url);
+    if (u.pathname === "/api/v1/auth/login") return jsonResponse(201, { accessToken: "fake-token" });
+    if (u.pathname === "/api/v1/admin/workspace/users" && (!opts?.method || opts.method === "GET")) {
+      return jsonResponse(200, { items: RES05B_PAGE, limit: 200, nextCursor: null });
+    }
+    throw new Error(`unexpected fetch in testRes05bDomainsAreCaught: ${opts?.method || "GET"} ${url}`);
+  };
+  process.env.API_BASE = "https://fake-api.example";
+  process.env.ADMIN_TOKEN = "provided-directly";
+  process.argv = ["node", "script"]; // dry run
+
+  const SCRIPT_PATH = path.join(__dirname, "purge-leftover-test-users.cjs");
+  delete require.cache[require.resolve(SCRIPT_PATH)];
+  const { main } = require(SCRIPT_PATH);
+  const output = await withCapturedLogs(main);
+
+  assert.match(output, /Purgeable \(inactive \+ synthetic domain\): 3/, "all 3 res05b-* accounts should be purgeable");
+  assert.ok(
+    !/do NOT match a known synthetic domain/.test(output),
+    "none of the res05b-* accounts should be left for manual review anymore",
+  );
+  console.log("testRes05bDomainsAreCaught passed");
+}
+
 async function run() {
   await testDryRun();
   await testExecutePurgesOnlySyntheticAccounts();
   await testTransientFailureIsRetriedNotDropped();
+  await testRes05bDomainsAreCaught();
   console.log(
     JSON.stringify(
       {
@@ -158,6 +196,7 @@ async function run() {
           "execute_purges_only_synthetic_domain_accounts",
           "real_deactivated_human_never_purged_in_either_mode",
           "transient_failure_is_retried_not_silently_dropped",
+          "res05b_domains_pim1_local_load_local_vexa_local_are_caught",
         ],
         checkedAt: new Date().toISOString(),
       },
