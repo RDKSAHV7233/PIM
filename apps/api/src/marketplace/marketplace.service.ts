@@ -1101,7 +1101,7 @@ export class MarketplaceService implements OnModuleInit {
     // processing failure, never decremented), so `${id}:${retryCount}` is unique
     // per attempt.  A dedicated processingAttempt column is cleaner semantically
     // but adds a schema migration; retryCount satisfies the uniqueness invariant.
-    await this.enqueueExportJobForExecution(job.id, simulation.channel, job.retryCount);
+    await this.enqueueExportJobForExecution(job.id, simulation.channel, job.retryCount, dto.executionMode === "controlled_vnext_required" ? "controlled_vnext_required" : "normal");
     return job;
   }
 

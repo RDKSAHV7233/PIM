@@ -666,6 +666,7 @@ async function run() {
         channel: "shopify",
         installationId: config.installation,
         fallbackAcknowledged: true,
+        executionMode: "controlled_vnext_required",
       },
       timeoutMs: 45000,
     });

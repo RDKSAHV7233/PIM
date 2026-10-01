@@ -27,4 +27,8 @@ export class CreateExportJobDto {
   @IsString()
   @MaxLength(64)
   installationId?: string;
+
+  @IsOptional()
+  @IsIn(["normal", "controlled_vnext_required"])
+  executionMode?: "normal" | "controlled_vnext_required";
 }
