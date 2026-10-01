@@ -14,6 +14,38 @@ type ControlledOutcome = {
   correlationId?: string;
 };
 
+function rollbackSnapshot(imageId: string, imageSrc: string) {
+  return {
+    capturedAt: "2026-10-01T00:00:00.000Z",
+    product: {
+      id: "gid://shopify/Product/999",
+      title: "Classic Tee",
+      handle: "classic-tee-sku-1",
+      descriptionHtml: "A tee",
+      status: "ACTIVE",
+      vendor: "Acme",
+      productType: "default",
+      tags: [],
+      seo: null,
+      options: [{ name: "Title", position: 1, values: ["Default Title"] }],
+      variants: [
+        {
+          id: "gid://shopify/ProductVariant/1",
+          sku: "SKU-1",
+          price: "799.00",
+          compareAtPrice: "999.00",
+          barcode: null,
+          inventoryPolicy: "CONTINUE",
+          taxable: true,
+          selectedOptions: [{ name: "Title", value: "Default Title" }],
+          inventoryItem: { id: "gid://shopify/InventoryItem/1", sku: "SKU-1", tracked: false },
+        },
+      ],
+      images: [{ id: imageId, src: imageSrc, altText: "Classic Tee" }],
+    },
+  };
+}
+
 function setExactGates(overrides: Record<string, string | undefined> = {}) {
   process.env.APP_ENV = "test";
   process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "false";
@@ -25,6 +57,7 @@ function setExactGates(overrides: Record<string, string | undefined> = {}) {
     productId: "prod-1",
   });
   process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = GOOD_SHA;
+  process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
   process.env.RAILWAY_GIT_COMMIT_SHA = GOOD_SHA;
 
   for (const [key, value] of Object.entries(overrides)) {
@@ -39,6 +72,7 @@ function setExactGates(overrides: Record<string, string | undefined> = {}) {
 function makeSafetyService(options: {
   accessToken?: string;
   applyControlledMutationImpl?: (ctx: { getAccessToken: () => Promise<string> }) => Promise<unknown>;
+  captureRollbackSnapshotImpl?: () => Promise<unknown>;
 } = {}) {
   const db = {
     connectorSubmission: {
@@ -99,6 +133,12 @@ function makeSafetyService(options: {
           isAsync: false,
         })),
     ),
+    captureRollbackSnapshot: jest.fn().mockImplementation(
+      options.captureRollbackSnapshotImpl ??
+        jest.fn()
+          .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/before", "https://cdn.example.com/before.jpg"))
+          .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/after", "https://cdn.example.com/after.jpg")),
+    ),
   };
   const connectorRegistry = {
     getConnector: jest.fn().mockReturnValue(connector),
@@ -148,6 +188,7 @@ function runControlled(
     tenantKey?: string;
     productId?: string;
     installationId?: string;
+    productPayload?: Record<string, unknown>;
   } = {},
 ): Promise<ControlledOutcome> {
   return (
@@ -176,10 +217,11 @@ function runControlled(
       mainImageUrl: "https://cdn.example.com/tee.jpg",
       attributes: {},
       productType: "default",
+      ...overrides.productPayload,
     },
     categoryId: "cat-1",
     installation: { id: overrides.installationId ?? "inst-1", connectorId: "conn-1" },
-    existingGid: null,
+    existingGid: "gid://shopify/Product/999",
   });
 }
 
@@ -252,6 +294,11 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       env: { RAILWAY_GIT_COMMIT_SHA: undefined },
       reason: "release_not_approved",
     },
+    {
+      name: "allowed field class missing",
+      env: { VNEXT_MUTATION_ALLOWED_FIELD_CLASS: undefined },
+      reason: "field_class_not_allowed",
+    },
   ])("cannot mutate when the $name gate is missing", async ({ env, reason }) => {
     setExactGates(env);
     const { svc, connectorFramework, connectorRegistry, connector } = makeSafetyService();
@@ -298,12 +345,21 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
     setExactGates();
     const { svc, connector } = makeSafetyService();
 
-    await expect(runControlled(svc)).resolves.toEqual({
+    await expect(runControlled(svc)).resolves.toMatchObject({
       outcome: "executed",
       result: { externalRef: "gid://shopify/Product/999", status: "SUCCESS", isAsync: false },
       correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
+      fieldClass: "image",
+      mutationCount: 1,
     });
     expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
+    expect(connector.applyControlledMutation).toHaveBeenCalledWith(
+      expect.anything(),
+      { files: [expect.objectContaining({ originalSource: "https://cdn.example.com/tee.jpg" })] },
+      { id: "gid://shopify/Product/999" },
+      expect.objectContaining({ correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/) }),
+    );
+    expect(connector.captureRollbackSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it("documents retry idempotency through ConnectorSubmission's tenant/installation/idempotency unique key", () => {
@@ -359,13 +415,14 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
     );
   });
 
-  it("falls back to exactly one legacy write when a gated vNext attempt fails before completion", async () => {
+  it("fails closed instead of falling back to a legacy write when authorized vNext fails before readback", async () => {
     setExactGates();
-    const { svc, connector, connectorFramework, logger } = makeSafetyService({
+    const { svc, db, connector, connectorFramework, logger } = makeSafetyService({
       applyControlledMutationImpl: async () => {
         throw new Error(`provider rejected token ${TOKEN_VALUE}`);
       },
     });
+    db.connectorSubmission.findFirst.mockResolvedValueOnce({ externalRef: "gid://shopify/Product/999" });
     jest.spyOn(svc as any, "buildConnectorProductPayload").mockResolvedValue({
       sku: "SKU-1",
       title: "Classic Tee",
@@ -380,26 +437,35 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       productType: "default",
     });
 
-    await expect(runRecordConnectorSubmission(svc)).resolves.toEqual({
-      kind: "success",
-      installationId: "inst-1",
-      submissionId: "submission-1",
-    });
+    await expect(runRecordConnectorSubmission(svc)).rejects.toMatchObject({ name: "ShopifyControlledMutationError" });
 
     expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
-    expect(connectorFramework.publish).toHaveBeenCalledTimes(1);
+    expect(connectorFramework.publish).not.toHaveBeenCalled();
     expect(connectorFramework.update).not.toHaveBeenCalled();
     expect(connectorFramework.recordSubmissionAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      status: "SUCCESS",
-      externalRef: "gid://shopify/Product/legacy",
+      status: "ERROR",
+      payloadSnapshot: expect.objectContaining({
+        __vnextMutationAudit: expect.objectContaining({
+          correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
+          status: "failed",
+          rollbackModel: "strict_one_write_no_automatic_rollback",
+          maxPrimaryProviderWrites: 1,
+          automaticRollback: false,
+          legacyFallbackAfterVnextStart: false,
+          retryAfterAmbiguousProviderResult: false,
+          fieldClass: "image",
+          payloadChecksum: expect.any(String),
+          failureCode: "SHOPIFY_VNEXT_MUTATION_FAILED",
+        }),
+      }),
     }));
     expect(logger.warn).toHaveBeenCalledWith(
-      "shopify_vnext_controlled_mutation_failed",
+      "shopify_vnext_mutation_failed",
       expect.objectContaining({ errorName: "Error" }),
     );
   });
 
-  it("contains controlled branch failures as no-vNext-mutation skips without leaking thrown secrets", async () => {
+  it("contains controlled branch failures as sanitized hard failures without leaking thrown secrets", async () => {
     setExactGates();
     const { svc, connector, logger } = makeSafetyService({
       applyControlledMutationImpl: async () => {
@@ -407,14 +473,10 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       },
     });
 
-    await expect(runControlled(svc)).resolves.toEqual({
-      outcome: "skipped",
-      reason: "controlled_mutation_failed",
-      correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
-    });
+    await expect(runControlled(svc)).rejects.toMatchObject({ name: "ShopifyControlledMutationError" });
     expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
-      "shopify_vnext_controlled_mutation_failed",
+      "shopify_vnext_mutation_failed",
       expect.objectContaining({
         errorName: "Error",
         installationId: "inst-1",
@@ -422,6 +484,49 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       }),
     );
     expect(JSON.stringify([logger.info.mock.calls, logger.warn.mock.calls, logger.error.mock.calls])).not.toContain(TOKEN_VALUE);
+  });
+
+  it("blocks image plus another changed product field instead of silently stripping the unauthorized field", async () => {
+    setExactGates();
+    const { svc, connector, logger } = makeSafetyService();
+
+    await expect(runControlled(svc, { productPayload: { title: "Changed Tee" } })).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        status: "blocked",
+        failureReason: expect.stringContaining("unauthorized_field_scope:title"),
+      }),
+    });
+
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "shopify_vnext_mutation_blocked",
+      expect.objectContaining({ reason: expect.stringContaining("unauthorized_field_scope:title") }),
+    );
+  });
+
+  it("does not treat Shopify CDN URL-only drift as a verified image change", async () => {
+    setExactGates();
+    const { svc, connector, logger } = makeSafetyService({
+      captureRollbackSnapshotImpl: jest.fn()
+        .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/same", "https://cdn.example.com/before.jpg"))
+        .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/same", "https://cdn.example.com/after-versioned.jpg")),
+    });
+
+    await expect(runControlled(svc)).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        status: "readback_mismatch",
+        failureCode: "SHOPIFY_VNEXT_READBACK_MISMATCH",
+        readback: expect.objectContaining({ imageChanged: false }),
+      }),
+    });
+
+    expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "shopify_vnext_mutation_readback_mismatch",
+      expect.objectContaining({ imageChanged: false }),
+    );
   });
 
   it("does not leak credential tokens in logs during an executed controlled mutation", async () => {

@@ -7,7 +7,10 @@ export interface VnextMutationAllowlistEntry {
   productId: string;
 }
 
+export type VnextMutationFieldClass = "image";
+
 const ALLOWLIST_FIELDS = ["tenantKey", "connectorSlug", "installationId", "productId"] as const;
+const ALLOWED_FIELD_CLASSES = new Set<VnextMutationFieldClass>(["image"]);
 const SHA_PATTERN = /^[A-Fa-f0-9]{7,64}$/;
 
 function trimmed(value: unknown): string {
@@ -81,6 +84,17 @@ export function getVnextMutationApprovedReleaseValidationIssue(raw: unknown): st
   return undefined;
 }
 
+export function getVnextMutationAllowedFieldClassValidationIssue(raw: unknown): string | undefined {
+  const fieldClass = trimmed(raw);
+  if (!fieldClass) {
+    return "required when VNEXT_MUTATION_ENABLED=true";
+  }
+  if (!ALLOWED_FIELD_CLASSES.has(fieldClass as VnextMutationFieldClass)) {
+    return "must be one of: image";
+  }
+  return undefined;
+}
+
 export function getVnextMutationValidationIssues(env: VnextMutationEnv = process.env): string[] {
   if (!isVnextMutationEnabled(env)) {
     return [];
@@ -95,6 +109,11 @@ export function getVnextMutationValidationIssues(env: VnextMutationEnv = process
   const releaseIssue = getVnextMutationApprovedReleaseValidationIssue(env.VNEXT_MUTATION_APPROVED_RELEASE_SHA);
   if (releaseIssue) {
     issues.push(`VNEXT_MUTATION_APPROVED_RELEASE_SHA: ${releaseIssue}`);
+  }
+
+  const fieldClassIssue = getVnextMutationAllowedFieldClassValidationIssue(env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS);
+  if (fieldClassIssue) {
+    issues.push(`VNEXT_MUTATION_ALLOWED_FIELD_CLASS: ${fieldClassIssue}`);
   }
 
   return issues;
@@ -125,4 +144,20 @@ export function isApprovedRelease(env: VnextMutationEnv = process.env): boolean 
   const approvedRelease = trimmed(env.VNEXT_MUTATION_APPROVED_RELEASE_SHA);
   const liveRelease = trimmed(env.RAILWAY_GIT_COMMIT_SHA);
   return Boolean(approvedRelease && liveRelease && approvedRelease === liveRelease);
+}
+
+export function getVnextMutationAllowedFieldClass(
+  env: VnextMutationEnv = process.env,
+): VnextMutationFieldClass | undefined {
+  const fieldClass = trimmed(env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS);
+  return ALLOWED_FIELD_CLASSES.has(fieldClass as VnextMutationFieldClass)
+    ? fieldClass as VnextMutationFieldClass
+    : undefined;
+}
+
+export function isVnextMutationFieldClassAllowed(
+  fieldClass: VnextMutationFieldClass,
+  env: VnextMutationEnv = process.env,
+): boolean {
+  return getVnextMutationAllowedFieldClass(env) === fieldClass;
 }

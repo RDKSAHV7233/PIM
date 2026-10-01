@@ -149,6 +149,7 @@ function readRuntimeVariables(config, railwayEnv) {
     VNEXT_MUTATION_ENABLED: String(raw.VNEXT_MUTATION_ENABLED ?? "").trim(),
     VNEXT_MUTATION_ALLOWLIST_JSON: String(raw.VNEXT_MUTATION_ALLOWLIST_JSON ?? "").trim(),
     VNEXT_MUTATION_APPROVED_RELEASE_SHA: String(raw.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim(),
+    VNEXT_MUTATION_ALLOWED_FIELD_CLASS: String(raw.VNEXT_MUTATION_ALLOWED_FIELD_CLASS ?? "").trim(),
   };
 }
 
@@ -158,6 +159,7 @@ function summarizeVnextVariables(vars) {
     VNEXT_MUTATION_ENABLED: vars.VNEXT_MUTATION_ENABLED || "<unset>",
     VNEXT_MUTATION_ALLOWLIST_JSON: vars.VNEXT_MUTATION_ALLOWLIST_JSON ? "<set>" : "<unset>",
     VNEXT_MUTATION_APPROVED_RELEASE_SHA: vars.VNEXT_MUTATION_APPROVED_RELEASE_SHA || "<unset>",
+    VNEXT_MUTATION_ALLOWED_FIELD_CLASS: vars.VNEXT_MUTATION_ALLOWED_FIELD_CLASS || "<unset>",
   };
 }
 
@@ -235,11 +237,13 @@ async function applyGate(config, railwayConfig, railwayEnv, enabled, evidence, l
         ["VNEXT_MUTATION_ENABLED", "true"],
         ["VNEXT_MUTATION_ALLOWLIST_JSON", JSON.stringify(config.allowlist)],
         ["VNEXT_MUTATION_APPROVED_RELEASE_SHA", config.releaseSha],
+        ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", "image"],
       ]
     : [
         ["VNEXT_MUTATION_ENABLED", "false"],
         ["VNEXT_MUTATION_ALLOWLIST_JSON", JSON.stringify(config.allowlist)],
         ["VNEXT_MUTATION_APPROVED_RELEASE_SHA", config.releaseSha],
+        ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", "image"],
       ];
   const variableTarget = setVariablesAcrossTargets(railwayConfig, railwayEnv, pairs, label);
   const restartTarget = restartApi(railwayConfig, railwayEnv, label);
@@ -650,6 +654,9 @@ async function run() {
     }
     if (enabledVars.VNEXT_MUTATION_ALLOWLIST_JSON !== JSON.stringify(config.allowlist)) {
       throw new Error("VNEXT_MUTATION_ALLOWLIST_JSON does not exactly match the authorized tuple after gate enable.");
+    }
+    if (enabledVars.VNEXT_MUTATION_ALLOWED_FIELD_CLASS !== "image") {
+      throw new Error("VNEXT_MUTATION_ALLOWED_FIELD_CLASS was not exactly image after gate enable.");
     }
 
     const token = await login(config);

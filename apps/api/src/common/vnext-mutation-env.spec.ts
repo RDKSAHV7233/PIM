@@ -14,6 +14,7 @@ const MATCHING_ENV = {
     productId: "prod-1",
   }),
   VNEXT_MUTATION_APPROVED_RELEASE_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+  VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
   RAILWAY_GIT_COMMIT_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
 };
 
@@ -68,12 +69,14 @@ describe("vnext mutation env gates", () => {
       VNEXT_MUTATION_ENABLED: "true",
       VNEXT_MUTATION_ALLOWLIST_JSON: "",
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: MATCHING_ENV.VNEXT_MUTATION_APPROVED_RELEASE_SHA,
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     })).toContain("VNEXT_MUTATION_ALLOWLIST_JSON: required when VNEXT_MUTATION_ENABLED=true");
 
     expect(getVnextMutationValidationIssues({
       VNEXT_MUTATION_ENABLED: "true",
       VNEXT_MUTATION_ALLOWLIST_JSON: "{not-json",
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: MATCHING_ENV.VNEXT_MUTATION_APPROVED_RELEASE_SHA,
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     }).join("\n")).toContain("VNEXT_MUTATION_ALLOWLIST_JSON");
 
     expect(getVnextMutationValidationIssues({
@@ -83,6 +86,7 @@ describe("vnext mutation env gates", () => {
         { tenantKey: "tenant-b", connectorSlug: "shopify", installationId: "install-2", productId: "prod-2" },
       ]),
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: MATCHING_ENV.VNEXT_MUTATION_APPROVED_RELEASE_SHA,
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     }).join("\n")).toContain("single-entry array");
 
     expect(getVnextMutationValidationIssues({
@@ -95,6 +99,7 @@ describe("vnext mutation env gates", () => {
         extra: "not-allowed",
       }),
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: MATCHING_ENV.VNEXT_MUTATION_APPROVED_RELEASE_SHA,
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     }).join("\n")).toContain("exactly tenantKey");
   });
 
@@ -103,13 +108,31 @@ describe("vnext mutation env gates", () => {
       VNEXT_MUTATION_ENABLED: "true",
       VNEXT_MUTATION_ALLOWLIST_JSON: MATCHING_ENV.VNEXT_MUTATION_ALLOWLIST_JSON,
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: "",
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     })).toContain("VNEXT_MUTATION_APPROVED_RELEASE_SHA: required when VNEXT_MUTATION_ENABLED=true");
 
     expect(getVnextMutationValidationIssues({
       VNEXT_MUTATION_ENABLED: "true",
       VNEXT_MUTATION_ALLOWLIST_JSON: MATCHING_ENV.VNEXT_MUTATION_ALLOWLIST_JSON,
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: "latest",
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     })).toContain("VNEXT_MUTATION_APPROVED_RELEASE_SHA: must be a 7-64 character git commit SHA");
+  });
+
+  it("requires the enabled mutation field class to be exactly image", () => {
+    expect(getVnextMutationValidationIssues({
+      VNEXT_MUTATION_ENABLED: "true",
+      VNEXT_MUTATION_ALLOWLIST_JSON: MATCHING_ENV.VNEXT_MUTATION_ALLOWLIST_JSON,
+      VNEXT_MUTATION_APPROVED_RELEASE_SHA: MATCHING_ENV.VNEXT_MUTATION_APPROVED_RELEASE_SHA,
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "",
+    })).toContain("VNEXT_MUTATION_ALLOWED_FIELD_CLASS: required when VNEXT_MUTATION_ENABLED=true");
+
+    expect(getVnextMutationValidationIssues({
+      VNEXT_MUTATION_ENABLED: "true",
+      VNEXT_MUTATION_ALLOWLIST_JSON: MATCHING_ENV.VNEXT_MUTATION_ALLOWLIST_JSON,
+      VNEXT_MUTATION_APPROVED_RELEASE_SHA: MATCHING_ENV.VNEXT_MUTATION_APPROVED_RELEASE_SHA,
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "price",
+    })).toContain("VNEXT_MUTATION_ALLOWED_FIELD_CLASS: must be one of: image");
   });
 
   it("requires live Railway release identity to match exactly", () => {

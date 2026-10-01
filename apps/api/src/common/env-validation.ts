@@ -87,6 +87,7 @@ export interface ValidatedEnv {
   VNEXT_MUTATION_ENABLED: BoolText;
   VNEXT_MUTATION_ALLOWLIST_JSON?: string;
   VNEXT_MUTATION_APPROVED_RELEASE_SHA?: string;
+  VNEXT_MUTATION_ALLOWED_FIELD_CLASS?: string;
   OPS_ALERT_WEBHOOK_URL?: string;
   OPS_ALERT_SLACK_WEBHOOK_URL?: string;
   OPS_ALERT_SECONDARY_WEBHOOK_URL?: string;
@@ -214,6 +215,7 @@ const EnvSchema = z.object({
   VNEXT_MUTATION_ENABLED: z.enum(["true", "false"] as const).default("false"),
   VNEXT_MUTATION_ALLOWLIST_JSON: OptionalTrimmedText,
   VNEXT_MUTATION_APPROVED_RELEASE_SHA: OptionalTrimmedText,
+  VNEXT_MUTATION_ALLOWED_FIELD_CLASS: OptionalTrimmedText,
   OPS_ALERT_WEBHOOK_URL: OptionalTrimmedText,
   OPS_ALERT_SLACK_WEBHOOK_URL: OptionalTrimmedText,
   OPS_ALERT_SECONDARY_WEBHOOK_URL: OptionalTrimmedText,

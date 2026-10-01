@@ -627,8 +627,9 @@ async function runCaseVnextMutationAcceptsSingleAllowlistAndRelease(baseEnv) {
         productId: "prod-1",
       }),
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
+      VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
     },
-    "Expected startup validation to accept one exact vNext mutation allowlist entry plus an approved release SHA.",
+    "Expected startup validation to accept one exact vNext mutation allowlist entry plus an approved release SHA and image field class.",
   );
 }
 

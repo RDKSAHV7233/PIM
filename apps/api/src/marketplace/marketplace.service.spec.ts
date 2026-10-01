@@ -2981,6 +2981,61 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
         status: "SUCCESS",
         isAsync: false,
       }),
+      captureRollbackSnapshot: jest.fn()
+        .mockResolvedValueOnce({
+          capturedAt: "2026-10-01T00:00:00.000Z",
+          product: {
+            id: "gid://shopify/Product/999",
+            title: "Classic Tee",
+            handle: "classic-tee-sku-1",
+            descriptionHtml: "A tee",
+            status: "ACTIVE",
+            vendor: "Acme",
+            productType: "default",
+            tags: [],
+            seo: null,
+            options: [{ name: "Title", position: 1, values: ["Default Title"] }],
+            variants: [{
+              id: "gid://shopify/ProductVariant/1",
+              sku: "SKU-1",
+              price: "799.00",
+              compareAtPrice: "999.00",
+              barcode: null,
+              inventoryPolicy: "CONTINUE",
+              taxable: true,
+              selectedOptions: [{ name: "Title", value: "Default Title" }],
+              inventoryItem: { id: "gid://shopify/InventoryItem/1", sku: "SKU-1", tracked: false },
+            }],
+            images: [{ id: "gid://shopify/ProductImage/before", src: "https://cdn.example.com/before.jpg", altText: "Classic Tee" }],
+          },
+        })
+        .mockResolvedValueOnce({
+          capturedAt: "2026-10-01T00:01:00.000Z",
+          product: {
+            id: "gid://shopify/Product/999",
+            title: "Classic Tee",
+            handle: "classic-tee-sku-1",
+            descriptionHtml: "A tee",
+            status: "ACTIVE",
+            vendor: "Acme",
+            productType: "default",
+            tags: [],
+            seo: null,
+            options: [{ name: "Title", position: 1, values: ["Default Title"] }],
+            variants: [{
+              id: "gid://shopify/ProductVariant/1",
+              sku: "SKU-1",
+              price: "799.00",
+              compareAtPrice: "999.00",
+              barcode: null,
+              inventoryPolicy: "CONTINUE",
+              taxable: true,
+              selectedOptions: [{ name: "Title", value: "Default Title" }],
+              inventoryItem: { id: "gid://shopify/InventoryItem/1", sku: "SKU-1", tracked: false },
+            }],
+            images: [{ id: "gid://shopify/ProductImage/after", src: "https://cdn.example.com/after.jpg", altText: "Classic Tee" }],
+          },
+        }),
     };
     const connectorRegistry = {
       getConnector: jest.fn().mockReturnValue(connector),
@@ -3039,7 +3094,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
       },
       categoryId: "cat-1",
       installation: { id: "inst-1", connectorId: "conn-1" },
-      existingGid: null,
+      existingGid: "gid://shopify/Product/999",
     });
   }
 
@@ -3065,6 +3120,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
       productId: "prod-1",
     });
     process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
     process.env.RAILWAY_GIT_COMMIT_SHA = "bbbbbbbb";
     const { svc, connectorRegistry, logger } = makeControlledMutationService();
 
@@ -3076,7 +3132,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     });
     expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
-      "shopify_vnext_controlled_mutation_skipped",
+      "shopify_vnext_mutation_blocked",
       expect.objectContaining({
         correlationId: outcome.correlationId,
         reason: "release_not_approved",
@@ -3093,14 +3149,17 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
       productId: "prod-1",
     });
     process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
     process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
     const { svc, connector, connectorFramework, realCtx, logger } = makeControlledMutationService();
 
     const outcome = await runControlled(svc);
-    expect(outcome).toEqual({
+    expect(outcome).toMatchObject({
       outcome: "executed",
       result: { externalRef: "gid://shopify/Product/999", status: "SUCCESS", isAsync: false },
       correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
+      fieldClass: "image",
+      mutationCount: 1,
     });
     expect(connectorFramework.buildContextForInstallation).toHaveBeenCalledWith({
       id: "inst-1",
@@ -3113,11 +3172,9 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     expect(connector.applyControlledMutation).toHaveBeenCalledWith(
       realCtx,
       expect.objectContaining({
-        title: "Classic Tee",
-        handle: "classic-tee-sku-1",
-        variants: [expect.objectContaining({ inventoryItem: expect.objectContaining({ sku: "SKU-1" }) })],
+        files: [expect.objectContaining({ originalSource: "https://cdn.example.com/tee.jpg" })],
       }),
-      { handle: "classic-tee-sku-1" },
+      { id: "gid://shopify/Product/999" },
       { correlationId: outcome.correlationId },
     );
     expect(logger.info).toHaveBeenCalledWith(

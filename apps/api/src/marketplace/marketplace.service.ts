@@ -24,6 +24,7 @@ import { ConnectorFrameworkService } from "../connector-framework/connector-fram
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { PlanUsageService } from "../billing/plan-usage.service";
+import { AuditService } from "../audit/audit.service";
 import {
   CapabilityNotSupportedError,
   ConnectorNetworkError,
@@ -46,9 +47,15 @@ import {
   buildShopifyVnextMutationPayload,
   ShopifyProductSetIdentifierLike,
   ShopifyProductSetInputLike,
+  ShopifyRollbackSnapshot,
 } from "../connectors/shopify/shopify-vnext-mutation-adapter";
 import { createVnextCorrelationId } from "../common/vnext-correlation";
-import { isApprovedRelease, isMutationAllowedFor, isVnextMutationEnabled } from "../common/vnext-mutation-env";
+import {
+  getVnextMutationAllowedFieldClass,
+  isApprovedRelease,
+  isMutationAllowedFor,
+  isVnextMutationEnabled,
+} from "../common/vnext-mutation-env";
 import type { ResolvedConnectorMapping } from "./mapping-resolution.service";
 import { WooCommercePublishError } from "../connectors/woocommerce/woocommerce.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
@@ -154,7 +161,66 @@ type SubmissionOutcome =
 
 type ControlledMutationOutcome =
   | { outcome: "skipped"; reason: string; correlationId: string }
-  | { outcome: "executed"; result: SubmissionRef; correlationId: string };
+  | {
+      outcome: "executed";
+      result: SubmissionRef;
+      correlationId: string;
+      fieldClass: "image";
+      mutationCount: number;
+      releaseSha: string;
+      liveReleaseSha: string;
+      externalProductGid: string;
+      audit: ShopifyControlledMutationAuditMetadata;
+      readback: ShopifyControlledMutationReadback;
+    };
+
+type ShopifyControlledMutationReadback = {
+  stableFieldsMatch: boolean;
+  imageChanged: boolean;
+  productGidUnchanged: boolean;
+  expectedImagePresent: boolean;
+  expectedImageCount: number;
+  actualImageCount: number;
+  beforeImageHash: string;
+  afterImageHash: string;
+};
+
+type ShopifyControlledMutationAuditMetadata = {
+  eventVersion: 1;
+  correlationId: string;
+  status: "started" | "executed" | "failed" | "readback_verified" | "readback_mismatch" | "blocked";
+  rollbackModel: "strict_one_write_no_automatic_rollback";
+  maxPrimaryProviderWrites: 1;
+  automaticRollback: false;
+  legacyFallbackAfterVnextStart: false;
+  retryAfterAmbiguousProviderResult: false;
+  tenantKey: string;
+  connectorSlug: "shopify";
+  installationId: string;
+  productId: string;
+  categoryId: string;
+  fieldClass: "image";
+  mutationCount: number;
+  payloadChecksum: string;
+  approvedReleaseSha: string;
+  liveReleaseSha: string;
+  externalProductGid?: string;
+  submissionId?: string;
+  failureCode?: string;
+  failureReason?: string;
+  readback?: ShopifyControlledMutationReadback;
+};
+
+class ShopifyControlledMutationError extends ShopifyPublishError {
+  constructor(
+    issues: ConstructorParameters<typeof ShopifyPublishError>[0],
+    message: string,
+    public readonly audit: ShopifyControlledMutationAuditMetadata,
+  ) {
+    super(issues, message);
+    this.name = "ShopifyControlledMutationError";
+  }
+}
 
 type ShopifyControlledMutationConnector = {
   fetchProductTypeSchema?: (
@@ -167,6 +233,11 @@ type ShopifyControlledMutationConnector = {
     identifier: ShopifyProductSetIdentifierLike,
     options?: { correlationId?: string },
   ) => Promise<SubmissionRef>;
+  captureRollbackSnapshot: (
+    ctx: ConnectorContext,
+    shopifyGid: string,
+    options?: { correlationId?: string },
+  ) => Promise<ShopifyRollbackSnapshot>;
 };
 
 type AuthoritativeChannelIssue = {
@@ -457,6 +528,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly priceResolution: PriceResolutionService,
     private readonly mediaStorage: MediaStorageService,
     @Optional() private readonly errorCaptureService?: ErrorCaptureService,
+    @Optional() private readonly auditService?: AuditService,
   ) {}
 
   onModuleInit() {
@@ -3492,6 +3564,15 @@ export class MarketplaceService implements OnModuleInit {
         }
         // ─── Sprint 14 end ───────────────────────────────────────────────────────
 
+        const submissionPayloadSnapshot = controlledMutation.outcome === "executed"
+          ? this.attachShopifyVnextAuditMetadata(payloadSnapshot, {
+              ...controlledMutation.audit,
+              status: "readback_verified",
+              externalProductGid: controlledMutation.externalProductGid,
+              readback: controlledMutation.readback,
+            })
+          : payloadSnapshot;
+
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
           productId: job.productId,
@@ -3500,7 +3581,7 @@ export class MarketplaceService implements OnModuleInit {
           source: "LIVE_API",
           status: publishResult.status,
           externalRef: publishResult.externalRef,
-          payloadSnapshot,
+          payloadSnapshot: submissionPayloadSnapshot,
           channelErrors: [
             ...simulation.channelIssues.map((issue) => ({
               code: issue.code,
@@ -3511,6 +3592,30 @@ export class MarketplaceService implements OnModuleInit {
             ...localeWarnings,
           ],
         });
+        if (controlledMutation.outcome === "executed") {
+          this.logger.info("shopify_vnext_mutation_readback_verified", {
+            correlationId: controlledMutation.correlationId,
+            installationId: installation.id,
+            productId: job.productId,
+            submissionId: submission.id,
+            externalProductGid: controlledMutation.externalProductGid,
+            releaseSha: controlledMutation.releaseSha,
+            liveReleaseSha: controlledMutation.liveReleaseSha,
+            fieldClass: controlledMutation.fieldClass,
+            mutationCount: controlledMutation.mutationCount,
+            expectedImageCount: controlledMutation.readback.expectedImageCount,
+            actualImageCount: controlledMutation.readback.actualImageCount,
+            beforeImageHash: controlledMutation.readback.beforeImageHash,
+            afterImageHash: controlledMutation.readback.afterImageHash,
+          });
+          await this.recordShopifyVnextMutationAudit({
+            ...controlledMutation.audit,
+            status: "readback_verified",
+            submissionId: submission.id,
+            externalProductGid: controlledMutation.externalProductGid,
+            readback: controlledMutation.readback,
+          });
+        }
         if (
           publishResult.status === "PENDING" &&
           publishResult.isAsync &&
@@ -3558,6 +3663,7 @@ export class MarketplaceService implements OnModuleInit {
                     sellerMessage: this.toFailureReason(error),
                   },
                 ];
+        const failureAudit = error instanceof ShopifyControlledMutationError ? error.audit : undefined;
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
           productId: job.productId,
@@ -3565,9 +3671,17 @@ export class MarketplaceService implements OnModuleInit {
           operation,
           source: "LIVE_API",
           status: "ERROR",
-          payloadSnapshot,
+          payloadSnapshot: failureAudit
+            ? this.attachShopifyVnextAuditMetadata(payloadSnapshot, failureAudit)
+            : payloadSnapshot,
           channelErrors,
         });
+        if (failureAudit) {
+          await this.recordShopifyVnextMutationAudit({
+            ...failureAudit,
+            submissionId: submission.id,
+          });
+        }
         await this.emitConnectorOutcomeMetrics({
           tenantKey,
           connectorSlug,
@@ -3628,9 +3742,66 @@ export class MarketplaceService implements OnModuleInit {
   }): Promise<ControlledMutationOutcome> {
     const { tenantKey, productId, productPayload, categoryId, installation, existingGid } = input;
     const correlationId = createVnextCorrelationId();
+    const approvedReleaseSha = String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim();
+    const liveReleaseSha = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? "").trim();
+    const enabled = isVnextMutationEnabled();
+    const tupleAllowed = enabled && isMutationAllowedFor(tenantKey, "shopify", installation.id, productId);
+    const releaseApproved = enabled && isApprovedRelease();
+    const allowedFieldClass = enabled ? getVnextMutationAllowedFieldClass() : undefined;
+    const fieldClassAllowed = allowedFieldClass === "image";
+    const makeAudit = (
+      overrides: Partial<ShopifyControlledMutationAuditMetadata>,
+    ): ShopifyControlledMutationAuditMetadata => ({
+      eventVersion: 1,
+      correlationId,
+      status: "blocked",
+      rollbackModel: "strict_one_write_no_automatic_rollback",
+      maxPrimaryProviderWrites: 1,
+      automaticRollback: false,
+      legacyFallbackAfterVnextStart: false,
+      retryAfterAmbiguousProviderResult: false,
+      tenantKey,
+      connectorSlug: "shopify",
+      installationId: installation.id,
+      productId,
+      categoryId,
+      fieldClass: "image",
+      mutationCount: 0,
+      payloadChecksum: "",
+      approvedReleaseSha,
+      liveReleaseSha,
+      ...overrides,
+    });
+    const blockedReason = !enabled
+      ? "disabled"
+      : !tupleAllowed
+        ? "allowlist_miss"
+        : !releaseApproved
+          ? "release_not_approved"
+          : !fieldClassAllowed
+            ? "field_class_not_allowed"
+            : undefined;
+
+    this.logger.info("shopify_vnext_mutation_authorization_checked", {
+      correlationId,
+      installationId: installation.id,
+      categoryId,
+      productId,
+      tenantKey,
+      connectorSlug: "shopify",
+      enabled,
+      tupleAllowed,
+      releaseApproved,
+      allowed: !blockedReason,
+      blockedReason,
+      fieldClass: allowedFieldClass ?? null,
+      approvedReleaseSha: approvedReleaseSha || null,
+      liveReleaseSha: liveReleaseSha || null,
+    });
+
     const skip = (reason: string, log = true): ControlledMutationOutcome => {
       if (log) {
-        this.logger.info("shopify_vnext_controlled_mutation_skipped", {
+        this.logger.info("shopify_vnext_mutation_blocked", {
           correlationId,
           installationId: installation.id,
           categoryId,
@@ -3640,22 +3811,58 @@ export class MarketplaceService implements OnModuleInit {
       }
       return { outcome: "skipped", reason, correlationId };
     };
+    const failClosed = (reason: string): never => {
+      this.logger.warn("shopify_vnext_mutation_blocked", {
+        correlationId,
+        installationId: installation.id,
+        categoryId,
+        productId,
+        reason,
+        fieldClass: allowedFieldClass ?? null,
+        approvedReleaseSha: approvedReleaseSha || null,
+        liveReleaseSha: liveReleaseSha || null,
+      });
+      throw this.buildShopifyControlledMutationError(
+        "SHOPIFY_VNEXT_MUTATION_BLOCKED",
+        `Shopify controlled vNext mutation blocked: ${reason}.`,
+        makeAudit({
+          status: "blocked",
+          failureCode: "SHOPIFY_VNEXT_MUTATION_BLOCKED",
+          failureReason: reason,
+        }),
+      );
+    };
 
-    if (!isVnextMutationEnabled()) {
-      return skip("disabled", false);
+    if (!enabled) {
+      return skip("disabled");
     }
-    if (!isMutationAllowedFor(tenantKey, "shopify", installation.id, productId)) {
+    if (!tupleAllowed) {
       return skip("allowlist_miss");
     }
-    if (!isApprovedRelease()) {
+    if (!releaseApproved) {
       return skip("release_not_approved");
     }
+    if (!fieldClassAllowed) {
+      return skip("field_class_not_allowed");
+    }
 
+    let startedAudit: ShopifyControlledMutationAuditMetadata | undefined;
     try {
       const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
-      if (!connector.fetchProductTypeSchema || typeof connector.applyControlledMutation !== "function") {
-        return skip("connector_missing_controlled_mutation");
+      if (
+        !connector.fetchProductTypeSchema ||
+        typeof connector.applyControlledMutation !== "function" ||
+        typeof connector.captureRollbackSnapshot !== "function"
+      ) {
+        failClosed("connector_missing_controlled_mutation");
       }
+      if (!existingGid) {
+        failClosed("missing_existing_product_gid");
+      }
+      const fetchProductTypeSchema = connector.fetchProductTypeSchema!;
+      const applyControlledMutation = connector.applyControlledMutation!;
+      const captureRollbackSnapshot = connector.captureRollbackSnapshot!;
+      const productGid = existingGid!;
 
       const ctx = this.connectorFramework.buildContextForInstallation({
         ...installation,
@@ -3663,7 +3870,7 @@ export class MarketplaceService implements OnModuleInit {
         slug: "shopify",
         metadata: {},
       });
-      const targetSchema = await connector.fetchProductTypeSchema(ctx, productPayload.productType);
+      const targetSchema = await fetchProductTypeSchema(ctx, productPayload.productType);
       const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
       const resolvedMapping: ResolvedConnectorMapping = {
         connectorSlug: "shopify",
@@ -3673,28 +3880,341 @@ export class MarketplaceService implements OnModuleInit {
         source: effective.source,
       };
       const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
-      const payload = buildShopifyVnextMutationPayload(projection, correlationId, existingGid);
+      const payload = buildShopifyVnextMutationPayload(projection, correlationId, productGid);
+      const files = Array.isArray(payload.input.files) ? payload.input.files : [];
+      if (files.length === 0) {
+        failClosed("missing_authorized_image_payload");
+      }
+      const controlledInput: ShopifyProductSetInputLike = { files };
+      const identifier: ShopifyProductSetIdentifierLike = { id: productGid };
+      const preSnapshot = await captureRollbackSnapshot(ctx, productGid, { correlationId });
+      const unauthorizedFieldDiffs = this.detectUnauthorizedShopifyVnextFieldDiffs(preSnapshot, payload.input);
+      if (unauthorizedFieldDiffs.length > 0) {
+        failClosed(`unauthorized_field_scope:${unauthorizedFieldDiffs.join(",")}`);
+      }
+      const expectedImageAlts = files
+        .map((file) => String((file as Record<string, unknown>).alt ?? "").trim())
+        .filter(Boolean);
+      const payloadChecksum = this.hashStableJson(controlledInput);
+      startedAudit = makeAudit({
+        status: "started",
+        mutationCount: files.length,
+        payloadChecksum,
+        externalProductGid: productGid,
+      });
 
-      const result = await connector.applyControlledMutation(ctx, payload.input, payload.identifier, { correlationId });
+      this.logger.info("shopify_vnext_mutation_started", {
+        correlationId,
+        installationId: installation.id,
+        categoryId,
+        productId,
+        externalProductGid: productGid,
+        sku: projection.identity.sku,
+        schemaVersion: projection.readiness.schemaVersion,
+        fieldClass: "image",
+        mutationCount: files.length,
+        payloadChecksum,
+        approvedReleaseSha,
+        liveReleaseSha,
+      });
+      const result = await applyControlledMutation(ctx, controlledInput, identifier, { correlationId });
       this.logger.info("shopify_vnext_controlled_mutation_executed", {
         correlationId,
         installationId: installation.id,
         categoryId,
         productId,
+        externalProductGid: result.externalRef,
         sku: projection.identity.sku,
         schemaVersion: projection.readiness.schemaVersion,
+        fieldClass: "image",
+        mutationCount: files.length,
+        payloadChecksum,
+        status: result.status,
+        approvedReleaseSha,
+        liveReleaseSha,
       });
-      return { outcome: "executed", result, correlationId };
+      const postSnapshot = await captureRollbackSnapshot(ctx, result.externalRef, { correlationId });
+      const readback = this.verifyShopifyImageOnlyReadback(preSnapshot, postSnapshot, {
+        expectedImageCount: files.length,
+        expectedImageAlts,
+        expectedProductGid: result.externalRef,
+      });
+      if (
+        !readback.stableFieldsMatch ||
+        !readback.imageChanged ||
+        !readback.productGidUnchanged ||
+        !readback.expectedImagePresent ||
+        readback.actualImageCount !== readback.expectedImageCount
+      ) {
+        const mismatchAudit = {
+          ...startedAudit,
+          status: "readback_mismatch" as const,
+          externalProductGid: result.externalRef,
+          failureCode: "SHOPIFY_VNEXT_READBACK_MISMATCH",
+          failureReason: "readback_mismatch",
+          readback,
+        };
+        this.logger.warn("shopify_vnext_mutation_readback_mismatch", {
+          correlationId,
+          installationId: installation.id,
+          categoryId,
+          productId,
+          externalProductGid: result.externalRef,
+          fieldClass: "image",
+          mutationCount: files.length,
+          stableFieldsMatch: readback.stableFieldsMatch,
+          imageChanged: readback.imageChanged,
+          productGidUnchanged: readback.productGidUnchanged,
+          expectedImagePresent: readback.expectedImagePresent,
+          expectedImageCount: readback.expectedImageCount,
+          actualImageCount: readback.actualImageCount,
+          beforeImageHash: readback.beforeImageHash,
+          afterImageHash: readback.afterImageHash,
+        });
+        throw this.buildShopifyControlledMutationError(
+          "SHOPIFY_VNEXT_READBACK_MISMATCH",
+          "Shopify controlled vNext mutation readback did not match the authorized image-only change.",
+          mismatchAudit,
+        );
+      }
+      const executedAudit = {
+        ...startedAudit,
+        status: "executed" as const,
+        externalProductGid: result.externalRef,
+        readback,
+      };
+      return {
+        outcome: "executed",
+        result,
+        correlationId,
+        fieldClass: "image",
+        mutationCount: files.length,
+        releaseSha: approvedReleaseSha,
+        liveReleaseSha,
+        externalProductGid: result.externalRef,
+        audit: executedAudit,
+        readback,
+      };
     } catch (error) {
-      this.logger.warn("shopify_vnext_controlled_mutation_failed", {
+      const failureAudit = error instanceof ShopifyControlledMutationError
+        ? error.audit
+        : {
+            ...(startedAudit ?? makeAudit({ status: "failed" })),
+            status: "failed" as const,
+            failureCode: "SHOPIFY_VNEXT_MUTATION_FAILED",
+            failureReason: error instanceof Error ? error.name : typeof error,
+          };
+      this.logger.warn("shopify_vnext_mutation_failed", {
         correlationId,
         installationId: installation.id,
         categoryId,
         productId,
+        fieldClass: allowedFieldClass ?? null,
         errorName: error instanceof Error ? error.name : typeof error,
       });
-      return { outcome: "skipped", reason: "controlled_mutation_failed", correlationId };
+      if (error instanceof ShopifyPublishError) {
+        throw error;
+      }
+      throw this.buildShopifyControlledMutationError(
+        "SHOPIFY_VNEXT_MUTATION_FAILED",
+        "Shopify controlled vNext mutation failed before readback could be verified.",
+        failureAudit,
+      );
     }
+  }
+
+  private buildShopifyControlledMutationError(
+    code: string,
+    sellerMessage: string,
+    audit: ShopifyControlledMutationAuditMetadata,
+  ): ShopifyControlledMutationError {
+    return new ShopifyControlledMutationError(
+      [{ code, fieldPath: "", severity: "error", sellerMessage }],
+      sellerMessage,
+      audit,
+    );
+  }
+
+  private verifyShopifyImageOnlyReadback(
+    before: ShopifyRollbackSnapshot,
+    after: ShopifyRollbackSnapshot,
+    expected: {
+      expectedImageCount: number;
+      expectedImageAlts: string[];
+      expectedProductGid: string;
+    },
+  ): ShopifyControlledMutationReadback {
+    const beforeImageHash = this.hashShopifyRollbackImagesForAudit(before.product.images);
+    const afterImageHash = this.hashShopifyRollbackImagesForAudit(after.product.images);
+    const afterAltSet = new Set(after.product.images.map((image) => this.normalizeComparableString(image.altText)));
+    const expectedImagePresent = expected.expectedImageAlts.length === 0 ||
+      expected.expectedImageAlts.every((alt) => afterAltSet.has(this.normalizeComparableString(alt)));
+    return {
+      stableFieldsMatch: this.hashShopifyRollbackStableProduct(before) === this.hashShopifyRollbackStableProduct(after),
+      imageChanged: beforeImageHash !== afterImageHash,
+      productGidUnchanged: before.product.id === after.product.id && after.product.id === expected.expectedProductGid,
+      expectedImagePresent,
+      expectedImageCount: expected.expectedImageCount,
+      actualImageCount: after.product.images.length,
+      beforeImageHash,
+      afterImageHash,
+    };
+  }
+
+  private hashShopifyRollbackStableProduct(snapshot: ShopifyRollbackSnapshot): string {
+    const { images: _images, ...stableProduct } = snapshot.product;
+    return createHash("sha256")
+      .update(JSON.stringify(stableProduct))
+      .digest("hex");
+  }
+
+  private hashShopifyRollbackImagesForAudit(images: ShopifyRollbackSnapshot["product"]["images"]): string {
+    return this.hashStableJson(images.map((image) => ({
+      id: this.normalizeComparableString(image.id),
+      altText: this.normalizeComparableString(image.altText),
+    })));
+  }
+
+  private detectUnauthorizedShopifyVnextFieldDiffs(
+    snapshot: ShopifyRollbackSnapshot,
+    candidateInput: ShopifyProductSetInputLike,
+  ): string[] {
+    const product = snapshot.product;
+    const candidate = candidateInput as Record<string, unknown>;
+    const diffs: string[] = [];
+    const compare = (field: string, current: unknown, next: unknown) => {
+      if (this.hashStableJson(current) !== this.hashStableJson(next)) {
+        diffs.push(field);
+      }
+    };
+
+    compare("title", this.normalizeComparableString(product.title), this.normalizeComparableString(candidate.title));
+    compare("handle", this.normalizeComparableString(product.handle), this.normalizeComparableString(candidate.handle));
+    compare("descriptionHtml", this.normalizeComparableString(product.descriptionHtml), this.normalizeComparableString(candidate.descriptionHtml));
+    compare("status", this.normalizeComparableString(product.status), this.normalizeComparableString(candidate.status));
+    compare("vendor", this.normalizeComparableString(product.vendor), this.normalizeComparableString(candidate.vendor));
+    compare("productType", this.normalizeComparableString(product.productType), this.normalizeComparableString(candidate.productType));
+    compare("tags", this.normalizeComparableStringArray(product.tags).sort(), this.normalizeComparableStringArray(candidate.tags).sort());
+    compare("seo", this.normalizeComparableObject(product.seo), this.normalizeComparableObject(candidate.seo));
+    compare("productOptions", this.normalizeShopifyProductOptionsComparable(product.options), this.normalizeShopifyProductOptionsComparable(candidate.productOptions));
+    compare("variants", this.normalizeShopifyVariantComparable(product.variants), this.normalizeShopifyVariantInputComparable(candidate.variants));
+
+    return diffs;
+  }
+
+  private normalizeShopifyVariantComparable(variants: ShopifyRollbackSnapshot["product"]["variants"]): unknown[] {
+    return variants.map((variant) => ({
+      sku: this.normalizeComparableString(variant.inventoryItem?.sku ?? variant.sku),
+      price: this.normalizeComparableString(variant.price),
+      compareAtPrice: this.normalizeComparableString(variant.compareAtPrice),
+      barcode: this.normalizeComparableString(variant.barcode),
+      inventoryPolicy: this.normalizeComparableString(variant.inventoryPolicy),
+      taxable: typeof variant.taxable === "boolean" ? variant.taxable : null,
+      tracked: typeof variant.inventoryItem?.tracked === "boolean" ? variant.inventoryItem.tracked : null,
+      optionValues: variant.selectedOptions.map((option) => ({
+        optionName: this.normalizeComparableString(option.name),
+        name: this.normalizeComparableString(option.value),
+      })),
+    }));
+  }
+
+  private normalizeShopifyProductOptionsComparable(options: unknown): unknown[] {
+    if (!Array.isArray(options)) {
+      return [];
+    }
+    return options.map((rawOption, index) => {
+      const option = rawOption && typeof rawOption === "object" ? rawOption as Record<string, unknown> : {};
+      const rawValues = Array.isArray(option.values) ? option.values : [];
+      return {
+        name: this.normalizeComparableString(option.name),
+        position: typeof option.position === "number" ? option.position : index + 1,
+        values: rawValues
+          .map((value) => {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              return this.normalizeComparableString((value as Record<string, unknown>).name);
+            }
+            return this.normalizeComparableString(value);
+          })
+          .filter((value): value is string => Boolean(value)),
+      };
+    });
+  }
+
+  private normalizeShopifyVariantInputComparable(inputVariants: unknown): unknown[] {
+    if (!Array.isArray(inputVariants)) {
+      return [];
+    }
+    return inputVariants.map((rawVariant) => {
+      const variant = rawVariant && typeof rawVariant === "object" ? rawVariant as Record<string, unknown> : {};
+      const inventoryItem = variant.inventoryItem && typeof variant.inventoryItem === "object"
+        ? variant.inventoryItem as Record<string, unknown>
+        : {};
+      return {
+        sku: this.normalizeComparableString(inventoryItem.sku),
+        price: this.normalizeComparableString(variant.price),
+        compareAtPrice: this.normalizeComparableString(variant.compareAtPrice),
+        barcode: this.normalizeComparableString(variant.barcode),
+        inventoryPolicy: this.normalizeComparableString(variant.inventoryPolicy),
+        taxable: typeof variant.taxable === "boolean" ? variant.taxable : null,
+        tracked: typeof inventoryItem.tracked === "boolean" ? inventoryItem.tracked : null,
+        optionValues: this.normalizeComparableObject(variant.optionValues),
+      };
+    });
+  }
+
+  private normalizeComparableString(value: unknown): string | null {
+    const normalized = String(value ?? "").trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private normalizeComparableStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .map((item) => this.normalizeComparableString(item))
+      .filter((item): item is string => Boolean(item));
+  }
+
+  private normalizeComparableObject(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.normalizeComparableObject(item));
+    }
+    if (!value || typeof value !== "object") {
+      return this.normalizeComparableString(value);
+    }
+    const entries = Object.entries(value as Record<string, unknown>)
+        .map(([key, item]) => [key, this.normalizeComparableObject(item)])
+        .sort(([a], [b]) => String(a).localeCompare(String(b))) as Array<[string, unknown]>;
+    return Object.fromEntries(entries);
+  }
+
+  private hashStableJson(value: unknown): string {
+    return createHash("sha256")
+      .update(JSON.stringify(this.normalizeComparableObject(value)))
+      .digest("hex");
+  }
+
+  private attachShopifyVnextAuditMetadata(
+    payloadSnapshot: Record<string, unknown>,
+    audit: ShopifyControlledMutationAuditMetadata,
+  ): Record<string, unknown> {
+    return {
+      ...payloadSnapshot,
+      __vnextMutationAudit: audit,
+    };
+  }
+
+  private async recordShopifyVnextMutationAudit(audit: ShopifyControlledMutationAuditMetadata): Promise<void> {
+    await this.auditService?.record({
+      actorId: "system",
+      actorRole: "system",
+      action: "SHOPIFY_VNEXT_CONTROLLED_MUTATION_AUDIT",
+      resource: "ConnectorSubmission",
+      resourceId: audit.submissionId ?? null,
+      tenantKey: audit.tenantKey,
+      metadata: audit as unknown as Record<string, unknown>,
+    });
   }
 
   /**
