@@ -19,6 +19,10 @@ on:
         description: "Run only the authorized Shopify vNext first controlled mutation proof."
         required: false
         default: "false"
+      controlled_vnext_diagnostic_only:
+        description: "With controlled_vnext_first_mutation=true, capture read-only state and do not enable the mutation gate."
+        required: false
+        default: "false"
 
 concurrency:
   group: res-02-connector-export-coverage
@@ -121,6 +125,7 @@ jobs:
           AUTHORIZED_SHOPIFY_PRODUCT_GID: gid://shopify/Product/8087828889690
           EXPECTED_OLD_IMAGE: https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_ba64d666-d392-40c6-887c-f7a8d481aa4f.png?v=1790748226
           EXPECTED_TARGET_IMAGE: https://dummyimage.com/600x600/0f172a/ffffff.png?text=Vexa+RES02
+          CONTROLLED_VNEXT_DIAGNOSTIC_ONLY: ${{ github.event.inputs.controlled_vnext_diagnostic_only || 'false' }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           MUTATION_EVIDENCE_OUTPUT: .run-logs/shopify-vnext-first-controlled-mutation-${{ github.run_id }}.json
         run: |

@@ -417,6 +417,57 @@ async function querySubmissionEvidence(config, jobId) {
   }
 }
 
+async function queryRecentAuthorizedState(config) {
+  prepareDatabaseEnv();
+  const prisma = new PrismaClient({ datasources: { db: { url: resolveDatabaseUrl() } } });
+  try {
+    const [jobs, submissions] = await Promise.all([
+      prisma.marketplaceExportJob.findMany({
+        where: {
+          tenantKey: config.tenant,
+          productId: config.product,
+          channel: "shopify",
+          installationId: config.installation,
+        },
+        select: {
+          id: true,
+          status: true,
+          retryCount: true,
+          failureReason: true,
+          dlqReason: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      }),
+      prisma.connectorSubmission.findMany({
+        where: {
+          tenantKey: config.tenant,
+          installationId: config.installation,
+          productId: config.product,
+        },
+        select: {
+          id: true,
+          idempotencyKey: true,
+          status: true,
+          source: true,
+          externalRef: true,
+          attemptNumber: true,
+          submittedAt: true,
+          resolvedAt: true,
+          connectorSlug: true,
+        },
+        orderBy: { submittedAt: "desc" },
+        take: 10,
+      }),
+    ]);
+    return { jobs, submissions };
+  } finally {
+    await prisma.$disconnect().catch(() => undefined);
+  }
+}
+
 async function queryActiveAuthorizedJobs(config) {
   prepareDatabaseEnv();
   const prisma = new PrismaClient({ datasources: { db: { url: resolveDatabaseUrl() } } });
@@ -442,6 +493,24 @@ async function queryActiveAuthorizedJobs(config) {
   } finally {
     await prisma.$disconnect().catch(() => undefined);
   }
+}
+
+async function waitForExportJobTerminal(config, token, jobId) {
+  let last = null;
+  for (let attempt = 1; attempt <= 36; attempt += 1) {
+    const result = await request("GET", config.apiBaseUrl, `/marketplace/export-jobs/${encodeURIComponent(jobId)}`, {
+      token,
+      timeoutMs: 30000,
+    });
+    assertStatus(result, 200, "GET /marketplace/export-jobs/:id");
+    last = result.body;
+    const status = String(result.body?.status ?? "").toLowerCase();
+    if (["completed", "failed", "dead_letter", "skipped"].includes(status)) {
+      return { attempt, job: result.body };
+    }
+    await sleep(5000);
+  }
+  return { attempt: 36, job: last };
 }
 
 function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
@@ -501,6 +570,7 @@ async function run() {
     expectedTargetImage: readEnv("EXPECTED_TARGET_IMAGE", false),
     runUrl: readEnv("RUN_URL", false),
     outputPath: readEnv("MUTATION_EVIDENCE_OUTPUT", false) || path.join(REPO_ROOT, ".run-logs", `shopify-vnext-first-controlled-mutation-${Date.now()}.json`),
+    diagnosticOnly: String(process.env.CONTROLLED_VNEXT_DIAGNOSTIC_ONLY ?? "").trim().toLowerCase() === "true",
     startedAt: new Date(),
   };
   config.allowlist = {
@@ -555,6 +625,14 @@ async function run() {
     };
     const activeJobs = await queryActiveAuthorizedJobs(config);
     evidence.preflight.activeAuthorizedJobsBeforeGate = activeJobs;
+    if (config.diagnosticOnly) {
+      evidence.status = "diagnostic_only";
+      evidence.diagnostic = {
+        currentAuthorizedState: await queryRecentAuthorizedState(config),
+        vnextExecutionLog: findVnextExecutionLog(config, railwayConfig, railwayEnv),
+      };
+      return;
+    }
     if (activeJobs.length > 0) {
       throw new Error(`Found ${activeJobs.length} active authorized-product export job(s) before enabling vNext gate.`);
     }
@@ -598,12 +676,23 @@ async function run() {
       timeoutMs: 90000,
     });
     assertStatus(processResult, [200, 201, 202], "POST /marketplace/export-jobs/:id/process");
+    const terminalJob = await waitForExportJobTerminal(config, token, jobId);
     evidence.api.processedJob = {
       id: processResult.body?.id ?? jobId,
       status: processResult.body?.status ?? null,
       failureReason: processResult.body?.failureReason ?? null,
       dlqReason: processResult.body?.dlqReason ?? null,
     };
+    evidence.api.terminalJob = {
+      attempt: terminalJob.attempt,
+      id: terminalJob.job?.id ?? jobId,
+      status: terminalJob.job?.status ?? null,
+      failureReason: terminalJob.job?.failureReason ?? null,
+      dlqReason: terminalJob.job?.dlqReason ?? null,
+    };
+    if (String(terminalJob.job?.status ?? "").toLowerCase() !== "completed") {
+      throw new Error(`Export job did not complete successfully; terminal status is ${terminalJob.job?.status ?? "<unknown>"}.`);
+    }
 
     const submissionEvidence = await querySubmissionEvidence(config, jobId);
     evidence.verification.submission = submissionEvidence.submission;
@@ -638,13 +727,22 @@ async function run() {
     evidence.status = "mutation_verified";
   } finally {
     try {
-      const disabledVars = await applyGate(config, railwayConfig, railwayEnv, false, evidence, "disable vNext gate");
-      gateEnabled = false;
-      evidence.cleanup = {
-        status: disabledVars.VNEXT_MUTATION_ENABLED.toLowerCase() === "true" ? "unsafe_enabled" : "safe_disabled",
-        variables: summarizeVnextVariables(disabledVars),
-        completedAt: nowIso(),
-      };
+      if (config.diagnosticOnly && !gateEnabled) {
+        const currentVars = readRuntimeVariables(railwayConfig, railwayEnv);
+        evidence.cleanup = {
+          status: "diagnostic_no_gate_change",
+          variables: summarizeVnextVariables(currentVars),
+          completedAt: nowIso(),
+        };
+      } else {
+        const disabledVars = await applyGate(config, railwayConfig, railwayEnv, false, evidence, "disable vNext gate");
+        gateEnabled = false;
+        evidence.cleanup = {
+          status: disabledVars.VNEXT_MUTATION_ENABLED.toLowerCase() === "true" ? "unsafe_enabled" : "safe_disabled",
+          variables: summarizeVnextVariables(disabledVars),
+          completedAt: nowIso(),
+        };
+      }
     } catch (cleanupError) {
       evidence.cleanup = {
         status: gateEnabled ? "cleanup_failed_gate_may_still_be_enabled" : "cleanup_failed_gate_state_unknown",
