@@ -4109,8 +4109,9 @@ export class MarketplaceService implements OnModuleInit {
         productId,
         fieldClass: allowedFieldClass ?? null,
         errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
       });
-      if (error instanceof ShopifyPublishError) {
+      if (error instanceof ShopifyPublishError || error instanceof ShopifyControlledMutationError) {
         throw error;
       }
       throw this.buildShopifyControlledMutationError(
