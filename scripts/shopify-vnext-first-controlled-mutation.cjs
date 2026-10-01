@@ -547,6 +547,21 @@ function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
   return { matched: false, line: null };
 }
 
+async function waitForRailwaySha(config, railwayConfig, railwayEnv) {
+  for (let attempt = 1; attempt <= 90; attempt += 1) {
+    const vars = readRuntimeVariables(railwayConfig, railwayEnv);
+    if (vars.RAILWAY_GIT_COMMIT_SHA === config.releaseSha) {
+      return vars;
+    }
+    await sleep(10000);
+  }
+  const vars = readRuntimeVariables(railwayConfig, railwayEnv);
+  throw new Error(
+    `Railway did not deploy SHA ${config.releaseSha} within 15 minutes. ` +
+    `Current stored RAILWAY_GIT_COMMIT_SHA: ${vars.RAILWAY_GIT_COMMIT_SHA || "<unset>"}.`,
+  );
+}
+
 async function waitForVnextGateActive(config, token) {
   let lastStatus = null;
   let lastBody = null;
@@ -644,7 +659,7 @@ async function run() {
   let gateEnabled = false;
   try {
     await waitForReadiness(config.apiBaseUrl, "initial preflight");
-    const initialVars = readRuntimeVariables(railwayConfig, railwayEnv);
+    const initialVars = await waitForRailwaySha(config, railwayConfig, railwayEnv);
     assertExactPreflight(config, initialVars);
     evidence.preflight.initialVariables = summarizeVnextVariables(initialVars);
 
