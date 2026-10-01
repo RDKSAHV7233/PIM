@@ -1,0 +1,111 @@
+name: Shopify vNext First Controlled Mutation
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: shopify-vnext-first-controlled-mutation
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+  AUTHORIZED_TENANT: admin
+  AUTHORIZED_CONNECTOR: shopify
+  AUTHORIZED_INSTALLATION: 5b07df00-5b47-48f0-991b-2bc2f3fe8a95
+  AUTHORIZED_PRODUCT: cmt9mc8xe0010pf01pkieafm5
+  AUTHORIZED_RELEASE_SHA: 7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb
+  AUTHORIZED_SHOPIFY_PRODUCT_GID: gid://shopify/Product/8087828889690
+  EXPECTED_OLD_IMAGE: https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_ba64d666-d392-40c6-887c-f7a8d481aa4f.png?v=1790748226
+  EXPECTED_TARGET_IMAGE: https://dummyimage.com/600x600/0f172a/ffffff.png?text=Vexa+RES02
+
+jobs:
+  controlled-mutation:
+    name: Execute Authorized Shopify vNext Mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "true"
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Build API for rollback snapshot tooling
+        run: npm run build --workspace @pim1/api
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Resolve staging API URL
+        id: resolve_staging_api_url
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_ENVIRONMENT_NAME: Production
+          FALLBACK_STAGING_API_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: |
+          resolved_api_url="$(node scripts/resolve-railway-service-url.cjs 2>/dev/null || true)"
+          if [ -z "${resolved_api_url}" ]; then
+            resolved_api_url="${FALLBACK_STAGING_API_URL}"
+          fi
+          if [ -z "${resolved_api_url}" ]; then
+            echo "Could not resolve staging API URL from Railway and no STAGING_BASE_URL secret fallback is configured."
+            exit 1
+          fi
+          echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"
+
+      - name: Execute authorized first controlled mutation
+        shell: bash
+        env:
+          APP_ENV: staging
+          STAGING_BASE_URL: ${{ steps.resolve_staging_api_url.outputs.api_url }}
+          STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          STAGING_DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_API_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
+          RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_WEB_SERVICE: ${{ secrets.RAILWAY_WEB_SERVICE || 'App Vexa' }}
+          RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_ENVIRONMENT_NAME: Production
+          RAILWAY_DEPLOY_RETRIES: "3"
+          RAILWAY_DEPLOY_RETRY_DELAY_MS: "10000"
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MUTATION_EVIDENCE_OUTPUT: .run-logs/shopify-vnext-first-controlled-mutation-${{ github.run_id }}.json
+        run: |
+          mkdir -p .run-logs
+          node scripts/shopify-vnext-first-controlled-mutation.cjs
+
+      - name: Upload controlled mutation artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: shopify-vnext-first-controlled-mutation-${{ github.run_id }}
+          path: .run-logs/shopify-vnext-first-controlled-mutation-*.json
+          include-hidden-files: true
+          retention-days: 30
