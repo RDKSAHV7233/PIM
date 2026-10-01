@@ -185,7 +185,6 @@ function setVariablesAcrossTargets(config, railwayEnv, pairs, label) {
       config.environmentName,
       "--project",
       config.projectId,
-      "--skip-deploys",
       "--json",
     ];
     try {
@@ -246,7 +245,6 @@ async function applyGate(config, railwayConfig, railwayEnv, enabled, evidence, l
         ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", "image"],
       ];
   const variableTarget = setVariablesAcrossTargets(railwayConfig, railwayEnv, pairs, label);
-  const restartTarget = restartApi(railwayConfig, railwayEnv, label);
   await sleep(20000);
   const ready = await waitForReadiness(config.apiBaseUrl, label);
   const vars = readRuntimeVariables(railwayConfig, railwayEnv);
@@ -254,7 +252,6 @@ async function applyGate(config, railwayConfig, railwayEnv, enabled, evidence, l
     label,
     enabled,
     variableTarget,
-    restartTarget,
     ready,
     variables: summarizeVnextVariables(vars),
     changedAt: nowIso(),
@@ -551,7 +548,9 @@ function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
 }
 
 async function waitForVnextGateActive(config, token) {
-  for (let attempt = 1; attempt <= 24; attempt += 1) {
+  let lastStatus = null;
+  let lastBody = null;
+  for (let attempt = 1; attempt <= 120; attempt += 1) {
     try {
       const result = await request(
         "GET",
@@ -559,15 +558,22 @@ async function waitForVnextGateActive(config, token) {
         `/marketplace/vnext-mutation-config-preflight?tenantKey=${encodeURIComponent(config.tenant)}&connectorSlug=shopify&installationId=${encodeURIComponent(config.installation)}&productId=${encodeURIComponent(config.product)}`,
         { token, timeoutMs: 15000 },
       );
+      lastStatus = result.status;
+      lastBody = result.body;
       if (result.status === 200 && result.body?.result === "READY") {
         return { attempt, checkedAt: nowIso(), checks: result.body.checks };
       }
-    } catch {
-      // Retry on transient errors.
+    } catch (error) {
+      lastStatus = "error";
+      lastBody = error instanceof Error ? error.message : String(error);
     }
-    await sleep(5000);
+    await sleep(10000);
   }
-  throw new Error("Running API process did not confirm vNext gate active within 2 minutes. Gate may not have propagated to the new container.");
+  throw new Error(
+    `Running API process did not confirm vNext gate active within 20 minutes. ` +
+    `Last preflight response: status=${lastStatus}, body=${JSON.stringify(lastBody)}. ` +
+    `The Railway deploy triggered by variable set may have failed or taken longer than expected.`,
+  );
 }
 
 async function waitForVnextExecutionLog(config, railwayConfig, railwayEnv) {
