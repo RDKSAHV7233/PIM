@@ -514,6 +514,39 @@ async function waitForExportJobTerminal(config, token, jobId) {
   return { attempt: 36, job: last };
 }
 
+function findVnextFailedLog(config, railwayConfig, railwayEnv) {
+  for (const serviceTarget of railwayConfig.apiServiceTargets) {
+    try {
+      const result = runRailway(railwayConfig, railwayEnv, [
+        "logs",
+        "--deployment",
+        "--service",
+        serviceTarget,
+        "--environment",
+        railwayConfig.environmentName,
+        "--lines",
+        "10000",
+        "--since",
+        "30m",
+      ], { timeoutMs: 120000 });
+      const lines = result.stdout.split(/\r?\n/).filter(Boolean);
+      const match = lines.reverse().find((line) =>
+        (
+          line.includes("shopify_vnext_mutation_failed") ||
+          line.includes("shopify_vnext_mutation_blocked")
+        ) &&
+        (line.includes(config.product) || line.includes(config.installation))
+      );
+      if (match) {
+        return { serviceTarget, matched: true, line: redact(match).slice(0, 2000) };
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return { matched: false, line: null };
+}
+
 function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
   for (const serviceTarget of railwayConfig.apiServiceTargets) {
     try {
@@ -747,7 +780,8 @@ async function run() {
       dlqReason: terminalJob.job?.dlqReason ?? null,
     };
     if (String(terminalJob.job?.status ?? "").toLowerCase() !== "completed") {
-      throw new Error(`Export job did not complete successfully; terminal status is ${terminalJob.job?.status ?? "<unknown>"}.`);
+      evidence.api.failedLog = findVnextFailedLog(config, railwayConfig, railwayEnv);
+      throw new Error(`Export job did not complete successfully; terminal status is ${terminalJob.job?.status ?? "<unknown>"}. failedLog=${JSON.stringify(evidence.api.failedLog)}`);
     }
 
     const submissionEvidence = await querySubmissionEvidence(config, jobId);
