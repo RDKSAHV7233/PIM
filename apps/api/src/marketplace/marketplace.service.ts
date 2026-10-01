@@ -4114,9 +4114,10 @@ export class MarketplaceService implements OnModuleInit {
       if (error instanceof ShopifyPublishError || error instanceof ShopifyControlledMutationError) {
         throw error;
       }
+      const causeMsg = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300);
       throw this.buildShopifyControlledMutationError(
         "SHOPIFY_VNEXT_MUTATION_FAILED",
-        "Shopify controlled vNext mutation failed before readback could be verified.",
+        `Shopify controlled vNext mutation failed before readback could be verified. Cause: ${causeMsg}`,
         failureAudit,
       );
     }
