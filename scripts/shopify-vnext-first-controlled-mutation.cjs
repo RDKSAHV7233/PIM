@@ -524,15 +524,16 @@ function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
         "--environment",
         railwayConfig.environmentName,
         "--lines",
-        "2000",
+        "10000",
         "--since",
-        "2h",
-        "--filter",
-        "shopify_vnext_controlled_mutation_executed",
+        "30m",
       ], { timeoutMs: 120000 });
       const lines = result.stdout.split(/\r?\n/).filter(Boolean);
       const match = lines.reverse().find((line) =>
-        line.includes("shopify_vnext_controlled_mutation_executed") &&
+        (
+          line.includes("shopify_vnext_controlled_mutation_executed") ||
+          line.includes("Shopify controlled vNext product sync completed")
+        ) &&
         (line.includes(config.product) || line.includes(config.installation) || line.includes("correlationId"))
       );
       if (match) {
