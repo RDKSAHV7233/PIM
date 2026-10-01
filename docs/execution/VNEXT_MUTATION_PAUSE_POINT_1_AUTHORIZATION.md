@@ -11,15 +11,15 @@ The authorization cannot be completed until a real person signs off in chat.
 
 ## Blocking Status
 
-Current state (updated 2026-09-30, final deploy/snapshot pass):
+Current state (updated 2026-10-01, final deploy/snapshot pass):
 
 - Candidate tenant/installation/product/SKU/Shopify GID are now named (sections 2-5). The product was selected by the product owner in chat from among today's already shadow-verified fixtures, not invented here.
 - Sections 6-9 now carry real evidence captured against the exact candidate product: a live read-only Shopify diff-preview via app.vexapim.com (section 6/8), the actual shipped `buildShopifyChannelProjection`/`buildShopifyVnextProductSetInput` functions run locally against this product's real field data (section 7/8), and the actual shipped `captureRollbackSnapshot`/`buildCompensatingWritePayload` functions run against live Shopify state after the final deploy (section 9). No write was issued capturing any of this; the diff-preview was cancelled, and the rollback snapshot path is read-only GraphQL.
 - `ST-CON-VMUT-004` and `ST-CON-VMUT-005` are now formally locked in `INCREMENT_STATE.json` (`INC-81` / `INC-82` after merging `origin/main`).
-- Final inert code was deployed successfully by GitHub Actions run `36742655646`.
+- Final inert code was deployed successfully by GitHub Actions run `36812014752`.
 - The exact deployed release SHA is now recorded in section 1.
 - The real `captureRollbackSnapshot` GraphQL path was re-run after the final deploy against the exact candidate product. Section 9 now includes the live Shopify rollback snapshot with handle, variant id, inventory item id, image id, SEO, tags, and the computed compensating payload.
-- The allowlist tuple to use is now exact and complete: `tenant=admin`, `connector=shopify`, `installation=5b07df00-5b47-48f0-991b-2bc2f3fe8a95`, `product=cmt9mc8xe0010pf01pkieafm5`, `release=7b4820ee35ea46212046b94d089a82dcbf01e6cf`.
+- The allowlist tuple to use is now exact and complete: `tenant=admin`, `connector=shopify`, `installation=5b07df00-5b47-48f0-991b-2bc2f3fe8a95`, `product=cmt9mc8xe0010pf01pkieafm5`, `release=7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb`.
 - No human sign-off has been recorded in chat for the first real mutation.
 
 Do not treat this file as approval. Evidence being attached is not the same as authorization; the sign-off block below must still be completed by a real person in chat.
@@ -29,16 +29,16 @@ Do not treat this file as approval. Evidence being attached is not the same as a
 Candidate release SHA:
 
 ```text
-Exact deployed release SHA: 7b4820ee35ea46212046b94d089a82dcbf01e6cf
-Deploy run: https://github.com/Vexaap/PIM/actions/runs/36742655646
+Exact deployed release SHA: 7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb
+Deploy run: https://github.com/Vexaap/PIM/actions/runs/36812014752
 Deploy result: success
-Rollback snapshot artifact: staging-gate-artifacts-36742655646 / .run-logs/shopify-vnext-rollback-snapshot-36742655646.json
+Rollback snapshot artifact: staging-gate-artifacts-36812014752 / .run-logs/shopify-vnext-rollback-snapshot-36812014752.json
 ```
 
 Required before authorization:
 
-- `VNEXT_MUTATION_APPROVED_RELEASE_SHA` must be exactly `7b4820ee35ea46212046b94d089a82dcbf01e6cf`.
-- Confirmation that `RAILWAY_GIT_COMMIT_SHA` matches `7b4820ee35ea46212046b94d089a82dcbf01e6cf` in the target environment when the gate is enabled.
+- `VNEXT_MUTATION_APPROVED_RELEASE_SHA` must be exactly `7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb`.
+- Confirmation that `RAILWAY_GIT_COMMIT_SHA` matches `7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb` in the target environment when the gate is enabled.
 - The release contains locked `ST-CON-VMUT-001`, `ST-CON-VMUT-002`, `ST-CON-VMUT-003`, `ST-CON-VMUT-004`, and `ST-CON-VMUT-005` evidence.
 - Human sign-off must still name this exact release SHA.
 
@@ -230,20 +230,20 @@ Known caveat from `ST-CON-VMUT-002` (unchanged from draft):
 Final live rollback evidence was captured after the final inert deploy by the actual shipped `ShopifyConnector.captureRollbackSnapshot(ctx, shopifyGid, { correlationId })` path. This was a read-only Shopify Admin GraphQL query; no ProductSet mutation or rollback mutation was issued.
 
 ```text
-Release SHA: 7b4820ee35ea46212046b94d089a82dcbf01e6cf
-Deploy/snapshot run: https://github.com/Vexaap/PIM/actions/runs/36742655646
-Evidence artifact: staging-gate-artifacts-36742655646 / .run-logs/shopify-vnext-rollback-snapshot-36742655646.json
-Captured at: 2026-09-30T16:19:31.733Z
-Correlation ID: vnext_rollback_7b4820ee35ea_1790785168414
+Release SHA: 7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb
+Deploy/snapshot run: https://github.com/Vexaap/PIM/actions/runs/36812014752
+Evidence artifact: staging-gate-artifacts-36812014752 / .run-logs/shopify-vnext-rollback-snapshot-36812014752.json
+Captured at: 2026-10-01T03:50:31.528Z
+Correlation ID: vnext_rollback_7a461521fbbc_1790826628769
 Shopify Product GID: gid://shopify/Product/8087828889690
-Allowlist tuple: tenant=admin; connector=shopify; installation=5b07df00-5b47-48f0-991b-2bc2f3fe8a95; product=cmt9mc8xe0010pf01pkieafm5; release=7b4820ee35ea46212046b94d089a82dcbf01e6cf
+Allowlist tuple: tenant=admin; connector=shopify; installation=5b07df00-5b47-48f0-991b-2bc2f3fe8a95; product=cmt9mc8xe0010pf01pkieafm5; release=7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb
 ```
 
 **Final live rollback snapshot**, returned by `captureRollbackSnapshot` from Shopify:
 
 ```json
 {
-  "capturedAt": "2026-09-30T16:19:31.732Z",
+  "capturedAt": "2026-10-01T03:50:31.527Z",
   "product": {
     "id": "gid://shopify/Product/8087828889690",
     "title": "RES-02 Approved Candidate 1787720001100-77",
@@ -303,7 +303,7 @@ Allowlist tuple: tenant=admin; connector=shopify; installation=5b07df00-5b47-48f
 
 ```json
 {
-  "correlationId": "vnext_rollback_7b4820ee35ea_1790785168414",
+  "correlationId": "vnext_rollback_7a461521fbbc_1790826628769",
   "input": {
     "title": "RES-02 Approved Candidate 1787720001100-77",
     "handle": "res-02-approved-candidate-1787720001100-77-res02-1787720001100-77-2",
