@@ -550,6 +550,26 @@ function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
   return { matched: false, line: null };
 }
 
+async function waitForVnextGateActive(config, token) {
+  for (let attempt = 1; attempt <= 24; attempt += 1) {
+    try {
+      const result = await request(
+        "GET",
+        config.apiBaseUrl,
+        `/marketplace/vnext-mutation-config-preflight?tenantKey=${encodeURIComponent(config.tenant)}&connectorSlug=shopify&installationId=${encodeURIComponent(config.installation)}&productId=${encodeURIComponent(config.product)}`,
+        { token, timeoutMs: 15000 },
+      );
+      if (result.status === 200 && result.body?.result === "READY") {
+        return { attempt, checkedAt: nowIso(), checks: result.body.checks };
+      }
+    } catch {
+      // Retry on transient errors.
+    }
+    await sleep(5000);
+  }
+  throw new Error("Running API process did not confirm vNext gate active within 2 minutes. Gate may not have propagated to the new container.");
+}
+
 async function waitForVnextExecutionLog(config, railwayConfig, railwayEnv) {
   for (let attempt = 1; attempt <= 12; attempt += 1) {
     const result = findVnextExecutionLog(config, railwayConfig, railwayEnv);
@@ -660,6 +680,9 @@ async function run() {
     }
 
     const token = await login(config);
+    const gateActiveResult = await waitForVnextGateActive(config, token);
+    evidence.preflight.gateActiveVerification = gateActiveResult;
+
     const createResult = await request("POST", config.apiBaseUrl, `/marketplace/products/${encodeURIComponent(config.product)}/export-jobs`, {
       token,
       body: {
