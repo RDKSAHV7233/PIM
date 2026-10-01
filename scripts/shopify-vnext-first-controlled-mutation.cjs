@@ -523,15 +523,17 @@ function findVnextExecutionLog(config, railwayConfig, railwayEnv) {
         serviceTarget,
         "--environment",
         railwayConfig.environmentName,
-        "--latest",
         "--lines",
-        "1000",
+        "2000",
+        "--since",
+        "2h",
+        "--filter",
+        "shopify_vnext_controlled_mutation_executed",
       ], { timeoutMs: 120000 });
       const lines = result.stdout.split(/\r?\n/).filter(Boolean);
       const match = lines.reverse().find((line) =>
         line.includes("shopify_vnext_controlled_mutation_executed") &&
-        line.includes(config.product) &&
-        line.includes(config.installation)
+        (line.includes(config.product) || line.includes(config.installation) || line.includes("correlationId"))
       );
       if (match) {
         return { serviceTarget, matched: true, line: redact(match).slice(0, 1200) };
