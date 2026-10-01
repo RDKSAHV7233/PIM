@@ -5845,6 +5845,49 @@
           }
         },
         {
+          "name": "Get Shopify vNext mutation config preflight",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/marketplace/vnext-mutation-config-preflight?tenantKey=&connectorSlug=&installationId=&productId=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "marketplace",
+                "vnext-mutation-config-preflight"
+              ],
+              "query": [
+                {
+                  "key": "tenantKey",
+                  "value": ""
+                },
+                {
+                  "key": "connectorSlug",
+                  "value": ""
+                },
+                {
+                  "key": "installationId",
+                  "value": ""
+                },
+                {
+                  "key": "productId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "List Shopify recovery groups",
           "request": {
             "method": "GET",

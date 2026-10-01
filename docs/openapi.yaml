@@ -1779,6 +1779,34 @@ paths:
         "201":
           description: ""
       tags: *a16
+  /api/v1/marketplace/vnext-mutation-config-preflight:
+    get:
+      operationId: MarketplaceController_getShopifyVnextConfigPreflight
+      parameters:
+        - name: tenantKey
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: connectorSlug
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: installationId
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: productId
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a16
   /api/v1/marketplace/connectors/shopify/{installationId}/recovery/groups:
     get:
       operationId: MarketplaceController_getRecoveryGroups
