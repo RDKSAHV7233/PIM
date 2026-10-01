@@ -3521,6 +3521,36 @@ export class MarketplaceService implements OnModuleInit {
             })
           : { outcome: "skipped" as const, reason: "not_shopify_or_missing_category" };
 
+        if (executionMode === "controlled_vnext_required" && controlledMutation.outcome !== "executed") {
+          const skipReason = (controlledMutation as { reason?: string }).reason ?? "unknown_skip";
+          throw this.buildShopifyControlledMutationError(
+            "SHOPIFY_VNEXT_MUTATION_BLOCKED",
+            `Controlled vNext mutation was not executed (${skipReason}). Job cannot proceed to legacy path.`,
+            {
+              eventVersion: 1,
+              correlationId: `ctrl-skip-${Date.now()}`,
+              status: "blocked",
+              rollbackModel: "strict_one_write_no_automatic_rollback",
+              maxPrimaryProviderWrites: 1,
+              automaticRollback: false,
+              legacyFallbackAfterVnextStart: false,
+              retryAfterAmbiguousProviderResult: false,
+              tenantKey,
+              connectorSlug: "shopify",
+              installationId: job.installationId ?? "",
+              productId: job.productId,
+              categoryId: job.categoryId ?? "",
+              fieldClass: "image",
+              mutationCount: 0,
+              payloadChecksum: "",
+              approvedReleaseSha: String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? ""),
+              liveReleaseSha: String(process.env.RAILWAY_GIT_COMMIT_SHA ?? ""),
+              failureCode: "SHOPIFY_VNEXT_MUTATION_BLOCKED",
+              failureReason: `skipped_in_controlled_mode:${skipReason}`,
+            },
+          );
+        }
+
         const publishResult = controlledMutation.outcome === "executed"
           ? controlledMutation.result
           : existingGid

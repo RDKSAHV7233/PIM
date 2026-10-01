@@ -611,4 +611,45 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
     });
     expect(connector.applyControlledMutation).not.toHaveBeenCalled();
   });
+
+  it("controlled_vnext_required mode fails closed when categoryId is absent (outer bypass guard)", async () => {
+    setExactGates();
+    const { svc, connector, connectorFramework } = makeSafetyService();
+    jest.spyOn(svc as any, "buildConnectorProductPayload").mockResolvedValue({
+      sku: "SKU-1",
+      title: "Classic Tee",
+      description: "A tee",
+      brand: "Acme",
+      hsnCode: "61091000",
+      gstRate: 5,
+      mrp: 999,
+      sellingPrice: 799,
+      mainImageUrl: "https://cdn.example.com/tee.jpg",
+      attributes: {},
+      productType: "default",
+    });
+
+    await expect(
+      (svc as unknown as {
+        recordConnectorSubmission: (
+          job: { id: string; productId: string; channel: string; installationId?: string | null; categoryId?: string | null },
+          simulation: { exportReady: boolean; mappedPayload: Record<string, unknown>; channelIssues: unknown[]; validationSource: "local_rules" },
+          executionMode: "controlled_vnext_required",
+        ) => Promise<unknown>;
+      }).recordConnectorSubmission(
+        { id: "job-1", productId: "prod-1", channel: "shopify", installationId: "inst-1", categoryId: null },
+        { exportReady: true, mappedPayload: { sku: "SKU-1" }, channelIssues: [], validationSource: "local_rules" },
+        "controlled_vnext_required",
+      )
+    ).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        failureReason: expect.stringContaining("skipped_in_controlled_mode:not_shopify_or_missing_category"),
+      }),
+    });
+
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+    expect(connectorFramework.publish).not.toHaveBeenCalled();
+    expect(connectorFramework.update).not.toHaveBeenCalled();
+  });
 });
