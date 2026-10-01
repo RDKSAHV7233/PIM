@@ -82,7 +82,14 @@ function main() {
   const steps = Array.isArray(job.steps) ? job.steps : [];
   requireStep(steps, "Checkout");
   assert(!steps.some((step) => String(step?.name ?? "").trim() === "Install dependencies"), "RES-02 workflow must not install repo dependencies");
-  assert(!steps.some((step) => String(step?.run ?? "").includes("npm ci")), "RES-02 workflow must not run npm ci");
+  assert(
+    !steps.some(
+      (step) =>
+        String(step?.run ?? "").includes("npm ci") &&
+        !String(step?.if ?? "").includes("controlled_vnext_first_mutation"),
+    ),
+    "RES-02 workflow must not run npm ci (except in the gated controlled-mutation path)",
+  );
   requireStep(steps, "Install Railway CLI");
   const resolveStep = requireStep(steps, "Resolve staging API URL");
   requireEnv(resolveStep, "RAILWAY_PROJECT_ID", "Resolve staging API URL");
