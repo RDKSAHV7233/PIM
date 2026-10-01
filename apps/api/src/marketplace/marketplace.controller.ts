@@ -411,8 +411,14 @@ export class MarketplaceController {
   @Post("export-jobs/:id/process")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
-  processExportJob(@Param("id") jobId: string) {
-    return this.marketplaceService.processExportJob(jobId);
+  processExportJob(
+    @Param("id") jobId: string,
+    @Body() body?: { executionMode?: "normal" | "controlled_vnext_required" },
+  ) {
+    return this.marketplaceService.processExportJob(
+      jobId,
+      body?.executionMode === "controlled_vnext_required" ? "controlled_vnext_required" : "normal",
+    );
   }
 
   @Post("export-jobs/:id/requeue")
@@ -420,6 +426,23 @@ export class MarketplaceController {
   @Roles("admin")
   requeueExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.requeueExportJob(jobId);
+  }
+
+  @Get("vnext-mutation-config-preflight")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getShopifyVnextConfigPreflight(
+    @Query("tenantKey") tenantKey: string,
+    @Query("connectorSlug") connectorSlug: string,
+    @Query("installationId") installationId: string,
+    @Query("productId") productId: string,
+  ) {
+    return this.marketplaceService.getShopifyVnextConfigPreflight(
+      tenantKey,
+      connectorSlug,
+      installationId,
+      productId,
+    );
   }
 
   @Get("connectors/shopify/:installationId/recovery/groups")

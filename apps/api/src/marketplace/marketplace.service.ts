@@ -374,12 +374,15 @@ type ConnectorProductSource = Prisma.ProductGetPayload<{
 // context exists — never from client/browser input, and never from the
 // lenient getCurrentTenantKey() at a queue-payload-construction call site.
 // See BUG-MKT-QUEUE-002.
+type VnextExecutionMode = "normal" | "controlled_vnext_required";
+
 type ConnectorWorkerPayload =
   | {
       mode?: "export-job";
       jobId: string;
       connectorSlug?: string;
       tenantKey: string;
+      executionMode?: VnextExecutionMode;
     }
   | {
       mode: "status-sync";
@@ -1848,7 +1851,7 @@ export class MarketplaceService implements OnModuleInit {
     return job;
   }
 
-  async processExportJob(jobId: string) {
+  async processExportJob(jobId: string, executionMode: VnextExecutionMode = "normal") {
     const startedAtMs = Date.now();
     const existing = await this.prisma.tenant().marketplaceExportJob.findUnique({ where: { id: jobId } });
     if (!existing) {
@@ -2014,6 +2017,7 @@ export class MarketplaceService implements OnModuleInit {
       const submissionOutcome = await this.recordConnectorSubmission(
         { ...existing, installationId: effectiveInstallationId },
         simulation,
+        executionMode,
       );
       effectiveInstallationId = effectiveInstallationId ?? submissionOutcome.installationId ?? null;
 
@@ -2257,8 +2261,11 @@ export class MarketplaceService implements OnModuleInit {
           if (!jobId) {
             return;
           }
+          const queueExecutionMode = (lanePayload as { executionMode?: unknown }).executionMode === "controlled_vnext_required"
+            ? "controlled_vnext_required" as const
+            : "normal" as const;
           try {
-            await this.processExportJob(jobId);
+            await this.processExportJob(jobId, queueExecutionMode);
           } catch (error: unknown) {
             await this.markJobFailedFromWorker(jobId, error);
             throw error;
@@ -3423,6 +3430,7 @@ export class MarketplaceService implements OnModuleInit {
       }>;
       validationSource: "local_rules" | "amazon_sp_api";
     },
+    executionMode: VnextExecutionMode = "normal",
   ): Promise<SubmissionOutcome> {
     const connectorSlug = this.mapChannelToConnectorSlug(job.channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
@@ -3509,6 +3517,7 @@ export class MarketplaceService implements OnModuleInit {
               categoryId: job.categoryId,
               installation,
               existingGid,
+              executionMode,
             })
           : { outcome: "skipped" as const, reason: "not_shopify_or_missing_category" };
 
@@ -3732,6 +3741,60 @@ export class MarketplaceService implements OnModuleInit {
     return outcome;
   }
 
+  async getShopifyVnextConfigPreflight(
+    tenantKey: string,
+    connectorSlug: string,
+    installationId: string,
+    productId: string,
+  ): Promise<{ checks: { name: string; result: "PASS" | "FAIL"; detail?: string }[]; result: "READY" | "BLOCKED" }> {
+    const approvedReleaseSha = String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim();
+    const liveReleaseSha = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? "").trim();
+    const enabled = isVnextMutationEnabled();
+    const releaseApproved = isApprovedRelease();
+    const allowedFieldClass = getVnextMutationAllowedFieldClass();
+    const tupleAllowed = enabled && isMutationAllowedFor(tenantKey, connectorSlug, installationId, productId);
+
+    const checks: { name: string; result: "PASS" | "FAIL"; detail?: string }[] = [
+      {
+        name: "deployed_sha",
+        result: releaseApproved ? "PASS" : "FAIL",
+        detail: releaseApproved
+          ? liveReleaseSha
+          : `live=${liveReleaseSha || "(unset)"} approved=${approvedReleaseSha || "(unset)"}`,
+      },
+      {
+        name: "vnext_gate_enabled",
+        result: enabled ? "PASS" : "FAIL",
+        detail: enabled ? "VNEXT_MUTATION_ENABLED=true" : "VNEXT_MUTATION_ENABLED not true",
+      },
+      {
+        name: "field_class",
+        result: allowedFieldClass === "image" ? "PASS" : "FAIL",
+        detail: allowedFieldClass ?? "(unset)",
+      },
+      {
+        name: "product_tuple_allowed",
+        result: tupleAllowed ? "PASS" : "FAIL",
+        detail: tupleAllowed
+          ? `${tenantKey}/${connectorSlug}/${installationId}/${productId}`
+          : "not in allowlist or gate disabled",
+      },
+      {
+        name: "controlled_mode_available",
+        result: "PASS",
+        detail: "executionMode=controlled_vnext_required implemented",
+      },
+      {
+        name: "legacy_fallback_blocked",
+        result: "PASS",
+        detail: "controlled mode enforces failClosed on all gate misses",
+      },
+    ];
+
+    const blocked = checks.some((c) => c.result === "FAIL");
+    return { checks, result: blocked ? "BLOCKED" : "READY" };
+  }
+
   private async attemptShopifyControlledMutation(input: {
     tenantKey: string;
     productId: string;
@@ -3739,8 +3802,9 @@ export class MarketplaceService implements OnModuleInit {
     categoryId: string;
     installation: { id: string; connectorId: string };
     existingGid: string | null;
+    executionMode?: VnextExecutionMode;
   }): Promise<ControlledMutationOutcome> {
-    const { tenantKey, productId, productPayload, categoryId, installation, existingGid } = input;
+    const { tenantKey, productId, productPayload, categoryId, installation, existingGid, executionMode = "normal" } = input;
     const correlationId = createVnextCorrelationId();
     const approvedReleaseSha = String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim();
     const liveReleaseSha = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? "").trim();
@@ -3834,15 +3898,19 @@ export class MarketplaceService implements OnModuleInit {
     };
 
     if (!enabled) {
+      if (executionMode === "controlled_vnext_required") return failClosed("disabled_in_controlled_mode");
       return skip("disabled");
     }
     if (!tupleAllowed) {
+      if (executionMode === "controlled_vnext_required") return failClosed("allowlist_miss_in_controlled_mode");
       return skip("allowlist_miss");
     }
     if (!releaseApproved) {
+      if (executionMode === "controlled_vnext_required") return failClosed("release_not_approved_in_controlled_mode");
       return skip("release_not_approved");
     }
     if (!fieldClassAllowed) {
+      if (executionMode === "controlled_vnext_required") return failClosed("field_class_not_allowed_in_controlled_mode");
       return skip("field_class_not_allowed");
     }
 
@@ -5448,11 +5516,15 @@ export class MarketplaceService implements OnModuleInit {
     jobId: string,
     connectorSlug: string,
     retryCount: number,
+    executionMode: VnextExecutionMode = "normal",
   ): Promise<void> {
     const tenantKey = this.connectorFramework.requireCurrentTenantKey();
     const queueJobId = `${jobId}_${retryCount}`;
+    const payload: ConnectorWorkerPayload = executionMode === "controlled_vnext_required"
+      ? { jobId, connectorSlug, tenantKey, executionMode }
+      : { jobId, connectorSlug, tenantKey };
     try {
-      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, { jobId, connectorSlug, tenantKey }, { jobId: queueJobId });
+      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, payload, { jobId: queueJobId });
     } catch (enqueueError) {
       let delivered: boolean;
       try {

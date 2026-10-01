@@ -684,6 +684,7 @@ async function run() {
     const processResult = await request("POST", config.apiBaseUrl, `/marketplace/export-jobs/${encodeURIComponent(jobId)}/process`, {
       token,
       timeoutMs: 90000,
+      body: { executionMode: "controlled_vnext_required" },
     });
     assertStatus(processResult, [200, 201, 202], "POST /marketplace/export-jobs/:id/process");
     const terminalJob = await waitForExportJobTerminal(config, token, jobId);

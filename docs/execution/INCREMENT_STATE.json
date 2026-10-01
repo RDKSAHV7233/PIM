@@ -5557,6 +5557,53 @@
           "notes": "The safety command is CI-visible and repeatable but is not a live Shopify mutation test. It proves no controlled vNext mutation occurs without exact gates; if controlled vNext fails after gates pass, the existing legacy path remains available and exactly-one legacy write behavior is covered."
         }
       ]
+    },
+    {
+      "incrementId": "INC-83",
+      "name": "Shopify vNext Per-Job Controlled Mode + Config Preflight",
+      "status": "in_progress",
+      "locked": false,
+      "scope": [
+        "apps/api/src/marketplace/marketplace.service.ts",
+        "apps/api/src/marketplace/marketplace.controller.ts",
+        "apps/api/src/connectors/shopify/shopify-vnext-mutation-safety.spec.ts",
+        "scripts/shopify-vnext-first-controlled-mutation.cjs",
+        "scripts/shopify-vnext-mutation-preflight.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-83-S1",
+          "title": "Per-Job Controlled Execution Mode",
+          "status": "in_progress",
+          "acceptance": [
+            "executionMode=controlled_vnext_required threads from queue payload through processExportJob → recordConnectorSubmission → attemptShopifyControlledMutation",
+            "In controlled mode, all 4 gate misses call failClosed instead of quiet-skip",
+            "Normal mode gate misses still quiet-skip (regression guard)",
+            "23 safety spec tests pass (inc. 5 new controlled-mode tests)"
+          ],
+          "changed_files": [
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.controller.ts",
+            "apps/api/src/connectors/shopify/shopify-vnext-mutation-safety.spec.ts",
+            "scripts/shopify-vnext-first-controlled-mutation.cjs"
+          ]
+        },
+        {
+          "storyId": "INC-83-S2",
+          "title": "Static Read-Only Config Preflight Endpoint",
+          "status": "in_progress",
+          "acceptance": [
+            "GET /marketplace/vnext-mutation-config-preflight returns READY when all 4 gates pass",
+            "Returns BLOCKED on any gate miss with per-check detail",
+            "CLI script scripts/shopify-vnext-mutation-preflight.cjs exits 0 on READY, 1 on BLOCKED"
+          ],
+          "changed_files": [
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/marketplace.controller.ts",
+            "scripts/shopify-vnext-mutation-preflight.cjs"
+          ]
+        }
+      ]
     }
   ]
 }

@@ -189,6 +189,7 @@ function runControlled(
     productId?: string;
     installationId?: string;
     productPayload?: Record<string, unknown>;
+    executionMode?: "normal" | "controlled_vnext_required";
   } = {},
 ): Promise<ControlledOutcome> {
   return (
@@ -200,6 +201,7 @@ function runControlled(
         categoryId: string;
         installation: { id: string; connectorId: string };
         existingGid: string | null;
+        executionMode?: "normal" | "controlled_vnext_required";
       }) => Promise<ControlledOutcome>;
     }
   ).attemptShopifyControlledMutation({
@@ -222,6 +224,7 @@ function runControlled(
     categoryId: "cat-1",
     installation: { id: overrides.installationId ?? "inst-1", connectorId: "conn-1" },
     existingGid: "gid://shopify/Product/999",
+    executionMode: overrides.executionMode,
   });
 }
 
@@ -555,5 +558,57 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
     });
     expect(connector.applyControlledMutation).not.toHaveBeenCalled();
     expect(connectorFramework.buildContextForInstallation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "vNext disabled",
+      env: { VNEXT_MUTATION_ENABLED: "false" },
+      expectedReason: "disabled_in_controlled_mode",
+    },
+    {
+      name: "allowlist miss",
+      env: { VNEXT_MUTATION_ALLOWLIST_JSON: undefined },
+      expectedReason: "allowlist_miss_in_controlled_mode",
+    },
+    {
+      name: "release not approved",
+      env: { RAILWAY_GIT_COMMIT_SHA: OTHER_SHA },
+      expectedReason: "release_not_approved_in_controlled_mode",
+    },
+    {
+      name: "wrong field class",
+      env: { VNEXT_MUTATION_ALLOWED_FIELD_CLASS: undefined },
+      expectedReason: "field_class_not_allowed_in_controlled_mode",
+    },
+  ])(
+    "controlled_vnext_required mode: failClosed with zero legacy writes when $name gate is not met",
+    async ({ env, expectedReason }) => {
+      setExactGates(env);
+      const { svc, connector, connectorFramework } = makeSafetyService();
+
+      await expect(
+        runControlled(svc, { executionMode: "controlled_vnext_required" }),
+      ).rejects.toMatchObject({
+        name: "ShopifyControlledMutationError",
+        audit: expect.objectContaining({ failureReason: expectedReason }),
+      });
+
+      expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+      expect(connectorFramework.publish).not.toHaveBeenCalled();
+      expect(connectorFramework.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it("normal mode gate miss still quiet-skips (regression guard for legacy fallback)", async () => {
+    setExactGates({ VNEXT_MUTATION_ENABLED: "false" });
+    const { svc, connector } = makeSafetyService();
+
+    await expect(runControlled(svc, { executionMode: "normal" })).resolves.toEqual({
+      outcome: "skipped",
+      reason: "disabled",
+      correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
+    });
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
   });
 });
