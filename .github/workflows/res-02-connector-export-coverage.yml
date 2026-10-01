@@ -125,7 +125,7 @@ jobs:
           AUTHORIZED_CONNECTOR: shopify
           AUTHORIZED_INSTALLATION: 5b07df00-5b47-48f0-991b-2bc2f3fe8a95
           AUTHORIZED_PRODUCT: cmt9mc8xe0010pf01pkieafm5
-          AUTHORIZED_RELEASE_SHA: ${{ github.event.inputs.authorized_release_sha || '7a461521fbbcd67dd3286ee8016e39b0ce4cc6bb' }}
+          AUTHORIZED_RELEASE_SHA: ${{ github.event.inputs.authorized_release_sha || '681b9cad87a12d457f025e0ef6655873d969531f' }}
           AUTHORIZED_SHOPIFY_PRODUCT_GID: gid://shopify/Product/8087828889690
           EXPECTED_OLD_IMAGE: https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_ba64d666-d392-40c6-887c-f7a8d481aa4f.png?v=1790748226
           EXPECTED_TARGET_IMAGE: https://dummyimage.com/600x600/0f172a/ffffff.png?text=Vexa+RES02
