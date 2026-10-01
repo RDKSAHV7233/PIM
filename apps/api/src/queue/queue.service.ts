@@ -156,6 +156,7 @@ const DEFAULT_POLICY: QueueLanePolicy = {
 const DEFAULT_QUEUE_BACKEND: QueueBackend = "memory";
 const DEFAULT_QUEUE_WORKER_ENABLED = true;
 const DEFAULT_REDIS_URL = "redis://localhost:6379";
+const REDIS_CONNECT_TIMEOUT_MS = 2_000;
 
 let bullmqModule: typeof import("bullmq") | null = null;
 let redisModule: typeof import("redis") | null = null;
@@ -246,7 +247,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       : null;
   private readonly metadataRedis: RedisClientType | null =
     this.backend === "bullmq"
-      ? loadRedis().createClient({ url: String(process.env.REDIS_URL ?? DEFAULT_REDIS_URL).trim() || DEFAULT_REDIS_URL })
+      ? loadRedis().createClient({
+          url: String(process.env.REDIS_URL ?? DEFAULT_REDIS_URL).trim() || DEFAULT_REDIS_URL,
+          socket: {
+            connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+            reconnectStrategy: () => false,
+          },
+        })
       : null;
   private metadataRedisReady: Promise<void> | null = null;
 
@@ -254,7 +261,12 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   private scheduledSyncWorker: Worker | null = null;
   private scheduledSyncHandler: QueueHandler<unknown> | null = null;
 
-  constructor(@Optional() private readonly errorCaptureService?: ErrorCaptureService) {}
+  constructor(@Optional() private readonly errorCaptureService?: ErrorCaptureService) {
+    this.metadataRedis?.on("error", (error: unknown) => {
+      const message = this.toErrorMessage(error);
+      this.logger.warn(`QueueService: metadata Redis connection error (${message}).`);
+    });
+  }
 
   getBackend(): QueueBackend {
     return this.backend;
@@ -1114,7 +1126,12 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     if (!this.metadataRedisReady) {
-      this.metadataRedisReady = this.metadataRedis.connect().then(() => undefined);
+      this.metadataRedisReady = Promise.race([
+        this.metadataRedis.connect().then(() => undefined),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("Redis connect timeout")), REDIS_CONNECT_TIMEOUT_MS);
+        }),
+      ]);
     }
     await this.metadataRedisReady;
     return this.metadataRedis;

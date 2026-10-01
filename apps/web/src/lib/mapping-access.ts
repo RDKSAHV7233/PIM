@@ -48,3 +48,10 @@ export function describeMappingAccessDenied(role: string, body?: unknown): { tit
     body: `Channel mappings are available to the ${MAPPING_ACCESS_ROLE_LABELS.join(", ")} roles. You are signed in with the ${roleLabel} role. Ask a workspace admin if you need this access.`,
   };
 }
+
+// Shown on the review step when the readiness evaluations were refused for this role (see page.tsx). The versions
+// list and the Validate / Publish actions still work; only the readiness checklist is unavailable.
+export const READINESS_RESTRICTED_NOTICE = {
+  title: "Readiness checks are not available for your role",
+  body: "The server did not run the publish-readiness checks for your account, so the checklist below cannot confirm that this channel is ready. You can still validate and publish mapping versions. Product exports stay blocked until readiness passes, and a workspace admin can review it.",
+} as const;

@@ -5,13 +5,16 @@
 
 const mockConnect = jest.fn();
 const mockQuit = jest.fn();
+const mockOn = jest.fn();
+const mockCreateClient = jest.fn(() => ({
+  connect: mockConnect,
+  quit: mockQuit,
+  on: mockOn,
+  isOpen: false,
+}));
 
 jest.mock("redis", () => ({
-  createClient: jest.fn(() => ({
-    connect: mockConnect,
-    quit: mockQuit,
-    isOpen: false,
-  })),
+  createClient: mockCreateClient,
 }));
 
 describe("QueueService.onModuleInit — Redis fail-fast", () => {
@@ -19,8 +22,10 @@ describe("QueueService.onModuleInit — Redis fail-fast", () => {
 
   beforeEach(() => {
     jest.resetModules();
+    mockCreateClient.mockClear();
     mockConnect.mockReset();
     mockQuit.mockReset();
+    mockOn.mockReset();
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -81,6 +86,40 @@ describe("QueueService.onModuleInit — Redis fail-fast", () => {
 
     const service = await buildService();
     await expect(service.onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it("registers an error listener before connecting the metadata Redis client", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.QUEUE_BACKEND = "bullmq";
+    process.env.REDIS_URL = "redis://localhost:6379";
+    mockConnect.mockResolvedValue(undefined);
+
+    const service = await buildService();
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+
+    expect(mockOn).toHaveBeenCalledWith("error", expect.any(Function));
+    expect(mockOn.mock.invocationCallOrder[0]).toBeLessThan(mockConnect.mock.invocationCallOrder[0]);
+  });
+
+  it("disables metadata Redis reconnect loops during startup", async () => {
+    process.env.APP_ENV = "staging";
+    process.env.QUEUE_BACKEND = "bullmq";
+    process.env.REDIS_URL = "redis://localhost:6379";
+    mockConnect.mockResolvedValue(undefined);
+
+    const service = await buildService();
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      socket: expect.objectContaining({
+        connectTimeout: 2_000,
+        reconnectStrategy: expect.any(Function),
+      }),
+    }));
+    const [[firstCreateClientOptions]] = mockCreateClient.mock.calls as unknown as Array<[
+      { socket: { reconnectStrategy: () => false } },
+    ]>;
+    expect(firstCreateClientOptions.socket.reconnectStrategy()).toBe(false);
   });
 });
 

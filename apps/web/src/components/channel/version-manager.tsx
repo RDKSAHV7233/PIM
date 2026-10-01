@@ -12,6 +12,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { AppRole, ConnectorMappingVersion } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { canArchiveMappingVersions } from "@/lib/role-capabilities";
 import {
   isDefaultMappingLevel,
   presentCompatibilityState,
@@ -388,27 +389,30 @@ export function VersionManagerCard({
                 </p>
               ) : null}
             </ProtectedMappingActionForm>
-            <ProtectedMappingActionForm
-              action={archiveConnectorMappingVersionAction}
-              actorRole={actorRole}
-              connectorSlug={connectorSlug}
-              description="Archiving changes the active mapping history. Confirm your password before continuing."
-              disabled={version.lifecycleState === "archived"}
-              installationId={installationId}
-              label="Archive"
-              open={stepUpAction === "archive" && stepUpVersionId === version.id}
-              pendingLabel="Archiving..."
-              redirectTo={redirectTo}
-              versionId={version.id}
-              idSuffix={view}
-            >
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`archive-reason-${version.id}-${view}`}>
-                  Archive reason
-                </label>
-                <Input id={`archive-reason-${version.id}-${view}`} name="reason" defaultValue="archived_from_mapping_manager" required />
-              </div>
-            </ProtectedMappingActionForm>
+            {/* The API restricts archive to admin (ADMIN_BOUNDARY_FORBIDDEN for everyone else), so only admin is offered it. */}
+            {canArchiveMappingVersions(actorRole) ? (
+              <ProtectedMappingActionForm
+                action={archiveConnectorMappingVersionAction}
+                actorRole={actorRole}
+                connectorSlug={connectorSlug}
+                description="Archiving changes the active mapping history. Confirm your password before continuing."
+                disabled={version.lifecycleState === "archived"}
+                installationId={installationId}
+                label="Archive"
+                open={stepUpAction === "archive" && stepUpVersionId === version.id}
+                pendingLabel="Archiving..."
+                redirectTo={redirectTo}
+                versionId={version.id}
+                idSuffix={view}
+              >
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`archive-reason-${version.id}-${view}`}>
+                    Archive reason
+                  </label>
+                  <Input id={`archive-reason-${version.id}-${view}`} name="reason" defaultValue="archived_from_mapping_manager" required />
+                </div>
+              </ProtectedMappingActionForm>
+            ) : null}
             {(version.lifecycleState === "superseded" || version.lifecycleState === "archived") && (
               <ProtectedMappingActionForm
                 action={rollbackConnectorMappingVersionAction}

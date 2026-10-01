@@ -15,7 +15,7 @@ Current state (updated 2026-09-30, final deploy/snapshot pass):
 
 - Candidate tenant/installation/product/SKU/Shopify GID are now named (sections 2-5). The product was selected by the product owner in chat from among today's already shadow-verified fixtures, not invented here.
 - Sections 6-9 now carry real evidence captured against the exact candidate product: a live read-only Shopify diff-preview via app.vexapim.com (section 6/8), the actual shipped `buildShopifyChannelProjection`/`buildShopifyVnextProductSetInput` functions run locally against this product's real field data (section 7/8), and the actual shipped `captureRollbackSnapshot`/`buildCompensatingWritePayload` functions run against live Shopify state after the final deploy (section 9). No write was issued capturing any of this; the diff-preview was cancelled, and the rollback snapshot path is read-only GraphQL.
-- `ST-CON-VMUT-004` and `ST-CON-VMUT-005` are now formally locked in `INCREMENT_STATE.json` (`INC-78` / `INC-79` after merging `origin/main`).
+- `ST-CON-VMUT-004` and `ST-CON-VMUT-005` are now formally locked in `INCREMENT_STATE.json` (`INC-81` / `INC-82` after merging `origin/main`).
 - Final inert code was deployed successfully by GitHub Actions run `36742655646`.
 - The exact deployed release SHA is now recorded in section 1.
 - The real `captureRollbackSnapshot` GraphQL path was re-run after the final deploy against the exact candidate product. Section 9 now includes the live Shopify rollback snapshot with handle, variant id, inventory item id, image id, SEO, tags, and the computed compensating payload.
