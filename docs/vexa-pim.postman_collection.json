@@ -5845,7 +5845,7 @@
           }
         },
         {
-          "name": "Get Shopify vNext mutation config preflight",
+          "name": "MarketplaceController_getShopifyVnextConfigPreflight",
           "request": {
             "method": "GET",
             "header": [
@@ -5868,19 +5868,27 @@
               "query": [
                 {
                   "key": "tenantKey",
-                  "value": ""
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
                 },
                 {
                   "key": "connectorSlug",
-                  "value": ""
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
                 },
                 {
                   "key": "installationId",
-                  "value": ""
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
                 },
                 {
                   "key": "productId",
-                  "value": ""
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
                 }
               ]
             },
