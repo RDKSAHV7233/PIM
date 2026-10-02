@@ -1,5 +1,5 @@
 import { ExecutionContext, Injectable } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { RetryAfterThrottlerGuard } from "./retry-after-throttler.guard";
 
 const ENFORCED_THROTTLER_NAMES = new Set(["ip"]);
 
@@ -13,7 +13,7 @@ const ENFORCED_THROTTLER_NAMES = new Set(["ip"]);
  * which runs after JwtAuthGuard once a principal is actually resolved.
  */
 @Injectable()
-export class PreAuthIpThrottlerGuard extends ThrottlerGuard {
+export class PreAuthIpThrottlerGuard extends RetryAfterThrottlerGuard {
   override async onModuleInit(): Promise<void> {
     await super.onModuleInit();
     this.throttlers = this.throttlers.filter((t) => ENFORCED_THROTTLER_NAMES.has(t.name ?? ""));

@@ -1,5 +1,5 @@
 import { ExecutionContext, Injectable } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { RetryAfterThrottlerGuard } from "./retry-after-throttler.guard";
 import type { Request } from "express";
 
 interface PimAuthenticatedRequest extends Request {
@@ -24,7 +24,7 @@ const ENFORCED_THROTTLER_NAMES = new Set(["user", "tenant", "apiKey", "tenantApi
  * so it isn't double-enforced by this guard too.
  */
 @Injectable()
-export class IdentityThrottlerGuard extends ThrottlerGuard {
+export class IdentityThrottlerGuard extends RetryAfterThrottlerGuard {
   override async onModuleInit(): Promise<void> {
     await super.onModuleInit();
     this.throttlers = this.throttlers.filter((t) => ENFORCED_THROTTLER_NAMES.has(t.name ?? ""));
