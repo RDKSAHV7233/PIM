@@ -51,6 +51,7 @@ import {
 } from "../connectors/shopify/shopify-vnext-mutation-adapter";
 import { createVnextCorrelationId } from "../common/vnext-correlation";
 import {
+  getVnextMutationApprovedPayloadChecksum,
   getVnextMutationAllowedFieldClass,
   isApprovedRelease,
   isMutationAllowedFor,
@@ -202,6 +203,7 @@ type ShopifyControlledMutationAuditMetadata = {
   fieldClass: "image";
   mutationCount: number;
   payloadChecksum: string;
+  approvedPayloadChecksum: string;
   approvedReleaseSha: string;
   liveReleaseSha: string;
   externalProductGid?: string;
@@ -3543,6 +3545,7 @@ export class MarketplaceService implements OnModuleInit {
               fieldClass: "image",
               mutationCount: 0,
               payloadChecksum: "",
+              approvedPayloadChecksum: getVnextMutationApprovedPayloadChecksum() ?? "",
               approvedReleaseSha: String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? ""),
               liveReleaseSha: String(process.env.RAILWAY_GIT_COMMIT_SHA ?? ""),
               failureCode: "SHOPIFY_VNEXT_MUTATION_BLOCKED",
@@ -3838,6 +3841,7 @@ export class MarketplaceService implements OnModuleInit {
     const correlationId = createVnextCorrelationId();
     const approvedReleaseSha = String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim();
     const liveReleaseSha = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? "").trim();
+    const approvedPayloadChecksum = getVnextMutationApprovedPayloadChecksum() ?? "";
     const enabled = isVnextMutationEnabled();
     const tupleAllowed = enabled && isMutationAllowedFor(tenantKey, "shopify", installation.id, productId);
     const releaseApproved = enabled && isApprovedRelease();
@@ -3862,6 +3866,7 @@ export class MarketplaceService implements OnModuleInit {
       fieldClass: "image",
       mutationCount: 0,
       payloadChecksum: "",
+      approvedPayloadChecksum,
       approvedReleaseSha,
       liveReleaseSha,
       ...overrides,
@@ -3891,6 +3896,7 @@ export class MarketplaceService implements OnModuleInit {
       fieldClass: allowedFieldClass ?? null,
       approvedReleaseSha: approvedReleaseSha || null,
       liveReleaseSha: liveReleaseSha || null,
+      approvedPayloadChecksum: approvedPayloadChecksum || null,
     });
 
     const skip = (reason: string, log = true): ControlledMutationOutcome => {
@@ -3905,7 +3911,10 @@ export class MarketplaceService implements OnModuleInit {
       }
       return { outcome: "skipped", reason, correlationId };
     };
-    const failClosed = (reason: string): never => {
+    const failClosedWithAudit = (
+      reason: string,
+      auditOverrides: Partial<ShopifyControlledMutationAuditMetadata>,
+    ): never => {
       this.logger.warn("shopify_vnext_mutation_blocked", {
         correlationId,
         installationId: installation.id,
@@ -3915,6 +3924,8 @@ export class MarketplaceService implements OnModuleInit {
         fieldClass: allowedFieldClass ?? null,
         approvedReleaseSha: approvedReleaseSha || null,
         liveReleaseSha: liveReleaseSha || null,
+        approvedPayloadChecksum: approvedPayloadChecksum || null,
+        payloadChecksum: auditOverrides.payloadChecksum || null,
       });
       throw this.buildShopifyControlledMutationError(
         "SHOPIFY_VNEXT_MUTATION_BLOCKED",
@@ -3923,8 +3934,12 @@ export class MarketplaceService implements OnModuleInit {
           status: "blocked",
           failureCode: "SHOPIFY_VNEXT_MUTATION_BLOCKED",
           failureReason: reason,
+          ...auditOverrides,
         }),
       );
+    };
+    const failClosed = (reason: string): never => {
+      return failClosedWithAudit(reason, {});
     };
 
     if (!enabled) {
@@ -4000,7 +4015,17 @@ export class MarketplaceService implements OnModuleInit {
       const expectedImageAlts = files
         .map((file) => String((file as Record<string, unknown>).alt ?? "").trim())
         .filter(Boolean);
+      const controlledInputKeys = Object.keys(controlledInput).sort();
+      if (controlledInputKeys.length !== 1 || controlledInputKeys[0] !== "files") {
+        failClosed("unauthorized_outbound_field_scope");
+      }
       const payloadChecksum = this.hashStableJson(controlledInput);
+      if (!approvedPayloadChecksum) {
+        failClosedWithAudit("payload_checksum_not_approved", { payloadChecksum });
+      }
+      if (payloadChecksum !== approvedPayloadChecksum) {
+        failClosedWithAudit("payload_checksum_mismatch", { payloadChecksum });
+      }
       startedAudit = makeAudit({
         status: "started",
         mutationCount: files.length,
@@ -4019,6 +4044,7 @@ export class MarketplaceService implements OnModuleInit {
         fieldClass: "image",
         mutationCount: files.length,
         payloadChecksum,
+        approvedPayloadChecksum,
         approvedReleaseSha,
         liveReleaseSha,
       });
@@ -4034,6 +4060,7 @@ export class MarketplaceService implements OnModuleInit {
         fieldClass: "image",
         mutationCount: files.length,
         payloadChecksum,
+        approvedPayloadChecksum,
         status: result.status,
         approvedReleaseSha,
         liveReleaseSha,

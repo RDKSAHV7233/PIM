@@ -2950,6 +2950,7 @@ describe("MarketplaceService.runShopifyShadowProjection — Story 4 shadow execu
 
 describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-002", () => {
   const ORIGINAL_ENV = { ...process.env };
+  const GOOD_PAYLOAD_CHECKSUM = "159637891e4911f3d6d0be60f4846e3248929760d21824492f6f7d1b09216326";
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
     jest.clearAllMocks();
@@ -3150,6 +3151,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     });
     process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
     process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
+    process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 = GOOD_PAYLOAD_CHECKSUM;
     process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
     const { svc, connector, connectorFramework, realCtx, logger } = makeControlledMutationService();
 
@@ -3184,6 +3186,8 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
         installationId: "inst-1",
         productId: "prod-1",
         sku: "SKU-1",
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: GOOD_PAYLOAD_CHECKSUM,
       }),
     );
   });

@@ -609,6 +609,7 @@ async function runCaseVnextMutationRequiresAllowlistAndRelease(baseEnv) {
       VNEXT_MUTATION_ENABLED: "true",
       VNEXT_MUTATION_ALLOWLIST_JSON: "",
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: "",
+      VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: "",
     },
     "VNEXT_MUTATION_ALLOWLIST_JSON",
     "Expected startup to fail when vNext mutation is enabled without an allowlist.",
@@ -628,6 +629,7 @@ async function runCaseVnextMutationAcceptsSingleAllowlistAndRelease(baseEnv) {
       }),
       VNEXT_MUTATION_APPROVED_RELEASE_SHA: "260a89cc3475152d27821ae2334389ae88084f67",
       VNEXT_MUTATION_ALLOWED_FIELD_CLASS: "image",
+      VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: "159637891e4911f3d6d0be60f4846e3248929760d21824492f6f7d1b09216326",
     },
     "Expected startup validation to accept one exact vNext mutation allowlist entry plus an approved release SHA and image field class.",
   );

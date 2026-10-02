@@ -6,6 +6,7 @@ import { MarketplaceService } from "../../marketplace/marketplace.service";
 const GOOD_SHA = "aaaaaaaa";
 const OTHER_SHA = "bbbbbbbb";
 const TOKEN_VALUE = "shpat_mock_secret_token";
+const GOOD_PAYLOAD_CHECKSUM = "159637891e4911f3d6d0be60f4846e3248929760d21824492f6f7d1b09216326";
 
 type ControlledOutcome = {
   outcome: string;
@@ -58,6 +59,7 @@ function setExactGates(overrides: Record<string, string | undefined> = {}) {
   });
   process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = GOOD_SHA;
   process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
+  process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 = GOOD_PAYLOAD_CHECKSUM;
   process.env.RAILWAY_GIT_COMMIT_SHA = GOOD_SHA;
 
   for (const [key, value] of Object.entries(overrides)) {
@@ -354,6 +356,10 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/),
       fieldClass: "image",
       mutationCount: 1,
+      audit: expect.objectContaining({
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+      }),
     });
     expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
     expect(connector.applyControlledMutation).toHaveBeenCalledWith(
@@ -363,6 +369,56 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       expect.objectContaining({ correlationId: expect.stringMatching(/^vnext_[0-9a-f-]{36}$/) }),
     );
     expect(connector.captureRollbackSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("hard-fails with zero provider writes when the approved outbound checksum is missing", async () => {
+    setExactGates({ VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: undefined });
+    const { svc, connector, logger } = makeSafetyService();
+
+    await expect(runControlled(svc)).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        status: "blocked",
+        failureReason: "payload_checksum_not_approved",
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: "",
+      }),
+    });
+
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "shopify_vnext_mutation_blocked",
+      expect.objectContaining({
+        reason: "payload_checksum_not_approved",
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+      }),
+    );
+  });
+
+  it("hard-fails with zero provider writes when the actual outbound checksum differs from the authorized checksum", async () => {
+    const wrongChecksum = "f".repeat(64);
+    setExactGates({ VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: wrongChecksum });
+    const { svc, connector, logger } = makeSafetyService();
+
+    await expect(runControlled(svc)).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        status: "blocked",
+        failureReason: "payload_checksum_mismatch",
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: wrongChecksum,
+      }),
+    });
+
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "shopify_vnext_mutation_blocked",
+      expect.objectContaining({
+        reason: "payload_checksum_mismatch",
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: wrongChecksum,
+      }),
+    );
   });
 
   it("documents retry idempotency through ConnectorSubmission's tenant/installation/idempotency unique key", () => {

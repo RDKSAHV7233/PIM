@@ -191,6 +191,7 @@ function readRuntimeVariables(config, railwayEnv) {
     VNEXT_MUTATION_ALLOWLIST_JSON: String(raw.VNEXT_MUTATION_ALLOWLIST_JSON ?? "").trim(),
     VNEXT_MUTATION_APPROVED_RELEASE_SHA: String(raw.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim(),
     VNEXT_MUTATION_ALLOWED_FIELD_CLASS: String(raw.VNEXT_MUTATION_ALLOWED_FIELD_CLASS ?? "").trim(),
+    VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: String(raw.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 ?? "").trim(),
   };
 }
 
@@ -201,6 +202,7 @@ function summarizeVnextVariables(vars) {
     VNEXT_MUTATION_ALLOWLIST_JSON: vars.VNEXT_MUTATION_ALLOWLIST_JSON ? "<set>" : "<unset>",
     VNEXT_MUTATION_APPROVED_RELEASE_SHA: vars.VNEXT_MUTATION_APPROVED_RELEASE_SHA || "<unset>",
     VNEXT_MUTATION_ALLOWED_FIELD_CLASS: vars.VNEXT_MUTATION_ALLOWED_FIELD_CLASS || "<unset>",
+    VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: vars.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 || "<unset>",
   };
 }
 
@@ -278,12 +280,14 @@ async function applyGate(config, railwayConfig, railwayEnv, enabled, evidence, l
         ["VNEXT_MUTATION_ALLOWLIST_JSON", JSON.stringify(config.allowlist)],
         ["VNEXT_MUTATION_APPROVED_RELEASE_SHA", config.releaseSha],
         ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", "image"],
+        ["VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256", config.mutationPayloadChecksum],
       ]
     : [
         ["VNEXT_MUTATION_ENABLED", "false"],
         ["VNEXT_MUTATION_ALLOWLIST_JSON", JSON.stringify(config.allowlist)],
         ["VNEXT_MUTATION_APPROVED_RELEASE_SHA", config.releaseSha],
         ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", "image"],
+        ["VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256", config.mutationPayloadChecksum],
       ];
   const variableTarget = setVariablesAcrossTargets(railwayConfig, railwayEnv, pairs, label);
   await sleep(20000);
@@ -427,6 +431,7 @@ async function querySubmissionEvidence(config, jobId) {
         resolvedAt: true,
         connectorSlug: true,
         channelErrors: true,
+        payloadSnapshot: true,
       },
     });
     if (!submission) {
@@ -450,7 +455,11 @@ async function querySubmissionEvidence(config, jobId) {
       },
     });
     return {
-      submission,
+      submission: {
+        ...submission,
+        payloadSnapshot: undefined,
+        vnextAudit: submission.payloadSnapshot?.__vnextMutationAudit ?? null,
+      },
       duplicateSubmissions,
       crossTenantSubmissions,
     };
@@ -787,6 +796,7 @@ async function run() {
     installation: readEnv("AUTHORIZED_INSTALLATION"),
     product: readEnv("AUTHORIZED_PRODUCT"),
     releaseSha: readEnv("AUTHORIZED_RELEASE_SHA"),
+    mutationPayloadChecksum: readEnv("AUTHORIZED_MUTATION_PAYLOAD_SHA256").toLowerCase(),
     shopifyProductGid: readEnv("AUTHORIZED_SHOPIFY_PRODUCT_GID"),
     expectedOldImage: readEnv("EXPECTED_OLD_IMAGE", false),
     expectedTargetImage: readEnv("EXPECTED_TARGET_IMAGE", false),
@@ -805,6 +815,9 @@ async function run() {
   if (config.connector !== "shopify") {
     throw new Error(`This runner only supports connector=shopify, got ${config.connector}.`);
   }
+  if (!/^[a-f0-9]{64}$/.test(config.mutationPayloadChecksum)) {
+    throw new Error("AUTHORIZED_MUTATION_PAYLOAD_SHA256 must be a 64 character lowercase SHA-256 hex digest.");
+  }
 
   const railwayConfig = resolveConfig(process.env, REPO_ROOT);
   const railwayEnv = buildRailwayExecutionEnv(process.env);
@@ -819,6 +832,7 @@ async function run() {
       installation: config.installation,
       product: config.product,
       release: config.releaseSha,
+      mutationPayloadChecksum: config.mutationPayloadChecksum,
       shopifyProductGid: config.shopifyProductGid,
     },
     allowlist: config.allowlist,
@@ -892,6 +906,9 @@ async function run() {
     }
     if (enabledVars.VNEXT_MUTATION_ALLOWED_FIELD_CLASS !== "image") {
       throw new Error("VNEXT_MUTATION_ALLOWED_FIELD_CLASS was not exactly image after gate enable.");
+    }
+    if (enabledVars.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256.toLowerCase() !== config.mutationPayloadChecksum) {
+      throw new Error("VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 does not match the authorized outbound mutation checksum after gate enable.");
     }
 
     const token = await login(config);
@@ -970,6 +987,15 @@ async function run() {
     }
     if (submissionEvidence.crossTenantSubmissions !== 0) {
       throw new Error(`Cross-tenant submission count after start is ${submissionEvidence.crossTenantSubmissions}, expected 0.`);
+    }
+    if (!submissionEvidence.submission.vnextAudit) {
+      throw new Error("Connector submission is missing __vnextMutationAudit.");
+    }
+    if (submissionEvidence.submission.vnextAudit.payloadChecksum !== config.mutationPayloadChecksum) {
+      throw new Error(`Audit payload checksum mismatch: expected ${config.mutationPayloadChecksum}, got ${submissionEvidence.submission.vnextAudit.payloadChecksum ?? "<unset>"}.`);
+    }
+    if (submissionEvidence.submission.vnextAudit.approvedPayloadChecksum !== config.mutationPayloadChecksum) {
+      throw new Error(`Audit approved payload checksum mismatch: expected ${config.mutationPayloadChecksum}, got ${submissionEvidence.submission.vnextAudit.approvedPayloadChecksum ?? "<unset>"}.`);
     }
 
     const executionLog = await waitForVnextExecutionLog(config, railwayConfig, railwayEnv);

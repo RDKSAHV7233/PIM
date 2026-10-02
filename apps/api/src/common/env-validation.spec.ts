@@ -104,6 +104,7 @@ describe("validateEnv - credential encryption key versioning", () => {
     expect(result.VNEXT_MUTATION_ALLOWLIST_JSON).toBeUndefined();
     expect(result.VNEXT_MUTATION_APPROVED_RELEASE_SHA).toBeUndefined();
     expect(result.VNEXT_MUTATION_ALLOWED_FIELD_CLASS).toBeUndefined();
+    expect(result.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256).toBeUndefined();
   });
 
   it("fails startup when vNext mutation is enabled without an allowlist, approved release, and field class", () => {
@@ -117,6 +118,7 @@ describe("validateEnv - credential encryption key versioning", () => {
     expect(output).toContain("VNEXT_MUTATION_ALLOWLIST_JSON");
     expect(output).toContain("VNEXT_MUTATION_APPROVED_RELEASE_SHA");
     expect(output).toContain("VNEXT_MUTATION_ALLOWED_FIELD_CLASS");
+    expect(output).toContain("VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256");
   });
 
   it("accepts a single exact vNext mutation allowlist entry with an approved release SHA and image field class", () => {
@@ -131,6 +133,7 @@ describe("validateEnv - credential encryption key versioning", () => {
     });
     process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "260a89cc3475152d27821ae2334389ae88084f67";
     process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
+    process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 = "159637891e4911f3d6d0be60f4846e3248929760d21824492f6f7d1b09216326";
 
     const result = validateEnv();
 
@@ -139,5 +142,6 @@ describe("validateEnv - credential encryption key versioning", () => {
     expect(result.VNEXT_MUTATION_ALLOWLIST_JSON).toBe(process.env.VNEXT_MUTATION_ALLOWLIST_JSON);
     expect(result.VNEXT_MUTATION_APPROVED_RELEASE_SHA).toBe(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA);
     expect(result.VNEXT_MUTATION_ALLOWED_FIELD_CLASS).toBe("image");
+    expect(result.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256).toBe(process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256);
   });
 });

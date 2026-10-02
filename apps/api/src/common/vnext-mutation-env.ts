@@ -12,6 +12,7 @@ export type VnextMutationFieldClass = "image";
 const ALLOWLIST_FIELDS = ["tenantKey", "connectorSlug", "installationId", "productId"] as const;
 const ALLOWED_FIELD_CLASSES = new Set<VnextMutationFieldClass>(["image"]);
 const SHA_PATTERN = /^[A-Fa-f0-9]{7,64}$/;
+const SHA256_PATTERN = /^[A-Fa-f0-9]{64}$/;
 
 function trimmed(value: unknown): string {
   return String(value ?? "").trim();
@@ -95,6 +96,17 @@ export function getVnextMutationAllowedFieldClassValidationIssue(raw: unknown): 
   return undefined;
 }
 
+export function getVnextMutationApprovedPayloadValidationIssue(raw: unknown): string | undefined {
+  const checksum = trimmed(raw);
+  if (!checksum) {
+    return "required when VNEXT_MUTATION_ENABLED=true";
+  }
+  if (!SHA256_PATTERN.test(checksum)) {
+    return "must be a 64 character SHA-256 hex digest";
+  }
+  return undefined;
+}
+
 export function getVnextMutationValidationIssues(env: VnextMutationEnv = process.env): string[] {
   if (!isVnextMutationEnabled(env)) {
     return [];
@@ -114,6 +126,11 @@ export function getVnextMutationValidationIssues(env: VnextMutationEnv = process
   const fieldClassIssue = getVnextMutationAllowedFieldClassValidationIssue(env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS);
   if (fieldClassIssue) {
     issues.push(`VNEXT_MUTATION_ALLOWED_FIELD_CLASS: ${fieldClassIssue}`);
+  }
+
+  const payloadIssue = getVnextMutationApprovedPayloadValidationIssue(env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256);
+  if (payloadIssue) {
+    issues.push(`VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256: ${payloadIssue}`);
   }
 
   return issues;
@@ -160,4 +177,9 @@ export function isVnextMutationFieldClassAllowed(
   env: VnextMutationEnv = process.env,
 ): boolean {
   return getVnextMutationAllowedFieldClass(env) === fieldClass;
+}
+
+export function getVnextMutationApprovedPayloadChecksum(env: VnextMutationEnv = process.env): string | undefined {
+  const checksum = trimmed(env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256).toLowerCase();
+  return SHA256_PATTERN.test(checksum) ? checksum : undefined;
 }
