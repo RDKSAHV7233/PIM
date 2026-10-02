@@ -73,6 +73,8 @@ const VALIDATION_ISSUE_SELECT = {
 
 /** Cache TTL for required-attribute lookups — same source as compliance cache, same TTL. */
 const COMPLETENESS_CACHE_TTL_SECONDS = 5 * 60;
+// Defensive cap for the non-cursor product list; prevents full-table scans on large tenants.
+const LEGACY_LIST_CAP = 500;
 
 @Injectable()
 export class CatalogService {
@@ -181,6 +183,9 @@ export class CatalogService {
     // Non-cursor path: used only for sample/preview UIs (mapping preview, bulk-edit preview).
     // Neither caller uses validationIssues; narrow to the minimal field set.
     // take: 500 is a defensive cap — prevents catastrophic full-table scans on large tenants.
+    // An explicit ?limit=N is honoured here too (same array shape, still capped at 500) so callers
+    // that send `limit` without `pagination=cursor` are not silently handed the whole list (DEF-PC-011).
+    const legacyTake = Math.min(pagination?.limit ?? LEGACY_LIST_CAP, LEGACY_LIST_CAP);
     const products = await this.prisma.tenant().product.findMany({
       where: scopeWhere,
       select: {
@@ -204,7 +209,7 @@ export class CatalogService {
         },
       },
       orderBy: [{ updatedAt: "desc" }],
-      take: 500,
+      take: legacyTake,
     });
     const scored = await this.attachCompletenessScores(products);
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_products_redacted", scored);
