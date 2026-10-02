@@ -20,14 +20,20 @@ function getString(value: string | string[] | undefined): string {
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const claims = await getServerSessionClaims();
-  if (claims) {
+  const params = await searchParams;
+  const reason = getString(params.reason).trim().toLowerCase();
+  // A token that still *looks* valid locally (signature + exp) can be rejected by the API
+  // (revoked after logout in another tab, lockout, password change, deploy). Pages then
+  // redirect here with reason=session_expired. Bouncing straight back to /dashboard would
+  // send the user into a loop that ends on a blank dashboard shell (prod-cert DEF-PC-016),
+  // so only auto-forward when we were NOT sent here because the session failed. When the
+  // reason already says the session failed there is nothing to decide, so skip the token check.
+  const sentHereBecauseSessionFailed = reason === "session_expired" || reason === "forbidden";
+  if (!sentHereBecauseSessionFailed && (await getServerSessionClaims())) {
     redirect("/dashboard");
   }
-  const params = await searchParams;
   const cookieStore = await cookies();
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);
-  const reason = getString(params.reason).trim().toLowerCase();
   const nextPath = sanitizeNextPath(getString(params.next));
   const workspaceSlug = getString(params.workspace).trim().toLowerCase();
   return (
