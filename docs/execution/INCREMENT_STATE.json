@@ -5705,6 +5705,156 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-84",
+      "name": "Production-certification remediation sprint R1 (DEF-PC-013, DEF-PC-010, DEF-PC-002/014, DEF-PC-016)",
+      "status": "in_progress",
+      "locked": false,
+      "sprintDoc": "docs/qa/prod-cert/VEXA-PROD-CERT-2026-10-02-01/SPRINT_REMEDIATION_01.md",
+      "note": "Not locked: stories lock only after PO acceptance and CTO approval (AGENTS.md rules 6/7). Nothing is deployed; main auto-deploys to production, so merge one story at a time.",
+      "stories": [
+        {
+          "storyId": "INC-84-S1",
+          "title": "API survives transient DB errors in background timers (DEF-PC-013, P1)",
+          "status": "in_progress",
+          "locked": false,
+          "branch": "fix/inc84-s1-process-resilience",
+          "commit": "e29d0be6",
+          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "acceptance": [
+            "A P2024 in the webhook recovery timer is logged and raises no unhandledRejection",
+            "Unhandled rejections are logged and the process keeps serving; uncaughtException keeps Node's default",
+            "Service test fails with the fix removed and passes with it (negative proof)"
+          ],
+          "tests_passed": [
+            "tsc clean",
+            "full API unit suite: 135/136 suites, 2391 tests passed, 18 skipped, 0 failed",
+            "negative proof: service test fails against the original service and passes with the fix",
+            "pr-scope: 5 files, 177 lines, api-product"
+          ],
+          "changed_files": [
+            "apps/api/src/outbound-webhooks/outbound-webhooks.service.ts",
+            "apps/api/src/outbound-webhooks/outbound-webhooks.service.spec.ts",
+            "apps/api/src/common/process-guards.ts",
+            "apps/api/src/common/process-guards.spec.ts",
+            "apps/api/src/main.ts"
+          ],
+          "review": "independent code review: 9 findings (6 fixed, 3 skipped with reasons); caught a boot-failure regression in the first version, fixed with runAndExitOnFailure"
+        },
+        {
+          "storyId": "INC-84-S2",
+          "title": "NUL (U+0000) is a 400, not a 500 (DEF-PC-010, P3)",
+          "status": "in_progress",
+          "locked": false,
+          "branch": "fix/inc84-s2-reject-nul",
+          "commit": "6610b0e9",
+          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "acceptance": [
+            "GET /catalog/products/search?q=a%00b returns 400 VALIDATION_FAILED (production today: 500)",
+            "NUL in body (nested, arrays, keys), params or query returns 400; normal, unicode, emoji, quote, 10k-char input unchanged",
+            "Raw Buffer bodies (signed webhooks) are never scanned"
+          ],
+          "known_gaps": [],
+          "tests_passed": [
+            "tsc clean",
+            "full API unit suite: 135/136 suites, 2394 tests passed, 18 skipped, 0 failed",
+            "real-Express HTTP tests (JSON escape, query, header ordering)",
+            "local rebuilt API: search a%00b 500 -> 400 with correlation id + helmet headers; CSV with NUL in SKU cell -> 400 VALIDATION_FAILED",
+            "pr-scope: 5 files, 222 lines, api-product"
+          ],
+          "changed_files": [
+            "apps/api/src/common/reject-nul-bytes.middleware.ts",
+            "apps/api/src/common/reject-nul-bytes.middleware.spec.ts",
+            "apps/api/src/main.ts",
+            "apps/api/src/error-authority/api-exception-capture.filter.ts",
+            "apps/api/src/error-authority/api-exception-capture.filter.spec.ts"
+          ],
+          "scope_expansion": [
+            "apps/api/src/error-authority/api-exception-capture.filter.ts (+spec): root-cause mapping of Postgres 22021 NUL error to 400 for paths the request scan cannot see (file-derived values)"
+          ],
+          "review": "independent code review: 9 findings (7 fixed, 2 skipped with reasons)"
+        },
+        {
+          "storyId": "INC-84-S3",
+          "title": "Public media is safe to serve (DEF-PC-002 + DEF-PC-014, P2)",
+          "status": "in_progress",
+          "locked": false,
+          "branch": "fix/inc84-s3-media-safety",
+          "commit": "9dab318f",
+          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "acceptance": [
+            "Upload outside png/jpeg/webp/gif returns 400; declared type must match magic bytes; a real PNG/JPEG is accepted",
+            "Public file response (local-storage path): sandbox CSP, valid Content-Disposition for any filename, legacy non-image rows served as octet-stream attachment",
+            "All pre-existing media tests pass"
+          ],
+          "pre_merge_gates": [
+            "PO decision: images-only (SVG/PDF not allowed)",
+            "SRE media inventory: MET for the visible assets (55/55 production assets are image/png, checked 2026-10-02); a full database inventory is still recommended"
+          ],
+          "known_gaps": [
+            "production R2 redirect path unchanged: legacy non-image objects stay live until S3b (inventory + cleanup or R2 response headers)"
+          ],
+          "tests_passed": [
+            "tsc clean",
+            "full API unit suite: 136/137 suites, 2406 tests passed, 18 skipped, 0 failed",
+            "media specs 44/44",
+            "local rebuilt API: html/svg/fake-png/evil 201 -> 400, real PNG 201, Japanese filename public GET 500 -> 200",
+            "openapi:check: only CRLF differences, no content drift",
+            "pr-scope: 6 files, 368 lines, api-product"
+          ],
+          "changed_files": [
+            "apps/api/src/media/media-content-safety.ts",
+            "apps/api/src/media/media-content-safety.spec.ts",
+            "apps/api/src/media/media.service.ts",
+            "apps/api/src/media/media.service.spec.ts",
+            "apps/api/src/media/media.controller.ts",
+            "apps/api/src/media/media.controller.spec.ts"
+          ],
+          "review": "independent code review: 10 findings (7 fixed, 3 skipped with reasons); caught a filename-regex bug (backslash not stripped), GIF extension, bulk octet-stream regression"
+        },
+        {
+          "storyId": "INC-84-S4",
+          "title": "Expired or revoked session reaches the login page (DEF-PC-016, P2)",
+          "status": "in_progress",
+          "locked": false,
+          "branch": "fix/inc84-s4-session-expired-login",
+          "commit": "9e66f5c9",
+          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "acceptance": [
+            "A signature-valid but server-revoked token: /dashboard, /catalog/products, /admin/users end on /login?reason=session_expired&next=<page> with the password form",
+            "A genuinely valid session opening /login is still forwarded to /dashboard",
+            "New e2e spec passes (3 routes)"
+          ],
+          "known_gaps": [
+            "RootLayout still draws the signed-in header on /login while a stale cookie looks locally valid (backlog)"
+          ],
+          "tests_passed": [
+            "web lint (tsc) clean",
+            "stale-session-login-redirect.spec.js 4/4 on a rebuilt local stack (3 revoked-session routes + valid-session forward)",
+            "manual pre-fix reproduction (blank dashboard shell) and post-fix result",
+            "pr-scope: 2 files, 78 lines, web"
+          ],
+          "changed_files": [
+            "apps/web/src/app/login/page.tsx",
+            "apps/web/test/e2e/stale-session-login-redirect.spec.js"
+          ],
+          "review": "independent code review: 6 findings (4 fixed, 1 skipped with reason, 1 not needed)"
+        },
+        {
+          "storyId": "INC-84-S5",
+          "title": "SPIKE: throttle storage, SSR rate-limit key, DB pool (DEF-PC-003/005/015)",
+          "status": "blocked",
+          "locked": false,
+          "blockedBy": [
+            "CTO/SRE: Railway API and web replica counts",
+            "how the web service reaches the API (public vs private URL)",
+            "DATABASE_URL pool settings",
+            "PIM_DISABLE_THROTTLER unset confirmation",
+            "CTO decision on Redis-backed ThrottlerStorage"
+          ]
+        }
+      ]
     }
   ]
 }
