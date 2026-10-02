@@ -5720,8 +5720,8 @@
           "status": "in_progress",
           "locked": false,
           "branch": "fix/inc84-s1-process-resilience",
-          "commit": "e29d0be6",
-          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "commit": "1370206e",
+          "reviewStatus": "merged and deployed 2026-10-02 (production 1370206e); NOT locked: needs a 24 h Railway log check (no process exits / restarts) and an ops alert on the 'Unhandled promise rejection (process kept alive)' log line",
           "acceptance": [
             "A P2024 in the webhook recovery timer is logged and raises no unhandledRejection",
             "Unhandled rejections are logged and the process keeps serving; uncaughtException keeps Node's default",
@@ -5740,16 +5740,16 @@
             "apps/api/src/common/process-guards.spec.ts",
             "apps/api/src/main.ts"
           ],
-          "review": "independent code review: 9 findings (6 fixed, 3 skipped with reasons); caught a boot-failure regression in the first version, fixed with runAndExitOnFailure"
+          "review": "independent code review: 9 findings (6 fixed, 3 skipped with reasons); caught a boot-failure regression in the first version, fixed with runAndExitOnFailure",
+          "merged": true,
+          "live_checks_so_far": "health/ready 200 x3, anonymous probe pack unchanged"
         },
         {
           "storyId": "INC-84-S2",
           "title": "NUL (U+0000) is a 400, not a 500 (DEF-PC-010, P3)",
-          "status": "in_progress",
-          "locked": false,
-          "branch": "fix/inc84-s2-reject-nul",
-          "commit": "6610b0e9",
-          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "status": "completed",
+          "locked": true,
+          "commit": "cdb664ef",
           "acceptance": [
             "GET /catalog/products/search?q=a%00b returns 400 VALIDATION_FAILED (production today: 500)",
             "NUL in body (nested, arrays, keys), params or query returns 400; normal, unicode, emoji, quote, 10k-char input unchanged",
@@ -5773,7 +5773,8 @@
           "scope_expansion": [
             "apps/api/src/error-authority/api-exception-capture.filter.ts (+spec): root-cause mapping of Postgres 22021 NUL error to 400 for paths the request scan cannot see (file-derived values)"
           ],
-          "review": "independent code review: 9 findings (7 fixed, 2 skipped with reasons)"
+          "review": "independent code review: 9 findings (7 fixed, 2 skipped with reasons)",
+          "live_verified": "2026-10-02, production c1e34bbe: signed-in GET /api/catalog/search?q=a%00b and the unicode+%00 variant -> 400 VALIDATION_FAILED (baseline: 500); q=blue, XSS, 3000-char, empty -> 200; media page and anonymous probe pack unchanged (36 pass / 3 known header failures)"
         },
         {
           "storyId": "INC-84-S3",
@@ -5781,8 +5782,8 @@
           "status": "in_progress",
           "locked": false,
           "branch": "fix/inc84-s3-media-safety",
-          "commit": "9dab318f",
-          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "commit": "99eee3ae",
+          "reviewStatus": "merged and deployed 2026-10-02 (production c1e34bbe); NOT locked: live upload check pending (needs approval: one text/html upload must be rejected 400, one real PNG accepted)",
           "acceptance": [
             "Upload outside png/jpeg/webp/gif returns 400; declared type must match magic bytes; a real PNG/JPEG is accepted",
             "Public file response (local-storage path): sandbox CSP, valid Content-Disposition for any filename, legacy non-image rows served as octet-stream attachment",
@@ -5811,16 +5812,16 @@
             "apps/api/src/media/media.controller.ts",
             "apps/api/src/media/media.controller.spec.ts"
           ],
-          "review": "independent code review: 10 findings (7 fixed, 3 skipped with reasons); caught a filename-regex bug (backslash not stripped), GIF extension, bulk octet-stream regression"
+          "review": "independent code review: 10 findings (7 fixed, 3 skipped with reasons); caught a filename-regex bug (backslash not stripped), GIF extension, bulk octet-stream regression",
+          "merged": true,
+          "live_checks_so_far": "all 55 existing production assets still redirect to R2 and serve image/png; media page loads"
         },
         {
           "storyId": "INC-84-S4",
           "title": "Expired or revoked session reaches the login page (DEF-PC-016, P2)",
-          "status": "in_progress",
-          "locked": false,
-          "branch": "fix/inc84-s4-session-expired-login",
-          "commit": "9e66f5c9",
-          "reviewStatus": "awaiting PO acceptance and CTO approval (agent reviews recorded in the sprint doc)",
+          "status": "completed",
+          "locked": true,
+          "commit": "82888723",
           "acceptance": [
             "A signature-valid but server-revoked token: /dashboard, /catalog/products, /admin/users end on /login?reason=session_expired&next=<page> with the password form",
             "A genuinely valid session opening /login is still forwarded to /dashboard",
@@ -5839,7 +5840,8 @@
             "apps/web/src/app/login/page.tsx",
             "apps/web/test/e2e/stale-session-login-redirect.spec.js"
           ],
-          "review": "independent code review: 6 findings (4 fixed, 1 skipped with reason, 1 not needed)"
+          "review": "independent code review: 6 findings (4 fixed, 1 skipped with reason, 1 not needed)",
+          "live_verified": "2026-10-02, production c1e34bbe: signed-in /login still forwards to /dashboard; dashboard renders (main 2522 chars); signed-in /login?reason=session_expired now shows the login form with the expired notice (before the fix it forwarded to /dashboard). The revoked-token case is proven by the e2e spec, not re-forceable on live."
         },
         {
           "storyId": "INC-84-S5",

@@ -152,10 +152,10 @@ Each story branch was reviewed against its diff; every finding was fixed, delibe
 Final evidence (all green): **S1** commit `e29d0be6`; **S2** `6610b0e9`; **S3** `9dab318f`; **S4** `9e66f5c9`. Full API unit suite per backend branch: S1 2391 passed, S2 2394, S3 2406 (18 skipped by the repo, 0 failed); type-check clean; PR-scope clean (single domain each). S4: web lint clean, e2e spec 4/4 on a rebuilt local stack. Live baseline captured before deploy and kept locally (not committed).
 | Story | Dev tests | Agent: QA | Agent: Security | Agent: SRE | Agent: Code review | **PO accepts** | **CTO approves** | Deployed | Live verified |
 |---|---|---|---|---|---|---|---|---|---|
-| S1 | ✅ | ✅ | ✅ (accepted risks noted) | ✅ (alert on `process kept alive` log is an ops action) | ✅ 9 findings closed | ☐ you | ☐ you | no | no |
-| S2 | ✅ | ✅ | ✅ | ✅ | ✅ 9 findings closed | ☐ you | ☐ you | no | no |
-| S3 | ✅ | ✅ | ✅ (R2 headers + legacy objects = S3b) | ✅ pre-merge gate met: 55/55 live assets are image/png | ✅ 10 findings closed | ☐ you (images-only decision) | ☐ you | no | no |
-| S4 | ✅ | ✅ | ✅ | ✅ | ✅ 6 findings closed | ☐ you | ☐ you | no | no |
+| S1 | ✅ | ✅ | ✅ (accepted risks noted) | ✅ (alert on `process kept alive` log is an ops action) | ✅ 9 findings closed | ☑ merged by you | ☑ merged by you | yes (1370206e) | partial: health OK; 24 h Railway log check pending |
+| S2 | ✅ | ✅ | ✅ | ✅ | ✅ 9 findings closed | ☑ | ☑ | yes (cdb664ef) | **yes**: NUL search 500 -> 400 on live |
+| S3 | ✅ | ✅ | ✅ (R2 headers + legacy objects = S3b) | ✅ pre-merge gate met: 55/55 live assets are image/png | ✅ 10 findings closed | ☑ (images-only accepted by merging) | ☑ | yes (99eee3ae) | partial: 55/55 existing assets OK; live upload rejection check pending approval |
+| S4 | ✅ | ✅ | ✅ | ✅ | ✅ 6 findings closed | ☑ | ☑ | yes (82888723) | **yes**: valid session unchanged; expired-reason URL shows login form |
 
 ### Backlog created by this sprint
 S1b audit the 14 other `setInterval(() => void …)` timers · S3b legacy non-image media + R2 response headers (nosniff/CSP) · S4b clear stale cookies at the 401 redirect + RootLayout header on `/login` · S5 throttle/pool spike (needs Railway facts) · DEF-PC-001/017/018/008 next sprint.
