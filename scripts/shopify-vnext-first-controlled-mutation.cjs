@@ -803,6 +803,7 @@ async function run() {
     runUrl: readEnv("RUN_URL", false),
     outputPath: readEnv("MUTATION_EVIDENCE_OUTPUT", false) || path.join(REPO_ROOT, ".run-logs", `shopify-vnext-first-controlled-mutation-${Date.now()}.json`),
     diagnosticOnly: String(process.env.CONTROLLED_VNEXT_DIAGNOSTIC_ONLY ?? "").trim().toLowerCase() === "true",
+    preflightOnly: String(process.env.CONTROLLED_VNEXT_PREFLIGHT_ONLY ?? "").trim().toLowerCase() === "true",
     startedAt: new Date(),
   };
   config.allowlist = {
@@ -878,6 +879,11 @@ async function run() {
     const mutationPayloadChecksum = hashStableJson(expectedControlledInput);
     evidence.preflight.expectedControlledInput = expectedControlledInput;
     evidence.preflight.mutationPayloadChecksum = mutationPayloadChecksum;
+    if (mutationPayloadChecksum !== config.mutationPayloadChecksum) {
+      throw new Error(
+        `Authorized mutation payload checksum mismatch before gate enable: expected runtime reconstruction ${mutationPayloadChecksum}, got ${config.mutationPayloadChecksum}.`,
+      );
+    }
 
     const activeJobs = await queryActiveAuthorizedJobs(config);
     evidence.preflight.activeAuthorizedJobsBeforeGate = activeJobs;
@@ -923,6 +929,14 @@ async function run() {
     // follows as a final buffer for Railway's BullMQ graceful-shutdown grace period (~30 s).
     const drainResult = await waitForOldDeploymentDrained(config, railwayConfig, railwayEnv);
     evidence.preflight.oldDeploymentDrained = drainResult;
+    if (config.preflightOnly) {
+      evidence.status = "preflight_ready_no_write";
+      evidence.api.createdJob = null;
+      evidence.api.processedJob = null;
+      evidence.verification.providerWrites = 0;
+      evidence.verification.exportJobCreated = 0;
+      return;
+    }
     await sleep(60000);
 
     const createResult = await request("POST", config.apiBaseUrl, `/marketplace/products/${encodeURIComponent(config.product)}/export-jobs`, {
