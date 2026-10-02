@@ -3732,6 +3732,9 @@ export class MarketplaceService implements OnModuleInit {
           operation,
           source: "LIVE_API",
           status: "ERROR",
+          externalRef: failureAudit?.failureCode === "SHOPIFY_VNEXT_READBACK_MISMATCH"
+            ? failureAudit.externalProductGid
+            : undefined,
           payloadSnapshot: failureAudit
             ? this.attachShopifyVnextAuditMetadata(payloadSnapshot, failureAudit)
             : payloadSnapshot,
@@ -4279,19 +4282,17 @@ export class MarketplaceService implements OnModuleInit {
         approvedReleaseSha,
         liveReleaseSha,
       });
-      const postSnapshot = await plan.captureRollbackSnapshot(plan.ctx, result.externalRef, { correlationId });
-      const readback = this.verifyShopifyImageOnlyReadback(plan.preSnapshot, postSnapshot, {
+      const readback = await this.verifySettledShopifyImageOnlyReadback({
+        preSnapshot: plan.preSnapshot,
+        captureRollbackSnapshot: plan.captureRollbackSnapshot,
+        ctx: plan.ctx,
+        productGid: result.externalRef,
+        correlationId,
         expectedImageCount: plan.files.length,
         expectedImageAlts: plan.expectedImageAlts,
         expectedProductGid: result.externalRef,
       });
-      if (
-        !readback.stableFieldsMatch ||
-        !readback.imageChanged ||
-        !readback.productGidUnchanged ||
-        !readback.expectedImagePresent ||
-        readback.actualImageCount !== readback.expectedImageCount
-      ) {
+      if (!this.isShopifyImageOnlyReadbackVerified(readback)) {
         const mismatchAudit = {
           ...startedAudit,
           status: "readback_mismatch" as const,
@@ -4380,6 +4381,78 @@ export class MarketplaceService implements OnModuleInit {
       sellerMessage,
       audit,
     );
+  }
+
+  private async verifySettledShopifyImageOnlyReadback(input: {
+    preSnapshot: ShopifyRollbackSnapshot;
+    captureRollbackSnapshot: ShopifyControlledMutationConnector["captureRollbackSnapshot"];
+    ctx: ConnectorContext;
+    productGid: string;
+    correlationId: string;
+    expectedImageCount: number;
+    expectedImageAlts: string[];
+    expectedProductGid: string;
+  }): Promise<ShopifyControlledMutationReadback> {
+    const maxAttempts = this.parsePositiveIntegerEnv("VNEXT_MUTATION_READBACK_MAX_ATTEMPTS", 3);
+    const retryDelayMs = this.parseNonNegativeIntegerEnv("VNEXT_MUTATION_READBACK_RETRY_DELAY_MS", 1000);
+    let latestReadback: ShopifyControlledMutationReadback | null = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const postSnapshot = await input.captureRollbackSnapshot(input.ctx, input.productGid, { correlationId: input.correlationId });
+      latestReadback = this.verifyShopifyImageOnlyReadback(input.preSnapshot, postSnapshot, {
+        expectedImageCount: input.expectedImageCount,
+        expectedImageAlts: input.expectedImageAlts,
+        expectedProductGid: input.expectedProductGid,
+      });
+      if (
+        this.isShopifyImageOnlyReadbackVerified(latestReadback) ||
+        !this.isShopifyImageReadbackZeroImageSettlingState(latestReadback) ||
+        attempt === maxAttempts
+      ) {
+        return latestReadback;
+      }
+      this.logger.info("shopify_vnext_mutation_readback_waiting_for_media", {
+        correlationId: input.correlationId,
+        externalProductGid: input.productGid,
+        attempt,
+        maxAttempts,
+        expectedImageCount: latestReadback.expectedImageCount,
+        actualImageCount: latestReadback.actualImageCount,
+        beforeImageHash: latestReadback.beforeImageHash,
+        afterImageHash: latestReadback.afterImageHash,
+      });
+      await this.delayShopifyVnextReadback(retryDelayMs);
+    }
+    return latestReadback!;
+  }
+
+  private isShopifyImageOnlyReadbackVerified(readback: ShopifyControlledMutationReadback): boolean {
+    return readback.stableFieldsMatch &&
+      readback.imageChanged &&
+      readback.productGidUnchanged &&
+      readback.expectedImagePresent &&
+      readback.actualImageCount === readback.expectedImageCount;
+  }
+
+  private isShopifyImageReadbackZeroImageSettlingState(readback: ShopifyControlledMutationReadback): boolean {
+    return readback.stableFieldsMatch &&
+      readback.productGidUnchanged &&
+      readback.actualImageCount === 0 &&
+      readback.expectedImageCount > 0;
+  }
+
+  private async delayShopifyVnextReadback(ms: number): Promise<void> {
+    if (ms <= 0) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+
+  private parsePositiveIntegerEnv(name: string, fallback: number): number {
+    const parsed = Number.parseInt(String(process.env[name] ?? ""), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private parseNonNegativeIntegerEnv(name: string, fallback: number): number {
+    const parsed = Number.parseInt(String(process.env[name] ?? ""), 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
   }
 
   private verifyShopifyImageOnlyReadback(

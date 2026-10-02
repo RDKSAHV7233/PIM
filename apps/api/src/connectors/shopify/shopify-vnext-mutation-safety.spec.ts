@@ -47,6 +47,17 @@ function rollbackSnapshot(imageId: string, imageSrc: string) {
   };
 }
 
+function rollbackSnapshotWithImages(images: Array<{ id: string; src: string; altText: string }>) {
+  const snapshot = rollbackSnapshot("gid://shopify/ProductImage/template", "https://cdn.example.com/template.jpg");
+  return {
+    ...snapshot,
+    product: {
+      ...snapshot.product,
+      images,
+    },
+  };
+}
+
 function setExactGates(overrides: Record<string, string | undefined> = {}) {
   process.env.APP_ENV = "test";
   process.env.SHOPIFY_SHADOW_PROJECTION_ENABLED = "false";
@@ -60,6 +71,8 @@ function setExactGates(overrides: Record<string, string | undefined> = {}) {
   process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = GOOD_SHA;
   process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
   process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 = GOOD_PAYLOAD_CHECKSUM;
+  process.env.VNEXT_MUTATION_READBACK_MAX_ATTEMPTS = "3";
+  process.env.VNEXT_MUTATION_READBACK_RETRY_DELAY_MS = "0";
   process.env.RAILWAY_GIT_COMMIT_SHA = GOOD_SHA;
 
   for (const [key, value] of Object.entries(overrides)) {
@@ -608,6 +621,126 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
       "shopify_vnext_mutation_readback_mismatch",
       expect.objectContaining({ imageChanged: false }),
     );
+  });
+
+  it("waits for Shopify media readback to settle when the first post-write snapshot has zero images", async () => {
+    setExactGates();
+    const { svc, connector, connectorFramework, logger } = makeSafetyService({
+      captureRollbackSnapshotImpl: jest.fn()
+        .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/before", "https://cdn.example.com/before.jpg"))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([]))
+        .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/after-provider", "https://cdn.example.com/after-provider.jpg")),
+    });
+
+    await expect(runControlled(svc)).resolves.toMatchObject({
+      outcome: "executed",
+      readback: expect.objectContaining({
+        stableFieldsMatch: true,
+        imageChanged: true,
+        productGidUnchanged: true,
+        expectedImagePresent: true,
+        expectedImageCount: 1,
+        actualImageCount: 1,
+      }),
+    });
+
+    expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
+    expect(connector.captureRollbackSnapshot).toHaveBeenCalledTimes(3);
+    expect(connectorFramework.publish).not.toHaveBeenCalled();
+    expect(connectorFramework.update).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      "shopify_vnext_mutation_readback_waiting_for_media",
+      expect.objectContaining({
+        actualImageCount: 0,
+        expectedImageCount: 1,
+      }),
+    );
+  });
+
+  it("fails closed when Shopify media readback never settles to the authorized image", async () => {
+    setExactGates();
+    const { svc, connector, connectorFramework, logger } = makeSafetyService({
+      captureRollbackSnapshotImpl: jest.fn()
+        .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/before", "https://cdn.example.com/before.jpg"))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([]))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([]))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([])),
+    });
+
+    await expect(runControlled(svc)).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        status: "readback_mismatch",
+        failureCode: "SHOPIFY_VNEXT_READBACK_MISMATCH",
+        readback: expect.objectContaining({
+          actualImageCount: 0,
+          expectedImageCount: 1,
+          expectedImagePresent: false,
+        }),
+      }),
+    });
+
+    expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
+    expect(connector.captureRollbackSnapshot).toHaveBeenCalledTimes(4);
+    expect(connectorFramework.publish).not.toHaveBeenCalled();
+    expect(connectorFramework.update).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "shopify_vnext_mutation_readback_mismatch",
+      expect.objectContaining({
+        actualImageCount: 0,
+        expectedImageCount: 1,
+        expectedImagePresent: false,
+      }),
+    );
+  });
+
+  it("records provider GID and readback audit when a provider mutation occurs but verification fails", async () => {
+    setExactGates();
+    const { svc, db, connector, connectorFramework } = makeSafetyService({
+      captureRollbackSnapshotImpl: jest.fn()
+        .mockResolvedValueOnce(rollbackSnapshot("gid://shopify/ProductImage/before", "https://cdn.example.com/before.jpg"))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([]))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([]))
+        .mockResolvedValueOnce(rollbackSnapshotWithImages([])),
+    });
+    db.connectorSubmission.findFirst.mockResolvedValueOnce({ externalRef: "gid://shopify/Product/999" });
+    jest.spyOn(svc as any, "buildConnectorProductPayload").mockResolvedValue({
+      sku: "SKU-1",
+      title: "Classic Tee",
+      description: "A tee",
+      brand: "Acme",
+      hsnCode: "61091000",
+      gstRate: 5,
+      mrp: 999,
+      sellingPrice: 799,
+      mainImageUrl: "https://cdn.example.com/tee.jpg",
+      attributes: {},
+      productType: "default",
+    });
+
+    await expect(runRecordConnectorSubmission(svc)).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+    });
+
+    expect(connector.applyControlledMutation).toHaveBeenCalledTimes(1);
+    expect(connectorFramework.publish).not.toHaveBeenCalled();
+    expect(connectorFramework.update).not.toHaveBeenCalled();
+    expect(connectorFramework.recordSubmissionAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      status: "ERROR",
+      externalRef: "gid://shopify/Product/999",
+      payloadSnapshot: expect.objectContaining({
+        __vnextMutationAudit: expect.objectContaining({
+          status: "readback_mismatch",
+          failureCode: "SHOPIFY_VNEXT_READBACK_MISMATCH",
+          externalProductGid: "gid://shopify/Product/999",
+          readback: expect.objectContaining({
+            actualImageCount: 0,
+            expectedImageCount: 1,
+            expectedImagePresent: false,
+          }),
+        }),
+      }),
+    }));
   });
 
   it("does not leak credential tokens in logs during an executed controlled mutation", async () => {

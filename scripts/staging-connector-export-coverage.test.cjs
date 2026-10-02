@@ -9,6 +9,7 @@ const YAML = require("yaml");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "staging-connector-export-coverage.cjs");
+const CONTROLLED_MUTATION_SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "shopify-vnext-first-controlled-mutation.cjs");
 const WORKFLOW_PATH = path.join(REPO_ROOT, ".github", "workflows", "res-02-connector-export-coverage.yml");
 const CI_PATH = path.join(REPO_ROOT, ".github", "workflows", "ci.yml");
 
@@ -38,9 +39,11 @@ function requireRunContains(step, fragment, label) {
 
 function main() {
   assert(fs.existsSync(SCRIPT_PATH), "RES-02 staging runner is missing");
+  assert(fs.existsSync(CONTROLLED_MUTATION_SCRIPT_PATH), "Shopify vNext controlled-mutation runner is missing");
   assert(fs.existsSync(WORKFLOW_PATH), "RES-02 staging workflow is missing");
 
   const script = read("scripts/staging-connector-export-coverage.cjs");
+  const controlledMutationScript = read("scripts/shopify-vnext-first-controlled-mutation.cjs");
   assert(script.includes("STAGING_BASE_URL"), "runner must use staging API URL env");
   assert(script.includes("STAGING_SMOKE_WORKSPACE"), "runner must use normal staging workspace auth");
   assert(script.includes("STAGING_SMOKE_USER"), "runner must use normal staging user auth");
@@ -65,6 +68,14 @@ function main() {
   assert(!script.includes("DATABASE_URL"), "runner must not use direct database access");
   assert(!script.includes("PrismaClient"), "runner must not use Prisma/direct DB access");
   assert(!script.includes("postgresql://"), "runner must not embed database URLs");
+  assert(
+    controlledMutationScript.includes("vnextAudit: submission.payloadSnapshot?.__vnextMutationAudit ?? null"),
+    "controlled diagnostic evidence must expose vNext audit metadata",
+  );
+  assert(
+    controlledMutationScript.includes("payloadSnapshot: undefined"),
+    "controlled diagnostic evidence must suppress full payload snapshots",
+  );
 
   const workflow = YAML.parse(read(".github/workflows/res-02-connector-export-coverage.yml"));
   assert(workflow?.name === "RES-02 Connector Export Coverage", "unexpected RES-02 workflow name");

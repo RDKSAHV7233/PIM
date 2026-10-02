@@ -508,12 +508,20 @@ async function queryRecentAuthorizedState(config) {
           submittedAt: true,
           resolvedAt: true,
           connectorSlug: true,
+          payloadSnapshot: true,
         },
         orderBy: { submittedAt: "desc" },
         take: 10,
       }),
     ]);
-    return { jobs, submissions };
+    return {
+      jobs,
+      submissions: submissions.map((submission) => ({
+        ...submission,
+        payloadSnapshot: undefined,
+        vnextAudit: submission.payloadSnapshot?.__vnextMutationAudit ?? null,
+      })),
+    };
   } finally {
     await prisma.$disconnect().catch(() => undefined);
   }
@@ -891,6 +899,12 @@ async function run() {
       // This is deliberately the same runtime endpoint used by the READY path,
       // while mutation authority remains disabled. It proves the production
       // process hard-blocks a controlled-required attempt without enabling a gate.
+      const currentAuthorizedState = await queryRecentAuthorizedState(config);
+      const vnextExecutionLog = findVnextExecutionLog(config, railwayConfig, railwayEnv);
+      evidence.diagnostic = {
+        currentAuthorizedState,
+        vnextExecutionLog,
+      };
       const token = await login(config);
       const preflightResult = await request(
         "GET",
@@ -907,7 +921,7 @@ async function run() {
         legacyWrites: preflightResult.body?.legacyWrites ?? null,
         exportJobCreated: preflightResult.body?.exportJobCreated ?? null,
       };
-      evidence.diagnostic = { runtimePreflight };
+      evidence.diagnostic = { ...evidence.diagnostic, runtimePreflight };
       if (
         runtimePreflight.status !== 200 ||
         runtimePreflight.result !== "BLOCKED" ||
@@ -921,8 +935,8 @@ async function run() {
       evidence.status = "diagnostic_only";
       evidence.diagnostic = {
         ...evidence.diagnostic,
-        currentAuthorizedState: await queryRecentAuthorizedState(config),
-        vnextExecutionLog: findVnextExecutionLog(config, railwayConfig, railwayEnv),
+        currentAuthorizedState,
+        vnextExecutionLog,
       };
       return;
     }
