@@ -612,6 +612,58 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
     expect(connector.applyControlledMutation).not.toHaveBeenCalled();
   });
 
+  it("connector methods retain their instance receiver after being extracted from the connector object", async () => {
+    // Regression guard for the `this` binding bug:
+    // captureRollbackSnapshot, applyControlledMutation, and fetchProductTypeSchema were
+    // destructured without .bind(connector), causing `this` to be undefined when invoked
+    // as plain functions, which threw "Cannot read properties of undefined (reading 'requireCredential')".
+    setExactGates();
+
+    class BoundCheckConnector {
+      private readonly _secret = "bound-secret";
+      private _callCount = 0;
+
+      private requireCredential(): string {
+        // Throws "Cannot read properties of undefined (reading '_secret')" if `this` is lost
+        return this._secret;
+      }
+
+      async fetchProductTypeSchema(_ctx: unknown, _productType: unknown) {
+        return {
+          productType: "default",
+          requiredAttributes: ["sku", "title", "description", "mainImageUrl"],
+          optionalAttributes: [] as string[],
+          validValues: {} as Record<string, string[]>,
+          schemaVersion: "LOCAL-shopify-default-2026Q3",
+        };
+      }
+
+      async captureRollbackSnapshot(_ctx: unknown, _gid: unknown, _opts: unknown) {
+        const cred = this.requireCredential(); // Throws if unbound
+        this._callCount += 1;
+        // Return different image IDs on before vs after capture so readback verification passes
+        const imageId = this._callCount === 1
+          ? "gid://shopify/ProductImage/before-bound"
+          : "gid://shopify/ProductImage/after-bound";
+        return rollbackSnapshot(imageId, `https://cdn.example.com/${cred}-${this._callCount}.jpg`);
+      }
+
+      async applyControlledMutation(_ctx: unknown, _input: unknown, _identifier: unknown, _opts: unknown) {
+        this.requireCredential(); // Throws if unbound
+        return { externalRef: "gid://shopify/Product/999", status: "SUCCESS" as const, isAsync: false };
+      }
+    }
+
+    const boundConnector = new BoundCheckConnector();
+    const { svc, connectorRegistry } = makeSafetyService();
+    connectorRegistry.getConnector.mockReturnValue(boundConnector);
+
+    await expect(runControlled(svc)).resolves.toMatchObject({
+      outcome: "executed",
+      result: { externalRef: "gid://shopify/Product/999", status: "SUCCESS", isAsync: false },
+    });
+  });
+
   it("controlled_vnext_required mode fails closed when categoryId is absent (outer bypass guard)", async () => {
     setExactGates();
     const { svc, connector, connectorFramework } = makeSafetyService();
