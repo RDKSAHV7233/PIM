@@ -219,7 +219,10 @@ function getChangedFiles(env = process.env, repoRoot = path.resolve(__dirname, "
     return explicitTargets;
   }
 
-  const before = optionalEnv("GITHUB_EVENT_BEFORE", env);
+  // Diff against the last SUCCESSFUL push deploy (resolved by resolve-deploy-base-sha.cjs), not the
+  // previous push: a cancelled queued run would otherwise drop its changes from the next deploy
+  // (DEF-PC-021). No base -> null -> deploy both services (fail safe).
+  const before = optionalEnv("DEPLOY_BASE_SHA", env);
   const sha = optionalEnv("GITHUB_SHA", env);
   if (!before || !sha) {
     return null;

@@ -48,6 +48,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     environment: staging
+    permissions:
+      contents: read
+      actions: read
     concurrency:
       group: deploy-staging
       cancel-in-progress: false
@@ -190,6 +193,18 @@ jobs:
           fi
           echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve last successful deploy base (diff base for deploy targets)
+        id: resolve_deploy_base
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          base_sha="$(node scripts/resolve-deploy-base-sha.cjs || true)"
+          echo "deploy_base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
+          echo "Deploy diff base: ${base_sha:-<none: deploying both services>}"
+
       - name: Deploy to staging
         timeout-minutes: 45
         shell: bash
@@ -209,7 +224,7 @@ jobs:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           STAGING_BASE_URL: ${{ steps.resolve_staging_api_url.outputs.api_url }}
           STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          DEPLOY_BASE_SHA: ${{ steps.resolve_deploy_base.outputs.deploy_base_sha }}
           GITHUB_SHA: ${{ github.sha }}
           ERROR_AUTHORITY_RELEASE: ${{ github.sha }}
           ERROR_AUTHORITY_INGEST_TOKEN: ${{ secrets.ERROR_AUTHORITY_INGEST_TOKEN }}

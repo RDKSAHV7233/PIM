@@ -127,6 +127,7 @@ jobs:
           node scripts/check-integration-test-coverage.test.cjs
           node scripts/validate-ci-e2e-redis-postinstall.test.cjs
           node scripts/railway-deploy.test.cjs
+          node scripts/resolve-deploy-base-sha.test.cjs
           node scripts/resolve-observability-database-url.test.cjs
           node apps/api/test/integration/internal-ops-alerting-contract.test.cjs
           node scripts/staging-internal-ops-summary-acceptance.test.cjs

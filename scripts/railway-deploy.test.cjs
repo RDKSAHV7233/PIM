@@ -10,6 +10,7 @@ const {
   buildRailwayExecutionEnv,
   buildDeployCommands,
   classifyDeployTargets,
+  getChangedFiles,
   findOverlappingServiceTargets,
   formatRailwayVariablePairs,
   isRetryableRailwayCliResult,

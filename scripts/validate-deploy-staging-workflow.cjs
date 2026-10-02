@@ -93,7 +93,7 @@ function main() {
   const checkoutStep = requireStep(steps, "Checkout");
   assert(
     Number.parseInt(String(checkoutStep?.with?.["fetch-depth"] ?? ""), 10) === 0,
-    "Checkout must use fetch-depth: 0 so selective deploy diffs can compare github.event.before to HEAD",
+    "Checkout must use fetch-depth: 0 so selective deploy diffs can compare the last successful deploy SHA to HEAD",
   );
   requireStep(steps, "Setup Node");
   requireStep(steps, "Install dependencies");
@@ -205,6 +205,19 @@ function main() {
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
+  // DEF-PC-021: deploy targets must be diffed against the last SUCCESSFUL deploy, not the previous push
+  // (a cancelled queued run would otherwise drop its changes from the next deploy).
+  requireStepOrder(steps, "Resolve last successful deploy base (diff base for deploy targets)", "Deploy to staging");
+  requireEnvVar(deployStep, "DEPLOY_BASE_SHA", "Deploy to staging");
+  assert(
+    !Object.prototype.hasOwnProperty.call(deployStep.env ?? {}, "GITHUB_EVENT_BEFORE"),
+    "Deploy to staging must not diff against github.event.before (DEF-PC-021)",
+  );
+  assert(
+    job.permissions && job.permissions.actions === "read" && job.permissions.contents === "read",
+    "deploy-staging job must declare least-privilege permissions (contents: read, actions: read) for the base-SHA lookup",
+  );
+
   requireEnvVar(deployStep, "DATABASE_URL_POOLED", "Deploy to staging");
   requireEnvVar(deployStep, "DATABASE_URL_DIRECT", "Deploy to staging");
   requireEnvVar(deployStep, "DATABASE_URL", "Deploy to staging");
