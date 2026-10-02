@@ -271,7 +271,7 @@ export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = 
 
   return (
     <aside className="sticky top-20 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="space-y-4">
+      <nav aria-label="Primary" className="space-y-4">
         {sections.map((section) => (
           <section key={section.title}>
             <div className="flex items-center justify-between gap-2 px-2 pb-1">
@@ -314,7 +314,7 @@ export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = 
             </ul>
           </section>
         ))}
-      </div>
+      </nav>
     </aside>
   );
 }

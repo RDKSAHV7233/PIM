@@ -284,9 +284,21 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
               {asset.width && asset.height ? ` | ${asset.width}x${asset.height}` : ""}
               {` | ${Math.round(asset.sizeBytes / 1024)} KB`}
             </p>
-            <Input name="altText" defaultValue={asset.altText ?? ""} placeholder="Alt Text" />
+            <Input
+              name="altText"
+              defaultValue={asset.altText ?? ""}
+              placeholder="Alt Text"
+              aria-label={`Alt text for ${asset.fileName}`}
+            />
             <div className="grid gap-2 md:grid-cols-2">
-              <Input name="sortOrder" type="number" min={0} defaultValue={asset.sortOrder} placeholder="Gallery Order" />
+              <Input
+                name="sortOrder"
+                type="number"
+                min={0}
+                defaultValue={asset.sortOrder}
+                placeholder="Gallery Order"
+                aria-label={`Gallery order for ${asset.fileName}`}
+              />
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" name="isMain" value="true" defaultChecked={asset.isMain} />
                 Mark as main image

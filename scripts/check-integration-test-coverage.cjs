@@ -65,6 +65,7 @@ const CI_QUARANTINED_TESTS = [
 
 // DB-free tests that are runnable in the CI batch today.
 const GLOB_COVERED_TESTS = [
+  "a11y-landmarks-and-media-labels.test.cjs",
   "account-suspended-route-contract.test.cjs",
   "admin-api-keys-route-contract.test.cjs",
   "admin-audit-route-contract.test.cjs",
