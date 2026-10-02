@@ -498,7 +498,10 @@ async function queryActiveAuthorizedJobs(config) {
 
 async function waitForExportJobTerminal(config, token, jobId) {
   let last = null;
-  for (let attempt = 1; attempt <= 36; attempt += 1) {
+  let stableFailedCount = 0;
+  let stableFailedReason = null;
+  // 90 attempts × 5 s = 7.5 minutes maximum.
+  for (let attempt = 1; attempt <= 90; attempt += 1) {
     const result = await request("GET", config.apiBaseUrl, `/marketplace/export-jobs/${encodeURIComponent(jobId)}`, {
       token,
       timeoutMs: 30000,
@@ -506,12 +509,33 @@ async function waitForExportJobTerminal(config, token, jobId) {
     assertStatus(result, 200, "GET /marketplace/export-jobs/:id");
     last = result.body;
     const status = String(result.body?.status ?? "").toLowerCase();
-    if (["completed", "failed", "dead_letter", "skipped"].includes(status)) {
+    // Unconditionally terminal states.
+    if (status === "completed" || status === "dead_letter" || status === "skipped") {
       return { attempt, job: result.body };
+    }
+    if (status === "failed") {
+      const reason = String(result.body?.failureReason ?? "");
+      if (reason === stableFailedReason) {
+        stableFailedCount += 1;
+        // 6 consecutive polls (30 s) with the same failure reason means BullMQ retries are done.
+        // Without this guard, cleanup fires while BullMQ still has retries pending; the retry
+        // then runs on the newly-deployed instance with the gate OFF → disabled_in_controlled_mode.
+        if (stableFailedCount >= 6) {
+          return { attempt, job: result.body };
+        }
+      } else {
+        // New failure reason (retry attempt just finished) or first observed failure.
+        stableFailedCount = 1;
+        stableFailedReason = reason;
+      }
+    } else {
+      // Status transitioned out of failed (job is being retried).
+      stableFailedCount = 0;
+      stableFailedReason = null;
     }
     await sleep(5000);
   }
-  return { attempt: 36, job: last };
+  return { attempt: 90, job: last };
 }
 
 function findVnextFailedLog(config, railwayConfig, railwayEnv) {
@@ -736,6 +760,13 @@ async function run() {
     const token = await login(config);
     const gateActiveResult = await waitForVnextGateActive(config, token);
     evidence.preflight.gateActiveVerification = gateActiveResult;
+
+    // Railway's rolling deploy routes new HTTP traffic to the new instance once it passes the
+    // health check, but the OLD instance may still be alive and draining BullMQ workers for
+    // some seconds.  waitForVnextGateActive confirms the NEW instance sees gate=ON via HTTP;
+    // this sleep ensures the old instance (gate=OFF on its process.env) is fully terminated
+    // before we submit a job, so the job cannot be picked up by the stale worker.
+    await sleep(60000);
 
     const createResult = await request("POST", config.apiBaseUrl, `/marketplace/products/${encodeURIComponent(config.product)}/export-jobs`, {
       token,
