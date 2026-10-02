@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { VALIDATION_FAILED_CODE } from "../common/validation-exception.factory";
+import { ALLOWED_MEDIA_MIME_TYPES, resolveUploadMimeType, sniffImageMimeType } from "./media-content-safety";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { IncomingMessage } from "node:http";
 import { request as httpsRequest, RequestOptions as HttpsRequestOptions } from "node:https";
@@ -546,6 +548,28 @@ export class MediaService {
     if (fileBuffer.length > MAX_MEDIA_FILE_BYTES) {
       throw new BadRequestException("Media file exceeds 10MB limit.");
     }
+
+    // Only real raster images are accepted: the declared type must be on the allowlist AND the
+    // file's magic bytes must agree. Prevents hosting HTML/SVG/script content on the public
+    // asset URL (prod-cert DEF-PC-002).
+    // A missing/generic declared type (bulk rows default to application/octet-stream) is
+    // resolved from the bytes so existing bulk-association flows with real images keep working.
+    const declaredMime = resolveUploadMimeType(input.mimeType, fileBuffer);
+    const rejectMimeType = (message: string): never => {
+      // Same envelope as DTO validation failures (error code + fields) so clients map it uniformly.
+      throw new BadRequestException({
+        error: VALIDATION_FAILED_CODE,
+        message,
+        fields: [{ field: "mimeType", constraints: [message] }],
+      });
+    };
+    if (!ALLOWED_MEDIA_MIME_TYPES.has(declaredMime)) {
+      rejectMimeType(`Unsupported media type '${declaredMime || "unknown"}'. Allowed: ${[...ALLOWED_MEDIA_MIME_TYPES].join(", ")}.`);
+    }
+    if (sniffImageMimeType(fileBuffer) !== declaredMime) {
+      rejectMimeType("File content does not match the declared image type.");
+    }
+    input = { ...input, mimeType: declaredMime };
 
     const detectedDimensions = parsePngDimensions(fileBuffer);
     const width = input.width ?? detectedDimensions?.width ?? null;
@@ -1146,6 +1170,8 @@ export class MediaService {
         return ".jpg";
       case "image/webp":
         return ".webp";
+      case "image/gif":
+        return ".gif";
       default:
         return ".bin";
     }

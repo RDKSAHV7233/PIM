@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, StreamableFile, UseGuards } from "@nestjs/common";
+import { resolveServeHeaders } from "./media-content-safety";
 import type { Request, Response } from "express";
 import { IsOptional, IsString, MaxLength } from "class-validator";
 import { PlanGuard } from "../billing/plan-guard.guard";
@@ -94,8 +95,12 @@ export class MediaController {
       response.redirect(302, file.redirectUrl);
       return undefined;
     }
-    response.header("Content-Type", file.mimeType);
-    response.header("Content-Disposition", `inline; filename="${file.fileName}"`);
+    // Safe delivery (prod-cert DEF-PC-002/014): only allowed raster images are served inline;
+    // legacy non-image rows become a download; the filename can no longer break the header.
+    const serve = resolveServeHeaders(file.mimeType, file.fileName);
+    response.header("Content-Type", serve.contentType);
+    response.header("Content-Disposition", serve.contentDisposition);
+    response.header("Content-Security-Policy", "default-src 'none'; sandbox");
     return new StreamableFile(file.buffer!);
   }
 
