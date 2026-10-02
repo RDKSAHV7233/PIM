@@ -284,10 +284,10 @@ async function applyGate(config, railwayConfig, railwayEnv, enabled, evidence, l
       ]
     : [
         ["VNEXT_MUTATION_ENABLED", "false"],
-        ["VNEXT_MUTATION_ALLOWLIST_JSON", JSON.stringify(config.allowlist)],
-        ["VNEXT_MUTATION_APPROVED_RELEASE_SHA", config.releaseSha],
-        ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", "image"],
-        ["VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256", config.mutationPayloadChecksum],
+        ["VNEXT_MUTATION_ALLOWLIST_JSON", ""],
+        ["VNEXT_MUTATION_APPROVED_RELEASE_SHA", ""],
+        ["VNEXT_MUTATION_ALLOWED_FIELD_CLASS", ""],
+        ["VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256", ""],
       ];
   const variableTarget = setVariablesAcrossTargets(railwayConfig, railwayEnv, pairs, label);
   await sleep(20000);
