@@ -167,6 +167,8 @@ jobs:
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
           RAILWAY_API_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
           RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_WEB_SERVICE: ${{ secrets.RAILWAY_WEB_SERVICE || 'App Vexa' }}
+          RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
           RAILWAY_ENVIRONMENT_NAME: Production
           RECONCILIATION_SUBMISSION_ID: ${{ github.event.inputs.controlled_vnext_reconcile_submission_id }}
