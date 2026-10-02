@@ -35,6 +35,14 @@ on:
         description: "With controlled_vnext_first_mutation=true, the approved SHA-256 of the exact outbound controlledInput."
         required: false
         default: ""
+      controlled_vnext_reconcile_submission_id:
+        description: "Read-only reconciliation only: exact historical ConnectorSubmission ID with a provider-settlement readback mismatch."
+        required: false
+        default: ""
+      controlled_vnext_reconcile_source_run_id:
+        description: "Read-only reconciliation only: workflow run containing the immutable pre-write snapshot."
+        required: false
+        default: ""
 
 concurrency:
   group: res-02-connector-export-coverage
@@ -50,6 +58,7 @@ jobs:
     environment: staging
     permissions:
       contents: read
+      actions: read
 
     steps:
       - name: Checkout
@@ -87,24 +96,24 @@ jobs:
           echo "api_url=${resolved_api_url}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node 24 for controlled mutation
-        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' }}
+        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' || github.event.inputs.controlled_vnext_reconcile_submission_id != '' }}
         uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
 
       - name: Install dependencies for controlled mutation
-        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' }}
+        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' || github.event.inputs.controlled_vnext_reconcile_submission_id != '' }}
         env:
           REDISMS_DISABLE_POSTINSTALL: "true"
         run: npm ci
 
       - name: Generate Prisma client for controlled mutation
-        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' }}
+        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' || github.event.inputs.controlled_vnext_reconcile_submission_id != '' }}
         run: npm run prisma:generate
 
       - name: Build API for rollback snapshot tooling
-        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' }}
+        if: ${{ github.event.inputs.controlled_vnext_first_mutation == 'true' || github.event.inputs.controlled_vnext_reconcile_submission_id != '' }}
         run: npm run build --workspace @pim1/api
 
       - name: Execute authorized first controlled mutation
@@ -146,8 +155,35 @@ jobs:
           mkdir -p .run-logs
           node scripts/shopify-vnext-first-controlled-mutation.cjs
 
+      - name: Reconcile settled Shopify vNext readback
+        if: ${{ github.event.inputs.controlled_vnext_reconcile_submission_id != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_API_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
+          RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_ENVIRONMENT_NAME: Production
+          RECONCILIATION_SUBMISSION_ID: ${{ github.event.inputs.controlled_vnext_reconcile_submission_id }}
+          RECONCILIATION_SOURCE_RUN_ID: ${{ github.event.inputs.controlled_vnext_reconcile_source_run_id }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -n "${RECONCILIATION_SOURCE_RUN_ID}"
+          mkdir -p .run-logs/reconciliation-before
+          gh run download "${RECONCILIATION_SOURCE_RUN_ID}" --dir .run-logs/reconciliation-before
+          before_snapshot="$(find .run-logs/reconciliation-before -name 'shopify-vnext-first-controlled-mutation-before-*.json' -print -quit)"
+          test -n "${before_snapshot}"
+          after_snapshot=".run-logs/shopify-vnext-reconciliation-after-${GITHUB_RUN_ID}.json"
+          node scripts/capture-shopify-vnext-rollback-snapshot.cjs --tenant admin --connector shopify --installation 5b07df00-5b47-48f0-991b-2bc2f3fe8a95 --product cmt9mc8xe0010pf01pkieafm5 --release "${GITHUB_SHA}" --shopifyProductGid gid://shopify/Product/8087828889690 --output "${after_snapshot}" --runUrl "${RUN_URL}"
+          node scripts/reconcile-shopify-vnext-readback.cjs --tenant admin --installation 5b07df00-5b47-48f0-991b-2bc2f3fe8a95 --product cmt9mc8xe0010pf01pkieafm5 --submission "${RECONCILIATION_SUBMISSION_ID}" --shopifyProductGid gid://shopify/Product/8087828889690 --expectedAlt 'RES-02 Approved Candidate 1787720001100-77' --payloadChecksum d289fdc760f8ef07d6e9c08a46a27f60670980e31772499cc2e3cf84332e4ac6 --before "${before_snapshot}" --after "${after_snapshot}" --runUrl "${RUN_URL}" --apply
+
       - name: Run RES-02 staging connector/export coverage
-        if: ${{ github.event.inputs.controlled_vnext_first_mutation != 'true' }}
+        if: ${{ github.event.inputs.controlled_vnext_first_mutation != 'true' && github.event.inputs.controlled_vnext_reconcile_submission_id == '' }}
         env:
           STAGING_BASE_URL: ${{ steps.resolve_staging_api_url.outputs.api_url }}
           STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
