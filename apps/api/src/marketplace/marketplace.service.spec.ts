@@ -3041,9 +3041,30 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     const connectorRegistry = {
       getConnector: jest.fn().mockReturnValue(connector),
     };
+    const tenantClient = {
+      connectorInstallation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          connectorId: "conn-1",
+          tenantKey: "tenant1",
+          metadata: {},
+        }),
+      },
+      product: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "prod-1",
+          categoryId: "cat-1",
+        }),
+      },
+      connectorSubmission: {
+        findFirst: jest.fn().mockResolvedValue({
+          externalRef: "gid://shopify/Product/999",
+        }),
+      },
+    };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
     const svc = new MarketplaceService(
-      { tenant: jest.fn() } as never,
+      { tenant: jest.fn().mockReturnValue(tenantClient) } as never,
       connectorFramework as never,
       connectorRegistry as never,
       {} as never,
@@ -3063,6 +3084,22 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
       source: "system_pack",
     });
     return { svc, connectorFramework, connectorRegistry, connector, realCtx, logger };
+  }
+
+  function mockProductPayload(svc: MarketplaceService) {
+    return jest.spyOn(svc as any, "buildConnectorProductPayload").mockResolvedValue({
+      sku: "SKU-1",
+      title: "Classic Tee",
+      description: "A tee",
+      brand: "Acme",
+      hsnCode: "61091000",
+      gstRate: 5,
+      mrp: 999,
+      sellingPrice: 799,
+      mainImageUrl: "https://cdn.example.com/tee.jpg",
+      attributes: {},
+      productType: "default",
+    });
   }
 
   function runControlled(svc: MarketplaceService) {
@@ -3110,6 +3147,51 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     });
     expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
     expect(connectorFramework.buildContextForInstallation).not.toHaveBeenCalled();
+  });
+
+  it("returns a gates-off BLOCKED preflight with zero writes and no connector calls", async () => {
+    delete process.env.VNEXT_MUTATION_ENABLED;
+    const { svc, connectorRegistry } = makeControlledMutationService();
+
+    const result = await svc.getShopifyVnextConfigPreflight("tenant1", "shopify", "inst-1", "prod-1");
+
+    expect(result).toMatchObject({
+      result: "BLOCKED",
+      reason: "vnext_disabled",
+      providerWrites: 0,
+      legacyWrites: 0,
+      exportJobCreated: 0,
+    });
+    expect(result.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "vnext_gate_enabled", result: "FAIL" }),
+      expect.objectContaining({ name: "approved_payload_sha", result: "FAIL" }),
+    ]));
+    expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
+  });
+
+  it("returns BLOCKED before provider reads when controlled mode lacks an approved payload checksum", async () => {
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+    process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
+      tenantKey: "tenant1",
+      connectorSlug: "shopify",
+      installationId: "inst-1",
+      productId: "prod-1",
+    });
+    process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
+    process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
+    const { svc, connectorRegistry } = makeControlledMutationService();
+
+    const result = await svc.getShopifyVnextConfigPreflight("tenant1", "shopify", "inst-1", "prod-1");
+
+    expect(result).toMatchObject({
+      result: "BLOCKED",
+      reason: "approved_payload_sha",
+      providerWrites: 0,
+      legacyWrites: 0,
+      exportJobCreated: 0,
+    });
+    expect(connectorRegistry.getConnector).not.toHaveBeenCalled();
   });
 
   it("skips on release mismatch even when the allowlist is exact", async () => {
@@ -3190,5 +3272,90 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
         approvedPayloadChecksum: GOOD_PAYLOAD_CHECKSUM,
       }),
     );
+  });
+
+  it("preflight READY binds the exact runtime controlledInput checksum without writing", async () => {
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+    process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
+      tenantKey: "tenant1",
+      connectorSlug: "shopify",
+      installationId: "inst-1",
+      productId: "prod-1",
+    });
+    process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
+    process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 = GOOD_PAYLOAD_CHECKSUM;
+    process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
+    const { svc, connector } = makeControlledMutationService();
+    mockProductPayload(svc);
+
+    const result = await svc.getShopifyVnextConfigPreflight("tenant1", "shopify", "inst-1", "prod-1");
+
+    expect(result).toMatchObject({
+      result: "READY",
+      providerWrites: 0,
+      legacyWrites: 0,
+      exportJobCreated: 0,
+      evidence: {
+        productGid: "gid://shopify/Product/999",
+        sku: "SKU-1",
+        fieldScope: "image_only",
+        mutationCount: 1,
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+      },
+    });
+    expect(result.evidence?.controlledInput).toEqual({
+      files: [expect.objectContaining({
+        originalSource: "https://cdn.example.com/tee.jpg",
+        alt: "Classic Tee",
+        contentType: "IMAGE",
+        filename: "product-image.jpg",
+      })],
+    });
+    expect(result.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "field_scope", result: "PASS" }),
+      expect.objectContaining({ name: "runtime_payload_checksum", result: "PASS" }),
+      expect.objectContaining({ name: "runtime_checksum_gate", result: "PASS" }),
+      expect.objectContaining({ name: "audit_persistence_ready", result: "PASS" }),
+    ]));
+    expect(connector.captureRollbackSnapshot).toHaveBeenCalledTimes(1);
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+  });
+
+  it("preflight BLOCKED computes the actual checksum and still performs zero writes when approved checksum differs", async () => {
+    process.env.VNEXT_MUTATION_ENABLED = "true";
+    process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
+      tenantKey: "tenant1",
+      connectorSlug: "shopify",
+      installationId: "inst-1",
+      productId: "prod-1",
+    });
+    process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA = "aaaaaaaa";
+    process.env.VNEXT_MUTATION_ALLOWED_FIELD_CLASS = "image";
+    process.env.VNEXT_MUTATION_APPROVED_PAYLOAD_SHA256 = "0".repeat(64);
+    process.env.RAILWAY_GIT_COMMIT_SHA = "aaaaaaaa";
+    const { svc, connector } = makeControlledMutationService();
+    mockProductPayload(svc);
+
+    const result = await svc.getShopifyVnextConfigPreflight("tenant1", "shopify", "inst-1", "prod-1");
+
+    expect(result).toMatchObject({
+      result: "BLOCKED",
+      reason: "payload_checksum_mismatch",
+      providerWrites: 0,
+      legacyWrites: 0,
+      exportJobCreated: 0,
+      evidence: {
+        payloadChecksum: GOOD_PAYLOAD_CHECKSUM,
+        approvedPayloadChecksum: "0".repeat(64),
+      },
+    });
+    expect(result.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "runtime_payload_checksum", result: "FAIL" }),
+      expect.objectContaining({ name: "runtime_checksum_gate", result: "FAIL" }),
+    ]));
+    expect(connector.captureRollbackSnapshot).toHaveBeenCalledTimes(1);
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
   });
 });

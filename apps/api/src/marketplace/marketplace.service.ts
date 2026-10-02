@@ -242,6 +242,25 @@ type ShopifyControlledMutationConnector = {
   ) => Promise<ShopifyRollbackSnapshot>;
 };
 
+type ShopifyVnextPreflightCheck = { name: string; result: "PASS" | "FAIL"; detail?: string };
+
+type ShopifyControlledMutationPreparedPlan = {
+  ctx: ConnectorContext;
+  applyControlledMutation: ShopifyControlledMutationConnector["applyControlledMutation"];
+  captureRollbackSnapshot: ShopifyControlledMutationConnector["captureRollbackSnapshot"];
+  projectionSku: string;
+  schemaVersion: string;
+  payloadInput: ShopifyProductSetInputLike;
+  files: Record<string, unknown>[];
+  controlledInput: ShopifyProductSetInputLike;
+  identifier: ShopifyProductSetIdentifierLike;
+  preSnapshot: ShopifyRollbackSnapshot;
+  unauthorizedFieldDiffs: string[];
+  outboundFieldKeys: string[];
+  expectedImageAlts: string[];
+  payloadChecksum: string;
+};
+
 type AuthoritativeChannelIssue = {
   severity: "error" | "warning";
   code: string;
@@ -3779,15 +3798,40 @@ export class MarketplaceService implements OnModuleInit {
     connectorSlug: string,
     installationId: string,
     productId: string,
-  ): Promise<{ checks: { name: string; result: "PASS" | "FAIL"; detail?: string }[]; result: "READY" | "BLOCKED" }> {
+  ): Promise<{
+    checks: ShopifyVnextPreflightCheck[];
+    result: "READY" | "BLOCKED";
+    reason?: string;
+    providerWrites: 0;
+    legacyWrites: 0;
+    exportJobCreated: 0;
+    evidence?: {
+      productGid: string;
+      sku: string;
+      schemaVersion: string;
+      fieldScope: "image_only";
+      mutationCount: number;
+      controlledInput: ShopifyProductSetInputLike;
+      payloadChecksum: string;
+      approvedPayloadChecksum: string;
+      beforeState: {
+        capturedAt: string;
+        imageCount: number;
+        imageIds: string[];
+        imageUrls: string[];
+        imageAltTexts: string[];
+      };
+    };
+  }> {
     const approvedReleaseSha = String(process.env.VNEXT_MUTATION_APPROVED_RELEASE_SHA ?? "").trim();
     const liveReleaseSha = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? "").trim();
+    const approvedPayloadChecksum = getVnextMutationApprovedPayloadChecksum() ?? "";
     const enabled = isVnextMutationEnabled();
     const releaseApproved = isApprovedRelease();
     const allowedFieldClass = getVnextMutationAllowedFieldClass();
     const tupleAllowed = enabled && isMutationAllowedFor(tenantKey, connectorSlug, installationId, productId);
 
-    const checks: { name: string; result: "PASS" | "FAIL"; detail?: string }[] = [
+    const checks: ShopifyVnextPreflightCheck[] = [
       {
         name: "deployed_sha",
         result: releaseApproved ? "PASS" : "FAIL",
@@ -3822,10 +3866,213 @@ export class MarketplaceService implements OnModuleInit {
         result: "PASS",
         detail: "controlled mode enforces failClosed on all gate misses",
       },
+      {
+        name: "approved_payload_sha",
+        result: approvedPayloadChecksum ? "PASS" : "FAIL",
+        detail: approvedPayloadChecksum || "(unset)",
+      },
     ];
 
-    const blocked = checks.some((c) => c.result === "FAIL");
-    return { checks, result: blocked ? "BLOCKED" : "READY" };
+    const baseBlocked = checks.some((c) => c.result === "FAIL");
+    const firstFail = checks.find((c) => c.result === "FAIL");
+    const baseResponse = {
+      checks,
+      providerWrites: 0 as const,
+      legacyWrites: 0 as const,
+      exportJobCreated: 0 as const,
+    };
+    if (baseBlocked) {
+      return {
+        ...baseResponse,
+        result: "BLOCKED",
+        reason: !enabled ? "vnext_disabled" : firstFail?.name ?? "configuration_incomplete",
+      };
+    }
+
+    try {
+      const db = this.prisma.tenant(tenantKey);
+      const [installation, product, priorSubmission] = await Promise.all([
+        db.connectorInstallation.findFirst({
+          where: { id: installationId },
+          select: { id: true, connectorId: true, tenantKey: true, metadata: true },
+        }),
+        db.product.findUnique({
+          where: { id: productId },
+          select: { id: true, categoryId: true },
+        }),
+        db.connectorSubmission.findFirst({
+          where: {
+            productId,
+            installationId,
+            status: "SUCCESS",
+            externalRef: { not: null },
+          },
+          orderBy: { submittedAt: "desc" },
+          select: { externalRef: true },
+        }),
+      ]);
+      if (!installation) {
+        checks.push({ name: "installation_exists", result: "FAIL", detail: installationId });
+        return { ...baseResponse, result: "BLOCKED", reason: "installation_not_found" };
+      }
+      if (!product?.categoryId) {
+        checks.push({ name: "product_category", result: "FAIL", detail: product ? "missing categoryId" : "product not found" });
+        return { ...baseResponse, result: "BLOCKED", reason: product ? "missing_category" : "product_not_found" };
+      }
+      const productGid = String(priorSubmission?.externalRef ?? "").trim();
+      if (!/^gid:\/\/shopify\/Product\//.test(productGid)) {
+        checks.push({ name: "existing_product_gid", result: "FAIL", detail: productGid || "(missing)" });
+        return { ...baseResponse, result: "BLOCKED", reason: "missing_existing_product_gid" };
+      }
+      checks.push(
+        { name: "installation_exists", result: "PASS", detail: installation.id },
+        { name: "product_category", result: "PASS", detail: product.categoryId },
+        { name: "existing_product_gid", result: "PASS", detail: productGid },
+      );
+
+      const plan = await runWithTenantContext(tenantKey, () => this.prepareShopifyControlledMutationPlan({
+        tenantKey,
+        productId,
+        productPayload: undefined,
+        categoryId: product.categoryId!,
+        installation,
+        productGid,
+        correlationId: createVnextCorrelationId(),
+      }));
+
+      const fieldScopeImageOnly = plan.outboundFieldKeys.length === 1 && plan.outboundFieldKeys[0] === "files";
+      const checksumMatches = plan.payloadChecksum === approvedPayloadChecksum;
+      checks.push(
+        {
+          name: "field_scope",
+          result: fieldScopeImageOnly && plan.unauthorizedFieldDiffs.length === 0 ? "PASS" : "FAIL",
+          detail: plan.unauthorizedFieldDiffs.length > 0
+            ? `unauthorized=${plan.unauthorizedFieldDiffs.join(",")}`
+            : plan.outboundFieldKeys.join(",") || "(none)",
+        },
+        {
+          name: "runtime_payload_checksum",
+          result: checksumMatches ? "PASS" : "FAIL",
+          detail: `actual=${plan.payloadChecksum} approved=${approvedPayloadChecksum}`,
+        },
+        {
+          name: "runtime_checksum_gate",
+          result: checksumMatches ? "PASS" : "FAIL",
+          detail: checksumMatches ? "actual controlledInput checksum matches approved checksum" : "would hard-fail before provider write",
+        },
+        {
+          name: "audit_persistence_ready",
+          result: "PASS",
+          detail: "payloadSnapshot.__vnextMutationAudit stores actual and approved checksums after execution",
+        },
+      );
+
+      const blocked = checks.some((c) => c.result === "FAIL");
+      return {
+        ...baseResponse,
+        result: blocked ? "BLOCKED" : "READY",
+        ...(blocked ? { reason: checksumMatches ? "field_scope_not_image_only" : "payload_checksum_mismatch" } : {}),
+        evidence: {
+          productGid,
+          sku: plan.projectionSku,
+          schemaVersion: plan.schemaVersion,
+          fieldScope: "image_only",
+          mutationCount: plan.files.length,
+          controlledInput: plan.controlledInput,
+          payloadChecksum: plan.payloadChecksum,
+          approvedPayloadChecksum,
+          beforeState: {
+            capturedAt: plan.preSnapshot.capturedAt,
+            imageCount: plan.preSnapshot.product.images.length,
+            imageIds: plan.preSnapshot.product.images.map((image) => String(image.id ?? "")).filter(Boolean),
+            imageUrls: plan.preSnapshot.product.images.map((image) => String(image.src ?? "")).filter(Boolean),
+            imageAltTexts: plan.preSnapshot.product.images.map((image) => String(image.altText ?? "")).filter(Boolean),
+          },
+        },
+      };
+    } catch (error) {
+      checks.push({
+        name: "runtime_payload_evidence",
+        result: "FAIL",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return { ...baseResponse, result: "BLOCKED", reason: "runtime_payload_evidence_failed" };
+    }
+  }
+
+  private async prepareShopifyControlledMutationPlan(input: {
+    tenantKey: string;
+    productId: string;
+    productPayload?: ProductPayload;
+    categoryId: string;
+    installation: { id: string; connectorId: string; tenantKey?: string; metadata?: unknown };
+    productGid: string;
+    correlationId: string;
+  }): Promise<ShopifyControlledMutationPreparedPlan> {
+    const { tenantKey, productId, categoryId, installation, productGid, correlationId } = input;
+    const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
+    if (
+      !connector.fetchProductTypeSchema ||
+      typeof connector.applyControlledMutation !== "function" ||
+      typeof connector.captureRollbackSnapshot !== "function"
+    ) {
+      throw new Error("connector_missing_controlled_mutation");
+    }
+    const fetchProductTypeSchema = connector.fetchProductTypeSchema.bind(connector);
+    const applyControlledMutation = connector.applyControlledMutation.bind(connector);
+    const captureRollbackSnapshot = connector.captureRollbackSnapshot.bind(connector);
+    const productPayload = input.productPayload ?? await this.buildConnectorProductPayload(productId, {
+      channel: "shopify",
+      installationId: installation.id,
+    });
+    const ctx = this.connectorFramework.buildContextForInstallation({
+      ...installation,
+      tenantKey,
+      slug: "shopify",
+      metadata: (installation.metadata ?? {}) as Record<string, unknown>,
+    });
+    const targetSchema = await fetchProductTypeSchema(ctx, productPayload.productType);
+    const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
+    const resolvedMapping: ResolvedConnectorMapping = {
+      connectorSlug: "shopify",
+      requiredFields: effective.requiredFields,
+      fieldMap: effective.fieldMap,
+      rawFieldMap: effective.rawFieldMap,
+      source: effective.source,
+    };
+    const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
+    const payload = buildShopifyVnextMutationPayload(projection, correlationId, productGid);
+    const files = Array.isArray(payload.input.files)
+      ? payload.input.files as Record<string, unknown>[]
+      : [];
+    if (files.length === 0) {
+      throw new Error("missing_authorized_image_payload");
+    }
+    const controlledInput: ShopifyProductSetInputLike = { files };
+    const identifier: ShopifyProductSetIdentifierLike = { id: productGid };
+    const preSnapshot = await captureRollbackSnapshot(ctx, productGid, { correlationId });
+    const unauthorizedFieldDiffs = this.detectUnauthorizedShopifyVnextFieldDiffs(preSnapshot, payload.input);
+    const outboundFieldKeys = Object.keys(controlledInput);
+    const expectedImageAlts = files
+      .map((file) => String((file as Record<string, unknown>).alt ?? "").trim())
+      .filter(Boolean);
+    const payloadChecksum = this.hashStableJson(controlledInput);
+    return {
+      ctx,
+      applyControlledMutation,
+      captureRollbackSnapshot,
+      projectionSku: projection.identity.sku,
+      schemaVersion: projection.readiness.schemaVersion,
+      payloadInput: payload.input,
+      files,
+      controlledInput,
+      identifier,
+      preSnapshot,
+      unauthorizedFieldDiffs,
+      outboundFieldKeys,
+      expectedImageAlts,
+      payloadChecksum,
+    };
   }
 
   private async attemptShopifyControlledMutation(input: {
@@ -3961,75 +4208,42 @@ export class MarketplaceService implements OnModuleInit {
 
     let startedAudit: ShopifyControlledMutationAuditMetadata | undefined;
     try {
-      const connector = this.connectorRegistry.getConnector("shopify") as unknown as ShopifyControlledMutationConnector;
-      if (
-        !connector.fetchProductTypeSchema ||
-        typeof connector.applyControlledMutation !== "function" ||
-        typeof connector.captureRollbackSnapshot !== "function"
-      ) {
-        failClosed("connector_missing_controlled_mutation");
-      }
       if (!existingGid) {
         failClosed("missing_existing_product_gid");
       }
-      const fetchProductTypeSchema = connector.fetchProductTypeSchema!.bind(connector);
-      const applyControlledMutation = connector.applyControlledMutation!.bind(connector);
-      const captureRollbackSnapshot = connector.captureRollbackSnapshot!.bind(connector);
       const productGid = existingGid!;
-
-      const ctx = this.connectorFramework.buildContextForInstallation({
-        ...installation,
+      const plan = await this.prepareShopifyControlledMutationPlan({
         tenantKey,
-        slug: "shopify",
-        metadata: {},
+        productId,
+        productPayload,
+        categoryId,
+        installation,
+        productGid,
+        correlationId,
       });
-      const targetSchema = await fetchProductTypeSchema(ctx, productPayload.productType);
-      const effective = await this.getEffectiveMapping("shopify", categoryId, undefined, installation.id);
-      const resolvedMapping: ResolvedConnectorMapping = {
-        connectorSlug: "shopify",
-        requiredFields: effective.requiredFields,
-        fieldMap: effective.fieldMap,
-        rawFieldMap: effective.rawFieldMap,
-        source: effective.source,
-      };
-      const projection = buildShopifyChannelProjection(productPayload, categoryId, resolvedMapping, targetSchema);
-      const payload = buildShopifyVnextMutationPayload(projection, correlationId, productGid);
-      const files = Array.isArray(payload.input.files) ? payload.input.files : [];
-      if (files.length === 0) {
-        failClosed("missing_authorized_image_payload");
-      }
-      const controlledInput: ShopifyProductSetInputLike = { files };
-      const identifier: ShopifyProductSetIdentifierLike = { id: productGid };
-      const preSnapshot = await captureRollbackSnapshot(ctx, productGid, { correlationId });
-      const unauthorizedFieldDiffs = this.detectUnauthorizedShopifyVnextFieldDiffs(preSnapshot, payload.input);
-      if (unauthorizedFieldDiffs.length > 0) {
-        failClosed(`unauthorized_field_scope:${unauthorizedFieldDiffs.join(",")}`);
+      if (plan.unauthorizedFieldDiffs.length > 0) {
+        failClosed(`unauthorized_field_scope:${plan.unauthorizedFieldDiffs.join(",")}`);
       }
       // Explicit pre-write gate: assert the outbound mutation payload is image-only.
       // controlledInput is constructed as { files } above; this assertion makes the
       // field-scope boundary explicit and catches any future accidental broadening.
-      const outboundFieldKeys = Object.keys(controlledInput);
-      if (outboundFieldKeys.length !== 1 || outboundFieldKeys[0] !== "files") {
+      if (plan.outboundFieldKeys.length !== 1 || plan.outboundFieldKeys[0] !== "files") {
         failClosed("outbound_payload_not_image_only");
       }
-      const expectedImageAlts = files
-        .map((file) => String((file as Record<string, unknown>).alt ?? "").trim())
-        .filter(Boolean);
-      const controlledInputKeys = Object.keys(controlledInput).sort();
+      const controlledInputKeys = Object.keys(plan.controlledInput).sort();
       if (controlledInputKeys.length !== 1 || controlledInputKeys[0] !== "files") {
         failClosed("unauthorized_outbound_field_scope");
       }
-      const payloadChecksum = this.hashStableJson(controlledInput);
       if (!approvedPayloadChecksum) {
-        failClosedWithAudit("payload_checksum_not_approved", { payloadChecksum });
+        failClosedWithAudit("payload_checksum_not_approved", { payloadChecksum: plan.payloadChecksum });
       }
-      if (payloadChecksum !== approvedPayloadChecksum) {
-        failClosedWithAudit("payload_checksum_mismatch", { payloadChecksum });
+      if (plan.payloadChecksum !== approvedPayloadChecksum) {
+        failClosedWithAudit("payload_checksum_mismatch", { payloadChecksum: plan.payloadChecksum });
       }
       startedAudit = makeAudit({
         status: "started",
-        mutationCount: files.length,
-        payloadChecksum,
+        mutationCount: plan.files.length,
+        payloadChecksum: plan.payloadChecksum,
         externalProductGid: productGid,
       });
 
@@ -4039,36 +4253,36 @@ export class MarketplaceService implements OnModuleInit {
         categoryId,
         productId,
         externalProductGid: productGid,
-        sku: projection.identity.sku,
-        schemaVersion: projection.readiness.schemaVersion,
+        sku: plan.projectionSku,
+        schemaVersion: plan.schemaVersion,
         fieldClass: "image",
-        mutationCount: files.length,
-        payloadChecksum,
+        mutationCount: plan.files.length,
+        payloadChecksum: plan.payloadChecksum,
         approvedPayloadChecksum,
         approvedReleaseSha,
         liveReleaseSha,
       });
-      const result = await applyControlledMutation(ctx, controlledInput, identifier, { correlationId });
+      const result = await plan.applyControlledMutation(plan.ctx, plan.controlledInput, plan.identifier, { correlationId });
       this.logger.info("shopify_vnext_controlled_mutation_executed", {
         correlationId,
         installationId: installation.id,
         categoryId,
         productId,
         externalProductGid: result.externalRef,
-        sku: projection.identity.sku,
-        schemaVersion: projection.readiness.schemaVersion,
+        sku: plan.projectionSku,
+        schemaVersion: plan.schemaVersion,
         fieldClass: "image",
-        mutationCount: files.length,
-        payloadChecksum,
+        mutationCount: plan.files.length,
+        payloadChecksum: plan.payloadChecksum,
         approvedPayloadChecksum,
         status: result.status,
         approvedReleaseSha,
         liveReleaseSha,
       });
-      const postSnapshot = await captureRollbackSnapshot(ctx, result.externalRef, { correlationId });
-      const readback = this.verifyShopifyImageOnlyReadback(preSnapshot, postSnapshot, {
-        expectedImageCount: files.length,
-        expectedImageAlts,
+      const postSnapshot = await plan.captureRollbackSnapshot(plan.ctx, result.externalRef, { correlationId });
+      const readback = this.verifyShopifyImageOnlyReadback(plan.preSnapshot, postSnapshot, {
+        expectedImageCount: plan.files.length,
+        expectedImageAlts: plan.expectedImageAlts,
         expectedProductGid: result.externalRef,
       });
       if (
@@ -4093,7 +4307,7 @@ export class MarketplaceService implements OnModuleInit {
           productId,
           externalProductGid: result.externalRef,
           fieldClass: "image",
-          mutationCount: files.length,
+          mutationCount: plan.files.length,
           stableFieldsMatch: readback.stableFieldsMatch,
           imageChanged: readback.imageChanged,
           productGidUnchanged: readback.productGidUnchanged,
@@ -4120,7 +4334,7 @@ export class MarketplaceService implements OnModuleInit {
         result,
         correlationId,
         fieldClass: "image",
-        mutationCount: files.length,
+        mutationCount: plan.files.length,
         releaseSha: approvedReleaseSha,
         liveReleaseSha,
         externalProductGid: result.externalRef,
