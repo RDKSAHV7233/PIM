@@ -3778,9 +3778,9 @@
           "storyId": "ST-DASH-SKU-METERING-001",
           "title": "Active-SKU usage counter reflects Variant rows instead of Product rows in PlanUsageService.recomputeUsage",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "claude",
-          "commit": null,
+          "commit": "7eda5dc",
           "scope": [
             "apps/api/src/billing/plan-usage.service.ts"
           ],
@@ -3798,9 +3798,9 @@
           "storyId": "ST-CON-SHOPIFY-READINESS-001",
           "title": "Shopify connector readiness checklist no longer falls back to the full unfiltered publication-target list when nothing is selected",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "claude",
-          "commit": null,
+          "commit": "7eda5dc",
           "scope": [
             "apps/web/src/app/channels/connectors/[installationId]/page.tsx"
           ],
@@ -3821,9 +3821,9 @@
           "storyId": "ST-CON-ROLE-REGRESSION-001",
           "title": "Re-confirm publish and admin-only job-management RBAC live after the readiness-checklist fix",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "claude",
-          "commit": null,
+          "commit": "7eda5dc",
           "tests_passed": [
             "Live API calls (tenant shopify-e2e): editor POST /marketplace/products/:id/export-jobs -> 403; publisher -> 201; channel_manager -> 201",
             "Live API calls: editor POST /marketplace/export-jobs/:id/process -> 403; publisher POST .../process -> 403; admin POST .../process -> 201"
@@ -3836,9 +3836,9 @@
           "storyId": "ST-AUTH-LOGOUT-RESILIENCE-001",
           "title": "Logout clears local session cookies unconditionally instead of only on backend 204/401/403-suspended responses",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "claude",
-          "commit": null,
+          "commit": "7eda5dc",
           "scope": [
             "apps/web/src/app/api/auth/logout/route.ts"
           ],
@@ -5647,8 +5647,9 @@
     {
       "incrementId": "INC-83",
       "name": "Shopify vNext Per-Job Controlled Mode + Config Preflight",
-      "status": "in_progress",
-      "locked": false,
+      "status": "completed",
+      "locked": true,
+      "commit": "5ff7688",
       "scope": [
         "apps/api/src/marketplace/marketplace.service.ts",
         "apps/api/src/marketplace/marketplace.controller.ts",
@@ -5656,11 +5657,19 @@
         "scripts/shopify-vnext-first-controlled-mutation.cjs",
         "scripts/shopify-vnext-mutation-preflight.cjs"
       ],
+      "tests_passed": [
+        "npm run test:unit --workspace @pim1/api — 134/135 suites pass (1 skipped: Redis-dependent), 2373/2391 tests pass (18 skipped: Redis-dependent)"
+      ],
       "stories": [
         {
           "storyId": "INC-83-S1",
           "title": "Per-Job Controlled Execution Mode",
-          "status": "in_progress",
+          "status": "completed",
+          "locked": true,
+          "commit": "5ff7688",
+          "tests_passed": [
+            "shopify-vnext-mutation-safety.spec.ts: 23/23 tests pass (inc. 5 controlled-mode fail-closed tests)"
+          ],
           "acceptance": [
             "executionMode=controlled_vnext_required threads from queue payload through processExportJob → recordConnectorSubmission → attemptShopifyControlledMutation",
             "In controlled mode, all 4 gate misses call failClosed instead of quiet-skip",
@@ -5677,7 +5686,13 @@
         {
           "storyId": "INC-83-S2",
           "title": "Static Read-Only Config Preflight Endpoint",
-          "status": "in_progress",
+          "status": "completed",
+          "locked": true,
+          "commit": "5ff7688",
+          "tests_passed": [
+            "GET /marketplace/vnext-mutation-config-preflight wired in marketplace.controller.ts, service returns checks[] + result READY|BLOCKED",
+            "scripts/shopify-vnext-mutation-preflight.cjs exits 0 on READY, 1 on BLOCKED"
+          ],
           "acceptance": [
             "GET /marketplace/vnext-mutation-config-preflight returns READY when all 4 gates pass",
             "Returns BLOCKED on any gate miss with per-check detail",
