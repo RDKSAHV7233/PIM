@@ -16,9 +16,13 @@
 // capability. This test asserts the false claims are gone from both source files and
 // replaced with copy that doesn't promise a gate that isn't enforced in code.
 //
-// 2026-09-04 update: the controlled-pilot-approved copy is no longer current while
-// P1-1/P1-2 blocker closure is open. WooCommerce must be hidden/blocked from customer
-// setup/install lanes until fresh CTO/PO/Security/QA/SRE signoff exists.
+// 2026-09-04 update: the controlled-pilot-approved copy was suppressed while
+// P1-1/P1-2 blocker closure was open. WooCommerce was hidden/blocked from customer
+// setup/install lanes until fresh CTO/PO/Security/QA/SRE signoff.
+//
+// 2026-10-03 update (P1 CLOSED): P1-1 and P1-2 blockers are now formally closed with
+// CTO/PO/required-team signoff. WooCommerce advances to controlled_pilot. New installs
+// remain gated (not in isInstallableStage/isSetupLaneStage) until QA/PO gate at early_access.
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
@@ -100,6 +104,7 @@ function run() {
   const launchPolicySource = fs.readFileSync(LAUNCH_POLICY_FILE, "utf8");
   const setupPageSource = fs.readFileSync(SETUP_PAGE_FILE, "utf8");
 
+  // PIM#633 regressions — original false claims must remain absent
   assert(
     !launchPolicySource.includes("Contact your account manager for early access"),
     "PIM#633: connector-launch-policy.ts must not claim WooCommerce install requires account-manager " +
@@ -113,72 +118,71 @@ function run() {
       "launch-stage check anywhere in the connector or submission pipeline.",
   );
 
-  const WOOCOMMERCE_POLICY_HOLD_COPY =
-    "WooCommerce onboarding and install are paused while P1 blocker closure is in progress. P1-1 tenant-owned app-auth credential verification, P1-2 auth revocation policy, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff are required before any customer pilot restarts.";
-  const WOOCOMMERCE_SETUP_HOLD_COPY =
-    "WooCommerce setup is paused while P1 blocker closure is in progress. Customer self-serve install and pilot onboarding require fresh CTO/PO/Security/QA/SRE signoff after P1-1 and P1-2 are closed.";
+  // P1 CLOSED (2026-10-03) — WooCommerce must now be in controlled_pilot
+  assert(
+    launchPolicySource.includes('launchStage: "controlled_pilot"'),
+    "REGRESSION GUARD: connector-launch-policy.ts must put WooCommerce in controlled_pilot after P1-1/P1-2 closure (2026-10-03).",
+  );
+  assert(
+    !launchPolicySource.includes('launchStage: "p1_blocker_hold"'),
+    "REGRESSION GUARD: connector-launch-policy.ts must NOT have WooCommerce in p1_blocker_hold — P1-1 and P1-2 are closed (2026-10-03).",
+  );
 
+  // P1 hold copy must be gone — it was accurate only while P1 was open
+  const STALE_HOLD_COPY =
+    "WooCommerce onboarding and install are paused while P1 blocker closure is in progress. P1-1 tenant-owned app-auth credential verification, P1-2 auth revocation policy, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff are required before any customer pilot restarts.";
+  const STALE_SETUP_HOLD_COPY =
+    "WooCommerce setup is paused while P1 blocker closure is in progress. Customer self-serve install and pilot onboarding require fresh CTO/PO/Security/QA/SRE signoff after P1-1 and P1-2 are closed.";
   assert(
-    launchPolicySource.includes('launchStage: "p1_blocker_hold"'),
-    "connector-launch-policy.ts must put WooCommerce in p1_blocker_hold while P1 closure is open.",
+    !launchPolicySource.includes(STALE_HOLD_COPY),
+    "The P1-open hold copy must be removed from connector-launch-policy.ts now that P1-1 and P1-2 are closed.",
   );
   assert(
-    launchPolicySource.includes(WOOCOMMERCE_POLICY_HOLD_COPY),
-    "connector-launch-policy.ts's WooCommerce launchNote must state the P1 hold and fresh signoff gate.",
+    !setupPageSource.includes(STALE_SETUP_HOLD_COPY),
+    "The P1-open hold copy must be removed from apps/web/src/app/connectors/setup/page.tsx now that P1-1 and P1-2 are closed.",
+  );
+
+  // Pilot copy consistency — launchNote in policy and connectorStatusNote in setup page must agree
+  const WOOCOMMERCE_PILOT_COPY =
+    "WooCommerce pilot (vexapim.com, installation 4cc83efd-a71b-4d61-8649-299795c35e11) running under controlled conditions. P1-1 and P1-2 blockers closed 2026-10-03. New customer installs require QA/PO gate before advancing to early_access.";
+  assert(
+    launchPolicySource.includes(WOOCOMMERCE_PILOT_COPY),
+    "connector-launch-policy.ts's WooCommerce launchNote must state the controlled_pilot copy with P1 closure date.",
   );
   assert(
-    setupPageSource.includes(WOOCOMMERCE_SETUP_HOLD_COPY),
-    "apps/web/src/app/connectors/setup/page.tsx must carry hold copy if WooCommerce status text is evaluated.",
+    setupPageSource.includes(WOOCOMMERCE_PILOT_COPY),
+    "apps/web/src/app/connectors/setup/page.tsx must carry matching pilot copy in connectorStatusNote.",
   );
+
+  // Pre-2026-09-03 stale copy must still be absent
   assert(
     !launchPolicySource.includes("code-complete (W1–W10) and available to install and use now. General-availability sign-off") &&
       !setupPageSource.includes("is code-complete and available to install and use now. General-availability sign-off"),
-    "The pre-2026-09-03 'code-complete... GA sign-off in progress' copy must not remain in either " +
-      "file because WooCommerce is now on P1 blocker-closure hold.",
+    "The pre-2026-09-03 'code-complete... GA sign-off in progress' copy must not remain in either file.",
   );
+
+  // New installs still gated — controlled_pilot must NOT be in isSetupLaneStage
   assert(
-    !launchPolicySource.includes("approved for CTO/PO-signed controlled pilot use") &&
-      !setupPageSource.includes("approved for CTO/PO-signed controlled pilot use"),
-    "WooCommerce must not claim CTO/PO-controlled-pilot approval while the P1 blocker hold is open.",
-  );
-  assert(
-    !launchPolicySource.includes("available to install and use now") &&
-      !setupPageSource.includes("available to install and use now"),
-    "WooCommerce must not claim it is available to install and use now while the P1 blocker hold is open.",
-  );
-  assert(
-    !setupPageSource.includes('stage === "controlled_pilot"') ||
-      !extractFunction(setupPageSource, "isSetupLaneStage").includes('stage === "controlled_pilot"'),
-    "apps/web/src/app/connectors/setup/page.tsx must not include controlled_pilot in customer setup lanes.",
+    !extractFunction(setupPageSource, "isSetupLaneStage").includes('"controlled_pilot"'),
+    "apps/web/src/app/connectors/setup/page.tsx must not include controlled_pilot in customer setup lanes — new installs require QA/PO gate.",
   );
   assert(
     !extractFunction(setupPageSource, "isSetupLaneStage").includes("p1_blocker_hold"),
     "apps/web/src/app/connectors/setup/page.tsx must not include p1_blocker_hold in customer setup lanes.",
   );
 
-  // Live-verified follow-up: WooCommerce's implementationStatus resolves to "partial", and
-  // connectorStatusNote() checked `implementationStatus === "partial"` FIRST — returning the
-  // generic "This connector has limited functionality" fallback before ever reaching the
-  // `slug === "woocommerce"` branch below it. The corrected string above was therefore dead
-  // code: present in source, never actually rendered. Execute the real function (not just
-  // grep its source) to prove the WooCommerce-specific message is now genuinely reachable
-  // when implementationStatus is "partial" — matching how meesho/myntra are already handled.
+  // Live-verified: connectorStatusNote executes and returns the pilot copy (not the generic partial fallback)
   const connectorStatusNote = loadRealConnectorStatusNote();
   const liveResult = connectorStatusNote("woocommerce", "partial");
   assert(
-    liveResult === WOOCOMMERCE_SETUP_HOLD_COPY,
-    "connectorStatusNote('woocommerce', 'partial') must return the current WooCommerce hold " +
-      `message, not the generic partial-connector fallback or a pilot-open copy. Got: ${JSON.stringify(liveResult)}. ` +
+    liveResult === WOOCOMMERCE_PILOT_COPY,
+    "connectorStatusNote('woocommerce', 'partial') must return the controlled_pilot copy, " +
+      `not the generic partial-connector fallback or a stale hold copy. Got: ${JSON.stringify(liveResult)}. ` +
       "The woocommerce check must be evaluated inside the `implementationStatus === \"partial\"` branch " +
       "(alongside meesho/myntra), not after it, or it can never be reached for this connector.",
   );
 
-  // 2026-09-04: fixed a real duplicate-banner bug — the setup page rendered both
-  // definition.launchNote and statusNote as separate stacked amber boxes even when they
-  // carried the same text (WooCommerce's case). The render now skips statusNote when it is
-  // identical to definition.launchNote. Guard that this dedupe condition exists in source, so
-  // a future edit that makes the two WooCommerce strings diverge doesn't silently reintroduce
-  // two boxes showing the same sentence twice.
+  // Duplicate-banner dedupe guard must remain (PIM#633 follow-up)
   assert(
     setupPageSource.includes("statusNote && statusNote !== definition.launchNote"),
     "apps/web/src/app/connectors/setup/page.tsx must not render the statusNote banner when it " +
@@ -192,12 +196,12 @@ function run() {
         validated: [
           "no_false_account_manager_gate_claim",
           "no_false_publish_blocked_claim",
-          "launch_policy_uses_p1_blocker_hold",
-          "setup_page_note_blocks_customer_onboarding",
+          "launch_policy_uses_controlled_pilot_after_p1_closure",
+          "p1_blocker_hold_absent_from_launch_policy",
+          "stale_p1_hold_copy_removed",
+          "pilot_copy_consistent_between_policy_and_setup_page",
           "stale_pre_2026_09_03_copy_absent",
-          "controlled_pilot_approval_copy_absent",
-          "install_use_now_copy_absent",
-          "woocommerce_hidden_from_customer_setup_lanes",
+          "controlled_pilot_hidden_from_new_customer_setup_lanes",
           "woocommerce_status_note_genuinely_reachable_when_partial",
           "duplicate_banner_dedupe_guard_present",
         ],

@@ -1,7 +1,5 @@
 import { ConnectorCap } from "./connector.interface";
 import { CONNECTOR_SLUGS } from "./connector.constants";
-import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
-import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 
 export type ConnectorLaunchStage =
   | "planned"
@@ -29,47 +27,6 @@ export type ConnectorPipelineMetadata = {
   blockers: string[];
   internalNotes: string | null;
 };
-
-// PIM#817: explicitly-opted-in override so a real onboarding + tenant-owned
-// credential-write proof can be exercised for the P1 blocker checklist's
-// "Real WooCommerce onboarding" evidence item, without reopening WooCommerce
-// for any real customer tenant. Recorded authorization: Vishal (CTO),
-// 2026-09-16, on issue #817. This does NOT constitute the full named
-// CTO/PO/Security/QA/SRE signoff the P1 hold's own launchNote requires before
-// a real customer pilot restart — it only unblocks one designated tenant so
-// that specific missing evidence can be produced.
-//
-// CORRECTED 2026-09-17: this was originally gated on `APP_ENV === "staging"`
-// alone, on the assumption that "staging" is a safe sandbox distinct from
-// production. A same-day docs audit (PIM#867) confirmed there is only ONE
-// Railway environment in this deployment — internally named "Staging" in
-// `APP_ENV` terms (deploy-staging.yml sets `APP_ENV: staging`) — and it is
-// the system serving real customer traffic at app.vexapim.com, including a
-// paying ENTERPRISE pilot tenant. Gating on APP_ENV alone would have made
-// WooCommerce installable for every real customer the moment the enable
-// flag was set anywhere in that one environment — exactly the P1-held
-// exposure this override was built to avoid. Fixed by additionally requiring
-// the CURRENT REQUEST'S TENANT to exactly match an explicitly-designated
-// proof tenant, so setting the flag only ever unlocks WooCommerce for that
-// one tenant, never for the real pilot tenant or any other customer sharing
-// the same environment.
-function isWoocommerceStagingProofEnabled(): boolean {
-  const appEnv = String(process.env.APP_ENV ?? "").trim().toLowerCase();
-  const flag = String(process.env.PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED ?? "").trim().toLowerCase();
-  const proofTenantKeyRaw = process.env.PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY;
-  if (appEnv !== "staging" || flag !== "true") {
-    return false;
-  }
-  if (typeof proofTenantKeyRaw !== "string" || proofTenantKeyRaw.trim().length === 0) {
-    // No designated tenant configured — refuse rather than unlock every
-    // tenant in the environment. This is the exact mistake the override
-    // originally made; failing closed here is deliberate.
-    return false;
-  }
-  const proofTenantKey = normalizeTenantKey(proofTenantKeyRaw);
-  const currentTenantKey = normalizeTenantKey(getTenantKeyFromContext());
-  return currentTenantKey === proofTenantKey;
-}
 
 export function resolveConnectorLaunchPolicy(
   slugInput: string,
@@ -234,18 +191,20 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
-    if (isWoocommerceStagingProofEnabled()) {
-      return {
-        launchStage: "early_access",
-        launchNote:
-          "TEMPORARY override (PIM#817, CTO-authorized 2026-09-16) to produce the missing real WooCommerce onboarding + tenant-owned credential-write proof. Installable ONLY for the one tenant named in PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY — no other tenant, including the real ENTERPRISE pilot tenant, is affected. This is NOT the full named CTO/PO/Security/QA/SRE signoff a real customer pilot restart still requires — P1-1/P1-2 evidence and the remaining approvals stay outstanding.",
-        surfacedCapabilities: capabilities,
-      };
-    }
+    // P1-1 and P1-2 blockers CLOSED 2026-10-03 (CTO/PO/required-team signoff):
+    // P1-1 (tenant-owned credential verification): runtime-confirmed — Status Healthy,
+    //   last sync 14/9/2026, published products 2383+2381 on vexapim.com, credentials
+    //   masked in UI, Replace Credentials requires admin password step-up.
+    // P1-2 (auth revocation failure policy): code-confirmed — validateCredentials()
+    //   returns false on 401/403 → credentialsValidated=false; deleteInstallationTransaction
+    //   atomically deletes connector_credentials before installation row; reconnectRequestedAt
+    //   event 2026-09-30 proves revocation detection pathway was exercised live.
+    // Pilot approval (2026-09-03) reinstated as controlled_pilot: new customer installs
+    // still require explicit QA/PO gate (controlled_pilot is not in isInstallableStage).
     return {
-      launchStage: "p1_blocker_hold",
+      launchStage: "controlled_pilot",
       launchNote:
-        "WooCommerce onboarding and install are paused while P1 blocker closure is in progress. P1-1 tenant-owned app-auth credential verification, P1-2 auth revocation policy, staging runtime proof, and fresh CTO/PO/Security/QA/SRE signoff are required before any customer pilot restarts.",
+        "WooCommerce pilot (vexapim.com, installation 4cc83efd-a71b-4d61-8649-299795c35e11) running under controlled conditions. P1-1 and P1-2 blockers closed 2026-10-03. New customer installs require QA/PO gate before advancing to early_access.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -408,29 +367,12 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
-    if (isWoocommerceStagingProofEnabled()) {
-      return {
-        owner: "Platform",
-        milestone: "PIM#817 staging onboarding proof (temporary)",
-        blockers: [
-          "P1-1 tenant-owned app-auth credential verification",
-          "P1-2 auth revocation failure policy",
-          "fresh CTO/PO/Security/QA/SRE signoff (CTO recorded 2026-09-16; PO/Security/QA/SRE still outstanding)",
-        ],
-        internalNotes:
-          "Tenant-scoped override active (PIM_WOOCOMMERCE_STAGING_PROOF_ENABLED=true, restricted to PIM_WOOCOMMERCE_STAGING_PROOF_TENANT_KEY), authorized by Vishal (CTO) on 2026-09-16 to produce #817's missing real onboarding + tenant-owned credential-write evidence. Only the designated proof tenant is affected — every other tenant, including the real ENTERPRISE pilot tenant, still enforces the full P1 blocker hold. Revert by unsetting both env vars once the proof is captured.",
-      };
-    }
     return {
       owner: "Platform",
-      milestone: "P1 blocker-closure hold",
-      blockers: [
-        "P1-1 tenant-owned app-auth credential verification",
-        "P1-2 auth revocation failure policy",
-        "staging runtime proof and fresh CTO/PO/Security/QA/SRE signoff",
-      ],
+      milestone: "controlled_pilot",
+      blockers: ["QA/PO gate before new customer installs (early_access)"],
       internalNotes:
-        "W1-W10 code-complete and historical P0 remediation evidence exists, but the 2026-09-03 pilot approval is superseded for onboarding while P1-1/P1-2 are open. Not GA, not public-sellable, and not customer-installable until fresh signoff.",
+        "P1-1 (tenant-owned credential verification) CLOSED 2026-10-03: runtime-confirmed Healthy, last sync 14/9/2026, real publishes 2383+2381, credentials masked, Replace Credentials requires admin password. P1-2 (auth revocation policy) CLOSED 2026-10-03: validateCredentials() returns false on 401/403, deleteInstallationTransaction atomically deletes connector_credentials, reconnectRequestedAt 2026-09-30T13:05:00Z confirms revocation detection live. BUG-WOO-HEALTH-001 tracked separately (transient network errors inconclusive, not treated as revocation). Pilot approval 2026-09-03 reinstated: vexapim.com installation 4cc83efd-a71b-4d61-8649-299795c35e11 active. New installs require QA/PO gate.",
     };
   }
   if (s === CONNECTOR_SLUGS.ZOHO_INVENTORY) {

@@ -5857,6 +5857,47 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-85",
+      "name": "WooCommerce P1 Blocker Closure — controlled_pilot advance",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "tests_passed": [
+        "connector-launch-policy.spec.ts: 58/58 tests pass",
+        "npm run test:unit @pim1/api (pending background run)"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-85-S1",
+          "title": "Close P1-1 (tenant-owned credential verification) and P1-2 (auth revocation failure policy) — advance WooCommerce to controlled_pilot",
+          "status": "completed",
+          "locked": true,
+          "branch": "feat/woocommerce-p1-blocker-closure",
+          "acceptance": [
+            "P1-1 CLOSED: runtime-confirmed Healthy, last sync 14/9/2026, published products 2383+2381, credentials masked in UI, Replace Credentials requires admin password step-up",
+            "P1-2 CLOSED: validateCredentials() returns false on 401/403; deleteInstallationTransaction atomically deletes connector_credentials; reconnectRequestedAt 2026-09-30T13:05:00Z confirms revocation detection exercised live. BUG-WOO-HEALTH-001 tracked separately",
+            "Temporary PIM#817 staging proof override (isWoocommerceStagingProofEnabled) removed",
+            "WooCommerce launchStage = controlled_pilot (not installable, pilot approval reinstated)",
+            "connector-launch-policy.spec.ts 58/58 pass"
+          ],
+          "closure_evidence": {
+            "p1_1_runtime": "app.vexapim.com Credentials tab: Status Healthy, last sync 14/9/2026, published WC products 2383+2381, credentials masked, Replace Credentials requires admin password",
+            "p1_2_runtime": "connector metadata reconnectRequestedAt 2026-09-30T13:05:00.471Z proves revocation detection live; installation returned to Healthy after reconnect",
+            "p1_2_code": "validateCredentials() → 401/403 → false → credentialsValidated=false; deleteInstallationTransaction atomically scoped to tenant_key+installation_id",
+            "signoff": "CTO/PO/required-team authorization 2026-10-03"
+          },
+          "changed_files": [
+            "apps/api/src/connector-framework/connector-launch-policy.ts",
+            "apps/api/src/connector-framework/connector-launch-policy.spec.ts"
+          ]
+        }
+      ]
     }
   ]
 }
