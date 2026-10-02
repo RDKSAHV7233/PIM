@@ -207,3 +207,47 @@ describe("OutboundWebhooksService — dispatch signing (QA §J8.2, no prior cove
     );
   });
 });
+
+describe("OutboundWebhooksService — stuck-delivery recovery timer (prod-cert DEF-PC-013)", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, ...ENV };
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    process.env = originalEnv;
+    jest.restoreAllMocks();
+  });
+
+  it("a DB error in the scheduled recovery is logged, not left as an unhandled rejection that would crash the API", async () => {
+    const stubs = makeStubs();
+    // Simulate Prisma P2024 (connection pool timeout) from the cross-tenant scan query.
+    const poolTimeout = Object.assign(new Error("Timed out fetching a new connection from the connection pool"), { code: "P2024" });
+    (stubs.prisma.tenant as jest.Mock).mockReturnValue({ $queryRaw: jest.fn().mockRejectedValue(poolTimeout) });
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+
+    const service = new OutboundWebhooksService(stubs.prisma, stubs.audit, stubs.queueService, stubs.planUsage);
+    const errorSpy = jest.spyOn((service as unknown as { logger: { error: (m: string) => void } }).logger, "error").mockImplementation(() => undefined);
+    service.onApplicationBootstrap();
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    // Let the rejected promise's handlers (or, before the fix, the unhandled-rejection event) run.
+    jest.useRealTimers();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    process.off("unhandledRejection", onUnhandled);
+    service.onApplicationShutdown();
+
+    // Authoritative, deterministic assertion: only a .catch on the timer's promise can produce this log.
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[P2024]"), expect.anything());
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("recovery failed"), expect.anything());
+    // Secondary check (event-loop timing dependent, so it is not the proof on its own).
+    expect(unhandled).toHaveLength(0);
+  });
+});

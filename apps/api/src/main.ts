@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, raw, urlencoded } from "express";
 import helmet from "helmet";
 import { validateEnv } from "./common/env-validation";
+import { registerProcessGuards, runAndExitOnFailure } from "./common/process-guards";
 import { validationExceptionFactory } from "./common/validation-exception.factory";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
@@ -28,6 +29,7 @@ function bootDebug(message: string, meta?: Record<string, unknown>) {
 }
 
 async function bootstrap() {
+  registerProcessGuards();
   bootDebug("bootstrap:start");
   const env = validateEnv();
   bootDebug("env:validated", {
@@ -202,4 +204,4 @@ async function bootstrap() {
   });
 }
 
-bootstrap();
+runAndExitOnFailure(bootstrap);

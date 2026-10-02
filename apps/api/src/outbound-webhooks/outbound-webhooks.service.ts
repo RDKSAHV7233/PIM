@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   OnApplicationBootstrap,
   OnApplicationShutdown,
@@ -103,6 +104,7 @@ type WebhookPayload = {
 export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly encryptionKeys = loadCredentialEncryptionKeys(process.env);
   private readonly currentKeyVersion = resolveCurrentCredentialKeyVersion(process.env);
+  private readonly logger = new Logger(OutboundWebhooksService.name);
   private recoveryTimer: ReturnType<typeof setInterval> | null = null;
   private recoveringQueuedDeliveries = false;
 
@@ -120,7 +122,15 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
       return;
     }
     this.recoveryTimer = setInterval(() => {
-      void this.recoverStuckQueuedDeliveries();
+      // A transient DB error (e.g. Prisma P2024 pool timeout) must not escape as an unhandled
+      // promise rejection: on Node >= 15 that terminates the whole API process.
+      this.recoverStuckQueuedDeliveries().catch((error: unknown) => {
+        const code = (error as { code?: unknown } | null)?.code;
+        this.logger.error(
+          `Outbound webhook stuck-delivery recovery failed; will retry next interval: ${code ? `[${String(code)}] ` : ""}${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      });
     }, OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS);
   }
 
