@@ -78,6 +78,21 @@ function runRailway(config, railwayEnv, args, options = {}) {
   });
 }
 
+function runRailwayCapture(config, railwayEnv, args, options = {}) {
+  const result = childProcess.spawnSync(config.railwayBin, args, {
+    cwd: config.repoRoot,
+    env: railwayEnv,
+    encoding: "utf8",
+    timeout: options.timeoutMs ?? 60000,
+  });
+  return {
+    status: result.status ?? -1,
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    error: result.error ?? null,
+  };
+}
+
 async function request(method, baseUrl, route, options = {}) {
   const headers = {
     Accept: "application/json",
@@ -498,8 +513,6 @@ async function queryActiveAuthorizedJobs(config) {
 
 async function waitForExportJobTerminal(config, token, jobId) {
   let last = null;
-  let stableFailedCount = 0;
-  let stableFailedReason = null;
   // 90 attempts × 5 s = 7.5 minutes maximum.
   for (let attempt = 1; attempt <= 90; attempt += 1) {
     const result = await request("GET", config.apiBaseUrl, `/marketplace/export-jobs/${encodeURIComponent(jobId)}`, {
@@ -509,29 +522,12 @@ async function waitForExportJobTerminal(config, token, jobId) {
     assertStatus(result, 200, "GET /marketplace/export-jobs/:id");
     last = result.body;
     const status = String(result.body?.status ?? "").toLowerCase();
-    // Unconditionally terminal states.
-    if (status === "completed" || status === "dead_letter" || status === "skipped") {
+    // All four states are queue-native terminal: completed, failed, dead_letter, skipped.
+    // For ShopifyControlledMutationError specifically, processExportJob() RETURNS (does not
+    // throw), so BullMQ never sees a rejection — it marks the job complete and no retry fires.
+    // status=failed is therefore a definitive terminal state for the controlled mutation path.
+    if (["completed", "failed", "dead_letter", "skipped"].includes(status)) {
       return { attempt, job: result.body };
-    }
-    if (status === "failed") {
-      const reason = String(result.body?.failureReason ?? "");
-      if (reason === stableFailedReason) {
-        stableFailedCount += 1;
-        // 6 consecutive polls (30 s) with the same failure reason means BullMQ retries are done.
-        // Without this guard, cleanup fires while BullMQ still has retries pending; the retry
-        // then runs on the newly-deployed instance with the gate OFF → disabled_in_controlled_mode.
-        if (stableFailedCount >= 6) {
-          return { attempt, job: result.body };
-        }
-      } else {
-        // New failure reason (retry attempt just finished) or first observed failure.
-        stableFailedCount = 1;
-        stableFailedReason = reason;
-      }
-    } else {
-      // Status transitioned out of failed (job is being retried).
-      stableFailedCount = 0;
-      stableFailedReason = null;
     }
     await sleep(5000);
   }
@@ -648,6 +644,101 @@ async function waitForVnextGateActive(config, token) {
   );
 }
 
+async function waitForOldDeploymentDrained(config, railwayConfig, railwayEnv) {
+  const drainResult = {
+    method: "railway_deployment_list",
+    approvedSha: config.releaseSha,
+    startedAt: nowIso(),
+    attempts: [],
+    outcome: "unknown",
+  };
+
+  function shaMatches(deploySha) {
+    if (!deploySha) return false;
+    const s = String(deploySha).toLowerCase().trim();
+    const a = config.releaseSha.toLowerCase().trim();
+    return a === s || a.startsWith(s) || s.startsWith(a.slice(0, 8));
+  }
+
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    const attemptResult = { attempt, checkedAt: nowIso() };
+    let parsed = null;
+
+    for (const serviceTarget of railwayConfig.apiServiceTargets) {
+      try {
+        const result = runRailwayCapture(railwayConfig, railwayEnv, [
+          "deployment",
+          "list",
+          "--service", serviceTarget,
+          "--environment", railwayConfig.environmentName,
+          "--limit", "10",
+          "--json",
+        ], { timeoutMs: 30000 });
+        if (result.status === 0 && result.stdout.trim()) {
+          try {
+            parsed = JSON.parse(result.stdout.trim());
+            attemptResult.serviceTarget = serviceTarget;
+            break;
+          } catch {
+            // not valid JSON — try next target
+          }
+        }
+      } catch {
+        // CLI invocation failed — try next target
+      }
+    }
+
+    if (!parsed) {
+      attemptResult.outcome = "parse_failed";
+      drainResult.attempts.push(attemptResult);
+      drainResult.outcome = "time_buffer_only";
+      drainResult.checkedAt = nowIso();
+      return drainResult;
+    }
+
+    // Railway deployment list JSON is typically an array of deployment objects.
+    // Each entry may have: { id, status, createdAt, meta: { commitHash } } or { commitHash } at root.
+    const entries = Array.isArray(parsed)
+      ? parsed
+      : (parsed.deployments ?? parsed.edges?.map((e) => e?.node) ?? []);
+
+    const INACTIVE_STATUSES = new Set(["REMOVED", "CRASHED", "FAILED", "CANCELED", "CANCELLED"]);
+    const active = entries.filter((d) => {
+      const s = String(d?.status ?? "").toUpperCase();
+      return !INACTIVE_STATUSES.has(s);
+    });
+    const oldActive = active.filter((d) => {
+      const sha = String(d?.meta?.commitHash ?? d?.commitHash ?? d?.meta?.commitSha ?? d?.commitSha ?? "");
+      return sha && !shaMatches(sha);
+    });
+
+    attemptResult.totalDeployments = entries.length;
+    attemptResult.activeDeployments = active.length;
+    attemptResult.oldActiveDeployments = oldActive.length;
+    attemptResult.activeShas = active.slice(0, 5).map((d) => ({
+      id: d?.id,
+      status: d?.status,
+      sha: String(d?.meta?.commitHash ?? d?.commitHash ?? d?.meta?.commitSha ?? d?.commitSha ?? "").slice(0, 16) || "<unknown>",
+    }));
+    drainResult.attempts.push(attemptResult);
+
+    if (oldActive.length === 0) {
+      drainResult.outcome = "drained";
+      drainResult.checkedAt = nowIso();
+      return drainResult;
+    }
+
+    if (attempt < 6) {
+      await sleep(15000);
+    }
+  }
+
+  // Old deployments still appearing after 90 s — proceed; 60 s buffer covers Railway grace period.
+  drainResult.outcome = "timeout_proceed_with_time_buffer";
+  drainResult.checkedAt = nowIso();
+  return drainResult;
+}
+
 async function waitForVnextExecutionLog(config, railwayConfig, railwayEnv) {
   for (let attempt = 1; attempt <= 12; attempt += 1) {
     const result = findVnextExecutionLog(config, railwayConfig, railwayEnv);
@@ -761,11 +852,14 @@ async function run() {
     const gateActiveResult = await waitForVnextGateActive(config, token);
     evidence.preflight.gateActiveVerification = gateActiveResult;
 
-    // Railway's rolling deploy routes new HTTP traffic to the new instance once it passes the
-    // health check, but the OLD instance may still be alive and draining BullMQ workers for
-    // some seconds.  waitForVnextGateActive confirms the NEW instance sees gate=ON via HTTP;
-    // this sleep ensures the old instance (gate=OFF on its process.env) is fully terminated
-    // before we submit a job, so the job cannot be picked up by the stale worker.
+    // Confirm the old Railway deployment is drained before submitting the controlled job.
+    // waitForVnextGateActive already proves the NEW HTTP instance has the right SHA + gate.
+    // waitForOldDeploymentDrained is the authoritative drain check: it polls the Railway
+    // deployment list and waits until no old-SHA deployments remain active (i.e. the old
+    // instance that had gate=OFF is gone from the deployment list).  A fixed 60 s sleep
+    // follows as a final buffer for Railway's BullMQ graceful-shutdown grace period (~30 s).
+    const drainResult = await waitForOldDeploymentDrained(config, railwayConfig, railwayEnv);
+    evidence.preflight.oldDeploymentDrained = drainResult;
     await sleep(60000);
 
     const createResult = await request("POST", config.apiBaseUrl, `/marketplace/products/${encodeURIComponent(config.product)}/export-jobs`, {
