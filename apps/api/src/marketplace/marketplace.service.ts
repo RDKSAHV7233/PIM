@@ -3990,6 +3990,13 @@ export class MarketplaceService implements OnModuleInit {
       if (unauthorizedFieldDiffs.length > 0) {
         failClosed(`unauthorized_field_scope:${unauthorizedFieldDiffs.join(",")}`);
       }
+      // Explicit pre-write gate: assert the outbound mutation payload is image-only.
+      // controlledInput is constructed as { files } above; this assertion makes the
+      // field-scope boundary explicit and catches any future accidental broadening.
+      const outboundFieldKeys = Object.keys(controlledInput);
+      if (outboundFieldKeys.length !== 1 || outboundFieldKeys[0] !== "files") {
+        failClosed("outbound_payload_not_image_only");
+      }
       const expectedImageAlts = files
         .map((file) => String((file as Record<string, unknown>).alt ?? "").trim())
         .filter(Boolean);

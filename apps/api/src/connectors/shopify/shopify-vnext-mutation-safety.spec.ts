@@ -508,6 +508,28 @@ describe("Shopify vNext controlled mutation mandatory safety proofs", () => {
     );
   });
 
+  it("controlled_vnext_required: unauthorized non-image field → hard fail pre-write, providerWrites=0, legacyWrites=0", async () => {
+    setExactGates();
+    const { svc, connector, connectorFramework } = makeSafetyService();
+
+    await expect(
+      runControlled(svc, {
+        executionMode: "controlled_vnext_required",
+        productPayload: { title: "Unauthorized Title Change" },
+      }),
+    ).rejects.toMatchObject({
+      name: "ShopifyControlledMutationError",
+      audit: expect.objectContaining({
+        status: "blocked",
+        failureReason: expect.stringContaining("unauthorized_field_scope:title"),
+      }),
+    });
+
+    expect(connector.applyControlledMutation).not.toHaveBeenCalled();
+    expect(connectorFramework.publish).not.toHaveBeenCalled();
+    expect(connectorFramework.update).not.toHaveBeenCalled();
+  });
+
   it("does not treat Shopify CDN URL-only drift as a verified image change", async () => {
     setExactGates();
     const { svc, connector, logger } = makeSafetyService({

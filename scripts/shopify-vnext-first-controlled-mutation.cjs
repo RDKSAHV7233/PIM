@@ -4,6 +4,7 @@
 "use strict";
 
 const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { PrismaClient } = require("@prisma/client");
@@ -17,6 +18,31 @@ const {
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const API_PREFIX = "/api/v1";
+
+// Mirrors MarketplaceService.hashStableJson — keep in sync if the service version changes.
+function normalizeComparableString(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+function normalizeComparableObject(value) {
+  if (Array.isArray(value)) return value.map(normalizeComparableObject);
+  if (!value || typeof value !== "object") return normalizeComparableString(value);
+  const entries = Object.entries(value)
+    .map(([k, v]) => [k, normalizeComparableObject(v)])
+    .sort(([a], [b]) => String(a).localeCompare(String(b)));
+  return Object.fromEntries(entries);
+}
+function hashStableJson(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(normalizeComparableObject(value))).digest("hex");
+}
+function buildImageFilenameFromUrl(url) {
+  try {
+    const urlPath = new URL(url).pathname;
+    const ext = urlPath.split("/").pop()?.split(".").slice(1).pop()?.toLowerCase();
+    if (ext && /^[a-z0-9]{2,5}$/.test(ext)) return `product-image.${ext}`;
+  } catch (_) { /* ignore */ }
+  return null;
+}
 function nowIso() {
   return new Date().toISOString();
 }
@@ -819,6 +845,26 @@ async function run() {
       image: before.snapshot.product.images?.[0]?.src ?? null,
       productGid: before.snapshot.product.id,
     };
+    // Compute the expected outbound mutation payload checksum before any gate changes.
+    // This mirrors the service's payloadChecksum = hashStableJson({ files }) and lets the
+    // authorization packet bind to the exact payload that will be sent to Shopify.
+    const productTitle = before.snapshot.product.title ?? "";
+    const targetUrl = config.expectedTargetImage;
+    const targetFilename = buildImageFilenameFromUrl(targetUrl);
+    const expectedControlledInput = {
+      files: [
+        {
+          originalSource: targetUrl,
+          alt: productTitle,
+          contentType: "IMAGE",
+          ...(targetFilename ? { filename: targetFilename } : {}),
+        },
+      ],
+    };
+    const mutationPayloadChecksum = hashStableJson(expectedControlledInput);
+    evidence.preflight.expectedControlledInput = expectedControlledInput;
+    evidence.preflight.mutationPayloadChecksum = mutationPayloadChecksum;
+
     const activeJobs = await queryActiveAuthorizedJobs(config);
     evidence.preflight.activeAuthorizedJobsBeforeGate = activeJobs;
     if (config.diagnosticOnly) {
