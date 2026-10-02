@@ -58,6 +58,18 @@ assert.equal(
   "base that is not an ancestor of HEAD (force-push/rewrite) -> no base",
 );
 
+// stale replica: attempts return different lists; the newest successful push run across all of them wins
+{
+  const lists = [[run(2, sha("b"))], [run(3, sha("c")), run(2, sha("b"))], [run(1, sha("a"))], "not json"];
+  let call = 0;
+  const flaky = (cmd) => (cmd === "gh" ? { status: 0, stdout: typeof lists[call] === "string" ? lists[call++] : JSON.stringify(lists[call++]) } : { status: 0 });
+  assert.equal(main(ENV, flaky), sha("c"), "merging attempts finds the newest run even when most answers are stale");
+}
+{
+  let call = 0;
+  const oneGood = (cmd) => (cmd === "gh" ? (call++ === 0 ? { status: 1, stdout: "", stderr: "boom" } : { status: 0, stdout: JSON.stringify([run(5, sha("e"))]) }) : { status: 0 });
+  assert.equal(main(ENV, oneGood), sha("e"), "a transient failure on one attempt is tolerated");
+}
 // --- replay of the 2026-10-02 incident on a real temp git repo ------------------------
 const repo = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-base-"));
 const git = (...args) => {

@@ -53,33 +53,57 @@ function isAncestorOfHead(sha, cwd, spawn = childProcess.spawnSync) {
 // returned stale, old-first result sets (observed 2026-10-03: identical calls gave different bases). The API can
 // still answer with a stale list; that is safe by construction: a stale answer is an OLDER successful push deploy,
 // i.e. a larger diff, so at worst an extra service is deployed, never one skipped.
+const LOOKUP_ATTEMPTS = 4;
+
 function main(env = process.env, spawn = childProcess.spawnSync) {
   const repo = String(env.GITHUB_REPOSITORY ?? "").trim();
   if (!repo) {
     console.error("[resolve-deploy-base-sha] GITHUB_REPOSITORY is not set; deploying both services.");
     return "";
   }
-  const result = spawn(
-    "gh",
-    [
-      "api",
-      `repos/${repo}/actions/workflows/deploy-staging.yml/runs?branch=main&per_page=50`,
-      "--jq",
-      ".workflow_runs",
-    ],
-    { encoding: "utf8", env },
-  );
-  if (result.error || result.status !== 0) {
-    console.error(`[resolve-deploy-base-sha] run lookup failed; deploying both services. ${(result.stderr ?? "").trim()}`);
+  // The API intermittently answers from a stale replica (2026-10-03: a list 414 commits old while newer successful
+  // runs existed). Query several times and merge by run id: every entry is a real run, so the union is never wrong,
+  // and the newest across attempts is far more likely to be the true last deploy.
+  const runsById = new Map();
+  let answered = 0;
+  let lastError = "";
+  for (let attempt = 0; attempt < LOOKUP_ATTEMPTS; attempt += 1) {
+    const result = spawn(
+      "gh",
+      [
+        "api",
+        `repos/${repo}/actions/workflows/deploy-staging.yml/runs?branch=main&per_page=50`,
+        "--jq",
+        ".workflow_runs",
+      ],
+      { encoding: "utf8", env },
+    );
+    if (result.error || result.status !== 0) {
+      lastError = String(result.stderr ?? result.error?.message ?? "").trim();
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(result.stdout);
+      if (!Array.isArray(parsed)) {
+        lastError = "run list was not an array";
+        continue;
+      }
+      answered += 1;
+      for (const run of parsed) {
+        if (run && run.id !== undefined) {
+          runsById.set(String(run.id), run);
+        }
+      }
+    } catch {
+      lastError = "unparseable run list";
+    }
+  }
+  if (answered === 0) {
+    console.error(`[resolve-deploy-base-sha] run lookup failed; deploying both services. ${lastError}`);
     return "";
   }
-  let runs;
-  try {
-    runs = JSON.parse(result.stdout);
-  } catch {
-    console.error("[resolve-deploy-base-sha] unparseable run list; deploying both services.");
-    return "";
-  }
+  const runs = [...runsById.values()];
+
   const sha = pickDeployBaseSha(runs, { currentRunId: env.GITHUB_RUN_ID });
   if (!sha) {
     console.error("[resolve-deploy-base-sha] no prior successful push deploy; deploying both services.");
