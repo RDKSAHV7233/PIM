@@ -137,7 +137,7 @@ jobs:
           AUTHORIZED_MUTATION_PAYLOAD_SHA256: ${{ github.event.inputs.authorized_mutation_payload_sha256 }}
           AUTHORIZED_SHOPIFY_PRODUCT_GID: gid://shopify/Product/8087828889690
           EXPECTED_OLD_IMAGE: https://cdn.shopify.com/s/files/1/0738/8273/0586/files/product-image_65d11e96-6c28-431e-ac8b-652f5ed6d2fe.png?v=1790883999
-          EXPECTED_TARGET_IMAGE: https://dummyimage.com/600x600/0f172a/ffffff.png?text=Vexa+RES02
+          EXPECTED_TARGET_IMAGE: https://dummyimage.com/600x600/166534/ffffff.png?text=Vexa+RES02+6D93B
           CONTROLLED_VNEXT_DIAGNOSTIC_ONLY: ${{ github.event.inputs.controlled_vnext_diagnostic_only || 'false' }}
           CONTROLLED_VNEXT_PREFLIGHT_ONLY: ${{ github.event.inputs.controlled_vnext_preflight_only || 'false' }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

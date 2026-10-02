@@ -4429,9 +4429,15 @@ export class MarketplaceService implements OnModuleInit {
     const product = snapshot.product;
     const candidate = candidateInput as Record<string, unknown>;
     const diffs: string[] = [];
+    const hasCandidateField = (field: string) => Object.prototype.hasOwnProperty.call(candidate, field);
     const compare = (field: string, current: unknown, next: unknown) => {
       if (this.hashStableJson(current) !== this.hashStableJson(next)) {
         diffs.push(field);
+      }
+    };
+    const compareWhenPresent = (field: string, current: unknown, next: unknown) => {
+      if (hasCandidateField(field)) {
+        compare(field, current, next);
       }
     };
 
@@ -4439,10 +4445,10 @@ export class MarketplaceService implements OnModuleInit {
     compare("handle", this.normalizeComparableString(product.handle), this.normalizeComparableString(candidate.handle));
     compare("descriptionHtml", this.normalizeComparableString(product.descriptionHtml), this.normalizeComparableString(candidate.descriptionHtml));
     compare("status", this.normalizeComparableString(product.status), this.normalizeComparableString(candidate.status));
-    compare("vendor", this.normalizeComparableString(product.vendor), this.normalizeComparableString(candidate.vendor));
-    compare("productType", this.normalizeComparableString(product.productType), this.normalizeComparableString(candidate.productType));
-    compare("tags", this.normalizeComparableStringArray(product.tags).sort(), this.normalizeComparableStringArray(candidate.tags).sort());
-    compare("seo", this.normalizeComparableObject(product.seo), this.normalizeComparableObject(candidate.seo));
+    compareWhenPresent("vendor", this.normalizeComparableString(product.vendor), this.normalizeComparableString(candidate.vendor));
+    compareWhenPresent("productType", this.normalizeComparableString(product.productType), this.normalizeComparableString(candidate.productType));
+    compareWhenPresent("tags", this.normalizeComparableStringArray(product.tags).sort(), this.normalizeComparableStringArray(candidate.tags).sort());
+    compareWhenPresent("seo", this.normalizeComparableObject(product.seo), this.normalizeComparableObject(candidate.seo));
     compare("productOptions", this.normalizeShopifyProductOptionsComparable(product.options), this.normalizeShopifyProductOptionsComparable(candidate.productOptions));
     compare("variants", this.normalizeShopifyVariantComparable(product.variants), this.normalizeShopifyVariantInputComparable(candidate.variants));
 

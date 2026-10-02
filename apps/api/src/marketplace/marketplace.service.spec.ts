@@ -2994,7 +2994,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
             vendor: "Acme",
             productType: "default",
             tags: [],
-            seo: null,
+            seo: { title: null, description: null },
             options: [{ name: "Title", position: 1, values: ["Default Title"] }],
             variants: [{
               id: "gid://shopify/ProductVariant/1",
@@ -3021,7 +3021,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
             vendor: "Acme",
             productType: "default",
             tags: [],
-            seo: null,
+            seo: { title: null, description: null },
             options: [{ name: "Title", position: 1, values: ["Default Title"] }],
             variants: [{
               id: "gid://shopify/ProductVariant/1",
@@ -3274,7 +3274,7 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     );
   });
 
-  it("preflight READY binds the exact runtime controlledInput checksum without writing", async () => {
+  it("preflight READY accepts Shopify's empty SEO object when the image-only candidate omits SEO", async () => {
     process.env.VNEXT_MUTATION_ENABLED = "true";
     process.env.VNEXT_MUTATION_ALLOWLIST_JSON = JSON.stringify({
       tenantKey: "tenant1",
