@@ -259,6 +259,7 @@ const GLOB_COVERED_TESTS = [
   "version-manager-component.test.cjs",
   "version-manager-mobile-actions.test.cjs",
   "version-manager-responsive.test.cjs",
+  "web-security-headers-contract.test.cjs",
   "webhook-deliveries-copy-ui.test.cjs",
   "woocommerce-launch-copy-consistency.test.cjs",
 ];

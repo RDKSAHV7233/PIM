@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const SECURITY_HEADERS = [
+  // Browsers ignore HSTS over plain HTTP, so local dev is unaffected. No `preload`: it is a one-way commitment.
+  { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -12,6 +14,8 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Do not advertise the framework on every response.
+  poweredByHeader: false,
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
   },
