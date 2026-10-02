@@ -1,6 +1,8 @@
 # Shopify vNext Controlled Expansion Checklist
 
-Status: production mutation authority remains frozen.
+Status: superseded by verified closeout on 2026-10-02. Production mutation
+authority remains frozen. See
+`docs/execution/SHOPIFY_VNEXT_CONTROLLED_MUTATION_CLOSEOUT_2026-10-02.md`.
 
 This checklist governs any mutation after the first controlled Shopify vNext write recorded in `VNEXT_MUTATION_PAUSE_POINT_1_AUTHORIZATION.md`.
 
