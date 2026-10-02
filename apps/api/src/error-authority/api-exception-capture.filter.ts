@@ -1,7 +1,8 @@
-import { ArgumentsHost, Catch, HttpException, HttpStatus, Optional } from "@nestjs/common";
+import { ArgumentsHost, BadRequestException, Catch, HttpException, HttpStatus, Optional } from "@nestjs/common";
 import { BaseExceptionFilter, HttpAdapterHost } from "@nestjs/core";
 import type { Request } from "express";
 import { LoggerService } from "../common/logging/logger.service";
+import { VALIDATION_FAILED_CODE } from "../common/validation-exception.factory";
 import { ErrorCaptureService } from "./error-capture.service";
 
 const CAPTURED_MARKER = Symbol("vexa.errorAuthorityCaptured");
@@ -35,6 +36,15 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
   }
 
   catch(exception: unknown, host: ArgumentsHost) {
+    // A NUL (U+0000) that reaches Postgres (multipart files, CSV cells, any path the early
+    // request scan cannot see) is a client error, not a server fault (prod-cert DEF-PC-010).
+    if (host.getType() === "http" && isNulByteDatabaseError(exception)) {
+      exception = new BadRequestException({
+        error: VALIDATION_FAILED_CODE,
+        message: "Input contains a NUL (U+0000) character, which is not allowed.",
+        fields: [],
+      });
+    }
     if (host.getType() === "http" && shouldCaptureApiException(exception)) {
       if (!isCaptured(exception)) {
         markCaptured(exception);
@@ -62,6 +72,20 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
     }
     super.catch(exception, host);
   }
+}
+
+/**
+ * Postgres rejects U+0000 in text with SQLSTATE 22021 ("invalid byte sequence for encoding
+ * UTF8: 0x00"). Prisma surfaces it as PrismaClientKnownRequestError P2010 (raw queries, with
+ * meta.code 22021) or PrismaClientUnknownRequestError (model operations, message text only).
+ */
+export function isNulByteDatabaseError(exception: unknown): boolean {
+  if (!(exception instanceof Error)) {
+    return false;
+  }
+  const meta = (exception as { meta?: { code?: unknown; message?: unknown } }).meta;
+  const text = `${exception.message} ${typeof meta?.message === "string" ? meta.message : ""}`.toLowerCase();
+  return text.includes("invalid byte sequence for encoding") && text.includes("0x00");
 }
 
 function isCaptured(exception: unknown): boolean {

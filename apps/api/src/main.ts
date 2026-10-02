@@ -7,6 +7,7 @@ import { json, raw, urlencoded } from "express";
 import helmet from "helmet";
 import { validateEnv } from "./common/env-validation";
 import { registerProcessGuards, runAndExitOnFailure } from "./common/process-guards";
+import { rejectNulBytesMiddleware } from "./common/reject-nul-bytes.middleware";
 import { validationExceptionFactory } from "./common/validation-exception.factory";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
@@ -181,6 +182,9 @@ async function bootstrap() {
   );
 
   app.use(correlationMiddleware);
+  // NUL (U+0000) cannot be stored by Postgres; answer 400 instead of letting it surface as a 500.
+  // Mounted after helmet, CORS and correlation so the 400 carries their headers and correlation id.
+  app.use(rejectNulBytesMiddleware);
   if (env.APP_ENV !== "production") {
     const swaggerConfig = new DocumentBuilder()
       .setTitle("Vexa PIM API")

@@ -12,6 +12,7 @@ import {
 import {
   extractErrorCode,
   ApiExceptionCaptureFilter,
+  isNulByteDatabaseError,
   resolveRouteTemplate,
   resolveStatusCode,
   shouldCaptureApiException,
@@ -184,5 +185,39 @@ describe("ApiExceptionCaptureFilter policy", () => {
     expect(JSON.stringify(callArg)).not.toContain("secret_token");
     expect(JSON.stringify(callArg)).not.toContain("Tenant Product");
     expect(JSON.stringify(callArg)).not.toContain("key_123");
+  });
+});
+
+describe("isNulByteDatabaseError (prod-cert DEF-PC-010, root-cause mapping)", () => {
+  it("recognises both Prisma shapes seen against Postgres for a NUL byte", () => {
+    const raw = Object.assign(
+      new Error('Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `22021`. Message: `ERROR: invalid byte sequence for encoding "UTF8": 0x00`'),
+      { code: "P2010", meta: { code: "22021", message: 'ERROR: invalid byte sequence for encoding "UTF8": 0x00' } },
+    );
+    const model = new Error('Invalid `prisma.category.create()` invocation: code: "22021", message: "invalid byte sequence for encoding \\"UTF8\\": 0x00", severity: "ERROR"');
+    expect(isNulByteDatabaseError(raw)).toBe(true);
+    expect(isNulByteDatabaseError(model)).toBe(true);
+  });
+
+  it("does not misclassify other database or application errors", () => {
+    expect(isNulByteDatabaseError(new Error("Timed out fetching a new connection from the connection pool"))).toBe(false);
+    expect(isNulByteDatabaseError(new Error('invalid byte sequence for encoding "UTF8": 0xe9'))).toBe(false);
+    expect(isNulByteDatabaseError("invalid byte sequence for encoding 0x00")).toBe(false);
+    expect(isNulByteDatabaseError(null)).toBe(false);
+  });
+
+  it("the filter turns such an error into an expected 400 (not captured as a P1 server fault)", () => {
+    const captureUnexpected = jest.fn().mockResolvedValue(undefined);
+    const reply = jest.fn();
+    const adapter = { reply, isHeadersSent: () => false, end: jest.fn(), getRequestMethod: () => "POST", getRequestUrl: () => "/x" };
+    const filter = new ApiExceptionCaptureFilter({ captureUnexpected } as never, { httpAdapter: adapter } as never);
+    const host = {
+      getType: () => "http",
+      getArgByIndex: () => ({}),
+      switchToHttp: () => ({ getRequest: () => ({ method: "POST", originalUrl: "/x" }), getResponse: () => ({}) }),
+    };
+    filter.catch(new Error('ERROR: invalid byte sequence for encoding "UTF8": 0x00'), host as never);
+    expect(captureUnexpected).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ error: "VALIDATION_FAILED" }), 400);
   });
 });
