@@ -888,8 +888,39 @@ async function run() {
     const activeJobs = await queryActiveAuthorizedJobs(config);
     evidence.preflight.activeAuthorizedJobsBeforeGate = activeJobs;
     if (config.diagnosticOnly) {
+      // This is deliberately the same runtime endpoint used by the READY path,
+      // while mutation authority remains disabled. It proves the production
+      // process hard-blocks a controlled-required attempt without enabling a gate.
+      const token = await login(config);
+      const preflightResult = await request(
+        "GET",
+        config.apiBaseUrl,
+        `/marketplace/vnext-mutation-config-preflight?tenantKey=${encodeURIComponent(config.tenant)}&connectorSlug=shopify&installationId=${encodeURIComponent(config.installation)}&productId=${encodeURIComponent(config.product)}`,
+        { token, timeoutMs: 15000 },
+      );
+      const runtimePreflight = {
+        checkedAt: nowIso(),
+        status: preflightResult.status,
+        result: preflightResult.body?.result ?? null,
+        reason: preflightResult.body?.reason ?? null,
+        providerWrites: preflightResult.body?.providerWrites ?? null,
+        legacyWrites: preflightResult.body?.legacyWrites ?? null,
+        exportJobCreated: preflightResult.body?.exportJobCreated ?? null,
+      };
+      evidence.diagnostic = { runtimePreflight };
+      if (
+        runtimePreflight.status !== 200 ||
+        runtimePreflight.result !== "BLOCKED" ||
+        runtimePreflight.reason !== "vnext_disabled" ||
+        runtimePreflight.providerWrites !== 0 ||
+        runtimePreflight.legacyWrites !== 0 ||
+        runtimePreflight.exportJobCreated !== 0
+      ) {
+        throw new Error(`Gates-off runtime preflight did not hard-block safely: ${JSON.stringify(runtimePreflight)}.`);
+      }
       evidence.status = "diagnostic_only";
       evidence.diagnostic = {
+        ...evidence.diagnostic,
         currentAuthorizedState: await queryRecentAuthorizedState(config),
         vnextExecutionLog: findVnextExecutionLog(config, railwayConfig, railwayEnv),
       };

@@ -20,7 +20,7 @@ on:
         required: false
         default: "false"
       controlled_vnext_diagnostic_only:
-        description: "With controlled_vnext_first_mutation=true, capture read-only state and do not enable the mutation gate."
+        description: "With controlled_vnext_first_mutation=true, prove the runtime gates-off BLOCKED preflight, capture read-only state, and do not enable the mutation gate."
         required: false
         default: "false"
       controlled_vnext_preflight_only:
