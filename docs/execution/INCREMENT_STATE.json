@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-09-28T16:45",
+    "lastUpdated": "2026-10-03T00:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -5896,6 +5896,57 @@
             "apps/api/src/connector-framework/connector-launch-policy.ts",
             "apps/api/src/connector-framework/connector-launch-policy.spec.ts"
           ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-86",
+      "name": "Pending Connector Stage Advancement — required-team authorization 2026-10-03",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "tests_passed": [
+        "connector-launch-policy.spec.ts: verifies stage values (CI gate)"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-86-S1",
+          "title": "Advance Shopware and Zoho Inventory to po_review",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "Shopware: launchStage = po_review (was under_development); 6/6 live-verified, no QA bugs, QA+PO gates cleared by required-team authorization 2026-10-03",
+            "Zoho Inventory: launchStage = po_review (was under_development); 6/6 live-verified including 3 real bugs fixed, QA+PO gates cleared by required-team authorization 2026-10-03",
+            "pipelineMetadata blockers cleared for both (no remaining process blockers)"
+          ],
+          "signoff": "CTO/PO/required-team authorization 2026-10-03"
+        },
+        {
+          "storyId": "INC-86-S2",
+          "title": "Advance Etsy and eBay to po_review",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "Etsy: launchStage = po_review (was under_development); QA fix merged PR #947 (draft listing activation), PO review merged PR #968; known limitation: publishProduct() not yet exercised (no Etsy shop open on sandbox account)",
+            "eBay: launchStage = po_review (was under_development); QA fix merged PR #936 (externalRef/status-sync), PO review merged PR #966; known limitation: publishProduct() not yet exercised (sandbox-only, no Business Policies configured)",
+            "pipelineMetadata updated to reflect completed QA+PO, remaining known limitations documented"
+          ],
+          "signoff": "CTO/PO/required-team authorization 2026-10-03"
+        },
+        {
+          "storyId": "INC-86-S3",
+          "title": "Advance BigCommerce and Dynamics 365 to qa_validation",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "BigCommerce: launchStage = qa_validation (was under_development); QA bugs fixed PR #949 (network failures, category/weight payload), PO review PR #965; remaining blocker: live re-verification from within PIM1 against a real BigCommerce store",
+            "Dynamics 365: launchStage = qa_validation (was under_development); QA test coverage PR #948, PO review PR #967; remaining blocker: Business Central data-API (GET /items) re-verification after Automation.ReadWrite.All permission fix",
+            "pipelineMetadata updated with remaining technical blockers documented"
+          ],
+          "signoff": "CTO/PO/required-team authorization 2026-10-03"
         }
       ]
     }

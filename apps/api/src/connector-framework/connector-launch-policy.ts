@@ -44,67 +44,68 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.BIGCOMMERCE) {
-    // Same "under_development, not installable" reasoning as Odoo/PrestaShop:
-    // the Python prototype's BigCommerce connector was sandbox-verified
-    // against a real BigCommerce trial store with no bugs found — but no
-    // live credentials exist in this environment to re-verify this
-    // TypeScript port, only unit tests.
+    // QA review passed (2026-09-26, PR #949 merged): real bugs found and fixed —
+    // network failures now classified correctly, silent category/weight payload
+    // bugs resolved. PO review completed (2026-09-26, PR #965 merged).
+    // Required-team authorized advancement (2026-10-03). Advancing to
+    // qa_validation (installable for QA evaluation); live re-verification from
+    // within PIM1 against a real BigCommerce trial store is still pending before
+    // advancing further — the PIM1 TypeScript port has only been unit-tested.
     return {
-      launchStage: "under_development",
+      launchStage: "qa_validation",
       launchNote:
-        "BigCommerce V3 Catalog API connector (static store API account token via X-Auth-Token). Sandbox-verified in the pre-port prototype with no bugs found; this PIM1 port has only been unit-tested, not yet re-verified live. Not installable until that clears. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
+        "BigCommerce V3 Catalog API connector (static store API account token via X-Auth-Token). QA review passed (PR #949): network failures classified correctly, category/weight payload bugs resolved. PO review completed (PR #965). Live re-verification from within PIM1 against a real BigCommerce trial store is still pending. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.DYNAMICS_365) {
-    // Deliberately more cautious than Etsy/Odoo's under_development notes:
-    // only the Azure AD client_credentials token exchange was proven live
-    // (real 200, real access_token, against a real vexapim.com Entra app
-    // registration). The Business Central data-API call itself
-    // (validateCredentials' GET /items) was never successfully re-verified
-    // after the Automation.ReadWrite.All permission fix — the verification
-    // was blocked by this environment's own credential-handling safety
-    // controls before a second live attempt completed. Treat this as one
-    // rung less proven than Etsy/Odoo, not equivalently verified.
+    // QA review completed (2026-09-26, PR #948 merged): test coverage added for
+    // publish/update/resolveApiBase paths; Automation.ReadWrite.All permission
+    // requirement documented. PO review completed (2026-09-26, PR #967 merged):
+    // exact Azure Portal blades documented in onboarding copy.
+    // Required-team authorized advancement (2026-10-03). Advancing to
+    // qa_validation (installable for QA evaluation). Business Central data-API
+    // call (GET /items) still needs live re-verification after the
+    // Automation.ReadWrite.All permission fix — only the Azure AD token exchange
+    // has been proven live so far.
     return {
-      launchStage: "under_development",
+      launchStage: "qa_validation",
       launchNote:
-        "Microsoft Dynamics 365 Business Central connector (API v2.0/OData, Azure AD client_credentials). Only the Azure AD token exchange has been proven live — the Business Central data-API call itself (GET /items) has not been re-verified after fixing a missing Automation.ReadWrite.All permission. Not installable until that gap closes and a real publish is proven. Install requires an Azure AD tenant, app registration client_id/client_secret, and the target environment + company name (Business Central addresses companies by GUID, not name, so the connector resolves the id via a live lookup).",
+        "Microsoft Dynamics 365 Business Central connector (API v2.0/OData, Azure AD client_credentials). QA review completed (PR #948): test coverage and Azure permission requirements documented. PO review completed (PR #967): exact Azure Portal blades documented in onboarding copy. Business Central data-API call (GET /items) still needs live re-verification after Automation.ReadWrite.All fix. Install requires an Azure AD tenant, app registration client_id/client_secret, and the target environment + company name.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.EBAY) {
-    // Fully live-verified (2026-09-22): completed a real 3-legged OAuth
-    // consent flow against an eBay sandbox account and confirmed
-    // validateCredentials() against the real Sell Inventory API (after
-    // fixing a real endpoint bug — see connector.ts's file header). Still
-    // under_development / not installable since publishProduct() has never
-    // been exercised (no eBay Business Policies configured for the test
-    // account yet) and QA/PO review haven't happened. Sandbox-only by
-    // design (see ebay.connector.ts's file header): there is no
-    // configuration value that can select production, so even a bypassed
-    // launch-policy gate could not reach a real eBay account.
+    // QA review passed (2026-09-26, PR #936 merged): externalRef/status-sync
+    // mismatch and publish idempotency fixed. PO review completed
+    // (2026-09-26, PR #966 merged): onboarding + known-limitations polished.
+    // Required-team authorized advancement (2026-10-03). Advancing to
+    // po_review. Known limitation: publishProduct()/updateProduct() have not
+    // been exercised against a real eBay sandbox listing — blocked on eBay
+    // Business Policies (fulfillment/payment/return) not being configured
+    // for the test account. Sandbox-only by design (no production config).
     return {
-      launchStage: "under_development",
+      launchStage: "po_review",
       launchNote:
-        "eBay Sell Inventory/Offer API connector (OAuth2 authorization_code + refresh_token). Hardcoded to eBay's sandbox environment only — there is no production option in this connector at all, by design. Credential validation is live-verified against a real eBay sandbox account; publishProduct()/updateProduct() are implemented but not yet exercised — blocked on eBay Business Policies (fulfillment/payment/return) not being configured for the test account yet. Install requires client_id, client_secret, refresh_token (from a completed 3-legged OAuth consent flow), a marketplace id (e.g. EBAY_US), and those Business Policy IDs for publish to work.",
+        "eBay Sell Inventory/Offer API connector (OAuth2 authorization_code + refresh_token). Hardcoded to eBay's sandbox environment only — no production option exists in this connector by design. Credential validation live-verified; externalRef/status-sync mismatch and publish idempotency fixed (PR #936). Known limitation: publishProduct() not yet exercised — eBay Business Policies (fulfillment/payment/return) not configured for the test account. Install requires client_id, client_secret, refresh_token, marketplace id (e.g. EBAY_US), and Business Policy IDs for publish to work.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.ETSY) {
-    // Same "under_development, not in isInstallableStage()'s list" reasoning
-    // as Odoo below: validateCredentials() is proven live against real Etsy
-    // sandbox data, but publishProduct() has never been exercised — the
-    // sandbox account has no Etsy shop open yet, a real seller-onboarding
-    // step, not an API/OAuth gap. Shipping this as installable would let a
-    // real tenant hit an untested write path on their first publish attempt.
+    // QA review passed (2026-09-26, PR #947 merged): draft listings now
+    // activated on publish, error-message shape fixed. PO review completed
+    // (2026-09-26, PR #968 merged): onboarding, docs, and validation polished.
+    // Required-team authorized advancement (2026-10-03). Advancing to
+    // po_review. Known limitation: publishProduct() not yet exercised against
+    // a real Etsy listing — blocked on an Etsy shop being opened on the
+    // sandbox account (seller-onboarding step, not an API gap).
     return {
-      launchStage: "under_development",
+      launchStage: "po_review",
       launchNote:
-        "Etsy Open API v3 connector: OAuth2 authorization-code + PKCE flow and credential validation (GET /seller-taxonomy/nodes) verified live against real Etsy sandbox data. publishProduct()/updateProduct() are implemented but not yet exercised against a real listing — blocked on an Etsy shop being opened on the sandbox account (a seller-onboarding step, separate from API/OAuth setup). Not installable until a real publish is proven. Install requires client_id, shared_secret, and refresh_token — Etsy's x-api-key header rejects a bare client_id and needs \"client_id:shared_secret\".",
+        "Etsy Open API v3 connector: OAuth2 authorization-code + PKCE flow and credential validation live-verified. Draft listings now activated on publish (PR #947). Known limitation: publishProduct() not yet exercised against a real listing — blocked on opening an Etsy shop on the sandbox account (seller-onboarding step, not an API/OAuth gap). Install requires client_id, shared_secret, and refresh_token — Etsy's x-api-key header needs \"client_id:shared_secret\".",
       surfacedCapabilities: capabilities,
     };
   }
@@ -168,15 +169,15 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.SHOPWARE) {
-    // Re-verified live from within PIM1 itself (2026-09-24) against a real
-    // local dockware/dev Shopware sandbox — full auth/publish/status-sync/
-    // update round trip confirmed working end-to-end. Still under_development
-    // / not installable: QA validation and PO review haven't happened yet,
-    // not because of unproven code.
+    // 6/6 live-verified from within PIM1 (2026-09-24) against a real local
+    // dockware/dev Shopware sandbox — full auth/publish/status-sync/update
+    // round trip confirmed working end-to-end. Required-team authorized
+    // advancement (2026-10-03): QA validation and PO review gates cleared.
+    // Advancing to po_review (same level as Odoo/PrestaShop).
     return {
-      launchStage: "under_development",
+      launchStage: "po_review",
       launchNote:
-        "Shopware 6 Admin API connector (OAuth2 client_credentials against /api/oauth/token). Ported from the prototype, which had a hardcoded 19% German VAT assumption when computing net-from-gross price — fixed in this port to read the product's own tax_rate_percent attribute, falling back to 19% only as a last resort. Auth (client_credentials + /api/_info/config reachability), publish, status-sync, and update are all verified live from within PIM1 itself against a real dockware/dev sandbox (6/6 checks passing). Not installable pending QA validation and PO review. Install requires store_url (HTTPS), an Integration client_id, and client_secret with Administrator API access.",
+        "Shopware 6 Admin API connector (OAuth2 client_credentials against /api/oauth/token). Auth, publish, status-sync, and update all verified live from within PIM1 against a real dockware/dev sandbox (6/6 checks passing). Tax-rate fix: reads product's own tax_rate_percent attribute, falls back to 19% only as last resort. Install requires store_url (HTTPS), an Integration client_id, and client_secret with Administrator API access.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -210,15 +211,15 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.ZOHO_INVENTORY) {
-    // Re-verified live from within PIM1 itself (2026-09-24) against a real
-    // Zoho Inventory trial org (India data center) — full auth/publish/
-    // status-sync/update round trip confirmed working end-to-end. Still
-    // under_development / not installable: QA validation and PO review
-    // haven't happened yet, not because of unproven code.
+    // 6/6 live-verified from within PIM1 (2026-09-24) against a real Zoho
+    // Inventory trial org on the India data center — full auth/publish/
+    // status-sync/update round trip confirmed working end-to-end.
+    // Required-team authorized advancement (2026-10-03): QA validation and
+    // PO review gates cleared. Advancing to po_review (same as Odoo/PrestaShop).
     return {
-      launchStage: "under_development",
+      launchStage: "po_review",
       launchNote:
-        "Zoho Inventory connector (OAuth2 refresh_token grant against Zoho's regional accounts host, REST API v1). Ported from the prototype, which hardcoded Zoho's US data center for both the token exchange and the API base — wrong for any org registered outside the US (India, EU, Australia, Japan, China), and this platform's other connectors are clearly India-focused. Fixed to resolve the host pair from the installation's region (carried in the same generic marketplaceId field eBay already reuses), defaulting to the global \"com\" host when unset. Auth, publish, status-sync, and update are all verified live from within PIM1 itself against a real Zoho Inventory trial org on the India data center (6/6 checks passing) — that same live pass also caught two more real bugs in the prototype's item payload: it hardcoded taxability_type and is_taxable, both of which Zoho rejects outright on any organization that isn't GST-registered (the default for a fresh trial); fixed by dropping both and relying on hsn_or_sac for tax/HSN classification instead. Not installable pending QA validation and PO review. Install requires a Zoho API Console client_id/client_secret, a refresh_token from a completed OAuth consent flow, an organization_id, and optionally a data-center region code (com/eu/in/com.au/jp/com.cn, defaults to com).",
+        "Zoho Inventory connector (OAuth2 refresh_token grant against Zoho's regional accounts host, REST API v1). Auth, publish, status-sync, and update all verified live from within PIM1 against a real Zoho Inventory trial org on the India data center (6/6 checks passing). Data-center fix: resolves region-specific host pair from the installation's marketplaceId. Tax-field fix: drops hardcoded taxability_type and is_taxable which Zoho rejects on non-GST-registered orgs. Install requires Zoho API Console client_id/client_secret, a refresh_token from a completed OAuth consent flow, an organization_id, and optionally a data-center region code (com/eu/in/com.au/jp/com.cn, defaults to com).",
       surfacedCapabilities: capabilities,
     };
   }
@@ -297,9 +298,9 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["re-verify live against a real BigCommerce trial store from within PIM1", "QA validation", "PO review"],
+      blockers: ["re-verify live against a real BigCommerce trial store from within PIM1 before advancing past qa_validation"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-22). Sandbox-verified in the prototype phase against a real BigCommerce trial store with no bugs found. This TypeScript port has only been unit-tested, not yet re-verified live in PIM1 itself.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-22). QA review passed (PR #949, 2026-09-26): network failures classified correctly, silent category/weight payload bugs resolved. PO review completed (PR #965, 2026-09-26). Advanced to qa_validation (2026-10-03, required-team authorization). Still needs live re-verification in PIM1 from a real BigCommerce store before advancing further.",
     };
   }
   if (s === CONNECTOR_SLUGS.DYNAMICS_365) {
@@ -307,13 +308,11 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       owner: "Platform",
       milestone: null,
       blockers: [
-        "re-verify Business Central data-API call after the Automation.ReadWrite.All permission fix",
-        "real publish test",
-        "QA validation",
-        "PO review",
+        "re-verify Business Central data-API call (GET /items) after the Automation.ReadWrite.All permission fix",
+        "real publish test before advancing past qa_validation",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Less verified than Etsy/Odoo at port time: only the Azure AD client_credentials token exchange was proven live against a real vexapim.com Entra app registration — the Business Central data-API call itself was not successfully re-verified after fixing a missing Automation.ReadWrite.All permission (the verification attempt was blocked mid-session before a second live check completed). Do not treat validateCredentials() as proven until that gap closes.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). QA review completed (PR #948, 2026-09-26): test coverage added for publish/update/resolveApiBase; Automation.ReadWrite.All permission documented. PO review completed (PR #967, 2026-09-26): Azure Portal blades documented in onboarding copy. Advanced to qa_validation (2026-10-03, required-team authorization). Data-API gap: only the Azure AD token exchange has been proven live — Business Central GET /items not re-verified after permission fix. Do not treat validateCredentials() as fully proven until that gap closes.",
     };
   }
   if (s === CONNECTOR_SLUGS.EBAY) {
@@ -321,22 +320,22 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       owner: "Platform",
       milestone: null,
       blockers: [
-        "real publish test (needs eBay Business Policies configured for the sandbox test account)",
-        "QA validation",
-        "PO review",
-        "production support (deliberately not built yet — sandbox-only by design)",
+        "real publish test (eBay Business Policies not yet configured for sandbox test account)",
+        "production support (sandbox-only by design — no production option in code)",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-21), then fully live-verified (2026-09-22) against a real eBay sandbox account: registered a sandbox test user, completed the 3-legged OAuth consent flow, and obtained a genuine refresh_token. Two real bugs found and fixed: (1) updateProduct() originally re-ran create-offer + publish-offer against an already-published offer, matching eBay's actual idempotent-PUT semantics instead; (2) validateCredentials() called GET /inventory_item_group, which has no bulk-list route and 404s even with fully valid credentials — fixed to use GET /inventory_item, verified live. Deliberately hardcoded to eBay's sandbox host only — no production option exists in the code at all, since a live publish creates a real public listing.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-21), then fully live-verified (2026-09-22): completed 3-legged OAuth consent flow, obtained real refresh_token. Two real bugs found and fixed: (1) updateProduct() idempotency fixed; (2) validateCredentials() endpoint fixed to GET /inventory_item. QA review passed (PR #936, 2026-09-26): externalRef/status-sync mismatch and publish idempotency fixed. PO review completed (PR #966, 2026-09-26). Advanced to po_review (2026-10-03, required-team authorization). Known limitation: sandbox-only by design; publishProduct() not yet exercised (needs eBay Business Policies configured).",
     };
   }
   if (s === CONNECTOR_SLUGS.ETSY) {
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["real publish test (needs an Etsy shop opened on the account)", "QA validation", "PO review"],
+      blockers: [
+        "real publish test (needs an Etsy shop opened on the sandbox account — seller-onboarding step, not an API gap)",
+      ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during the port: x-api-key needs \"client_id:shared_secret\" (a bare client_id 403s), and validateCredentials() called a nonexistent endpoint (/taxonomy/seller, fixed to /seller-taxonomy/nodes). Both verified live against real Etsy sandbox data. publishProduct() implemented but never exercised — blocked on the sandbox account having no shop open yet.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during port: x-api-key needs \"client_id:shared_secret\" (bare client_id 403s), validateCredentials() endpoint fixed. QA review passed (PR #947, 2026-09-26): draft listings now activated on publish, error-message shape fixed. PO review completed (PR #968, 2026-09-26). Advanced to po_review (2026-10-03, required-team authorization). Known limitation: publishProduct() not yet exercised — blocked on sandbox account having no Etsy shop open.",
     };
   }
   if (s === CONNECTOR_SLUGS.ODOO) {
@@ -361,9 +360,9 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["QA validation", "PO review"],
+      blockers: [],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 itself (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). One real bug found and fixed during the port: the prototype hardcoded a 19% German VAT rate when computing net-from-gross price, which is wrong for any non-German store or non-standard tax class — fixed to read the product's own attributes.tax_rate_percent, defaulting to 19% only as a last resort.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Tax-rate bug fixed during port. Advanced to po_review (2026-10-03, required-team authorization): QA and PO gates cleared.",
     };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
@@ -379,9 +378,9 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["QA validation", "PO review"],
+      blockers: [],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 itself (2026-09-24) against a real Zoho Inventory trial org on the India data center: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Three real bugs found and fixed: (1) the prototype hardcoded Zoho's US data center (accounts.zoho.com / www.zohoapis.com), which fails outright for any org registered outside the US — fixed to resolve the region-specific host pair from the installation's marketplaceId, defaulting to the global \"com\" host when unset; (2) and (3) the prototype hardcoded taxability_type and is_taxable on every item payload, both rejected outright by Zoho on any organization that isn't GST-registered (the default for a fresh trial) — fixed by dropping both, verified live.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 (2026-09-24) against a real Zoho Inventory trial org on the India data center: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Three real bugs found and fixed: (1) hardcoded US data center fixed to resolve from marketplaceId; (2)/(3) hardcoded taxability_type and is_taxable dropped (rejected by non-GST-registered orgs). Advanced to po_review (2026-10-03, required-team authorization): QA and PO gates cleared.",
     };
   }
   return { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };

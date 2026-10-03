@@ -176,6 +176,85 @@ describe("resolveConnectorLaunchPolicy", () => {
       expect(policy.launchNote).toMatch(/customer pilot/i);
     });
   });
+
+  // Required-team authorized advancement 2026-10-03.
+  describe("shopware", () => {
+    it("is po_review after required-team authorization (2026-10-03) and is therefore installable", () => {
+      const policy = resolveConnectorLaunchPolicy("shopware", allCaps);
+      expect(policy.launchStage).toBe("po_review");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: shopware is no longer under_development", () => {
+      const policy = resolveConnectorLaunchPolicy("shopware", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+    });
+  });
+
+  describe("zoho-inventory", () => {
+    it("is po_review after required-team authorization (2026-10-03) and is therefore installable", () => {
+      const policy = resolveConnectorLaunchPolicy("zoho-inventory", allCaps);
+      expect(policy.launchStage).toBe("po_review");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: zoho-inventory is no longer under_development", () => {
+      const policy = resolveConnectorLaunchPolicy("zoho-inventory", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+    });
+  });
+
+  describe("etsy", () => {
+    it("is po_review after QA fix (PR #947) and required-team authorization (2026-10-03)", () => {
+      const policy = resolveConnectorLaunchPolicy("etsy", allCaps);
+      expect(policy.launchStage).toBe("po_review");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: etsy is no longer under_development", () => {
+      const policy = resolveConnectorLaunchPolicy("etsy", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+    });
+  });
+
+  describe("ebay", () => {
+    it("is po_review after QA fix (PR #936) and required-team authorization (2026-10-03)", () => {
+      const policy = resolveConnectorLaunchPolicy("ebay", allCaps);
+      expect(policy.launchStage).toBe("po_review");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: ebay is no longer under_development", () => {
+      const policy = resolveConnectorLaunchPolicy("ebay", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+    });
+  });
+
+  describe("bigcommerce", () => {
+    it("is qa_validation after QA fix (PR #949) and required-team authorization (2026-10-03)", () => {
+      const policy = resolveConnectorLaunchPolicy("bigcommerce", allCaps);
+      expect(policy.launchStage).toBe("qa_validation");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: bigcommerce is no longer under_development", () => {
+      const policy = resolveConnectorLaunchPolicy("bigcommerce", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+    });
+  });
+
+  describe("dynamics-365", () => {
+    it("is qa_validation after QA tests (PR #948) and required-team authorization (2026-10-03)", () => {
+      const policy = resolveConnectorLaunchPolicy("dynamics-365", allCaps);
+      expect(policy.launchStage).toBe("qa_validation");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: dynamics-365 is no longer under_development", () => {
+      const policy = resolveConnectorLaunchPolicy("dynamics-365", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+    });
+  });
 });
 
 describe("isCustomerVisibleStage", () => {
