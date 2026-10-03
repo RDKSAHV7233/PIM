@@ -1,7 +1,21 @@
 import type { ConnectorContext, ProductPayload } from "../../connector-framework/connector.interface";
+import { resolve4, resolve6 } from "node:dns/promises";
 import { ShopwareConnector, ShopwarePublishError } from "./shopware.connector";
 
+// Only DNS is mocked — the real url-safety guard runs in every test, so the
+// SSRF tests below prove the connector is actually wired to it (mocking the
+// guard itself, as some other connector specs do, would prove nothing).
+jest.mock("node:dns/promises", () => ({
+  resolve4: jest.fn(),
+  resolve6: jest.fn(),
+}));
+
 const TEST_KEY = "d".repeat(64);
+
+beforeEach(() => {
+  (resolve4 as jest.Mock).mockReset().mockResolvedValue(["93.184.216.34"]);
+  (resolve6 as jest.Mock).mockReset().mockRejectedValue(new Error("ENODATA"));
+});
 
 function makeConnectorWithDb(mockDbClient: any) {
   process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = TEST_KEY;
@@ -411,5 +425,202 @@ describe("ShopwareConnector.syncSubmissionStatus", () => {
     const suppressed = await connector.syncSubmissionStatus!(fakeCtx(), "SW-001");
     expect(active.status).toBe("SUCCESS");
     expect(suppressed.status).toBe("SUPPRESSED");
+  });
+});
+
+// ─── SSRF boundary: tenant-controlled store_url ────────────────────────────
+//
+// store_url is tenant-supplied and the connector sends the Integration's
+// client_secret (token exchange) and bearer token (every API call) to it. The
+// shared validateConnectorTargetUrl guard — the one Odoo, PrestaShop and
+// WooCommerce use — must run before ANY of those requests is built. The real
+// guard is exercised here (only DNS is mocked), so these tests fail if the
+// connector stops calling it.
+
+const UNSAFE_STORE_URLS: Array<[string, string]> = [
+  ["localhost", "https://localhost"],
+  ["IPv4 loopback", "https://127.0.0.1"],
+  ["IPv6 loopback", "https://[::1]"],
+  ["RFC1918 10/8", "https://10.0.0.5"],
+  ["RFC1918 172.16/12", "https://172.16.0.1"],
+  ["RFC1918 192.168/16", "https://192.168.1.10"],
+  ["link-local / cloud metadata IP", "https://169.254.169.254"],
+  ["CGNAT 100.64/10", "https://100.64.0.1"],
+  ["metadata hostname", "https://metadata.google.internal"],
+  [".internal hostname", "https://store.internal"],
+  [".local hostname", "https://shop.local"],
+  ["malformed host", "https://exa mple.com"],
+];
+
+function dbWithStoreUrl(storeUrl: string) {
+  return {
+    connectorCredential: {
+      findFirst: findFirstByType({
+        store_url: credRow("store_url", storeUrl),
+        client_id: credRow("client_id", "candidate-access-id"),
+        client_secret: credRow("client_secret", "candidate-secret-key"),
+      }),
+    },
+  };
+}
+
+describe("ShopwareConnector — tenant-controlled store_url SSRF boundary", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (global as any).fetch = undefined;
+  });
+
+  describe("verifyCandidateCredentials (install / replace-credentials)", () => {
+    it.each(UNSAFE_STORE_URLS)("rejects %s without sending any request", async (_label, url) => {
+      const connector = makeConnector();
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.verifyCandidateCredentials!({
+        store_url: url,
+        client_id: "candidate-id",
+        client_secret: "candidate-secret",
+      });
+
+      expect(result.outcome).toBe("invalid");
+      expect((result as { reasonCode?: string }).reasonCode).toBe("SHOPWARE_URL_UNSAFE");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-HTTPS URL without sending any request", async () => {
+      const connector = makeConnector();
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.verifyCandidateCredentials!({
+        store_url: "http://shop.example.com",
+        client_id: "candidate-id",
+        client_secret: "candidate-secret",
+      });
+
+      expect((result as { reasonCode?: string }).reasonCode).toBe("SHOPWARE_URL_NOT_HTTPS");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty-host URL without sending any request", async () => {
+      const connector = makeConnector();
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.verifyCandidateCredentials!({
+        store_url: "https://",
+        client_id: "candidate-id",
+        client_secret: "candidate-secret",
+      });
+
+      expect(result.outcome).toBe("invalid");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects a public-looking hostname that DNS resolves to a private address (DNS rebinding shape)", async () => {
+      (resolve4 as jest.Mock).mockResolvedValue(["10.0.0.5"]);
+      const connector = makeConnector();
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.verifyCandidateCredentials!({
+        store_url: "https://totally-legit-shop.example.com",
+        client_id: "candidate-id",
+        client_secret: "candidate-secret",
+      });
+
+      expect((result as { reasonCode?: string }).reasonCode).toBe("SHOPWARE_URL_UNSAFE");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects a hostname that resolves to the cloud metadata address", async () => {
+      (resolve4 as jest.Mock).mockResolvedValue(["169.254.169.254"]);
+      const connector = makeConnector();
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.verifyCandidateCredentials!({
+        store_url: "https://metadata-rebind.example.com",
+        client_id: "candidate-id",
+        client_secret: "candidate-secret",
+      });
+
+      expect((result as { reasonCode?: string }).reasonCode).toBe("SHOPWARE_URL_UNSAFE");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("still allows a valid public HTTPS URL and sends the secret only to that host", async () => {
+      const connector = makeConnector();
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ access_token: "tok", expires_in: 600 }) })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.verifyCandidateCredentials!({
+        store_url: "https://shop.example.com",
+        client_id: "candidate-id",
+        client_secret: "candidate-secret",
+      });
+
+      expect(result.outcome).toBe("valid");
+      const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+      expect(urls.every((u) => u.startsWith("https://shop.example.com/"))).toBe(true);
+    });
+  });
+
+  describe("stored store_url (heartbeat, token refresh, publish, update, status sync)", () => {
+    it.each(UNSAFE_STORE_URLS)("heartbeat validation reports invalid for %s and sends no request", async (_label, url) => {
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithStoreUrl(url));
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.validateStoredCredentialsDetailed(fakeCtx());
+
+      expect(result.outcome).toBe("invalid");
+      expect((result as { reasonCode?: string }).reasonCode).toBe("SHOPWARE_URL_UNSAFE");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await connector.validateCredentials(fakeCtx())).toBe(false);
+    });
+
+    it("keeps classifying a stored non-HTTPS URL as invalid/NOT_HTTPS (behavior unchanged)", async () => {
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithStoreUrl("http://shop.example.com"));
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      const result = await connector.validateStoredCredentialsDetailed(fakeCtx());
+
+      expect(result.outcome).toBe("invalid");
+      expect((result as { reasonCode?: string }).reasonCode).toBe("SHOPWARE_URL_NOT_HTTPS");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["refreshAccessToken", (c: ShopwareConnector) => c.refreshAccessToken(fakeCtx())],
+      ["publishProduct", (c: ShopwareConnector) => c.publishProduct(fakeCtx(), baseProduct)],
+      ["updateProduct", (c: ShopwareConnector) => c.updateProduct(fakeCtx(), baseProduct, "SW-001")],
+      ["syncSubmissionStatus", (c: ShopwareConnector) => c.syncSubmissionStatus!(fakeCtx(), "SW-001")],
+    ])("%s refuses a stored metadata-endpoint store_url before any request or token attach", async (_name, call) => {
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithStoreUrl("https://169.254.169.254"));
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      await expect(call(connector)).rejects.toThrow(/private or reserved IP/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("refreshAccessToken refuses a stored hostname that resolves to a private address", async () => {
+      (resolve4 as jest.Mock).mockResolvedValue(["192.168.0.20"]);
+      mockDecrypt();
+      const connector = makeConnectorWithDb(dbWithStoreUrl("https://rebinds-later.example.com"));
+      const fetchMock = jest.fn();
+      (global as any).fetch = fetchMock;
+
+      await expect(connector.refreshAccessToken(fakeCtx())).rejects.toThrow(/resolves to a private or reserved IP/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 });

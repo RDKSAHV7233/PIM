@@ -29,8 +29,9 @@
 // attributes.tax_rate_percent (defaulting to 19 only as a last resort), so a
 // non-German seller isn't silently given a wrong net price.
 
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
+import { validateConnectorTargetUrl } from "../../common/security/url-safety";
 import {
   decryptCredentialValue,
   parseCredentialKeyVersion,
@@ -128,7 +129,14 @@ export class ShopwareConnector implements ConnectorInterface {
     if (!storeUrl || !clientId || !clientSecret) {
       throw new Error("Shopware credentials incomplete. Verify store_url, client_id, and client_secret are stored.");
     }
-    return { storeUrl: normalizeStoreUrl(storeUrl), clientId, clientSecret };
+    const normalizedStoreUrl = normalizeStoreUrl(storeUrl);
+    // store_url is tenant-supplied and every caller of this method goes on to
+    // send the Integration's client_secret / bearer token to it. Block a URL
+    // that is non-HTTPS or points at (or resolves to) a private, loopback,
+    // link-local or metadata address before any credential-bearing request is
+    // built — the same boundary Odoo, PrestaShop and WooCommerce use.
+    await validateConnectorTargetUrl(normalizedStoreUrl, { requireResolvable: false });
+    return { storeUrl: normalizedStoreUrl, clientId, clientSecret };
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -181,6 +189,13 @@ export class ShopwareConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
+      // resolveCredentials() now throws for a non-HTTPS or unsafe store_url
+      // before the explicit HTTPS check above is reachable — keep classifying
+      // that as invalid (as before), not as a generic unavailable provider.
+      if (error instanceof BadRequestException) {
+        const reasonCode = error.message.includes("HTTPS") ? "SHOPWARE_URL_NOT_HTTPS" : "SHOPWARE_URL_UNSAFE";
+        return { outcome: "invalid", reasonCode };
+      }
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn("Shopware credential validation failed", { installationId: ctx.installationId, reason });
       if (error instanceof ShopwareTokenExchangeError) {
@@ -198,6 +213,13 @@ export class ShopwareConnector implements ConnectorInterface {
     const clientSecret = String(candidate.client_secret ?? "").trim();
     if (!storeUrl.startsWith("https://")) {
       return { outcome: "invalid", reasonCode: "SHOPWARE_URL_NOT_HTTPS" };
+    }
+    // Reject an unsafe candidate store_url before the client_secret is ever
+    // attached to a request, and before it can be saved as a credential.
+    try {
+      await validateConnectorTargetUrl(storeUrl, { requireResolvable: false });
+    } catch {
+      return { outcome: "invalid", reasonCode: "SHOPWARE_URL_UNSAFE" };
     }
     try {
       const token = await this.exchangeToken(storeUrl, clientId, clientSecret);
