@@ -73,7 +73,7 @@ type CatalogModuleId =
   | "payload"
   | "readiness";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold";
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold" | "Early access";
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -196,6 +196,7 @@ function connectorLaunchLabel(
   stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
+  if (stage === "early_access") return "Early access";
   if (stage === "controlled_pilot") return "Controlled pilot";
   if (stage === "p1_blocker_hold") return "P1 blocker hold";
   if (stage === "live" && implementationStatus === "partial") {

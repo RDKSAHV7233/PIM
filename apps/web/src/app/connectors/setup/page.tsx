@@ -38,7 +38,7 @@ interface ConnectorSetupPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold";
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental" | "Controlled pilot" | "P1 blocker hold" | "Early access";
 
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -130,6 +130,7 @@ function connectorLaunchLabel(
   stage: string,
   implementationStatus: string | undefined,
 ): ConnectorMaturity {
+  if (stage === "early_access") return "Early access";
   if (stage === "controlled_pilot") {
     return "Controlled pilot";
   }

@@ -541,7 +541,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         return left.definition.displayName.localeCompare(right.definition.displayName);
       });
     const liveDefinitions = definitionModels.filter((item) => item.definition.launchStage === "live");
-    const channelCatalogDefinitions = liveDefinitions;
+    const channelCatalogDefinitions = definitionModels.filter(
+      (item) => item.definition.launchStage === "live" || item.definition.launchStage === "early_access",
+    );
     const needsSetupDefinitions = definitionModels.filter(
       (item) => item.workspaceState.label === "Needs setup",
     );
@@ -760,7 +762,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         Compare live connector lanes by install footprint and shipped operator capabilities before promising channel coverage.
                       </p>
                     </div>
-                    <StatusChip label={`${channelCatalogDefinitions.length} live lanes`} tone="info" />
+                    <StatusChip label={`${channelCatalogDefinitions.length} available lanes`} tone="info" />
                   </div>
                   {/* key={`matrix-row-${item.definition.id}`} */}
                   <DataGrid
