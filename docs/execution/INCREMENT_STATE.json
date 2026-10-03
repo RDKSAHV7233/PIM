@@ -5949,6 +5949,54 @@
           "signoff": "CTO/PO/required-team authorization 2026-10-03"
         }
       ]
+    },
+    {
+      "incrementId": "INC-87",
+      "name": "WooCommerce early_access advancement — E2E battery sign-off 2026-10-03",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+        "apps/web/src/app/connectors/setup/page.tsx",
+        "apps/web/test/integration/woocommerce-launch-copy-consistency.test.cjs",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "tests_passed": [
+        "node apps/web/test/integration/woocommerce-launch-copy-consistency.test.cjs",
+        "connector-launch-policy.spec.ts WooCommerce assertions updated"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-87-S1",
+          "title": "Advance WooCommerce from controlled_pilot to early_access after full E2E battery",
+          "status": "completed",
+          "locked": true,
+          "branch": "feat/woocommerce-early-access",
+          "acceptance": [
+            "T1: ACTIVE, Healthy; credentials masked; 100 submissions; 0 pending/retrying",
+            "T2: Credentials masked in UI; Replace Credentials requires admin password step-up",
+            "T3: 67 products in scope, 69 variants, 0 blocking readiness issues. 23 errors = QA test fixtures with non-public image URLs (correct connector behaviour)",
+            "T4: Real publishes confirmed: products 2383, 2381, 307, 260, 404, 212 all SUCCESS",
+            "T5: Last full sync 14/9/2026; delta sync available for 1 pending product",
+            "T6: Export readiness Ready, 0 missing fields",
+            "Known limitation: multi-variant publishing not yet verified (QAPILOT-002 internal_server_error)",
+            "launchStage = early_access; isInstallableStage = true; new customer installs now open",
+            "connectorLaunchLabel fix deployed (PR #1057): shows amber 'Controlled pilot' badge in production"
+          ],
+          "closure_evidence": {
+            "e2e_battery": "T1-T6 all assessed via browser testing against live app.vexapim.com",
+            "installation": "4cc83efd-a71b-4d61-8649-299795c35e11 at vexapim.com",
+            "signoff": "QA/PO/required-team E2E battery 2026-10-03"
+          },
+          "changed_files": [
+            "apps/api/src/connector-framework/connector-launch-policy.ts",
+            "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+            "apps/web/src/app/connectors/setup/page.tsx",
+            "apps/web/test/integration/woocommerce-launch-copy-consistency.test.cjs"
+          ]
+        }
+      ]
     }
   ]
 }

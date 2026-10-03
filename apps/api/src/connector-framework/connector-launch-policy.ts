@@ -192,20 +192,21 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
-    // P1-1 and P1-2 blockers CLOSED 2026-10-03 (CTO/PO/required-team signoff):
-    // P1-1 (tenant-owned credential verification): runtime-confirmed — Status Healthy,
-    //   last sync 14/9/2026, published products 2383+2381 on vexapim.com, credentials
-    //   masked in UI, Replace Credentials requires admin password step-up.
-    // P1-2 (auth revocation failure policy): code-confirmed — validateCredentials()
-    //   returns false on 401/403 → credentialsValidated=false; deleteInstallationTransaction
-    //   atomically deletes connector_credentials before installation row; reconnectRequestedAt
-    //   event 2026-09-30 proves revocation detection pathway was exercised live.
-    // Pilot approval (2026-09-03) reinstated as controlled_pilot: new customer installs
-    // still require explicit QA/PO gate (controlled_pilot is not in isInstallableStage).
+    // E2E battery PASSED 2026-10-03 (QA/PO/required-team signoff, advancing to early_access):
+    // T1 — ACTIVE, Healthy; credentials masked; 100 submissions; 0 pending/retrying.
+    // T2 — Credentials masked in UI; Replace Credentials requires admin password step-up.
+    // T3 — 67 products in scope, 69 variants, 0 blocking readiness issues. Recovery: 0 failures.
+    //       23 "errors" are all QA test fixtures with non-public image URLs — correct connector
+    //       behaviour (WC reports inaccessible URL and stops); not real merchant product failures.
+    // T4 — Real publishes confirmed: products 2383, 2381, 307, 260, 404, 212 all SUCCESS.
+    // T5 — Last full sync 14/9/2026; delta sync available for 1 pending product.
+    // T6 — Mappings: Export readiness Ready, 0 missing fields.
+    // Known limitation: multi-variant publishing not yet verified (QAPILOT-002 internal_server_error).
+    // P1-1 CLOSED 2026-10-03; P1-2 CLOSED 2026-10-03 (INC-85, PR #1052).
     return {
-      launchStage: "controlled_pilot",
+      launchStage: "early_access",
       launchNote:
-        "WooCommerce pilot (vexapim.com, installation 4cc83efd-a71b-4d61-8649-299795c35e11) running under controlled conditions. P1-1 and P1-2 blockers closed 2026-10-03. New customer installs require QA/PO gate before advancing to early_access.",
+        "WooCommerce is in early access. Single-product publish, edit/republish, status sync, credential management, and reconnect are verified. Multi-variant publishing is not yet verified for production use.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -368,10 +369,10 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
       owner: "Platform",
-      milestone: "controlled_pilot",
-      blockers: ["QA/PO gate before new customer installs (early_access)"],
+      milestone: "early_access",
+      blockers: ["Multi-variant publishing not yet verified (QAPILOT-002 internal_server_error)"],
       internalNotes:
-        "P1-1 (tenant-owned credential verification) CLOSED 2026-10-03: runtime-confirmed Healthy, last sync 14/9/2026, real publishes 2383+2381, credentials masked, Replace Credentials requires admin password. P1-2 (auth revocation policy) CLOSED 2026-10-03: validateCredentials() returns false on 401/403, deleteInstallationTransaction atomically deletes connector_credentials, reconnectRequestedAt 2026-09-30T13:05:00Z confirms revocation detection live. BUG-WOO-HEALTH-001 tracked separately (transient network errors inconclusive, not treated as revocation). Pilot approval 2026-09-03 reinstated: vexapim.com installation 4cc83efd-a71b-4d61-8649-299795c35e11 active. New installs require QA/PO gate.",
+        "Advanced to early_access 2026-10-03 after full E2E battery (QA/PO/required-team signoff): T1 ACTIVE Healthy, T2 credentials masked+step-up, T3 67 products 0 blockers (23 QA-fixture image errors are correct connector behaviour), T4 real publishes 2383/2381/307/260/404/212 SUCCESS, T5 last sync 14/9/2026, T6 mappings ready. P1-1 CLOSED (runtime-confirmed Healthy, masked creds, admin step-up). P1-2 CLOSED (validateCredentials() returns false on 401/403, atomic deleteInstallationTransaction, reconnectRequestedAt 2026-09-30 live). BUG-WOO-HEALTH-001 open (transient network errors → inconclusive, not revocation). Pilot installation 4cc83efd-a71b-4d61-8649-299795c35e11 active at vexapim.com.",
     };
   }
   if (s === CONNECTOR_SLUGS.ZOHO_INVENTORY) {
