@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -29,6 +29,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly CLIENT_LIMIT = 50;
   private readonly poolApplicationName = String(process.env.DB_POOL_APP_NAME ?? "vexa-pim-api").trim() || "vexa-pim-api";
   private readonly connectionLimit = parseConnectionLimit(process.env.DB_POOL_CONNECTION_LIMIT);
+  private readonly logger = new Logger(PrismaService.name);
 
   private getBaseDatabaseUrl(): string {
     const databaseUrl = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
@@ -98,6 +99,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    // Make the effective pool size visible in the boot logs: connection_limit applies PER TENANT CLIENT (each
+    // tenant has its own pool), and when the variable is unset the default of 5 is used. A tenant with more
+    // than that many concurrent queries waits and then fails with P2024 after the pool timeout.
+    this.logger.log(
+      `DB pool: connection_limit=${this.connectionLimit} per tenant client (${
+        String(process.env.DB_POOL_CONNECTION_LIMIT ?? "").trim() ? "DB_POOL_CONNECTION_LIMIT" : "default"
+      }), tenant client cap=${this.CLIENT_LIMIT}`,
+    );
     if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
       return;
     }

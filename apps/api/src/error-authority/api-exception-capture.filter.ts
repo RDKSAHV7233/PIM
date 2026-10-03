@@ -1,4 +1,4 @@
-import { ArgumentsHost, BadRequestException, Catch, HttpException, HttpStatus, Optional } from "@nestjs/common";
+import { ArgumentsHost, BadRequestException, Catch, HttpException, HttpStatus, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { BaseExceptionFilter, HttpAdapterHost } from "@nestjs/core";
 import type { Request } from "express";
 import { LoggerService } from "../common/logging/logger.service";
@@ -6,6 +6,9 @@ import { VALIDATION_FAILED_CODE } from "../common/validation-exception.factory";
 import { ErrorCaptureService } from "./error-capture.service";
 
 const CAPTURED_MARKER = Symbol("vexa.errorAuthorityCaptured");
+export const DATABASE_BUSY_CODE = "DATABASE_BUSY";
+const DATABASE_POOL_TIMEOUT_CAPTURE_CODE = "DATABASE_POOL_TIMEOUT";
+const DATABASE_BUSY_RETRY_AFTER_SECONDS = "5";
 const EXPECTED_HTTP_STATUSES = new Set<number>([
   HttpStatus.BAD_REQUEST,
   HttpStatus.UNAUTHORIZED,
@@ -36,6 +39,9 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
   }
 
   catch(exception: unknown, host: ArgumentsHost) {
+    // Keep the real error: it is what gets captured and alerted on when it is translated below.
+    const originalException = exception;
+    let poolTimeout = false;
     // A NUL (U+0000) that reaches Postgres (multipart files, CSV cells, any path the early
     // request scan cannot see) is a client error, not a server fault (prod-cert DEF-PC-010).
     if (host.getType() === "http" && isNulByteDatabaseError(exception)) {
@@ -45,6 +51,18 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
         fields: [],
       });
     }
+    // The Prisma connection pool had no free connection within its timeout (P2024). That is a transient
+    // capacity condition, not a bug in the request: answer 503 + Retry-After so clients back off and retry,
+    // instead of an opaque 500. It is still captured (below) as a server-side fault so it alerts.
+    if (host.getType() === "http" && isPoolTimeoutError(exception)) {
+      poolTimeout = true;
+      exception = new ServiceUnavailableException({
+        error: DATABASE_BUSY_CODE,
+        message: "The service is temporarily busy. Please retry shortly.",
+      });
+      const response = host.switchToHttp().getResponse<{ setHeader?: (name: string, value: string) => void }>();
+      response?.setHeader?.("Retry-After", DATABASE_BUSY_RETRY_AFTER_SECONDS);
+    }
     if (host.getType() === "http" && shouldCaptureApiException(exception)) {
       if (!isCaptured(exception)) {
         markCaptured(exception);
@@ -53,8 +71,8 @@ export class ApiExceptionCaptureFilter extends BaseExceptionFilter {
           .captureUnexpected({
             runtime: "api",
             service: "vexa-pim-api",
-            error: exception,
-            errorCode: extractErrorCode(exception),
+            error: poolTimeout ? originalException : exception,
+            errorCode: poolTimeout ? DATABASE_POOL_TIMEOUT_CAPTURE_CODE : extractErrorCode(exception),
             category: "internal",
             severity: "p1",
             routeTemplate: resolveRouteTemplate(request),
@@ -86,6 +104,21 @@ export function isNulByteDatabaseError(exception: unknown): boolean {
   const meta = (exception as { meta?: { code?: unknown; message?: unknown } }).meta;
   const text = `${exception.message} ${typeof meta?.message === "string" ? meta.message : ""}`.toLowerCase();
   return text.includes("invalid byte sequence for encoding") && text.includes("0x00");
+}
+
+/**
+ * Prisma raises P2024 ("Timed out fetching a new connection from the connection pool") when every
+ * pooled connection stays busy for longer than the pool timeout (10 s by default). Matched by code and by
+ * message because the model-operation error shape only carries the text.
+ */
+export function isPoolTimeoutError(exception: unknown): boolean {
+  if (!(exception instanceof Error)) {
+    return false;
+  }
+  if ((exception as { code?: unknown }).code === "P2024") {
+    return true;
+  }
+  return exception.message.toLowerCase().includes("timed out fetching a new connection from the connection pool");
 }
 
 function isCaptured(exception: unknown): boolean {

@@ -13,6 +13,7 @@ import {
   extractErrorCode,
   ApiExceptionCaptureFilter,
   isNulByteDatabaseError,
+  isPoolTimeoutError,
   resolveRouteTemplate,
   resolveStatusCode,
   shouldCaptureApiException,
@@ -219,5 +220,62 @@ describe("isNulByteDatabaseError (prod-cert DEF-PC-010, root-cause mapping)", ()
     filter.catch(new Error('ERROR: invalid byte sequence for encoding "UTF8": 0x00'), host as never);
     expect(captureUnexpected).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ error: "VALIDATION_FAILED" }), 400);
+  });
+});
+
+describe("isPoolTimeoutError / pool timeout -> 503 (DEF-PC-015 / DEF-PC-022)", () => {
+  const poolError = () =>
+    Object.assign(new Error("Invalid `prisma.product.create()` invocation: Timed out fetching a new connection from the connection pool. (Current connection pool timeout: 10, connection limit: 5)"), { code: "P2024" });
+
+  it("recognises P2024 by code and by message, and nothing else", () => {
+    expect(isPoolTimeoutError(poolError())).toBe(true);
+    expect(isPoolTimeoutError(Object.assign(new Error("x"), { code: "P2024" }))).toBe(true);
+    expect(isPoolTimeoutError(new Error("Timed out fetching a new connection from the connection pool."))).toBe(true);
+    expect(isPoolTimeoutError(new Error("Unique constraint failed"))).toBe(false);
+    expect(isPoolTimeoutError(Object.assign(new Error("x"), { code: "P2002" }))).toBe(false);
+    expect(isPoolTimeoutError("P2024")).toBe(false);
+    expect(isPoolTimeoutError(null)).toBe(false);
+  });
+
+  it("the filter answers 503 DATABASE_BUSY with Retry-After and still captures the ORIGINAL error as a server fault", () => {
+    const captureUnexpected = jest.fn().mockResolvedValue(undefined);
+    const reply = jest.fn();
+    const setHeader = jest.fn();
+    const adapter = { reply, isHeadersSent: () => false, end: jest.fn(), getRequestMethod: () => "POST", getRequestUrl: () => "/x" };
+    const filter = new ApiExceptionCaptureFilter({ captureUnexpected } as never, { httpAdapter: adapter } as never);
+    const host = {
+      getType: () => "http",
+      getArgByIndex: () => ({}),
+      switchToHttp: () => ({ getRequest: () => ({ method: "POST", originalUrl: "/x" }), getResponse: () => ({ setHeader }) }),
+    };
+    const original = poolError();
+    filter.catch(original, host as never);
+
+    expect(setHeader).toHaveBeenCalledWith("Retry-After", "5");
+    expect(reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ error: "DATABASE_BUSY" }),
+      503,
+    );
+    expect(captureUnexpected).toHaveBeenCalledTimes(1);
+    expect(captureUnexpected).toHaveBeenCalledWith(
+      expect.objectContaining({ error: original, errorCode: "DATABASE_POOL_TIMEOUT", statusCode: 503, severity: "p1" }),
+    );
+  });
+
+  it("other unexpected errors are unchanged: still 500 and no Retry-After", () => {
+    const captureUnexpected = jest.fn().mockResolvedValue(undefined);
+    const reply = jest.fn();
+    const setHeader = jest.fn();
+    const adapter = { reply, isHeadersSent: () => false, end: jest.fn(), getRequestMethod: () => "POST", getRequestUrl: () => "/x" };
+    const filter = new ApiExceptionCaptureFilter({ captureUnexpected } as never, { httpAdapter: adapter } as never);
+    const host = {
+      getType: () => "http",
+      getArgByIndex: () => ({}),
+      switchToHttp: () => ({ getRequest: () => ({ method: "POST", originalUrl: "/x" }), getResponse: () => ({ setHeader }) }),
+    };
+    filter.catch(new Error("something else broke"), host as never);
+    expect(setHeader).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith(expect.anything(), expect.anything(), 500);
   });
 });
