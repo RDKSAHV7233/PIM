@@ -5779,11 +5779,10 @@
         {
           "storyId": "INC-84-S3",
           "title": "Public media is safe to serve (DEF-PC-002 + DEF-PC-014, P2)",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "branch": "fix/inc84-s3-media-safety",
           "commit": "99eee3ae",
-          "reviewStatus": "merged and deployed 2026-10-02 (production c1e34bbe); NOT locked: live upload check pending (needs approval: one text/html upload must be rejected 400, one real PNG accepted)",
           "acceptance": [
             "Upload outside png/jpeg/webp/gif returns 400; declared type must match magic bytes; a real PNG/JPEG is accepted",
             "Public file response (local-storage path): sandbox CSP, valid Content-Disposition for any filename, legacy non-image rows served as octet-stream attachment",
@@ -5812,9 +5811,10 @@
             "apps/api/src/media/media.controller.ts",
             "apps/api/src/media/media.controller.spec.ts"
           ],
-          "review": "independent code review: 10 findings (7 fixed, 3 skipped with reasons); caught a filename-regex bug (backslash not stripped), GIF extension, bulk octet-stream regression",
+          "review": "independent code review: 10 findings (7 fixed, 3 skipped with reasons); caught a filename-regex bug (backslash not stripped), GIF extension, bulk octet-stream regression Locked 2026-10-03 after live acceptance (PO/CTO delegated).",
           "merged": true,
-          "live_checks_so_far": "all 55 existing production assets still redirect to R2 and serve image/png; media page loads"
+          "live_checks_so_far": "all 55 existing production assets still redirect to R2 and serve image/png; media page loads",
+          "live_verified": "2026-10-03, production (approved test, signed-in admin): (a) HTML bytes declared image/png rejected by the API, nothing stored (asset count 111 unchanged); (b) a real 1x1 PNG accepted, stored and served as image/png with the PNG signature (70 bytes), asset count +1 (page inputs 111 -> 113, two renderings per asset). Test asset prodcert-s3-test.png left in the live workspace (unlinked). A file declared text/html is stopped earlier by the web form image/* check. UX defect found on the rejection path (generic 500 page): fixed separately as DEF-PC-023 (INC-93-S10)."
         },
         {
           "storyId": "INC-84-S4",
@@ -6120,6 +6120,200 @@
             "Zoho Inventory: T1 OAuth2 refresh_token exchange India DC, T2 credential validation live, T3 publish item, T4 status-sync, T5 update item, T6 regional host routing — all PASS",
             "launchStage = early_access for both; isInstallableStage = true"
           ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-93",
+      "name": "Production-certification remediation sprints R2-R7 (web/API hardening, deploy-pipeline integrity, DB pool diagnostics)",
+      "status": "in_progress",
+      "locked": false,
+      "sprintDocs": [
+        "docs/qa/prod-cert/VEXA-PROD-CERT-2026-10-02-01/SPRINT_REMEDIATION_02.md",
+        "docs/qa/prod-cert/VEXA-PROD-CERT-2026-10-02-01/SPRINT_REMEDIATION_03.md",
+        "docs/qa/prod-cert/VEXA-PROD-CERT-2026-10-02-01/SPRINT_REMEDIATION_04.md"
+      ],
+      "note": "Continues INC-84 (R1). PR titles/branches used the labels INC-85..INC-92 before it was noticed that INC-85..INC-90 already exist for connector work; they are the prTitleLabel on each story and are NOT those increments. Stories lock only after live verification (or an explicit not-observable-on-live note) plus PO/CTO acceptance. DEF-PC-008 (public /api/v1/health detail) is an accepted risk: the deploy scripts consume it. DEF-PC-022 (live write latency, GitHub issue 1066) is open and needs Railway metrics.",
+      "stories": [
+        {
+          "storyId": "INC-93-S1",
+          "title": "Web sends HSTS and no X-Powered-By (DEF-PC-017/018)",
+          "status": "completed",
+          "locked": true,
+          "pr": 1047,
+          "commit": "b3892721",
+          "prTitleLabel": "INC-85-S1",
+          "acceptance": [
+            "Strict-Transport-Security max-age=31536000; includeSubDomains on web (no preload)",
+            "No X-Powered-By header",
+            "No other header changes"
+          ],
+          "tests_passed": [
+            "web-security-headers-contract.test.cjs",
+            "local next dev header check",
+            "web lint clean"
+          ],
+          "live_verified": "2026-10-02: app.vexapim.com /login and / send HSTS and no x-powered-by; probe pack 38 pass / 1 fail (API CSP, informational)"
+        },
+        {
+          "storyId": "INC-93-S2",
+          "title": "Media per-asset inputs labelled; sidebar is a nav landmark (DEF-PC-019/020)",
+          "status": "completed",
+          "locked": true,
+          "pr": 1049,
+          "commit": "8d250ebf",
+          "prTitleLabel": "INC-85-S2",
+          "acceptance": [
+            "0 unlabeled inputs on /catalog/media (was 220 of 787)",
+            "Exactly one nav[aria-label=Primary] on dashboard/products/media"
+          ],
+          "tests_passed": [
+            "a11y-landmarks-and-media-labels.test.cjs",
+            "web lint clean"
+          ],
+          "live_verified": "2026-10-03 signed-in: 0 unlabeled of 787 inputs; one Primary nav on /dashboard, /catalog/products, /catalog/media (needed a manual web redeploy, see S5/DEF-PC-021)"
+        },
+        {
+          "storyId": "INC-93-S3",
+          "title": "Standard Retry-After on throttled 429 (DEF-PC-007)",
+          "status": "in_progress",
+          "locked": false,
+          "pr": 1050,
+          "commit": "3ab242d0",
+          "prTitleLabel": "INC-85-S3",
+          "acceptance": [
+            "429 carries Retry-After in whole seconds next to Retry-After-<throttler>",
+            "Allowed requests unchanged"
+          ],
+          "tests_passed": [
+            "retry-after-throttler.guard.spec.ts (both guards)",
+            "throttler dir 12/12"
+          ],
+          "pending_for_lock": "a 429 cannot be forced on live without throttling real users; verify opportunistically in the first natural 429"
+        },
+        {
+          "storyId": "INC-93-S4",
+          "title": "limit honoured on the non-cursor product list (DEF-PC-011)",
+          "status": "in_progress",
+          "locked": false,
+          "pr": 1051,
+          "commit": "37817c02",
+          "prTitleLabel": "INC-85-S4",
+          "acceptance": [
+            "limit=1/3/50/200 -> that many rows; no limit -> 500 cap; cursor mode unchanged"
+          ],
+          "tests_passed": [
+            "catalog-list-products-limit.spec.ts 7 tests",
+            "tsc clean"
+          ],
+          "pending_for_lock": "needs an API bearer token (the session cookie is not usable against the API origin): GET /api/v1/catalog/products?limit=1 -> 1 row"
+        },
+        {
+          "storyId": "INC-93-S5",
+          "title": "Deploy targets diffed against the last successful push deploy (DEF-PC-021, P2)",
+          "status": "completed",
+          "locked": true,
+          "pr": 1053,
+          "commit": "54682c1f",
+          "prTitleLabel": "INC-86-S1",
+          "acceptance": [
+            "Cancelled/failed runs' changes are included in the next deploy's targets",
+            "No usable base -> both services deploy",
+            "Manual deploy_targets override unchanged"
+          ],
+          "tests_passed": [
+            "resolve-deploy-base-sha.test.cjs (incident replay on a temp git repo)",
+            "railway-deploy.test.cjs",
+            "validate-deploy-staging-workflow.cjs"
+          ],
+          "live_verified": "2026-10-03 field proof: run 0b8a4653 resolved base 2c2e830f (last SUCCESSFUL deploy) after two failed runs and deployed API and Web"
+        },
+        {
+          "storyId": "INC-93-S6",
+          "title": "Base lookup defeats stale Actions API answers (DEF-PC-021 follow-up)",
+          "status": "completed",
+          "locked": true,
+          "pr": 1054,
+          "commit": "2d369720",
+          "prTitleLabel": "INC-86-S1b",
+          "acceptance": [
+            "Run list queried several times and merged by run id; stale answers can only widen the diff"
+          ],
+          "tests_passed": [
+            "resolve-deploy-base-sha.test.cjs main() paths",
+            "6/6 live lookups returned the true latest deploy"
+          ],
+          "live_verified": "2026-10-03: deploys 5647d72e, 4aafea6f and 5e71930d logged the correct previous-deploy base"
+        },
+        {
+          "storyId": "INC-93-S7",
+          "title": "Hot-path fire-and-forget helpers never reject (DEF-PC-013 follow-up)",
+          "status": "completed",
+          "locked": true,
+          "pr": 1058,
+          "commit": "5647d72e",
+          "prTitleLabel": "INC-87-S1",
+          "acceptance": [
+            "captureTerminalWorkerFailure, AuditService.record, ApiKeysService.touchLastUsed never reject and still do their work"
+          ],
+          "tests_passed": [
+            "fire-and-forget-never-reject.spec.ts 4 tests (3 fail on pre-fix code)",
+            "full API suite 141 suites / 2442 tests, 0 failed"
+          ],
+          "live_verified": "not observable on live (needs an induced fault); deployed 2026-10-03, smoke test and probe pack green"
+        },
+        {
+          "storyId": "INC-93-S8",
+          "title": "No signed-in shell on /login (DEF-PC-016 follow-up, backlog S4b)",
+          "status": "in_progress",
+          "locked": false,
+          "pr": 1064,
+          "commit": "0b8a4653",
+          "prTitleLabel": "INC-88-S1",
+          "acceptance": [
+            "A locally valid but server-revoked token does not draw the sidebar/role badge around the login form"
+          ],
+          "tests_passed": [
+            "login-route-no-signed-in-shell.test.cjs",
+            "controlled local render: before nav=1 badge=1, after nav=0 badge=0",
+            "web suite 199/202 (3 pre-existing failures)"
+          ],
+          "pending_for_lock": "live check needs a visitor with a locally valid but server-revoked token (cannot be forged on production); verify when a real expired session occurs"
+        },
+        {
+          "storyId": "INC-93-S9",
+          "title": "Pool timeout (P2024) answers 503 + Retry-After; effective DB pool size logged at boot (DEF-PC-015/022)",
+          "status": "in_progress",
+          "locked": false,
+          "pr": 1065,
+          "commit": "5e71930d",
+          "prTitleLabel": "INC-91-S1",
+          "acceptance": [
+            "P2024 -> 503 DATABASE_BUSY + Retry-After 5; original error still captured as P1 with DATABASE_POOL_TIMEOUT",
+            "Boot log line: DB pool: connection_limit=N ..."
+          ],
+          "tests_passed": [
+            "api-exception-capture.filter.spec.ts +3 tests",
+            "full API suite 141 suites / 2451 tests, 0 failed"
+          ],
+          "pending_for_lock": "owner to confirm the DB pool boot-log line in Railway; DEF-PC-022 root cause still open (issue 1066)"
+        },
+        {
+          "storyId": "INC-93-S10",
+          "title": "Friendly message when the API rejects an upload as not a real image (DEF-PC-023)",
+          "status": "in_progress",
+          "locked": false,
+          "pr": 1067,
+          "commit": "pending-merge",
+          "prTitleLabel": "INC-92-S1",
+          "acceptance": [
+            "API 400 mimeType rejection redirects back with a banner instead of the generic 500 page; other errors still rethrown"
+          ],
+          "tests_passed": [
+            "media-upload-rejection-message.test.cjs",
+            "web suite 200/203 (3 pre-existing failures)"
+          ],
+          "pending_for_lock": "merge, then upload the fake PNG again in a signed-in session and expect the banner with the asset count unchanged"
         }
       ]
     }
