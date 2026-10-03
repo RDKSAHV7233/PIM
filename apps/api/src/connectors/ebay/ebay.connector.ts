@@ -91,6 +91,18 @@
 //   permanently fail instead of completing. Fixed: look the offer up by SKU
 //   first (getOffers) and reuse it — publish it if unpublished, or treat it
 //   as already done if it's already live — instead of blindly re-creating.
+//
+// Real bug found by re-running the live check from Node (2026-10-03): every
+// Sell Inventory call returned HTTP 400 errorId 25709 "Invalid value for
+// header Accept-Language", with the same valid token that returned 200 on
+// 2026-09-22. That earlier check used curl, which sends no Accept-Language;
+// Node's built-in fetch (what fetchWithTimeout uses) sends "Accept-Language: *"
+// by default, which eBay's Inventory API rejects. Because a non-2xx that isn't
+// 401/403 maps to "unavailable", validateCredentials() would have returned
+// false for valid credentials on every call, and publish/update would have
+// failed the same way. Fixed: buildApiHeaders() now sends an explicit
+// "Accept-Language: en-US" alongside Content-Language. Verified live: 200
+// {"total":0,"size":0} with the header, 400 without it, same token.
 
 import { Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
@@ -614,6 +626,7 @@ export class EbayConnector implements ConnectorInterface {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       "Content-Language": "en-US",
+      "Accept-Language": "en-US",
     };
   }
 

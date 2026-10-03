@@ -191,6 +191,21 @@ describe("EbayConnector auth transport", () => {
     expect(calledUrl).not.toContain("inventory_item_group");
   });
 
+  it("sends an explicit Accept-Language on Sell Inventory calls — Node's fetch defaults to '*', which eBay rejects with 400/25709", async () => {
+    // Regression test for a real bug found re-running the live check from Node
+    // on 2026-10-03: the earlier curl-based check sent no Accept-Language and
+    // passed, but fetch() sends "Accept-Language: *" by default and eBay's
+    // Inventory API answers HTTP 400 errorId 25709 "Invalid value for header
+    // Accept-Language" for it — so valid credentials were reported unavailable.
+    const connector = makeConnector();
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    (global as any).fetch = fetchMock;
+    await connector.validateStoredCredentialsDetailed(fakeCtx());
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers["Accept-Language"]).toBe("en-US");
+    expect(headers["Accept-Language"]).not.toBe("*");
+  });
+
   it("reports invalid on a 401", async () => {
     const connector = makeConnector();
     (global as any).fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
