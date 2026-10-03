@@ -30,6 +30,7 @@ import {
 } from "@/lib/marketplace-channels";
 import { canEditPricing, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { classifyRetryFailure, extractErrorCode } from "@/lib/errors";
+import { isMediaTypeRejection } from "@/lib/media-upload-errors";
 import { STEP_UP_ERROR_CODES, isStepUpErrorBody } from "@/lib/step-up-errors";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
@@ -2258,6 +2259,11 @@ export async function uploadMediaAssetAction(formData: FormData) {
     );
     if (redirectPath) {
       redirect(redirectPath);
+    }
+    // The file passed the browser-declared `image/*` check above but the API rejected it (type not allowed, or
+    // the bytes are not that image type): show the upload message instead of the generic 500 error page.
+    if (isMediaTypeRejection(error)) {
+      redirect(appendQueryParams(returnTo, { uploadError: "invalid-file-content" }));
     }
     throw error;
   }

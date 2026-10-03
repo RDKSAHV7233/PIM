@@ -398,6 +398,12 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
           </div>
         ) : null}
 
+        {uploadError === "invalid-file-content" ? (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            This file was not uploaded: its contents do not match a supported image (JPG, PNG, WebP, or GIF). Please choose a real image file.
+          </div>
+        ) : null}
+
         {assetsResult.state === "restricted" ? (
           <MediaStatusState
             title="Media asset feed is restricted"
