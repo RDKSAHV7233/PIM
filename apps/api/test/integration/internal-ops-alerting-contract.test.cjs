@@ -69,6 +69,17 @@ function run() {
     service.includes("OPS_ALERT_SECONDARY_WEBHOOK_URL"),
     "An optional secondary human destination must exist independent of the legacy sink.",
   );
+  // INC-93-S11: a direct email (Resend over HTTPS, sent straight from the alert service) is a human destination,
+  // and must not go through the BullMQ/auth-email pipeline (circular dependency with the auth-email failure alert).
+  assert(
+    service.includes('this.attemptDelivery("email"') && service.includes("deliverEmailAlert"),
+    "A direct email human destination must exist in the delivery chain.",
+  );
+  assert(
+    service.includes("https://api.resend.com/emails") && !/AuthEmailService|auth-email\.service/.test(service),
+    "Alert email must call Resend directly, not the auth-email pipeline.",
+  );
+
   assert(
     !service.includes("Internal ops alert destination returned"),
     "Legacy-sink-specific delivery-failure error text must not be the thing that gates retry.",
@@ -106,6 +117,7 @@ function run() {
           "safe_payload_allowlist",
           "legacy_sink_is_diagnostic_only",
           "secondary_human_destination_supported",
+          "direct_email_human_destination_supported",
         ],
         checkedAt: new Date().toISOString(),
       },

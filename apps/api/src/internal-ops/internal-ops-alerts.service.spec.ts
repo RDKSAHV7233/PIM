@@ -43,6 +43,11 @@ describe("InternalOpsAlertsService", () => {
       ERROR_AUTHORITY_RELEASE: "test-sha",
       OPS_ALERT_WEBHOOK_URL: "http://localhost:3999/ops-alerts",
       PIM_WEB_BASE_URL: "https://ops.vexa.test",
+      AUTH_EMAIL_RESEND_API_KEY: undefined,
+      OPS_ALERT_EMAIL_RESEND_API_KEY: undefined,
+      OPS_ALERT_EMAIL_FROM: undefined,
+      OPS_ALERT_EMAIL_TO: undefined,
+      OPS_ALERT_EMAIL_DISABLED: undefined,
     };
   });
 
@@ -866,5 +871,233 @@ describe("InternalOpsAlertsService", () => {
     ]);
 
     expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("InternalOpsAlertsService direct email destination (INC-93-S11)", () => {
+  const RESEND_URL = "https://api.resend.com/emails";
+  const SLACK_URL = "https://hooks.slack.com/services/T000/B000/XXXX";
+  const KEY = "re_test_key_do_not_log_123";
+  const p1Alert = {
+    envelope: {
+      version: 1,
+      alertType: "error_authority_new_p0p1_issue",
+      severity: "p1",
+      environment: "production",
+      release: "abc123",
+      observedAt: "2026-10-03T07:09:38.000Z",
+      internalUrl: "https://ops.vexa.test/internal/ops/errors",
+      issueId: "iss_42",
+      alertId: "alert-1",
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env = {
+      ...ORIGINAL_ENV,
+      APP_ENV: "test",
+      ERROR_AUTHORITY_RELEASE: "test-sha",
+      OPS_ALERT_WEBHOOK_URL: "http://localhost:3999/ops-alerts",
+      PIM_WEB_BASE_URL: "https://ops.vexa.test",
+      OPS_ALERT_SLACK_WEBHOOK_URL: undefined,
+      OPS_ALERT_SECONDARY_WEBHOOK_URL: undefined,
+      AUTH_EMAIL_RESEND_API_KEY: KEY,
+      OPS_ALERT_EMAIL_RESEND_API_KEY: undefined,
+      OPS_ALERT_EMAIL_FROM: undefined,
+      OPS_ALERT_EMAIL_TO: undefined,
+      OPS_ALERT_EMAIL_DISABLED: undefined,
+      PIM_EMAIL_NOTIFICATIONS_FROM: undefined,
+      PIM_EMAIL_TEAM_EMAIL: undefined,
+    };
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+    jest.restoreAllMocks();
+  });
+
+  function runHandler(fetchImpl: (url: string, init?: RequestInit) => Promise<Partial<Response>>) {
+    const { service, queueService, logger } = makeService();
+    const fetchMock = jest.spyOn(global, "fetch").mockImplementation(fetchImpl as never);
+    service.onModuleInit();
+    const handler = queueService.processWithBackpressure.mock.calls[0][2] as (payload: unknown) => Promise<void>;
+    return { handler, fetchMock, logger };
+  }
+  const ok = { ok: true, status: 200 };
+  const resendBody = (fetchMock: jest.SpyInstance) =>
+    JSON.parse(String((fetchMock.mock.calls.find(([url]) => url === RESEND_URL)?.[1] as RequestInit).body));
+
+  it("with no Slack configured, a P1 alert is emailed from notifications@ to team@ and counts as human delivery", async () => {
+    const { handler, fetchMock, logger } = runHandler(async () => ok);
+    await expect(handler(p1Alert)).resolves.toBeUndefined();
+
+    const resendCall = fetchMock.mock.calls.find(([url]) => url === RESEND_URL);
+    expect(resendCall).toBeDefined();
+    const init = resendCall?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer " + KEY);
+    const body = resendBody(fetchMock);
+    expect(body.from).toBe("Vexa PIM Alerts <notifications@vexapim.com>");
+    expect(body.to).toEqual(["team@vexapim.com"]);
+    expect(body.subject).toMatch(/^\[P1\] Vexa PIM alert \(production\): New P1 issue in production/);
+    expect(body.text).toContain("iss_42");
+    expect(body.text).toContain("https://ops.vexa.test/internal/ops/errors");
+    expect(body.text).toContain("Alert id: alert-1");
+    expect(body.text).not.toMatch(/:rotating_light:|<https?:/);
+    expect(body.text).not.toContain(String.fromCharCode(96));
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Internal ops alert delivery attempted.",
+      expect.objectContaining({
+        humanDelivered: true,
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ destination: "slack", result: "skipped_not_configured" }),
+          expect.objectContaining({ destination: "email", result: "success", statusCode: 200 }),
+        ]),
+      }),
+    );
+    // the API key must never reach a log line
+    expect(JSON.stringify([logger.info.mock.calls, logger.warn.mock.calls, logger.error.mock.calls])).not.toContain(KEY);
+  });
+
+  it("honours sender and recipient overrides and drops invalid recipient entries", async () => {
+    process.env.OPS_ALERT_EMAIL_FROM = "alerts@vexapim.com";
+    process.env.OPS_ALERT_EMAIL_TO = "oncall@vexapim.com, second@vexapim.com, not-an-email, ";
+    const { handler, fetchMock } = runHandler(async () => ok);
+    await handler(p1Alert);
+    const body = resendBody(fetchMock);
+    expect(body.from).toBe("Vexa PIM Alerts <alerts@vexapim.com>");
+    expect(body.to).toEqual(["oncall@vexapim.com", "second@vexapim.com"]);
+  });
+
+  it("OPS_ALERT_EMAIL_RESEND_API_KEY overrides the auth-email key", async () => {
+    process.env.OPS_ALERT_EMAIL_RESEND_API_KEY = "re_ops_only_key";
+    const { handler, fetchMock } = runHandler(async () => ok);
+    await handler(p1Alert);
+    const init = fetchMock.mock.calls.find(([url]) => url === RESEND_URL)?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer re_ops_only_key");
+  });
+
+  it("is a fallback only: when Slack delivers, no email is sent", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = SLACK_URL;
+    const { handler, fetchMock } = runHandler(async () => ok);
+    await handler(p1Alert);
+    expect(fetchMock.mock.calls.some(([url]) => url === RESEND_URL)).toBe(false);
+  });
+
+  it("emails when Slack is configured but fails", async () => {
+    process.env.OPS_ALERT_SLACK_WEBHOOK_URL = SLACK_URL;
+    const { handler, fetchMock, logger } = runHandler(async (url) => (url === SLACK_URL ? { ok: false, status: 500 } : ok));
+    await expect(handler(p1Alert)).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls.some(([url]) => url === RESEND_URL)).toBe(true);
+    expect(logger.info).toHaveBeenCalledWith(
+      "Internal ops alert delivery attempted.",
+      expect.objectContaining({
+        humanDelivered: true,
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ destination: "slack", result: "failure", statusCode: 500 }),
+          expect.objectContaining({ destination: "email", result: "success" }),
+        ]),
+      }),
+    );
+  });
+
+  it("an email failure with only the legacy sink succeeding still fails the job (legacy sink never counts)", async () => {
+    const { handler, logger } = runHandler(async (url) => (url === RESEND_URL ? { ok: false, status: 503 } : ok));
+    await expect(handler(p1Alert)).rejects.toThrow(/no human destination reachable/);
+    expect(logger.error).toHaveBeenCalledWith(
+      "ALERT DELIVERY FAILURE: no independent human destination received this alert.",
+      expect.objectContaining({
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ destination: "email", result: "failure", statusCode: 503, errorClass: "http_5xx" }),
+        ]),
+      }),
+    );
+  });
+
+  it.each([
+    ["no Resend key", { AUTH_EMAIL_RESEND_API_KEY: undefined }],
+    ["OPS_ALERT_EMAIL_DISABLED=true", { OPS_ALERT_EMAIL_DISABLED: "true" }],
+  ])("email is skipped_not_configured with %s (legacy sink alone still fails the job)", async (_label, overrides) => {
+    Object.assign(process.env, overrides);
+    const { handler, fetchMock, logger } = runHandler(async () => ok);
+    await expect(handler(p1Alert)).rejects.toThrow(/no human destination reachable/);
+    expect(fetchMock.mock.calls.some(([url]) => url === RESEND_URL)).toBe(false);
+    expect(logger.error).toHaveBeenCalledWith(
+      "ALERT DELIVERY FAILURE: no independent human destination received this alert.",
+      expect.objectContaining({
+        attempts: expect.arrayContaining([expect.objectContaining({ destination: "email", result: "skipped_not_configured" })]),
+      }),
+    );
+  });
+
+  it("an invalid sender disables email delivery with a warning instead of sending", async () => {
+    process.env.OPS_ALERT_EMAIL_FROM = "not an address";
+    const { handler, fetchMock, logger } = runHandler(async () => ok);
+    await expect(handler(p1Alert)).rejects.toThrow(/no human destination reachable/);
+    expect(fetchMock.mock.calls.some(([url]) => url === RESEND_URL)).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith("Internal ops alert email sender or recipient is invalid; email delivery disabled.");
+  });
+
+  it("falls back to the app's existing PIM_EMAIL_NOTIFICATIONS_FROM / PIM_EMAIL_TEAM_EMAIL settings, and OPS_ALERT_EMAIL_* win over them", async () => {
+    process.env.PIM_EMAIL_NOTIFICATIONS_FROM = "app-notifications@vexapim.com";
+    process.env.PIM_EMAIL_TEAM_EMAIL = "team-box@vexapim.com";
+    let run = runHandler(async () => ok);
+    await run.handler(p1Alert);
+    let body = resendBody(run.fetchMock);
+    expect(body.from).toBe("Vexa PIM Alerts <app-notifications@vexapim.com>");
+    expect(body.to).toEqual(["team-box@vexapim.com"]);
+
+    jest.restoreAllMocks();
+    process.env.OPS_ALERT_EMAIL_FROM = "ops-from@vexapim.com";
+    process.env.OPS_ALERT_EMAIL_TO = "ops-to@vexapim.com";
+    run = runHandler(async () => ok);
+    await run.handler(p1Alert);
+    body = resendBody(run.fetchMock);
+    expect(body.from).toBe("Vexa PIM Alerts <ops-from@vexapim.com>");
+    expect(body.to).toEqual(["ops-to@vexapim.com"]);
+  });
+
+  it("keeps colon-delimited fragments inside an error summary (only the leading emoji code is stripped)", async () => {
+    const { handler, fetchMock } = runHandler(async () => ok);
+    await handler({
+      envelope: {
+        version: 1,
+        alertType: "backup_job_failure",
+        severity: "p1",
+        environment: "production",
+        release: null,
+        observedAt: "2026-10-03T07:09:38.000Z",
+        internalUrl: "https://ops.vexa.test/internal/ops",
+        workflowName: "nightly-backup",
+        database: "postgres",
+        errorSummary: "pg_dump: error: connection:refused: host unreachable",
+      },
+    });
+    const body = resendBody(fetchMock);
+    expect(body.text).toContain("pg_dump: error: connection:refused: host unreachable");
+    expect(body.text).not.toMatch(/:rotating_light:/);
+  });
+
+  it("renders other alert types as plain text without Slack markup", async () => {
+    const { handler, fetchMock } = runHandler(async () => ok);
+    await handler({
+      envelope: {
+        version: 1,
+        alertType: "stuck_jobs_threshold_exceeded",
+        severity: "p1",
+        environment: "production",
+        release: null,
+        observedAt: "2026-10-03T07:09:38.000Z",
+        internalUrl: "https://ops.vexa.test/internal/ops",
+        stuckCount: 5,
+        stuckAgeThresholdHours: 6,
+      },
+    });
+    const body = resendBody(fetchMock);
+    expect(body.text).toContain("5 job(s) stuck for over 6h in production");
+    expect(body.text).toContain("View stuck jobs (https://ops.vexa.test/internal/ops)");
+    expect(body.text).not.toMatch(/:warning:|<https?:/);
+    expect(body.subject.length).toBeLessThanOrEqual(180);
   });
 });

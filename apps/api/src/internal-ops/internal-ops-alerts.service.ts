@@ -48,7 +48,7 @@ export type InternalOpsAlertEnvelope = {
 // pre-existing, unsourced Railway sink (see issue #921) — kept only as a temporary,
 // best-effort diagnostic while it's being decommissioned. It never counts toward
 // human-delivered status and its failure never triggers a retry.
-type OpsAlertDestination = "slack" | "secondary" | "legacy_sink";
+type OpsAlertDestination = "slack" | "secondary" | "email" | "legacy_sink";
 type OpsAlertDeliveryOutcome = "success" | "failure" | "skipped_not_configured";
 
 type OpsAlertDeliveryAttempt = {
@@ -94,6 +94,13 @@ type InternalOpsQueuePort = {
 
 const OPS_ALERT_VERSION = 1;
 const OPS_ALERT_WEBHOOK_TIMEOUT_MS = 10_000;
+// Direct-email human destination (INC-93-S11). Sent straight to Resend over HTTPS, NOT through the BullMQ /
+// auth-email pipeline: that pipeline can itself raise auth_email_job_failure_threshold_exceeded, so using it
+// would make the alert depend on the very thing it may be reporting (see resolveSecondaryWebhookUrl).
+const OPS_ALERT_EMAIL_RESEND_URL = "https://api.resend.com/emails";
+const OPS_ALERT_EMAIL_DEFAULT_FROM = "notifications@vexapim.com";
+const OPS_ALERT_EMAIL_DEFAULT_TO = "team@vexapim.com";
+const OPS_ALERT_EMAIL_ADDRESS_PATTERN = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 const OPS_ALERT_INITIAL_DELAY_MS = 2 * 60 * 1000;
 const OPS_ALERT_STUCK_EVALUATION_INTERVAL_MS = 5 * 60 * 1000;
 const OPS_ALERT_STUCK_COOLDOWN_MS = 6 * 60 * 60 * 1000;
@@ -811,11 +818,11 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
     }
   }
 
-  // #921 canonical delivery: Slack is the required human destination; an optional
-  // secondary human destination is attempted only if Slack fails (kept as a fallback,
-  // not a duplicate notification on every alert); the legacy sink is a temporary,
-  // best-effort diagnostic that never counts toward "a human saw this" and is safe to
-  // remove entirely (see issue #921's canonical invariant and acceptance criteria).
+  // #921 canonical delivery, extended by INC-93-S11: the human destinations are Slack, an optional
+  // secondary webhook and a direct email (notifications@ -> team@ by default). Each is attempted only
+  // if the ones before it did not deliver (a fallback chain, not a duplicate notification on every
+  // alert). The legacy sink is a temporary, best-effort diagnostic that never counts toward "a human
+  // saw this" and is safe to remove entirely (see issue #921's canonical invariant).
   private async deliverAlert(envelope: InternalOpsAlertEnvelope): Promise<void> {
     const alertId = envelope.alertId ?? randomUUID();
     const attempts: OpsAlertDeliveryAttempt[] = [];
@@ -831,6 +838,12 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       );
       attempts.push(secondaryAttempt);
       humanDelivered = secondaryAttempt.result === "success";
+    }
+
+    if (!humanDelivered) {
+      const emailAttempt = await this.attemptDelivery("email", () => this.deliverEmailAlert(envelope));
+      attempts.push(emailAttempt);
+      humanDelivered = emailAttempt.result === "success";
     }
 
     const legacyAttempt = await this.attemptDelivery("legacy_sink", () => this.deliverLegacySinkAlert(envelope));
@@ -914,6 +927,82 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
       throw new OpsAlertDeliveryHttpError(response.status);
     }
     return { skipped: false, statusCode: response.status };
+  }
+
+  private async deliverEmailAlert(envelope: InternalOpsAlertEnvelope): Promise<{ skipped: boolean; statusCode?: number }> {
+    const config = this.resolveEmailAlertConfig();
+    if (!config) {
+      return { skipped: true };
+    }
+
+    const { subject, text } = this.buildAlertEmail(envelope);
+    const response = await fetch(OPS_ALERT_EMAIL_RESEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({ from: config.from, to: config.to, subject, text }),
+      signal: AbortSignal.timeout(OPS_ALERT_WEBHOOK_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new OpsAlertDeliveryHttpError(response.status);
+    }
+    return { skipped: false, statusCode: response.status };
+  }
+
+  /**
+   * Direct-email configuration, or null when email alerting is off. The Resend key is the one already used for
+   * auth email (AUTH_EMAIL_RESEND_API_KEY) unless OPS_ALERT_EMAIL_RESEND_API_KEY overrides it; with no key, or
+   * with OPS_ALERT_EMAIL_DISABLED=true, the destination is skipped_not_configured. Never logged.
+   */
+  private resolveEmailAlertConfig(): { apiKey: string; from: string; to: string[] } | null {
+    if (String(process.env.OPS_ALERT_EMAIL_DISABLED ?? "").trim().toLowerCase() === "true") {
+      return null;
+    }
+    const apiKey = String(process.env.OPS_ALERT_EMAIL_RESEND_API_KEY ?? process.env.AUTH_EMAIL_RESEND_API_KEY ?? "").trim();
+    if (!apiKey) {
+      return null;
+    }
+    const fromAddress = String(
+      process.env.OPS_ALERT_EMAIL_FROM ?? process.env.PIM_EMAIL_NOTIFICATIONS_FROM ?? OPS_ALERT_EMAIL_DEFAULT_FROM,
+    ).trim();
+    const recipients = String(process.env.OPS_ALERT_EMAIL_TO ?? process.env.PIM_EMAIL_TEAM_EMAIL ?? OPS_ALERT_EMAIL_DEFAULT_TO)
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => OPS_ALERT_EMAIL_ADDRESS_PATTERN.test(value));
+    if (!OPS_ALERT_EMAIL_ADDRESS_PATTERN.test(fromAddress) || recipients.length === 0) {
+      this.logger.warn("Internal ops alert email sender or recipient is invalid; email delivery disabled.");
+      return null;
+    }
+    return { apiKey, from: `Vexa PIM Alerts <${fromAddress}>`, to: recipients };
+  }
+
+  private buildAlertEmail(envelope: InternalOpsAlertEnvelope): { subject: string; text: string } {
+    const summary = this.slackTextToPlain(this.buildSlackMessageText(envelope));
+    const severityLabel = envelope.severity.toUpperCase();
+    // The summary already starts with "[P1] "; keep the severity only once, in the subject prefix.
+    const headline = summary.replace(/^\[[A-Za-z0-9]+\]\s*/, "").split(/[.:]\s/)[0];
+    const subject = `[${severityLabel}] Vexa PIM alert (${envelope.environment}): ${headline}`.slice(0, 180);
+    const details = [
+      `Alert: ${envelope.alertType}`,
+      `Severity: ${severityLabel}`,
+      `Environment: ${envelope.environment}`,
+      `Release: ${envelope.release ?? "unknown"}`,
+      `Observed at: ${envelope.observedAt}`,
+      `Details: ${envelope.internalUrl}`,
+      ...(envelope.alertId ? [`Alert id: ${envelope.alertId}`] : []),
+    ];
+    return { subject, text: `${summary}\n\n${details.join("\n")}\n` };
+  }
+
+  /**
+   * Slack mrkdwn -> plain text for email: drops the LEADING :emoji: code (only at the start, so ":word:" fragments inside
+   * an error summary survive), drops backticks/asterisks, and turns <url|label> into "label (url)".
+   */
+  private slackTextToPlain(value: string): string {
+    return value
+      .replace(/^:[a-z_]+:\s*/, "")
+      .replace(/<([^|>]+)\|([^>]+)>/g, "$2 ($1)")
+      .replace(/[`*]/g, "")
+      .trim();
   }
 
   private async deliverLegacySinkAlert(envelope: InternalOpsAlertEnvelope): Promise<{ skipped: boolean; statusCode?: number }> {

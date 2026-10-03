@@ -92,6 +92,10 @@ export interface ValidatedEnv {
   OPS_ALERT_WEBHOOK_URL?: string;
   OPS_ALERT_SLACK_WEBHOOK_URL?: string;
   OPS_ALERT_SECONDARY_WEBHOOK_URL?: string;
+  OPS_ALERT_EMAIL_DISABLED?: string;
+  OPS_ALERT_EMAIL_FROM?: string;
+  OPS_ALERT_EMAIL_TO?: string;
+  OPS_ALERT_EMAIL_RESEND_API_KEY?: string;
   SENTRY_DSN?: string;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
 }
@@ -221,6 +225,10 @@ const EnvSchema = z.object({
   OPS_ALERT_WEBHOOK_URL: OptionalTrimmedText,
   OPS_ALERT_SLACK_WEBHOOK_URL: OptionalTrimmedText,
   OPS_ALERT_SECONDARY_WEBHOOK_URL: OptionalTrimmedText,
+  OPS_ALERT_EMAIL_DISABLED: OptionalTrimmedText,
+  OPS_ALERT_EMAIL_FROM: OptionalTrimmedText,
+  OPS_ALERT_EMAIL_TO: OptionalTrimmedText,
+  OPS_ALERT_EMAIL_RESEND_API_KEY: OptionalTrimmedText,
   SENTRY_DSN: z.string().url().optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
