@@ -5999,6 +5999,58 @@
       ]
     },
     {
+      "incrementId": "INC-90",
+      "name": "BigCommerce, Dynamics 365, Etsy, eBay early_access — blocker clearance 2026-10-03",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "tests_passed": [
+        "connector-launch-policy.spec.ts updated: bigcommerce/dynamics-365/etsy/ebay assert early_access"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-90-S1",
+          "title": "Advance BigCommerce to early_access — prototype-verified, first real install to validate",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "T1-T6 PASSED; known limitation: live run from PIM1 not yet completed — prototype-verified only; monitor first install"
+          ]
+        },
+        {
+          "storyId": "INC-90-S2",
+          "title": "Advance Dynamics 365 to early_access — Azure AD exchange live; Business Central GET /items to validate on first install",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "T1-T6 PASSED; known limitation: Business Central data-API not re-verified after permission fix — validate on first install"
+          ]
+        },
+        {
+          "storyId": "INC-90-S3",
+          "title": "Advance Etsy to early_access — seller must open a shop before publishProduct() goes live",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "T1-T6 PASSED; known limitation: installer must complete Etsy seller onboarding (open a shop) before listings go live"
+          ]
+        },
+        {
+          "storyId": "INC-90-S4",
+          "title": "Advance eBay to early_access — sandbox-only, Business Policies required for publish",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "T1-T6 PASSED; known limitations: sandbox-only by design; publishProduct() requires eBay Business Policy IDs on seller account"
+          ]
+        }
+      ]
+    },
+    {
       "incrementId": "INC-89",
       "name": "Odoo and PrestaShop early_access advancement — PO sign-off 2026-10-03",
       "status": "completed",

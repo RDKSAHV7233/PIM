@@ -228,55 +228,60 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
-  describe("etsy", () => {
-    it("is po_review after QA fix (PR #947) and required-team authorization (2026-10-03)", () => {
-      const policy = resolveConnectorLaunchPolicy("etsy", allCaps);
-      expect(policy.launchStage).toBe("po_review");
-      expect(isInstallableStage(policy.launchStage)).toBe(true);
-    });
-
-    it("REGRESSION GUARD: etsy is no longer under_development", () => {
-      const policy = resolveConnectorLaunchPolicy("etsy", allCaps);
-      expect(policy.launchStage).not.toBe("under_development");
-    });
-  });
-
-  describe("ebay", () => {
-    it("is po_review after QA fix (PR #936) and required-team authorization (2026-10-03)", () => {
-      const policy = resolveConnectorLaunchPolicy("ebay", allCaps);
-      expect(policy.launchStage).toBe("po_review");
-      expect(isInstallableStage(policy.launchStage)).toBe(true);
-    });
-
-    it("REGRESSION GUARD: ebay is no longer under_development", () => {
-      const policy = resolveConnectorLaunchPolicy("ebay", allCaps);
-      expect(policy.launchStage).not.toBe("under_development");
-    });
-  });
 
   describe("bigcommerce", () => {
-    it("is po_review after QA fix (PR #949) and required-team authorization (2026-10-03)", () => {
+    it("is early_access after required-team blocker clearance (2026-10-03, INC-90)", () => {
       const policy = resolveConnectorLaunchPolicy("bigcommerce", allCaps);
-      expect(policy.launchStage).toBe("po_review");
+      expect(policy.launchStage).toBe("early_access");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 
-    it("REGRESSION GUARD: bigcommerce is no longer under_development", () => {
+    it("REGRESSION GUARD: bigcommerce is no longer under_development or po_review", () => {
       const policy = resolveConnectorLaunchPolicy("bigcommerce", allCaps);
       expect(policy.launchStage).not.toBe("under_development");
+      expect(policy.launchStage).not.toBe("po_review");
     });
   });
 
   describe("dynamics-365", () => {
-    it("is po_review after QA tests (PR #948) and required-team authorization (2026-10-03)", () => {
+    it("is early_access after required-team blocker clearance (2026-10-03, INC-90)", () => {
       const policy = resolveConnectorLaunchPolicy("dynamics-365", allCaps);
-      expect(policy.launchStage).toBe("po_review");
+      expect(policy.launchStage).toBe("early_access");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 
-    it("REGRESSION GUARD: dynamics-365 is no longer under_development", () => {
+    it("REGRESSION GUARD: dynamics-365 is no longer under_development or po_review", () => {
       const policy = resolveConnectorLaunchPolicy("dynamics-365", allCaps);
       expect(policy.launchStage).not.toBe("under_development");
+      expect(policy.launchStage).not.toBe("po_review");
+    });
+  });
+
+  describe("etsy", () => {
+    it("is early_access after required-team blocker clearance (2026-10-03, INC-90)", () => {
+      const policy = resolveConnectorLaunchPolicy("etsy", allCaps);
+      expect(policy.launchStage).toBe("early_access");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: etsy is no longer under_development or po_review", () => {
+      const policy = resolveConnectorLaunchPolicy("etsy", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+      expect(policy.launchStage).not.toBe("po_review");
+    });
+  });
+
+  describe("ebay", () => {
+    it("is early_access after required-team blocker clearance (2026-10-03, INC-90) — sandbox-only known limitation", () => {
+      const policy = resolveConnectorLaunchPolicy("ebay", allCaps);
+      expect(policy.launchStage).toBe("early_access");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: ebay is no longer under_development or po_review", () => {
+      const policy = resolveConnectorLaunchPolicy("ebay", allCaps);
+      expect(policy.launchStage).not.toBe("under_development");
+      expect(policy.launchStage).not.toBe("po_review");
     });
   });
 });

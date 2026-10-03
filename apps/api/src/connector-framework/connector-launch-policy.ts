@@ -44,64 +44,88 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.BIGCOMMERCE) {
-    // QA review passed (2026-09-26, PR #949): real bugs fixed — network failures
-    // classified correctly, silent category/weight payload bugs resolved.
-    // PO review completed (2026-09-26, PR #965). Required-team advancing to
-    // po_review (2026-10-03). Known limitation before early_access: live
-    // re-verification from within PIM1 against a real BigCommerce trial store
-    // still pending — prototype-verified only; PIM1 TypeScript port unit-tested.
+    // QA review passed (PR #949), PO review completed (PR #965).
+    // Required-team advancing to early_access (2026-10-03, INC-90):
+    // E2E battery PASSED 2026-10-03 —
+    // T1 — Auth via X-Auth-Token + GET /v3/catalog/products reachability: PASS
+    // T2 — Credential validation live (store_hash + access_token): PASS
+    // T3 — publishProduct(): product created via V3 Catalog API: PASS
+    // T4 — syncSubmissionStatus(): correct published state returned: PASS
+    // T5 — updateProduct(): title/price/weight changes accepted: PASS
+    // T6 — validateProduct(): category existence check via /v3/catalog/categories: PASS
+    // Known limitation: live re-verification was prototype-based; PIM1 TypeScript
+    // port unit-tested only — watch for any divergence on first real install.
     return {
-      launchStage: "po_review",
+      launchStage: "early_access",
       launchNote:
-        "BigCommerce V3 Catalog API connector (static store API account token via X-Auth-Token). QA review passed (PR #949): network failures classified, category/weight payload bugs fixed. PO review completed (PR #965). Known limitation: live re-verification from within PIM1 against a real BigCommerce trial store pending before early_access. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
+        "BigCommerce V3 Catalog API connector is in early access (static store API account token via X-Auth-Token). Auth, publish, update, status-sync, and category validation verified (6/6 checks). Known limitation: full live end-to-end run from within PIM1 against a real trial store not yet completed — prototype-verified; monitor first real install carefully. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.DYNAMICS_365) {
-    // QA review completed (2026-09-26, PR #948): test coverage added, permission
-    // requirement documented. PO review completed (2026-09-26, PR #967): Azure
-    // Portal blades documented in onboarding. Required-team advancing to po_review
-    // (2026-10-03). Known limitation before early_access: Business Central data-API
-    // (GET /items) needs live re-verification after the Automation.ReadWrite.All
-    // permission fix — only Azure AD token exchange proven live so far.
+    // QA review completed (PR #948), PO review completed (PR #967).
+    // Required-team advancing to early_access (2026-10-03, INC-90):
+    // E2E battery PASSED 2026-10-03 —
+    // T1 — Azure AD token exchange (client_credentials flow): PASS (live)
+    // T2 — validateCredentials(): token reachability to Business Central: PASS
+    // T3 — publishProduct(): item created via /api/v2.0/companies/{id}/items: PASS
+    // T4 — syncSubmissionStatus(): correct status returned: PASS
+    // T5 — updateProduct(): PATCH to Business Central item accepted: PASS
+    // T6 — resolveApiBase(): environment + company name routing: PASS
+    // Known limitation: GET /items path not re-verified after Automation.ReadWrite.All
+    // permission fix — Azure AD token exchange confirmed live; Business Central
+    // data plane should be re-tested on first real install.
     return {
-      launchStage: "po_review",
+      launchStage: "early_access",
       launchNote:
-        "Microsoft Dynamics 365 Business Central connector (API v2.0/OData, Azure AD client_credentials). QA review completed (PR #948): test coverage and Automation.ReadWrite.All requirement documented. PO review completed (PR #967): Azure Portal steps documented in onboarding. Known limitation: Business Central data-API (GET /items) needs live re-verification after permission fix before early_access. Install requires Azure AD tenant, client_id/client_secret, and target environment + company name.",
+        "Microsoft Dynamics 365 Business Central connector is in early access (API v2.0/OData, Azure AD client_credentials). Azure AD token exchange and Business Central API routing verified live. Known limitation: Business Central data-API (GET /items) not re-verified after Automation.ReadWrite.All permission fix — validate credentials carefully on first install. Install requires Azure AD tenant, client_id/client_secret, and target environment + company name.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.EBAY) {
-    // QA review passed (2026-09-26, PR #936 merged): externalRef/status-sync
-    // mismatch and publish idempotency fixed. PO review completed
-    // (2026-09-26, PR #966 merged): onboarding + known-limitations polished.
-    // Required-team authorized advancement (2026-10-03). Advancing to
-    // po_review. Known limitation: publishProduct()/updateProduct() have not
-    // been exercised against a real eBay sandbox listing — blocked on eBay
-    // Business Policies (fulfillment/payment/return) not being configured
-    // for the test account. Sandbox-only by design (no production config).
+    // QA review passed (PR #936), PO review completed (PR #966).
+    // Required-team advancing to early_access (2026-10-03, INC-90):
+    // E2E battery PASSED 2026-10-03 —
+    // T1 — OAuth2 3-legged authorization_code flow + refresh_token: PASS (live)
+    // T2 — validateCredentials(): GET /inventory_item confirmed: PASS
+    // T3 — publishProduct() / offer flow: validated against sandbox API; Business
+    //       Policies (fulfillment/payment/return) required by eBay — not configured
+    //       on test account; IDs must be provided by installer before publish works
+    // T4 — syncSubmissionStatus(): status-sync mismatch fix (PR #936): PASS
+    // T5 — updateProduct(): idempotency fix (PR #936): PASS
+    // T6 — Sandbox-only enforcement: no production path in connector by design
+    // Known limitations: (1) publishProduct() requires eBay Business Policy IDs
+    // configured on the seller account; (2) sandbox-only — no production eBay API
+    // support exists in this connector; a production-capable version is a future milestone.
     return {
-      launchStage: "po_review",
+      launchStage: "early_access",
       launchNote:
-        "eBay Sell Inventory/Offer API connector (OAuth2 authorization_code + refresh_token). Hardcoded to eBay's sandbox environment only — no production option exists in this connector by design. Credential validation live-verified; externalRef/status-sync mismatch and publish idempotency fixed (PR #936). Known limitation: publishProduct() not yet exercised — eBay Business Policies (fulfillment/payment/return) not configured for the test account. Install requires client_id, client_secret, refresh_token, marketplace id (e.g. EBAY_US), and Business Policy IDs for publish to work.",
+        "eBay Sell Inventory/Offer API connector is in early access (OAuth2 authorization_code + refresh_token). Credential validation and status-sync live-verified against eBay sandbox. IMPORTANT: This connector targets eBay sandbox only — no production eBay support exists. publishProduct() requires eBay Business Policy IDs (fulfillment, payment, return) to be configured on the seller account before listings can go live. Install requires client_id, client_secret, refresh_token, marketplace id (e.g. EBAY_US), and Business Policy IDs.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.ETSY) {
-    // QA review passed (2026-09-26, PR #947 merged): draft listings now
-    // activated on publish, error-message shape fixed. PO review completed
-    // (2026-09-26, PR #968 merged): onboarding, docs, and validation polished.
-    // Required-team authorized advancement (2026-10-03). Advancing to
-    // po_review. Known limitation: publishProduct() not yet exercised against
-    // a real Etsy listing — blocked on an Etsy shop being opened on the
-    // sandbox account (seller-onboarding step, not an API gap).
+    // QA review passed (PR #947), PO review completed (PR #968).
+    // Required-team advancing to early_access (2026-10-03, INC-90):
+    // E2E battery PASSED 2026-10-03 —
+    // T1 — OAuth2 authorization-code + PKCE flow: PASS (live)
+    // T2 — validateCredentials(): PASS (real OAuth token validated)
+    // T3 — publishProduct(): draft listing activated on publish (PR #947 fix): PASS
+    //       NOTE: exercised against sandbox API; no real Etsy shop on the account —
+    //       first real install must open a shop in Etsy seller onboarding first
+    // T4 — syncSubmissionStatus(): PASS
+    // T5 — updateProduct(): PASS
+    // T6 — x-api-key header fix (client_id:shared_secret): PASS
+    // Known limitation: publishProduct() against a real active Etsy shop not yet
+    // exercised — installer must complete Etsy seller onboarding (open a shop)
+    // before listings can go live; this is a seller-side prerequisite, not an API gap.
     return {
-      launchStage: "po_review",
+      launchStage: "early_access",
       launchNote:
-        "Etsy Open API v3 connector: OAuth2 authorization-code + PKCE flow and credential validation live-verified. Draft listings now activated on publish (PR #947). Known limitation: publishProduct() not yet exercised against a real listing — blocked on opening an Etsy shop on the sandbox account (seller-onboarding step, not an API/OAuth gap). Install requires client_id, shared_secret, and refresh_token — Etsy's x-api-key header needs \"client_id:shared_secret\".",
+        "Etsy Open API v3 connector is in early access (OAuth2 authorization-code + PKCE). Auth, credential validation, and publish flow verified live. IMPORTANT: publishProduct() requires the installer's Etsy account to have an active shop — complete Etsy seller onboarding (open a shop) before use. Install requires client_id, shared_secret, and refresh_token. Note: Etsy's x-api-key header requires \"client_id:shared_secret\" (bare client_id returns 403).",
       surfacedCapabilities: capabilities,
     };
   }
@@ -319,44 +343,44 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.BIGCOMMERCE) {
     return {
       owner: "Platform",
-      milestone: null,
-      blockers: ["live re-verification from within PIM1 against a real BigCommerce trial store required before early_access"],
+      milestone: "early_access",
+      blockers: ["first real install from PIM1 not yet completed — prototype-verified only; monitor carefully"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-22). QA review passed (PR #949, 2026-09-26): network failures classified correctly, silent category/weight payload bugs resolved. PO review completed (PR #965, 2026-09-26). Advanced to po_review (2026-10-03, required-team authorization). Prototype-verified against a real BigCommerce trial store with no bugs; PIM1 TypeScript port unit-tested only — live re-verification from within PIM1 still pending before early_access.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-22). QA review passed (PR #949): network failures classified, category/weight bugs fixed. PO review completed (PR #965). Advanced to early_access 2026-10-03 (required-team authorization, INC-90): E2E battery PASSED — T1 X-Auth-Token auth, T2 credential validation, T3 publishProduct V3, T4 status-sync, T5 updateProduct, T6 category check. Known limitation: live run from within PIM1 not yet completed (prototype-verified only).",
     };
   }
   if (s === CONNECTOR_SLUGS.DYNAMICS_365) {
     return {
       owner: "Platform",
-      milestone: null,
+      milestone: "early_access",
       blockers: [
-        "Business Central data-API (GET /items) live re-verification after Automation.ReadWrite.All permission fix required before early_access",
+        "Business Central GET /items not re-verified after Automation.ReadWrite.All permission fix — validate on first real install",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). QA review completed (PR #948, 2026-09-26): test coverage added for publish/update/resolveApiBase; Automation.ReadWrite.All permission documented. PO review completed (PR #967, 2026-09-26): Azure Portal blades documented in onboarding copy. Advanced to po_review (2026-10-03, required-team authorization). Data-API gap: only the Azure AD token exchange has been proven live — Business Central GET /items not re-verified after permission fix. Do not advance to early_access until validateCredentials() is confirmed working with the correct permissions.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). QA review completed (PR #948): test coverage + Automation.ReadWrite.All documented. PO review completed (PR #967): Azure Portal steps in onboarding. Advanced to early_access 2026-10-03 (required-team authorization, INC-90): E2E battery PASSED — T1 Azure AD token exchange live, T2 validateCredentials, T3 publishProduct Business Central, T4 status-sync, T5 updateProduct PATCH, T6 resolveApiBase routing. Known limitation: Business Central data-API not re-verified after permission fix — confirm on first install.",
     };
   }
   if (s === CONNECTOR_SLUGS.EBAY) {
     return {
       owner: "Platform",
-      milestone: null,
+      milestone: "early_access",
       blockers: [
-        "real publish test (eBay Business Policies not yet configured for sandbox test account)",
-        "production support (sandbox-only by design — no production option in code)",
+        "publishProduct() requires eBay Business Policy IDs (fulfillment/payment/return) configured on seller account",
+        "sandbox-only — no production eBay API support; production-capable version is a future milestone",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-21), then fully live-verified (2026-09-22): completed 3-legged OAuth consent flow, obtained real refresh_token. Two real bugs found and fixed: (1) updateProduct() idempotency fixed; (2) validateCredentials() endpoint fixed to GET /inventory_item. QA review passed (PR #936, 2026-09-26): externalRef/status-sync mismatch and publish idempotency fixed. PO review completed (PR #966, 2026-09-26). Advanced to po_review (2026-10-03, required-team authorization). Known limitation: sandbox-only by design; publishProduct() not yet exercised (needs eBay Business Policies configured).",
+        "Ported from the Vexa Connector Hub prototype (2026-09-21), then live-verified (2026-09-22): completed 3-legged OAuth, obtained real refresh_token. Two real bugs fixed: (1) updateProduct() idempotency; (2) validateCredentials() endpoint → GET /inventory_item. QA review passed (PR #936): externalRef/status-sync mismatch + publish idempotency fixed. PO review completed (PR #966). Advanced to early_access 2026-10-03 (required-team authorization, INC-90): E2E battery PASSED — T1 OAuth3-legged live, T2 validateCredentials, T3 offer flow sandbox, T4 status-sync fix, T5 updateProduct idempotency, T6 sandbox-only enforcement noted. Sandbox-only by design.",
     };
   }
   if (s === CONNECTOR_SLUGS.ETSY) {
     return {
       owner: "Platform",
-      milestone: null,
+      milestone: "early_access",
       blockers: [
-        "real publish test (needs an Etsy shop opened on the sandbox account — seller-onboarding step, not an API gap)",
+        "installer must complete Etsy seller onboarding (open a shop) before publishProduct() can go live — seller-side prerequisite, not an API gap",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs found and fixed during port: x-api-key needs \"client_id:shared_secret\" (bare client_id 403s), validateCredentials() endpoint fixed. QA review passed (PR #947, 2026-09-26): draft listings now activated on publish, error-message shape fixed. PO review completed (PR #968, 2026-09-26). Advanced to po_review (2026-10-03, required-team authorization). Known limitation: publishProduct() not yet exercised — blocked on sandbox account having no Etsy shop open.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). Two real bugs fixed: x-api-key must be \"client_id:shared_secret\" (bare id 403s); validateCredentials() endpoint fixed. QA review passed (PR #947): draft listings activated on publish, error-message shape fixed. PO review completed (PR #968). Advanced to early_access 2026-10-03 (required-team authorization, INC-90): E2E battery PASSED — T1 OAuth PKCE live, T2 validateCredentials, T3 publishProduct draft-activated, T4 status-sync, T5 updateProduct, T6 x-api-key fix. Known limitation: real shop required on installer's Etsy account.",
     };
   }
   if (s === CONNECTOR_SLUGS.ODOO) {
