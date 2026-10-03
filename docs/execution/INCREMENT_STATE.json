@@ -6301,10 +6301,10 @@
         {
           "storyId": "INC-93-S10",
           "title": "Friendly message when the API rejects an upload as not a real image (DEF-PC-023)",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "pr": 1067,
-          "commit": "pending-merge",
+          "commit": "445fd47e",
           "prTitleLabel": "INC-92-S1",
           "acceptance": [
             "API 400 mimeType rejection redirects back with a banner instead of the generic 500 page; other errors still rethrown"
@@ -6313,7 +6313,7 @@
             "media-upload-rejection-message.test.cjs",
             "web suite 200/203 (3 pre-existing failures)"
           ],
-          "pending_for_lock": "merge, then upload the fake PNG again in a signed-in session and expect the banner with the asset count unchanged"
+          "live_verified": "2026-10-03 production (deploy edd76b04, signed-in admin, approved test scope): uploading HTML bytes declared image/png now ends on /media?...uploadError=invalid-file-content with the red banner 'This file was not uploaded: its contents do not match a supported image (JPG, PNG, WebP, or GIF). Please choose a real image file.' (before: bare 500 Internal Server Error page); no asset created (asset inputs 113 unchanged), the earlier real PNG still present."
         }
       ]
     }
