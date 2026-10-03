@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ACCESS_COOKIE = "pim_access_token";
+// Forwarded to RootLayout (see lib/shell-visibility.ts, which must use the same name; a contract test pins it).
+// Declared here rather than imported because the middleware contract tests load this file in isolation.
+const PATHNAME_HEADER = "x-pim-pathname";
 const REFRESH_COOKIE = "pim_refresh_token";
 const CSRF_COOKIE = "pim_csrf_token";
 const REFRESH_THRESHOLD_SECONDS = 90;
@@ -139,6 +142,9 @@ export async function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // Set after the copy of the incoming headers so a client-supplied value never survives on routes this
+  // middleware handles.
+  requestHeaders.set(PATHNAME_HEADER, pathname);
   const nextWithHeaders = () => NextResponse.next({ request: { headers: requestHeaders } });
 
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;

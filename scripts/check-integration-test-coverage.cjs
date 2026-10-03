@@ -67,6 +67,7 @@ const CI_QUARANTINED_TESTS = [
 const GLOB_COVERED_TESTS = [
   "a11y-landmarks-and-media-labels.test.cjs",
   "account-suspended-route-contract.test.cjs",
+  "login-route-no-signed-in-shell.test.cjs",
   "admin-api-keys-route-contract.test.cjs",
   "admin-audit-route-contract.test.cjs",
   "admin-auth-policy-route-contract.test.cjs",

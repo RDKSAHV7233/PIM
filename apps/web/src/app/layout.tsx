@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { AuthenticatedShell } from "@/components/nav/authenticated-shell";
 import { BillingStatusBanner } from "@/components/nav/billing-status-banner";
 import { BrowserErrorCapture } from "@/components/error-authority/browser-error-capture";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { getServerSessionClaims } from "@/lib/server-session";
+import { PATHNAME_HEADER, isLoginRoute } from "@/lib/shell-visibility";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,7 +24,10 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const sessionClaims = await getServerSessionClaims();
+  // On /login the session is deliberately ignored: a locally valid but server-revoked token must not draw the
+  // signed-in shell around the login form (see lib/shell-visibility.ts).
+  const pathname = (await headers()).get(PATHNAME_HEADER);
+  const sessionClaims = isLoginRoute(pathname) ? null : await getServerSessionClaims();
   const hasAuthToken = Boolean(sessionClaims);
   const actorRole = sessionClaims?.role ?? "viewer";
   const assignedRoles = (sessionClaims?.assignedRoles ?? []) as string[];
