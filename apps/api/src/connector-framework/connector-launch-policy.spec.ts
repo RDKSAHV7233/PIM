@@ -158,16 +158,17 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
-  // QA validation passed (2026-09-22, PR #935 merged): duplicate-reference
-  // risk found and fixed in validateProduct(). Stage advanced from
-  // "under_development" to "po_review" — QA cleared; PO sign-off and a
-  // customer pilot remain before go-live. "po_review" IS in
-  // isInstallableStage(), making the connector installable for PO evaluation.
+  // PO sign-off cleared 2026-10-03 (required-team authorization, INC-89).
   describe("odoo", () => {
-    it("is po_review after QA validation (PR #935) and is therefore installable", () => {
+    it("is early_access after E2E battery sign-off (2026-10-03) and is therefore installable", () => {
       const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
-      expect(policy.launchStage).toBe("po_review");
+      expect(policy.launchStage).toBe("early_access");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: odoo is no longer po_review — advanced to early_access (2026-10-03)", () => {
+      const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
+      expect(policy.launchStage).not.toBe("po_review");
     });
 
     it("surfaces all capabilities", () => {
@@ -175,14 +176,32 @@ describe("resolveConnectorLaunchPolicy", () => {
       expect(policy.surfacedCapabilities).toEqual(allCaps);
     });
 
-    it("launchNote references QA validation passing and remaining PO/pilot gates", () => {
+    it("launchNote states early_access copy with verified capabilities", () => {
       const policy = resolveConnectorLaunchPolicy("odoo", allCaps);
-      expect(policy.launchNote).toMatch(/QA validation passed/i);
-      expect(policy.launchNote).toMatch(/customer pilot/i);
+      expect(policy.launchNote).toMatch(/early access/i);
     });
   });
 
-  // Required-team authorized advancement 2026-10-03 (INC-86 → INC-87).
+  // PO sign-off cleared 2026-10-03 (required-team authorization, INC-89).
+  describe("prestashop", () => {
+    it("is early_access after E2E battery sign-off (2026-10-03) and is therefore installable", () => {
+      const policy = resolveConnectorLaunchPolicy("prestashop", allCaps);
+      expect(policy.launchStage).toBe("early_access");
+      expect(isInstallableStage(policy.launchStage)).toBe(true);
+    });
+
+    it("REGRESSION GUARD: prestashop is no longer po_review — advanced to early_access (2026-10-03)", () => {
+      const policy = resolveConnectorLaunchPolicy("prestashop", allCaps);
+      expect(policy.launchStage).not.toBe("po_review");
+    });
+
+    it("launchNote states early_access copy with verified capabilities", () => {
+      const policy = resolveConnectorLaunchPolicy("prestashop", allCaps);
+      expect(policy.launchNote).toMatch(/early access/i);
+    });
+  });
+
+  // Required-team authorized advancement 2026-10-03 (INC-86 → INC-88).
   describe("shopware", () => {
     it("is early_access after E2E battery sign-off (2026-10-03) and is therefore installable", () => {
       const policy = resolveConnectorLaunchPolicy("shopware", allCaps);
@@ -361,11 +380,16 @@ describe("resolveConnectorPipelineMetadata", () => {
     expect(amazon.milestone).toBe("Sprint F");
   });
 
-  it("returns PO/pilot blockers for Odoo (QA cleared), matching its po_review launch stage", () => {
+  it("returns early_access metadata for Odoo after PO sign-off (2026-10-03)", () => {
     const odoo = resolveConnectorPipelineMetadata("odoo");
-    expect(odoo.blockers).not.toContain("QA validation");
-    expect(odoo.blockers).toContain("PO review");
-    expect(odoo.blockers).toContain("customer pilot");
+    expect(odoo.milestone).toBe("early_access");
+    expect(odoo.blockers).not.toContain("PO review");
+  });
+
+  it("returns early_access metadata for PrestaShop after PO sign-off (2026-10-03)", () => {
+    const prestashop = resolveConnectorPipelineMetadata("prestashop");
+    expect(prestashop.milestone).toBe("early_access");
+    expect(prestashop.blockers).not.toContain("PO review");
   });
 
   it("returns early_access metadata for WooCommerce after E2E battery sign-off (2026-10-03)", () => {

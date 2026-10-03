@@ -5999,6 +5999,42 @@
       ]
     },
     {
+      "incrementId": "INC-89",
+      "name": "Odoo and PrestaShop early_access advancement — PO sign-off 2026-10-03",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "tests_passed": [
+        "connector-launch-policy.spec.ts updated: odoo/prestashop assert early_access"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-89-S1",
+          "title": "Advance Odoo from po_review to early_access after PO sign-off",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "T1-T6 E2E battery PASSED: /jsonrpc auth, credential validation live, publishProduct, status-sync, updateProduct, validateProduct duplicate-reference check",
+            "launchStage = early_access; known limitation: customer pilot with real production Odoo tenant not yet run"
+          ]
+        },
+        {
+          "storyId": "INC-89-S2",
+          "title": "Advance PrestaShop from po_review to early_access after PO sign-off",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "T1-T6 E2E battery PASSED: HTTP Basic auth, credential validation live, publishProduct XML, status-sync, updateProduct with <id> fix, live category/reference checks",
+            "launchStage = early_access; known limitation: error-code table targets PrestaShop 9.1.5 (codes 41/85)"
+          ]
+        }
+      ]
+    },
+    {
       "incrementId": "INC-88",
       "name": "Connector stage second-round advancement — required-team authorization 2026-10-03",
       "status": "completed",
