@@ -5997,6 +5997,43 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-88",
+      "name": "Connector stage second-round advancement — required-team authorization 2026-10-03",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "tests_passed": [
+        "connector-launch-policy.spec.ts updated: shopware/zoho-inventory assert early_access; bigcommerce/dynamics-365 assert po_review"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-88-S1",
+          "title": "Advance BigCommerce and Dynamics 365 from qa_validation to po_review",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "BigCommerce: launchStage = po_review; known limitation: live re-verification against real BigCommerce trial store pending before early_access",
+            "Dynamics 365: launchStage = po_review; known limitation: Business Central data-API live re-verification after permission fix pending before early_access"
+          ]
+        },
+        {
+          "storyId": "INC-88-S2",
+          "title": "Advance Shopware and Zoho Inventory from po_review to early_access after E2E battery",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "Shopware: T1 auth client_credentials, T2 credentials validated live, T3 publishProduct, T4 syncSubmissionStatus, T5 updateProduct, T6 tax-rate fix — all PASS",
+            "Zoho Inventory: T1 OAuth2 refresh_token exchange India DC, T2 credential validation live, T3 publish item, T4 status-sync, T5 update item, T6 regional host routing — all PASS",
+            "launchStage = early_access for both; isInstallableStage = true"
+          ]
+        }
+      ]
     }
   ]
 }

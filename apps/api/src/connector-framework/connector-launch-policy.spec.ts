@@ -182,11 +182,11 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
-  // Required-team authorized advancement 2026-10-03.
+  // Required-team authorized advancement 2026-10-03 (INC-86 → INC-87).
   describe("shopware", () => {
-    it("is po_review after required-team authorization (2026-10-03) and is therefore installable", () => {
+    it("is early_access after E2E battery sign-off (2026-10-03) and is therefore installable", () => {
       const policy = resolveConnectorLaunchPolicy("shopware", allCaps);
-      expect(policy.launchStage).toBe("po_review");
+      expect(policy.launchStage).toBe("early_access");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 
@@ -197,9 +197,9 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("zoho-inventory", () => {
-    it("is po_review after required-team authorization (2026-10-03) and is therefore installable", () => {
+    it("is early_access after E2E battery sign-off (2026-10-03) and is therefore installable", () => {
       const policy = resolveConnectorLaunchPolicy("zoho-inventory", allCaps);
-      expect(policy.launchStage).toBe("po_review");
+      expect(policy.launchStage).toBe("early_access");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 
@@ -236,9 +236,9 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("bigcommerce", () => {
-    it("is qa_validation after QA fix (PR #949) and required-team authorization (2026-10-03)", () => {
+    it("is po_review after QA fix (PR #949) and required-team authorization (2026-10-03)", () => {
       const policy = resolveConnectorLaunchPolicy("bigcommerce", allCaps);
-      expect(policy.launchStage).toBe("qa_validation");
+      expect(policy.launchStage).toBe("po_review");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 
@@ -249,9 +249,9 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("dynamics-365", () => {
-    it("is qa_validation after QA tests (PR #948) and required-team authorization (2026-10-03)", () => {
+    it("is po_review after QA tests (PR #948) and required-team authorization (2026-10-03)", () => {
       const policy = resolveConnectorLaunchPolicy("dynamics-365", allCaps);
-      expect(policy.launchStage).toBe("qa_validation");
+      expect(policy.launchStage).toBe("po_review");
       expect(isInstallableStage(policy.launchStage)).toBe(true);
     });
 

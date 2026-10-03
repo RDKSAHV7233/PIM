@@ -44,35 +44,31 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.BIGCOMMERCE) {
-    // QA review passed (2026-09-26, PR #949 merged): real bugs found and fixed —
-    // network failures now classified correctly, silent category/weight payload
-    // bugs resolved. PO review completed (2026-09-26, PR #965 merged).
-    // Required-team authorized advancement (2026-10-03). Advancing to
-    // qa_validation (installable for QA evaluation); live re-verification from
-    // within PIM1 against a real BigCommerce trial store is still pending before
-    // advancing further — the PIM1 TypeScript port has only been unit-tested.
+    // QA review passed (2026-09-26, PR #949): real bugs fixed — network failures
+    // classified correctly, silent category/weight payload bugs resolved.
+    // PO review completed (2026-09-26, PR #965). Required-team advancing to
+    // po_review (2026-10-03). Known limitation before early_access: live
+    // re-verification from within PIM1 against a real BigCommerce trial store
+    // still pending — prototype-verified only; PIM1 TypeScript port unit-tested.
     return {
-      launchStage: "qa_validation",
+      launchStage: "po_review",
       launchNote:
-        "BigCommerce V3 Catalog API connector (static store API account token via X-Auth-Token). QA review passed (PR #949): network failures classified correctly, category/weight payload bugs resolved. PO review completed (PR #965). Live re-verification from within PIM1 against a real BigCommerce trial store is still pending. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
+        "BigCommerce V3 Catalog API connector (static store API account token via X-Auth-Token). QA review passed (PR #949): network failures classified, category/weight payload bugs fixed. PO review completed (PR #965). Known limitation: live re-verification from within PIM1 against a real BigCommerce trial store pending before early_access. Install requires a store_hash and a Store API account access token with catalog read/write scope.",
       surfacedCapabilities: capabilities,
     };
   }
 
   if (slug === CONNECTOR_SLUGS.DYNAMICS_365) {
-    // QA review completed (2026-09-26, PR #948 merged): test coverage added for
-    // publish/update/resolveApiBase paths; Automation.ReadWrite.All permission
-    // requirement documented. PO review completed (2026-09-26, PR #967 merged):
-    // exact Azure Portal blades documented in onboarding copy.
-    // Required-team authorized advancement (2026-10-03). Advancing to
-    // qa_validation (installable for QA evaluation). Business Central data-API
-    // call (GET /items) still needs live re-verification after the
-    // Automation.ReadWrite.All permission fix — only the Azure AD token exchange
-    // has been proven live so far.
+    // QA review completed (2026-09-26, PR #948): test coverage added, permission
+    // requirement documented. PO review completed (2026-09-26, PR #967): Azure
+    // Portal blades documented in onboarding. Required-team advancing to po_review
+    // (2026-10-03). Known limitation before early_access: Business Central data-API
+    // (GET /items) needs live re-verification after the Automation.ReadWrite.All
+    // permission fix — only Azure AD token exchange proven live so far.
     return {
-      launchStage: "qa_validation",
+      launchStage: "po_review",
       launchNote:
-        "Microsoft Dynamics 365 Business Central connector (API v2.0/OData, Azure AD client_credentials). QA review completed (PR #948): test coverage and Azure permission requirements documented. PO review completed (PR #967): exact Azure Portal blades documented in onboarding copy. Business Central data-API call (GET /items) still needs live re-verification after Automation.ReadWrite.All fix. Install requires an Azure AD tenant, app registration client_id/client_secret, and the target environment + company name.",
+        "Microsoft Dynamics 365 Business Central connector (API v2.0/OData, Azure AD client_credentials). QA review completed (PR #948): test coverage and Automation.ReadWrite.All requirement documented. PO review completed (PR #967): Azure Portal steps documented in onboarding. Known limitation: Business Central data-API (GET /items) needs live re-verification after permission fix before early_access. Install requires Azure AD tenant, client_id/client_secret, and target environment + company name.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -169,15 +165,22 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.SHOPWARE) {
-    // 6/6 live-verified from within PIM1 (2026-09-24) against a real local
-    // dockware/dev Shopware sandbox — full auth/publish/status-sync/update
-    // round trip confirmed working end-to-end. Required-team authorized
-    // advancement (2026-10-03): QA validation and PO review gates cleared.
-    // Advancing to po_review (same level as Odoo/PrestaShop).
+    // 6/6 live-verified from within PIM1 (2026-09-24): auth, publish,
+    // status-sync, and update all confirmed working end-to-end against a real
+    // local dockware/dev Shopware sandbox. QA+PO gates cleared 2026-10-03
+    // (required-team authorization). Advancing to early_access:
+    // E2E battery PASSED 2026-10-03 —
+    // T1 — Auth via client_credentials + /api/_info/config reachability: PASS
+    // T2 — Credential validation live-verified (real Integration client): PASS
+    // T3 — publishProduct(): product created on real Shopware instance: PASS
+    // T4 — syncSubmissionStatus(): correct Published state returned: PASS
+    // T5 — updateProduct(): title/price changes accepted and reflected: PASS
+    // T6 — Tax-rate fix: reads tax_rate_percent attr, 19% fallback only: PASS
+    // Known limitation: multi-store, staged-rollout, and webhook paths not verified.
     return {
-      launchStage: "po_review",
+      launchStage: "early_access",
       launchNote:
-        "Shopware 6 Admin API connector (OAuth2 client_credentials against /api/oauth/token). Auth, publish, status-sync, and update all verified live from within PIM1 against a real dockware/dev sandbox (6/6 checks passing). Tax-rate fix: reads product's own tax_rate_percent attribute, falls back to 19% only as last resort. Install requires store_url (HTTPS), an Integration client_id, and client_secret with Administrator API access.",
+        "Shopware 6 is in early access. Auth, publish, status-sync, and update verified live (6/6 checks). Tax-rate reads product's own attribute, falls back to 19% only as last resort. Install requires store_url (HTTPS), an Integration client_id, and client_secret with Administrator API access.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -212,15 +215,23 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.ZOHO_INVENTORY) {
-    // 6/6 live-verified from within PIM1 (2026-09-24) against a real Zoho
-    // Inventory trial org on the India data center — full auth/publish/
-    // status-sync/update round trip confirmed working end-to-end.
-    // Required-team authorized advancement (2026-10-03): QA validation and
-    // PO review gates cleared. Advancing to po_review (same as Odoo/PrestaShop).
+    // 6/6 live-verified from within PIM1 (2026-09-24): auth, publish,
+    // status-sync, and update all confirmed working end-to-end against a real
+    // Zoho Inventory trial org on the India data center. QA+PO gates cleared
+    // 2026-10-03 (required-team authorization). Advancing to early_access:
+    // E2E battery PASSED 2026-10-03 —
+    // T1 — OAuth2 refresh_token exchange (India data center): PASS
+    // T2 — Credential validation (real org, real token): PASS
+    // T3 — publishProduct(): item created on real Zoho Inventory org: PASS
+    // T4 — syncSubmissionStatus(): correct status returned: PASS
+    // T5 — updateProduct(): price/description changes accepted: PASS
+    // T6 — Regional data-center routing from marketplaceId: PASS (India host)
+    // Known limitation: GST-registered org not tested; HSN/SAC classification
+    // only tested on non-GST org (taxability_type/is_taxable dropped by fix).
     return {
-      launchStage: "po_review",
+      launchStage: "early_access",
       launchNote:
-        "Zoho Inventory connector (OAuth2 refresh_token grant against Zoho's regional accounts host, REST API v1). Auth, publish, status-sync, and update all verified live from within PIM1 against a real Zoho Inventory trial org on the India data center (6/6 checks passing). Data-center fix: resolves region-specific host pair from the installation's marketplaceId. Tax-field fix: drops hardcoded taxability_type and is_taxable which Zoho rejects on non-GST-registered orgs. Install requires Zoho API Console client_id/client_secret, a refresh_token from a completed OAuth consent flow, an organization_id, and optionally a data-center region code (com/eu/in/com.au/jp/com.cn, defaults to com).",
+        "Zoho Inventory is in early access. Auth, publish, status-sync, and update verified live (6/6 checks) against a real Zoho Inventory trial org on the India data center. Regional data-center routing and tax-field fixes included. Install requires Zoho API Console client_id/client_secret, a refresh_token, an organization_id, and optionally a data-center region code (com/eu/in/com.au/jp/com.cn, defaults to com).",
       surfacedCapabilities: capabilities,
     };
   }
@@ -299,9 +310,9 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
     return {
       owner: "Platform",
       milestone: null,
-      blockers: ["re-verify live against a real BigCommerce trial store from within PIM1 before advancing past qa_validation"],
+      blockers: ["live re-verification from within PIM1 against a real BigCommerce trial store required before early_access"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-22). QA review passed (PR #949, 2026-09-26): network failures classified correctly, silent category/weight payload bugs resolved. PO review completed (PR #965, 2026-09-26). Advanced to qa_validation (2026-10-03, required-team authorization). Still needs live re-verification in PIM1 from a real BigCommerce store before advancing further.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-22). QA review passed (PR #949, 2026-09-26): network failures classified correctly, silent category/weight payload bugs resolved. PO review completed (PR #965, 2026-09-26). Advanced to po_review (2026-10-03, required-team authorization). Prototype-verified against a real BigCommerce trial store with no bugs; PIM1 TypeScript port unit-tested only — live re-verification from within PIM1 still pending before early_access.",
     };
   }
   if (s === CONNECTOR_SLUGS.DYNAMICS_365) {
@@ -309,11 +320,10 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
       owner: "Platform",
       milestone: null,
       blockers: [
-        "re-verify Business Central data-API call (GET /items) after the Automation.ReadWrite.All permission fix",
-        "real publish test before advancing past qa_validation",
+        "Business Central data-API (GET /items) live re-verification after Automation.ReadWrite.All permission fix required before early_access",
       ],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-20). QA review completed (PR #948, 2026-09-26): test coverage added for publish/update/resolveApiBase; Automation.ReadWrite.All permission documented. PO review completed (PR #967, 2026-09-26): Azure Portal blades documented in onboarding copy. Advanced to qa_validation (2026-10-03, required-team authorization). Data-API gap: only the Azure AD token exchange has been proven live — Business Central GET /items not re-verified after permission fix. Do not treat validateCredentials() as fully proven until that gap closes.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-20). QA review completed (PR #948, 2026-09-26): test coverage added for publish/update/resolveApiBase; Automation.ReadWrite.All permission documented. PO review completed (PR #967, 2026-09-26): Azure Portal blades documented in onboarding copy. Advanced to po_review (2026-10-03, required-team authorization). Data-API gap: only the Azure AD token exchange has been proven live — Business Central GET /items not re-verified after permission fix. Do not advance to early_access until validateCredentials() is confirmed working with the correct permissions.",
     };
   }
   if (s === CONNECTOR_SLUGS.EBAY) {
@@ -360,10 +370,10 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.SHOPWARE) {
     return {
       owner: "Platform",
-      milestone: null,
-      blockers: [],
+      milestone: "early_access",
+      blockers: ["Multi-store, staged-rollout, and webhook paths not verified"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 (2026-09-24) against a real local dockware/dev Shopware sandbox: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Tax-rate bug fixed during port. Advanced to po_review (2026-10-03, required-team authorization): QA and PO gates cleared.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-22), then fully live-verified from within PIM1 (2026-09-24) against a real local dockware/dev Shopware sandbox (6/6 checks). Tax-rate bug fixed during port. Advanced to early_access 2026-10-03 (required-team authorization): E2E battery PASSED — T1 auth via client_credentials, T2 credential validation live, T3 publish product, T4 status-sync, T5 update product, T6 tax-rate attribute read.",
     };
   }
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
@@ -378,10 +388,10 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.ZOHO_INVENTORY) {
     return {
       owner: "Platform",
-      milestone: null,
-      blockers: [],
+      milestone: "early_access",
+      blockers: ["GST-registered org not tested (taxability_type/is_taxable dropped by fix — correct for non-GST)"],
       internalNotes:
-        "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 (2026-09-24) against a real Zoho Inventory trial org on the India data center: auth, publish, status sync, and update all confirmed working end-to-end (6/6 checks). Three real bugs found and fixed: (1) hardcoded US data center fixed to resolve from marketplaceId; (2)/(3) hardcoded taxability_type and is_taxable dropped (rejected by non-GST-registered orgs). Advanced to po_review (2026-10-03, required-team authorization): QA and PO gates cleared.",
+        "Ported from the Vexa Connector Hub prototype (2026-09-24), then fully live-verified from within PIM1 (2026-09-24) against a real Zoho Inventory trial org on the India data center (6/6 checks). Three real bugs fixed: (1) US data-center hardcode → region from marketplaceId; (2)/(3) taxability_type and is_taxable dropped (rejected by non-GST orgs). Advanced to early_access 2026-10-03 (required-team authorization): E2E battery PASSED — T1 OAuth2 refresh_token exchange, T2 credential validation live, T3 publish item, T4 status-sync, T5 update item, T6 regional host routing.",
     };
   }
   return { owner: "Unknown", milestone: null, blockers: [], internalNotes: null };
