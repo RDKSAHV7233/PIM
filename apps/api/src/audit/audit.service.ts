@@ -121,9 +121,11 @@ export class AuditService {
   }
 
   async record(input: AuditLogRecordInput) {
-    const metadata = this.sanitizeMetadata(input.metadata ?? {});
-    const tenantKey = input.tenantKey ? normalizeTenantKey(input.tenantKey) : undefined;
+    // Everything, including metadata sanitising and tenant normalisation, stays inside the try: callers
+    // fire this with `void` on every mutating request, so it must never reject.
     try {
+      const metadata = this.sanitizeMetadata(input.metadata ?? {});
+      const tenantKey = input.tenantKey ? normalizeTenantKey(input.tenantKey) : undefined;
       await this.prisma.tenant(tenantKey).auditLog.create({
         data: {
           id: randomUUID(),

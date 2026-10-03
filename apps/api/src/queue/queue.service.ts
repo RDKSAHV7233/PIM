@@ -1027,24 +1027,34 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     if (!this.errorCaptureService) {
       return;
     }
-    const classification = classifyWorkerError(error);
-    if (!classification.capture) {
-      return;
+    // Callers fire this with `void` while already handling a failed job: capturing the failure must never
+    // itself reject (an unhandled rejection here would mask the original error).
+    try {
+      const classification = classifyWorkerError(error);
+      if (!classification.capture) {
+        return;
+      }
+      await this.errorCaptureService.captureUnexpected({
+        runtime: "worker",
+        service: "vexa-pim-api",
+        error,
+        errorCode: classification.reason,
+        category: classification.category,
+        severity: "p1",
+        routeTemplate: `queue:${queueName}:${laneKey}`,
+        rawTenantKey: extractSafePayloadRef(payload, "tenantKey") || extractSafePayloadRef(payload, "tenantId"),
+        jobId: context.jobId || extractSafePayloadRef(payload, "jobId") || extractSafePayloadRef(payload, "id"),
+        operationId: extractSafePayloadRef(payload, "operationId") || extractSafePayloadRef(payload, "runId"),
+        installationId: extractSafePayloadRef(payload, "installationId"),
+        sourceEventId: context.sourceEventId,
+      });
+    } catch (captureError: unknown) {
+      this.logger.error(
+        `Terminal worker failure capture failed for ${queueName}/${laneKey}: ${
+          captureError instanceof Error ? captureError.message : String(captureError)
+        }`,
+      );
     }
-    await this.errorCaptureService.captureUnexpected({
-      runtime: "worker",
-      service: "vexa-pim-api",
-      error,
-      errorCode: classification.reason,
-      category: classification.category,
-      severity: "p1",
-      routeTemplate: `queue:${queueName}:${laneKey}`,
-      rawTenantKey: extractSafePayloadRef(payload, "tenantKey") || extractSafePayloadRef(payload, "tenantId"),
-      jobId: context.jobId || extractSafePayloadRef(payload, "jobId") || extractSafePayloadRef(payload, "id"),
-      operationId: extractSafePayloadRef(payload, "operationId") || extractSafePayloadRef(payload, "runId"),
-      installationId: extractSafePayloadRef(payload, "installationId"),
-      sourceEventId: context.sourceEventId,
-    });
   }
 
   private isRateLimitError(options: QueueBackpressureOptions<unknown>, error: unknown): boolean {

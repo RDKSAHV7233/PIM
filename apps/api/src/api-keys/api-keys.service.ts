@@ -299,16 +299,19 @@ export class ApiKeysService {
     if (!keyId) {
       return;
     }
-    await this.prisma.tenant().apiAccessKey
-      .update({
+    // Fired with `void` on every API-key request: nothing here (including prisma.tenant() itself) may reject.
+    try {
+      await this.prisma.tenant().apiAccessKey.update({
         where: {
           id: keyId,
         },
         data: {
           lastUsedAt: new Date(),
         },
-      })
-      .catch(() => undefined);
+      });
+    } catch {
+      // last-used bookkeeping is best effort
+    }
   }
 
   private resolveExpiry(value: string | undefined): Date | null {
