@@ -353,7 +353,7 @@ describe("OdooConnector authenticated redirect handling", () => {
     expect(result.outcome).toBe("invalid");
   });
 
-  it("surfaces a seller-facing publish error naming the canonical-URL fix, and never forwards the password", async () => {
+  it("surfaces the provider-neutral CONNECTOR_REDIRECT_BLOCKED error naming the canonical-URL fix, and never forwards the password", async () => {
     const credRow = (type: string, value: string) => ({
       credentialType: type,
       encryptedValue: `enc::v1:${Buffer.from(value).toString("base64")}`,
@@ -381,10 +381,15 @@ describe("OdooConnector authenticated redirect handling", () => {
       .publishProduct({ tenantId: "t1", installationId: "i1", connectorId: "odoo" } as any, baseProduct)
       .catch((e: unknown) => e);
 
-    expect(error).toBeInstanceOf(OdooPublishError);
-    const issue = (error as OdooPublishError).issues[0];
-    expect(issue.code).toBe("ODOO_REDIRECT_CROSS_ORIGIN");
-    expect(issue.sellerMessage).toContain("canonical");
+    // Not wrapped into an Odoo-specific publish error: the provider-neutral
+    // security error reaches the marketplace layer intact.
+    expect(error).not.toBeInstanceOf(OdooPublishError);
+    expect(error).toMatchObject({
+      name: "ConnectorRedirectError",
+      code: "CONNECTOR_REDIRECT_BLOCKED",
+      reason: "REDIRECT_CROSS_ORIGIN",
+    });
+    expect((error as Error).message).toContain("canonical");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

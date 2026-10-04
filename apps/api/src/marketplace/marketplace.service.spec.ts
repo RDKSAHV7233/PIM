@@ -3359,3 +3359,62 @@ describe("MarketplaceService.attemptShopifyControlledMutation — ST-CON-VMUT-00
     expect(connector.applyControlledMutation).not.toHaveBeenCalled();
   });
 });
+
+describe("MarketplaceService.publishFailureChannelErrors — connector target security errors", () => {
+  const { ConnectorNetworkError } = jest.requireActual("../connector-framework/connector.errors");
+  const { ConnectorRedirectError, ConnectorTargetUnsafeError } = jest.requireActual(
+    "../common/security/connector-target-errors",
+  );
+  const map = (error: unknown, slug = "woocommerce") =>
+    (
+      makeService() as unknown as {
+        publishFailureChannelErrors: (e: unknown, s: string) => Array<Record<string, unknown>>;
+      }
+    ).publishFailureChannelErrors(error, slug);
+
+  it("reports a blocked redirect as CONNECTOR_REDIRECT_BLOCKED with reason and provider, not a generic failure", () => {
+    const [issue] = map(
+      new ConnectorRedirectError("REDIRECT_CROSS_ORIGIN", "Redirected to a different origin; save the canonical store URL."),
+      "woocommerce",
+    );
+    expect(issue).toEqual({
+      code: "CONNECTOR_REDIRECT_BLOCKED",
+      fieldPath: "",
+      severity: "error",
+      sellerMessage: "Redirected to a different origin; save the canonical store URL.",
+      reason: "REDIRECT_CROSS_ORIGIN",
+      provider: "woocommerce",
+    });
+  });
+
+  it("reports an unsafe configured target as CONNECTOR_TARGET_UNSAFE", () => {
+    const [issue] = map(
+      new ConnectorTargetUnsafeError("Connector base URL points to a private or reserved IP address.", "PRIVATE_IP_LITERAL"),
+      "shopify",
+    );
+    expect(issue).toMatchObject({
+      code: "CONNECTOR_TARGET_UNSAFE",
+      reason: "PRIVATE_IP_LITERAL",
+      provider: "shopify",
+    });
+  });
+
+  it("returns exactly one issue and never the generic publish-failure or credential codes for these errors", () => {
+    for (const err of [
+      new ConnectorRedirectError("REDIRECT_UNSAFE_TARGET", "x"),
+      new ConnectorTargetUnsafeError("y", "HTTPS_REQUIRED"),
+    ]) {
+      const issues = map(err);
+      expect(issues).toHaveLength(1);
+      expect(issues[0].code).not.toBe("CONNECTOR_PUBLISH_FAILED");
+      expect(String(issues[0].code)).not.toMatch(/CREDENTIAL|EXPIRED/);
+    }
+  });
+
+  it("leaves other error mappings unchanged", () => {
+    expect(map(new ConnectorNetworkError("woocommerce", "TIMEOUT", true, "slow"))[0].code).toBe(
+      "CONNECTOR_NETWORK_TIMEOUT",
+    );
+    expect(map(new Error("boom"))[0]).toMatchObject({ code: "CONNECTOR_PUBLISH_FAILED", sellerMessage: "boom" });
+  });
+});

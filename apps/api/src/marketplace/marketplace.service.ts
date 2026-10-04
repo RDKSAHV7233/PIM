@@ -32,6 +32,10 @@ import {
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
 import {
+  isConnectorTargetSecurityError,
+  toConnectorTargetSecurityIssue,
+} from "../common/security/connector-target-errors";
+import {
   ConnectorContext,
   MarketPrice,
   ProductPayload,
@@ -1834,12 +1838,14 @@ export class MarketplaceService implements OnModuleInit {
         status: "ERROR",
         payloadSnapshot,
         channelErrors: [
-          {
-            code: "CONNECTOR_UPDATE_FAILED",
-            fieldPath: "",
-            severity: "error",
-            sellerMessage: this.toFailureReason(error),
-          },
+          isConnectorTargetSecurityError(error)
+            ? toConnectorTargetSecurityIssue(error, installation.slug)
+            : {
+                code: "CONNECTOR_UPDATE_FAILED",
+                fieldPath: "",
+                severity: "error",
+                sellerMessage: this.toFailureReason(error),
+              },
         ],
       });
       await this.emitConnectorOutcomeMetrics({
@@ -3369,6 +3375,44 @@ export class MarketplaceService implements OnModuleInit {
       .filter((item) => Boolean(item.locale));
   }
 
+  // ShopifyPublishError/WooCommercePublishError carry parsed ConnectorIssue[]
+  // with real fieldPaths. A configured store URL that must not be contacted
+  // (unsafe target or blocked redirect) is a configuration/security problem:
+  // it keeps its provider-neutral code and is never reported as a generic
+  // publish failure or an expired credential. Other errors fall back to a
+  // single CONNECTOR_PUBLISH_FAILED issue.
+  private publishFailureChannelErrors(error: unknown, connectorSlug: string): Record<string, unknown>[] {
+    if ((error instanceof ShopifyPublishError || error instanceof WooCommercePublishError) && error.issues.length > 0) {
+      return error.issues.map((issue) => ({
+        code: issue.code,
+        fieldPath: issue.fieldPath,
+        severity: issue.severity,
+        sellerMessage: issue.sellerMessage,
+      }));
+    }
+    if (isConnectorTargetSecurityError(error)) {
+      return [toConnectorTargetSecurityIssue(error, connectorSlug)];
+    }
+    if (error instanceof ConnectorNetworkError) {
+      return [
+        {
+          code: `CONNECTOR_NETWORK_${error.category}`,
+          fieldPath: "",
+          severity: "error" as const,
+          sellerMessage: error.message,
+        },
+      ];
+    }
+    return [
+      {
+        code: "CONNECTOR_PUBLISH_FAILED",
+        fieldPath: "",
+        severity: "error" as const,
+        sellerMessage: this.toFailureReason(error),
+      },
+    ];
+  }
+
   private toFailureReason(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error ?? "Unknown processing error");
     const normalized = raw.trim();
@@ -3696,34 +3740,7 @@ export class MarketplaceService implements OnModuleInit {
               }
             : { kind: publishClassification, installationId: installation.id, submissionId: submission.id };
       } catch (error) {
-        // ShopifyPublishError/WooCommercePublishError carry parsed ConnectorIssue[]
-        // with real fieldPaths. Generic errors fall back to a single
-        // CONNECTOR_PUBLISH_FAILED issue.
-        const channelErrors =
-          (error instanceof ShopifyPublishError || error instanceof WooCommercePublishError) && error.issues.length > 0
-            ? error.issues.map((issue) => ({
-                code: issue.code,
-                fieldPath: issue.fieldPath,
-                severity: issue.severity,
-                sellerMessage: issue.sellerMessage,
-              }))
-            : error instanceof ConnectorNetworkError
-              ? [
-                  {
-                    code: `CONNECTOR_NETWORK_${error.category}`,
-                    fieldPath: "",
-                    severity: "error" as const,
-                    sellerMessage: error.message,
-                  },
-                ]
-              : [
-                  {
-                    code: "CONNECTOR_PUBLISH_FAILED",
-                    fieldPath: "",
-                    severity: "error" as const,
-                    sellerMessage: this.toFailureReason(error),
-                  },
-                ];
+        const channelErrors = this.publishFailureChannelErrors(error, installation.slug);
         const failureAudit = error instanceof ShopifyControlledMutationError ? error.audit : undefined;
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,

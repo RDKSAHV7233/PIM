@@ -33,7 +33,8 @@ async function expectRefusal(promise: Promise<unknown>, code: string): Promise<v
     (e: unknown) => e,
   );
   expect(err).toBeInstanceOf(ConnectorRedirectError);
-  expect((err as ConnectorRedirectError).code).toBe(code);
+  expect((err as ConnectorRedirectError).reason).toBe(code);
+  expect((err as ConnectorRedirectError).code).toBe("CONNECTOR_REDIRECT_BLOCKED");
 }
 
 describe("fetchWithValidatedRedirects", () => {

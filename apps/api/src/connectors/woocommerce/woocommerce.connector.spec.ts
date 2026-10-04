@@ -1016,7 +1016,7 @@ describe("WooCommerceConnector authenticated redirect handling", () => {
     const connector = makeConnector();
     await expect(
       (connector as any).callApi("POST", "/products", SITE, "ck", "cs", { name: "x", sku: "S1" }),
-    ).rejects.toMatchObject({ name: "ConnectorRedirectError", code: "REDIRECT_METHOD_UNSUPPORTED" });
+    ).rejects.toMatchObject({ name: "ConnectorRedirectError", code: "CONNECTOR_REDIRECT_BLOCKED", reason: "REDIRECT_METHOD_UNSUPPORTED" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1050,7 +1050,7 @@ describe("WooCommerceConnector authenticated redirect handling", () => {
     );
     await expect(
       (connector as any).callApi("GET", "/products", SITE, "ck", "cs"),
-    ).rejects.toMatchObject({ code: "REDIRECT_CROSS_ORIGIN" });
+    ).rejects.toMatchObject({ code: "CONNECTOR_REDIRECT_BLOCKED", reason: "REDIRECT_CROSS_ORIGIN" });
     expect(clientFetch).toHaveBeenCalledTimes(1);
     expect(clientFetch.mock.calls[0][3].redirect).toBe("manual");
   });

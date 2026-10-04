@@ -1,3 +1,4 @@
+import { ConnectorRedirectError } from "./connector-target-errors";
 import { validateConnectorTargetUrl } from "./url-safety";
 
 // Credential-bearing requests to a tenant-supplied host must never be handed to
@@ -17,24 +18,7 @@ import { validateConnectorTargetUrl } from "./url-safety";
 //     body-less GET, so they fail closed instead of being delegated to fetch.
 //   - more than `maxRedirects` hops or a repeated URL -> fail closed
 
-export type ConnectorRedirectErrorCode =
-  | "REDIRECT_UNSAFE_TARGET"
-  | "REDIRECT_CROSS_ORIGIN"
-  | "REDIRECT_INVALID_LOCATION"
-  | "REDIRECT_TOO_MANY"
-  | "REDIRECT_LOOP"
-  | "REDIRECT_METHOD_UNSUPPORTED"
-  | "REDIRECT_NOT_ENFORCED";
-
-export class ConnectorRedirectError extends Error {
-  constructor(
-    public readonly code: ConnectorRedirectErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ConnectorRedirectError";
-  }
-}
+export { ConnectorRedirectError };
 
 export interface RedirectHopInit {
   method?: string;

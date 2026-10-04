@@ -204,7 +204,7 @@ export class PrestaShopConnector implements ConnectorInterface {
       return { outcome: "valid" };
     } catch (error) {
       if (error instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.code}` };
+        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.reason}` };
       }
       // PIM#890: resolveCredentials() above now throws before returning a
       // store_url that's non-HTTPS or resolves to a private/blocked address —
@@ -251,7 +251,7 @@ export class PrestaShopConnector implements ConnectorInterface {
       return { outcome: "valid" };
     } catch (error) {
       if (error instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.code}` };
+        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.reason}` };
       }
       return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
     }

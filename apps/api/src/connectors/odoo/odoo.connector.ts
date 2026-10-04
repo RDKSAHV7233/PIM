@@ -62,6 +62,10 @@ import { ConnectorHttpClient } from '../../connector-framework/connector-http-cl
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { validateConnectorTargetUrl } from '../../common/security/url-safety';
 import {
+  isConnectorTargetSecurityError,
+  type ConnectorTargetSecurityError,
+} from '../../common/security/connector-target-errors';
+import {
   ConnectorRedirectError,
   fetchWithValidatedRedirects,
   type RedirectHopInit,
@@ -339,7 +343,7 @@ export class OdooConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (err instanceof ConnectorRedirectError) {
-        return { outcome: 'invalid', reasonCode: `ODOO_${err.code}` };
+        return { outcome: 'invalid', reasonCode: `ODOO_${err.reason}` };
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
@@ -384,7 +388,7 @@ export class OdooConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (err instanceof ConnectorRedirectError) {
-        return { outcome: 'invalid', reasonCode: `ODOO_${err.code}` };
+        return { outcome: 'invalid', reasonCode: `ODOO_${err.reason}` };
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
@@ -581,7 +585,7 @@ export class OdooConnector implements ConnectorInterface {
     };
   }
 
-  private toPublishError(err: unknown, operation: 'publish' | 'update'): OdooPublishError {
+  private toPublishError(err: unknown, operation: 'publish' | 'update'): OdooPublishError | ConnectorTargetSecurityError {
     if (err instanceof OdooPublishError) return err;
     if (err instanceof OdooRpcCallError) {
       const name = err.rpcError.data?.name ?? String(err.rpcError.code ?? 'ODOO_ERROR');
@@ -589,15 +593,10 @@ export class OdooConnector implements ConnectorInterface {
       const issue = this.normaliseError(name, message);
       return new OdooPublishError([issue], `Odoo product ${operation} failed: ${issue.sellerMessage}`);
     }
-    if (err instanceof ConnectorRedirectError) {
-      const issue: ConnectorIssue = {
-        code: `ODOO_${err.code}`,
-        fieldPath: 'odoo_url',
-        severity: 'error',
-        sellerMessage: `${err.message} Reconnect Odoo with the canonical URL.`,
-      };
-      return new OdooPublishError([issue], `Odoo product ${operation} failed: ${issue.sellerMessage}`);
-    }
+    // Target-URL security refusals keep their provider-neutral code
+    // (CONNECTOR_TARGET_UNSAFE / CONNECTOR_REDIRECT_BLOCKED); the marketplace
+    // layer reports them as such instead of a generic Odoo failure.
+    if (isConnectorTargetSecurityError(err)) return err;
     const issue = this.normaliseError('ODOO_UNKNOWN_ERROR', err instanceof Error ? err.message : String(err));
     return new OdooPublishError([issue], `Odoo product ${operation} failed: ${issue.sellerMessage}`);
   }

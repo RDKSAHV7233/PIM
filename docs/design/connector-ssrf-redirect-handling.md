@@ -43,10 +43,21 @@ for this.
 | More than `maxRedirects` hops | `REDIRECT_TOO_MANY` |
 | Hop response has `redirected === true` | `REDIRECT_NOT_ENFORCED` (the client followed on its own) |
 
-A refusal is a configuration problem, not a transient network failure: Odoo reports it as
-`invalid` credential verification (`ODOO_REDIRECT_*` reason codes) and as a seller-facing
-publish issue on field `odoo_url` asking the operator to reconnect with the canonical URL.
-It is never classified as a retryable network error.
+A refusal is a configuration problem, not a transient network failure, and is never
+classified as a retryable network error. Two provider-neutral errors
+(`common/security/connector-target-errors.ts`) carry it:
+
+| Public code | Thrown by | `reason` values |
+|---|---|---|
+| `CONNECTOR_REDIRECT_BLOCKED` | `fetchWithValidatedRedirects` (`ConnectorRedirectError`) | the `REDIRECT_*` values in the table above |
+| `CONNECTOR_TARGET_UNSAFE` | `validateConnectorTargetUrl` (`ConnectorTargetUnsafeError`, a `BadRequestException` subclass so existing handling is unchanged) | `URL_REQUIRED`, `URL_INVALID`, `HTTPS_REQUIRED`, `BLOCKED_HOST`, `PRIVATE_IP_LITERAL`, `PRIVATE_IP_RESOLVED`, `UNRESOLVABLE` |
+
+- Credential verification maps either to `invalid` with a connector-prefixed reason code
+  (for example `WOOCOMMERCE_REDIRECT_CROSS_ORIGIN`).
+- Publish/update propagate the error unwrapped and the marketplace layer records it as a
+  channel error with the neutral code, `reason` and `provider` (the connector slug), never as
+  `CONNECTOR_PUBLISH_FAILED`/`CONNECTOR_UPDATE_FAILED` and never as an expired credential.
+- Webhook target validation is unchanged (plain `BadRequestException`).
 
 ## Rollout
 

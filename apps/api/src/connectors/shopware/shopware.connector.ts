@@ -207,7 +207,7 @@ export class ShopwareConnector implements ConnectorInterface {
       return { outcome: "valid" };
     } catch (error) {
       if (error instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `SHOPWARE_${error.code}` };
+        return { outcome: "invalid", reasonCode: `SHOPWARE_${error.reason}` };
       }
       // resolveCredentials() now throws for a non-HTTPS or unsafe store_url
       // before the explicit HTTPS check above is reachable — keep classifying
@@ -260,7 +260,7 @@ export class ShopwareConnector implements ConnectorInterface {
       };
     } catch (err) {
       if (err instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `SHOPWARE_${err.code}` };
+        return { outcome: "invalid", reasonCode: `SHOPWARE_${err.reason}` };
       }
       if (err instanceof ShopwareTokenExchangeError) {
         return { outcome: err.status === 401 ? "invalid" : "unavailable", reasonCode: `HTTP_${err.status}` };

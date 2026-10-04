@@ -89,7 +89,7 @@ describe("PrestaShopConnector authenticated redirect handling", () => {
         headers: { Authorization: "Basic abc", "Content-Type": "application/xml" },
         body: "<prestashop><product/></prestashop>",
       }),
-    ).rejects.toMatchObject({ name: "ConnectorRedirectError", code: "REDIRECT_METHOD_UNSUPPORTED" });
+    ).rejects.toMatchObject({ name: "ConnectorRedirectError", code: "CONNECTOR_REDIRECT_BLOCKED", reason: "REDIRECT_METHOD_UNSUPPORTED" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

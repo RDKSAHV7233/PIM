@@ -894,7 +894,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (err instanceof ConnectorRedirectError) {
-        return { outcome: 'invalid', reasonCode: `WOOCOMMERCE_${err.code}` };
+        return { outcome: 'invalid', reasonCode: `WOOCOMMERCE_${err.reason}` };
       }
       if (err instanceof ConnectorNetworkError) {
         this.logger.warn('WooCommerce credential validation inconclusive: transient network failure', {
@@ -962,7 +962,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (err instanceof ConnectorRedirectError) {
-        return { outcome: 'invalid', reasonCode: `WOOCOMMERCE_${err.code}` };
+        return { outcome: 'invalid', reasonCode: `WOOCOMMERCE_${err.reason}` };
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };

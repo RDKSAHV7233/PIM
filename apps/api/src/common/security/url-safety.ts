@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { resolve4, resolve6 } from "node:dns/promises";
+import { ConnectorTargetUnsafeError, type ConnectorTargetUnsafeReason } from "./connector-target-errors";
 
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",
@@ -189,6 +190,8 @@ export interface WebhookTargetUrlValidationOptions {
 // below. Keep this list's error substrings stable — url-safety.spec.ts and
 // each connector's own spec assert on them.
 interface TargetUrlErrorLabels {
+  /** Connector callers get the typed, provider-neutral error; webhooks keep BadRequestException. */
+  typedError: boolean;
   required: string;
   invalidUrl: string;
   httpsRequired: string;
@@ -200,6 +203,7 @@ interface TargetUrlErrorLabels {
 }
 
 const WEBHOOK_TARGET_LABELS: TargetUrlErrorLabels = {
+  typedError: false,
   required: "Webhook target URL is required.",
   invalidUrl: "Webhook target URL is not a valid URL.",
   httpsRequired: "Webhook target URL must use HTTPS.",
@@ -211,6 +215,7 @@ const WEBHOOK_TARGET_LABELS: TargetUrlErrorLabels = {
 };
 
 const CONNECTOR_TARGET_LABELS: TargetUrlErrorLabels = {
+  typedError: true,
   required: "Connector base URL is required.",
   invalidUrl: "Connector base URL is not a valid URL.",
   httpsRequired: "Connector base URL must use HTTPS.",
@@ -221,6 +226,23 @@ const CONNECTOR_TARGET_LABELS: TargetUrlErrorLabels = {
   logPrefix: "Connector base URL",
 };
 
+const TARGET_URL_REASON_MESSAGE_KEY: Record<ConnectorTargetUnsafeReason, keyof TargetUrlErrorLabels> = {
+  URL_REQUIRED: "required",
+  URL_INVALID: "invalidUrl",
+  HTTPS_REQUIRED: "httpsRequired",
+  BLOCKED_HOST: "blockedHost",
+  PRIVATE_IP_LITERAL: "blockedIpLiteral",
+  PRIVATE_IP_RESOLVED: "blockedResolved",
+  UNRESOLVABLE: "mustResolve",
+};
+
+// ConnectorTargetUnsafeError extends BadRequestException, so existing
+// instanceof / message-substring handling of the connector flavor is unchanged.
+function targetUrlError(labels: TargetUrlErrorLabels, reason: ConnectorTargetUnsafeReason): BadRequestException {
+  const message = String(labels[TARGET_URL_REASON_MESSAGE_KEY[reason]]);
+  return labels.typedError ? new ConnectorTargetUnsafeError(message, reason) : new BadRequestException(message);
+}
+
 async function validateOutboundTargetUrl(
   value: string,
   options: WebhookTargetUrlValidationOptions,
@@ -228,14 +250,14 @@ async function validateOutboundTargetUrl(
 ): Promise<string> {
   const normalized = String(value ?? "").trim();
   if (!normalized) {
-    throw new BadRequestException(labels.required);
+    throw targetUrlError(labels, "URL_REQUIRED");
   }
 
   let parsed: URL;
   try {
     parsed = new URL(normalized);
   } catch {
-    throw new BadRequestException(labels.invalidUrl);
+    throw targetUrlError(labels, "URL_INVALID");
   }
 
   // Skip HTTPS and SSRF checks only for explicit local integration fixtures.
@@ -247,18 +269,18 @@ async function validateOutboundTargetUrl(
   }
 
   if (parsed.protocol !== "https:") {
-    throw new BadRequestException(labels.httpsRequired);
+    throw targetUrlError(labels, "HTTPS_REQUIRED");
   }
 
   const hostname = parsed.hostname;
 
   if (isBlockedHostname(hostname)) {
-    throw new BadRequestException(labels.blockedHost);
+    throw targetUrlError(labels, "BLOCKED_HOST");
   }
 
   if (isIpLiteral(hostname)) {
     if (isBlockedIp(hostname)) {
-      throw new BadRequestException(labels.blockedIpLiteral);
+      throw targetUrlError(labels, "PRIVATE_IP_LITERAL");
     }
     return parsed.toString();
   }
@@ -273,7 +295,7 @@ async function validateOutboundTargetUrl(
 
   if (resolvedAddresses.length === 0) {
     if (options.requireResolvable !== false) {
-      throw new BadRequestException(labels.mustResolve);
+      throw targetUrlError(labels, "UNRESOLVABLE");
     }
     // Registration time: DNS returned no records. Could be a transient resolver
     // failure or an offline box — do not permanently block a valid public
@@ -287,7 +309,7 @@ async function validateOutboundTargetUrl(
 
   for (const addr of resolvedAddresses) {
     if (isBlockedIp(addr)) {
-      throw new BadRequestException(labels.blockedResolved);
+      throw targetUrlError(labels, "PRIVATE_IP_RESOLVED");
     }
   }
 
