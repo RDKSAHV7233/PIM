@@ -6,6 +6,7 @@ export interface ConnectorFetchInit {
   headers?: Record<string, string>;
   body?: string | URLSearchParams | Buffer;
   timeoutMs?: number;
+  redirect?: "follow" | "manual" | "error";
 }
 
 // Per-connector rate limits: capacity (burst) and refill rate (ms per token = 1/req-per-sec * 1000)
@@ -124,6 +125,7 @@ export class ConnectorHttpClient {
           headers: init.headers,
           body: init.body as BodyInit | undefined,
           signal: AbortSignal.timeout(timeoutMs),
+          redirect: init.redirect,
         });
       } catch (err) {
         lastError = err;

@@ -61,6 +61,11 @@ import {
 import { ConnectorHttpClient } from '../../connector-framework/connector-http-client.service';
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { validateConnectorTargetUrl } from '../../common/security/url-safety';
+import {
+  ConnectorRedirectError,
+  fetchWithValidatedRedirects,
+  type RedirectHopInit,
+} from '../../common/security/validated-redirect-fetch';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 
@@ -219,24 +224,35 @@ export class OdooConnector implements ConnectorInterface {
 
   private async httpFetch(odooUrl: string, body: unknown): Promise<Response> {
     const url = `${odooUrl}/jsonrpc`;
-    const init = {
-      method: 'POST',
-      timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    };
-    try {
+    // The request body carries the database password/API key, so a redirect must
+    // never be followed by fetch itself: every hop is sent with redirect:
+    // "manual" and re-validated, and a cross-origin hop fails closed.
+    const hop = async (hopUrl: string, hopInit: RedirectHopInit): Promise<Response> => {
+      const init = { ...hopInit, timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS };
       if (this.httpClient) {
-        return await this.httpClient.fetch('odoo', odooUrl, url, init);
+        return this.httpClient.fetch('odoo', odooUrl, hopUrl, init);
       }
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), CONNECTOR_HTTP_TIMEOUT_MS);
       try {
-        return await fetch(url, { ...init, signal: controller.signal });
+        return await fetch(hopUrl, { ...hopInit, signal: controller.signal });
       } finally {
         clearTimeout(timeoutId);
       }
+    };
+    try {
+      return await fetchWithValidatedRedirects(hop, url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
     } catch (err) {
+      // A redirect refusal is a configuration problem, not a transient network
+      // failure: surface it as-is so it is neither retried nor mislabelled.
+      if (err instanceof ConnectorRedirectError) {
+        this.logger.warn('Odoo httpFetch redirect refused', { odooUrl, code: err.code });
+        throw err;
+      }
       const { category, retryable, detail } = classifyFetchFailure(err);
       this.logger.warn('Odoo httpFetch network failure', {
         odooUrl, category, retryable, detail,
@@ -322,6 +338,9 @@ export class OdooConnector implements ConnectorInterface {
       }
       return { outcome: 'valid' };
     } catch (err) {
+      if (err instanceof ConnectorRedirectError) {
+        return { outcome: 'invalid', reasonCode: `ODOO_${err.code}` };
+      }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
       }
@@ -364,6 +383,9 @@ export class OdooConnector implements ConnectorInterface {
       }
       return { outcome: 'valid' };
     } catch (err) {
+      if (err instanceof ConnectorRedirectError) {
+        return { outcome: 'invalid', reasonCode: `ODOO_${err.code}` };
+      }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
       }
@@ -565,6 +587,15 @@ export class OdooConnector implements ConnectorInterface {
       const name = err.rpcError.data?.name ?? String(err.rpcError.code ?? 'ODOO_ERROR');
       const message = err.rpcError.data?.message ?? err.rpcError.message ?? 'Unknown Odoo error';
       const issue = this.normaliseError(name, message);
+      return new OdooPublishError([issue], `Odoo product ${operation} failed: ${issue.sellerMessage}`);
+    }
+    if (err instanceof ConnectorRedirectError) {
+      const issue: ConnectorIssue = {
+        code: `ODOO_${err.code}`,
+        fieldPath: 'odoo_url',
+        severity: 'error',
+        sellerMessage: `${err.message} Reconnect Odoo with the canonical URL.`,
+      };
       return new OdooPublishError([issue], `Odoo product ${operation} failed: ${issue.sellerMessage}`);
     }
     const issue = this.normaliseError('ODOO_UNKNOWN_ERROR', err instanceof Error ? err.message : String(err));

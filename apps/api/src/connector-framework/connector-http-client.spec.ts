@@ -335,3 +335,26 @@ describe("ConnectorHttpClient — rate limit isolation", () => {
     expect((unknownBucket as any).capacity).toBe(5); // DEFAULT_RATE_LIMIT
   });
 });
+
+// ─── redirect pass-through ────────────────────────────────────────────────────
+
+describe("ConnectorHttpClient.fetch — redirect mode", () => {
+  it("forwards redirect: 'manual' so callers can validate redirect targets themselves", async () => {
+    global.fetch = jest.fn().mockResolvedValue(mockResponse(200));
+    await makeClient().fetch("odoo", "inst-1", "https://example.com/jsonrpc", { method: "POST", redirect: "manual" });
+    expect((global.fetch as jest.Mock).mock.calls[0][1].redirect).toBe("manual");
+  });
+
+  it("leaves redirect unset (fetch default) when the caller does not ask for one", async () => {
+    global.fetch = jest.fn().mockResolvedValue(mockResponse(200));
+    await makeClient().fetch("shopify", "inst-1", "https://example.com/api");
+    expect((global.fetch as jest.Mock).mock.calls[0][1].redirect).toBeUndefined();
+  });
+
+  it("returns a 3xx response to the caller without retrying it", async () => {
+    global.fetch = jest.fn().mockResolvedValue(mockResponse(307, { location: "/elsewhere" }));
+    const resp = await makeClient().fetch("odoo", "inst-1", "https://example.com/jsonrpc", { redirect: "manual" });
+    expect(resp.status).toBe(307);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+});

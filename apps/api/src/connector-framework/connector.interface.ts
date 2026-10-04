@@ -22,6 +22,12 @@ export interface ConnectorFetchInit {
   body?: string | URLSearchParams | Buffer;
   /** Request timeout in ms. Defaults to 30s. */
   timeoutMs?: number;
+  /**
+   * Redirect handling passed through to fetch. Omitted = fetch default ("follow").
+   * Credential-bearing requests to tenant-supplied hosts must pass "manual" and use
+   * fetchWithValidatedRedirects (common/security) instead of following blindly.
+   */
+  redirect?: "follow" | "manual" | "error";
 }
 
 export interface ConnectorContext {
