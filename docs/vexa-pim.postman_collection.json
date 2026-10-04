@@ -9536,6 +9536,37 @@
       ]
     },
     {
+      "name": "Intelligence",
+      "description": "",
+      "item": [
+        {
+          "name": "IntelligenceController_getBoundary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/intelligence/boundary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "intelligence",
+                "boundary"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "ErrorAuthorityOps",
       "description": "",
       "item": [

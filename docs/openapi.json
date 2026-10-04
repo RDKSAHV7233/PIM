@@ -1493,6 +1493,20 @@
         ]
       }
     },
+    "/api/v1/intelligence/boundary": {
+      "get": {
+        "operationId": "IntelligenceController_getBoundary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Intelligence"
+        ]
+      }
+    },
     "/api/v1/error-authority/ops/issues": {
       "get": {
         "operationId": "ErrorAuthorityOpsController_listIssues",

@@ -888,6 +888,15 @@ paths:
           description: Dashboard operations summary fetched
       summary: Dashboard operations summary for current tenant
       tags: *a12
+  /api/v1/intelligence/boundary:
+    get:
+      operationId: IntelligenceController_getBoundary
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - Intelligence
   /api/v1/error-authority/ops/issues:
     get:
       operationId: ErrorAuthorityOpsController_listIssues

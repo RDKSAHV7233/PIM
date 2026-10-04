@@ -28,6 +28,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { ErrorAuthorityModule } from "./error-authority/error-authority.module";
 import { InternalOpsAlertsModule } from "./internal-ops/internal-ops-alerts.module";
 import { InternalOpsModule } from "./internal-ops/internal-ops.module";
+import { IntelligenceModule } from "./intelligence/intelligence.module";
 import { ConnectorFrameworkModule } from "./connector-framework/connector-framework.module";
 import { ConnectorInstallerModule } from "./connector-installer/connector-installer.module";
 import { MarketplaceModule } from "./marketplace/marketplace.module";
@@ -124,6 +125,7 @@ const FEATURE_ONDC_ENABLED =
     TaxonomyModule,
     ComplianceModule,
     DashboardModule,
+    IntelligenceModule,
     InternalOpsAlertsModule,
     ErrorAuthorityModule,
     InternalOpsModule,
