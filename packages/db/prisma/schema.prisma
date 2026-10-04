@@ -161,6 +161,18 @@ enum AiSuggestionReviewDecision {
   reject
 }
 
+enum AiDataClassification {
+  AI_ALLOWED
+  AI_ALLOWED_WITH_REDACTION
+  AI_BLOCKED
+}
+
+enum AiTenantPolicyStatus {
+  draft
+  active
+  disabled
+}
+
 // Bulk-Publish Goes Async, Story 2. Mirrors BulkImportRunStatus/BulkEditOperationStatus —
 // same shape for the same reason: a run that queues work for a worker to process later.
 enum MarketplaceBulkPublishRunStatus {
@@ -1797,4 +1809,42 @@ model AiSuggestion {
   @@index([tenantKey, entityType, entityId, fieldPath], map: "idx_ai_suggestions_tenant_entity_field")
   @@index([tenantKey, reviewDecision, reviewedAt(sort: Desc)], map: "idx_ai_suggestions_tenant_review_decision")
   @@map("ai_suggestions")
+}
+
+model AiTenantPolicy {
+  id                       String               @id @default(cuid())
+  tenantKey                String               @default("default") @map("tenant_key")
+  capability               String               @default("product_intelligence")
+  providerKey              String               @default("default") @map("provider_key")
+  policyVersion            String               @map("policy_version")
+  status                   AiTenantPolicyStatus @default(draft)
+  intelligenceEnabled      Boolean              @default(false) @map("intelligence_enabled")
+  providerExecutionEnabled Boolean              @default(false) @map("provider_execution_enabled")
+  killSwitchEnabled        Boolean              @default(true) @map("kill_switch_enabled")
+  tenantOptOut             Boolean              @default(true) @map("tenant_opt_out")
+  allowModelTraining       Boolean              @default(false) @map("allow_model_training")
+  allowHumanProviderReview Boolean              @default(false) @map("allow_human_provider_review")
+  allowRawPayloadStorage   Boolean              @default(false) @map("allow_raw_payload_storage")
+  retentionDays            Int                  @default(0) @map("retention_days")
+  maxPayloadBytes          Int                  @default(0) @map("max_payload_bytes")
+  defaultClassification    AiDataClassification @default(AI_BLOCKED) @map("default_classification")
+  allowedCapabilities      Json                 @default("[]") @map("allowed_capabilities")
+  allowedProviderKeys      Json                 @default("[]") @map("allowed_provider_keys")
+  fieldClassifications     Json                 @default("{}") @map("field_classifications")
+  redactionPolicyVersion   String               @map("redaction_policy_version")
+  classificationPolicyHash String               @map("classification_policy_hash")
+  dataUseNotes             String?              @map("data_use_notes")
+  approvedBy               String?              @map("approved_by")
+  approvedAt               DateTime?            @map("approved_at")
+  auditEventIds            Json                 @default("[]") @map("audit_event_ids")
+  createdByActorId         String?              @map("created_by_actor_id")
+  updatedByActorId         String?              @map("updated_by_actor_id")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, capability, providerKey, policyVersion], map: "ai_tenant_policies_tenant_capability_provider_version_unique")
+  @@index([tenantKey, capability, providerKey, status], map: "idx_ai_tenant_policies_tenant_capability_provider_status")
+  @@index([tenantKey, killSwitchEnabled], map: "idx_ai_tenant_policies_tenant_kill_switch")
+  @@index([tenantKey, status, updatedAt(sort: Desc)], map: "idx_ai_tenant_policies_tenant_status_updated")
+  @@map("ai_tenant_policies")
 }

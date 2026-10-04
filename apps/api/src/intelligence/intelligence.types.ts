@@ -138,6 +138,72 @@ export type AiSuggestionStatus =
 
 export type AiSuggestionReviewDecision = "accept" | "edit" | "reject";
 
+export type AiDataClassification = "AI_ALLOWED" | "AI_ALLOWED_WITH_REDACTION" | "AI_BLOCKED";
+
+export type AiTenantPolicyStatus = "draft" | "active" | "disabled";
+
+export interface AiFieldClassificationRule {
+  classification: AiDataClassification;
+  redactionEvidenceRequired?: boolean;
+}
+
+export interface UpsertAiTenantPolicyInput {
+  tenantKey: string;
+  policyVersion: string;
+  capability?: string;
+  providerKey?: string;
+  status?: AiTenantPolicyStatus;
+  intelligenceEnabled?: boolean;
+  providerExecutionEnabled?: boolean;
+  killSwitchEnabled?: boolean;
+  tenantOptOut?: boolean;
+  allowModelTraining?: boolean;
+  allowHumanProviderReview?: boolean;
+  allowRawPayloadStorage?: boolean;
+  retentionDays?: number;
+  maxPayloadBytes?: number;
+  defaultClassification?: AiDataClassification;
+  allowedCapabilities?: string[];
+  allowedProviderKeys?: string[];
+  fieldClassifications?: Record<string, AiFieldClassificationRule>;
+  redactionPolicyVersion: string;
+  classificationPolicyHash: string;
+  dataUseNotes?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: Date | string | null;
+  auditEventIds?: string[];
+  createdByActorId?: string | null;
+  updatedByActorId?: string | null;
+}
+
+export interface ClassifyIntelligencePayloadInput {
+  tenantKey: string;
+  capability: string;
+  providerKey?: string;
+  payload: Prisma.InputJsonValue;
+  redactedFields?: string[];
+}
+
+export interface IntelligencePayloadClassificationResult {
+  allowed: boolean;
+  policyId?: string;
+  policyVersion?: string;
+  blockedFields: string[];
+  redactedFields: string[];
+  unknownFields: string[];
+  classificationEvidenceId: string;
+  redactionEvidenceId?: string;
+  payloadHash?: string;
+  reason?: string;
+}
+
+export interface RecordPolicyBlockedExecutionInput {
+  executionId: string;
+  tenantKey: string;
+  result: IntelligencePayloadClassificationResult;
+  auditEventIds?: string[];
+}
+
 export interface CreateAiSuggestionInput {
   tenantKey: string;
   executionId: string;

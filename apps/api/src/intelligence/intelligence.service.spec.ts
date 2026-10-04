@@ -13,8 +13,12 @@ describe("IntelligenceService", () => {
     findUnique: jest.fn(),
     update: jest.fn(),
   };
+  const aiTenantPolicy = {
+    upsert: jest.fn(),
+    findFirst: jest.fn(),
+  };
   const prisma = {
-    tenant: jest.fn().mockReturnValue({ aiExecution, aiSuggestion }),
+    tenant: jest.fn().mockReturnValue({ aiExecution, aiSuggestion, aiTenantPolicy }),
   } as unknown as PrismaService;
   const evidence = [
     {
@@ -62,6 +66,28 @@ describe("IntelligenceService", () => {
     generatedPayloadHash: hashJson({ value: "Cotton" }),
     suggestedValueHash: hashJson("Cotton"),
     evidenceHash: hashJson(evidence),
+  };
+  const activePolicy = {
+    id: "policy-1",
+    tenantKey: "tenant-a",
+    capability: "product_attribute_extraction",
+    providerKey: "default",
+    policyVersion: "ai-pol-v1",
+    status: "active",
+    intelligenceEnabled: true,
+    providerExecutionEnabled: true,
+    killSwitchEnabled: false,
+    tenantOptOut: false,
+    maxPayloadBytes: 0,
+    allowRawPayloadStorage: false,
+    defaultClassification: "AI_BLOCKED",
+    allowedCapabilities: ["product_attribute_extraction"],
+    allowedProviderKeys: ["default"],
+    fieldClassifications: {
+      "product.title": { classification: "AI_ALLOWED" },
+      "product.internalNotes": { classification: "AI_ALLOWED_WITH_REDACTION", redactionEvidenceRequired: true },
+      "connector.apiKey": { classification: "AI_BLOCKED" },
+    },
   };
 
   beforeEach(() => {
@@ -435,5 +461,189 @@ describe("IntelligenceService", () => {
     ).rejects.toThrow("not found");
     expect(prisma.tenant).toHaveBeenCalledWith("tenant-b");
     expect(aiSuggestion.findUnique).toHaveBeenCalledWith({ where: { id: "suggestion-1", tenantKey: "tenant-b" } });
+  });
+
+  it("creates tenant-scoped AiTenantPolicy with fail-closed defaults", async () => {
+    aiTenantPolicy.upsert.mockResolvedValue({ id: "policy-1" });
+    const service = new IntelligenceService(prisma);
+
+    await service.upsertTenantPolicy({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      providerKey: "default",
+      policyVersion: "ai-pol-v1",
+      status: "active",
+      intelligenceEnabled: true,
+      providerExecutionEnabled: true,
+      killSwitchEnabled: false,
+      tenantOptOut: false,
+      allowedCapabilities: ["product_attribute_extraction"],
+      allowedProviderKeys: ["default"],
+      fieldClassifications: {
+        "product.title": { classification: "AI_ALLOWED" },
+        "connector.apiKey": { classification: "AI_BLOCKED" },
+      },
+      redactionPolicyVersion: "redaction-v1",
+      classificationPolicyHash: "sha256:policy",
+      createdByActorId: "security-1",
+    });
+
+    expect(prisma.tenant).toHaveBeenCalledWith("tenant-a");
+    expect(aiTenantPolicy.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantKey_capability_providerKey_policyVersion: {
+            tenantKey: "tenant-a",
+            capability: "product_attribute_extraction",
+            providerKey: "default",
+            policyVersion: "ai-pol-v1",
+          },
+        },
+        create: expect.objectContaining({
+          allowModelTraining: false,
+          allowRawPayloadStorage: false,
+          killSwitchEnabled: false,
+          tenantOptOut: false,
+          fieldClassifications: expect.objectContaining({
+            "connector.apiKey": { classification: "AI_BLOCKED", redactionEvidenceRequired: false },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("blocks classification when no active tenant policy exists", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(null);
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta" } },
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("No active tenant policy");
+  });
+
+  it("blocks classification when the policy kill switch is enabled", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue({ ...activePolicy, killSwitchEnabled: true });
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta" } },
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("does not permit");
+  });
+
+  it("blocks unknown fields by default", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta", unknownFact: "raw" } },
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.unknownFields).toContain("product.unknownFact");
+  });
+
+  it("blocks AI_BLOCKED fields before payload use", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta" }, connector: { apiKey: "removed" } },
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.blockedFields).toContain("connector.apiKey");
+  });
+
+  it("requires redaction evidence for redactable fields", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta", internalNotes: "[REDACTED]" } },
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.blockedFields).toContain("product.internalNotes");
+  });
+
+  it("rejects secret-like values even in allowed fields", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "bearer token leaked" } },
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.blockedFields).toContain("product.title");
+  });
+
+  it("allows sanitized payloads when tenant policy permits every field", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const service = new IntelligenceService(prisma);
+
+    const result = await service.classifyPayloadForIntelligence({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta", internalNotes: "[REDACTED]" } },
+      redactedFields: ["product.internalNotes"],
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.blockedFields).toEqual([]);
+    expect(result.redactedFields).toEqual(["product.internalNotes"]);
+    expect(result.payloadHash).toBeUndefined();
+  });
+
+  it("records policy-blocked execution telemetry with zero cost and no request payload hash", async () => {
+    aiExecution.update.mockResolvedValue({ id: "exec-1", status: "blocked" });
+    const service = new IntelligenceService(prisma);
+
+    await service.recordPolicyBlockedExecution({
+      executionId: "exec-1",
+      tenantKey: "tenant-a",
+      result: {
+        allowed: false,
+        blockedFields: ["connector.apiKey"],
+        unknownFields: [],
+        redactedFields: [],
+        classificationEvidenceId: "classification:blocked",
+        reason: "Payload contains blocked or unknown fields.",
+      },
+      auditEventIds: ["audit-policy-blocked-1"],
+    });
+
+    expect(aiExecution.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "exec-1", tenantKey: "tenant-a" },
+        data: expect.objectContaining({
+          status: "blocked",
+          providerCallAttempted: false,
+          estimatedCostMicros: 0,
+          totalTokens: 0,
+          requestPayloadHash: null,
+          containsCredentials: false,
+          blockedFields: ["connector.apiKey"],
+        }),
+      }),
+    );
   });
 });

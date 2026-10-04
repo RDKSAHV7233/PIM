@@ -4,13 +4,19 @@ import { createHash } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import type {
+  AiDataClassification,
+  AiFieldClassificationRule,
+  ClassifyIntelligencePayloadInput,
   CreateAiSuggestionInput,
   CreateAiExecutionInput,
   FinalizeAiExecutionInput,
   IntelligenceActor,
   IntelligenceBoundaryStatus,
   IntelligenceCapabilitySummary,
+  IntelligencePayloadClassificationResult,
+  RecordPolicyBlockedExecutionInput,
   ReviewAiSuggestionInput,
+  UpsertAiTenantPolicyInput,
 } from "./intelligence.types";
 
 const PRODUCT_INTELLIGENCE_CAPABILITIES: readonly IntelligenceCapabilitySummary[] = [
@@ -30,6 +36,8 @@ const PRODUCT_INTELLIGENCE_CAPABILITIES: readonly IntelligenceCapabilitySummary[
     canonicalMutation: false,
   },
 ];
+
+const AI_DATA_CLASSIFICATIONS = new Set<AiDataClassification>(["AI_ALLOWED", "AI_ALLOWED_WITH_REDACTION", "AI_BLOCKED"]);
 
 @Injectable()
 export class IntelligenceService {
@@ -166,9 +174,188 @@ export class IntelligenceService {
         responsePayloadStorageRef: this.safeText(input.responsePayloadStorageRef),
         containsBlockedData: Boolean(input.containsBlockedData),
         containsCredentials: false,
-        redactedFields: this.stringArray(input.redactedFields) as Prisma.InputJsonValue,
-        blockedFields: this.stringArray(input.blockedFields) as Prisma.InputJsonValue,
+        redactedFields: this.fieldPathArray(input.redactedFields) as Prisma.InputJsonValue,
+        blockedFields: this.fieldPathArray(input.blockedFields) as Prisma.InputJsonValue,
       },
+    });
+  }
+
+  async upsertTenantPolicy(input: UpsertAiTenantPolicyInput) {
+    const tenantKey = normalizeTenantKey(input.tenantKey);
+    const capability = this.requiredText("capability", input.capability ?? "product_intelligence");
+    const providerKey = this.requiredText("providerKey", input.providerKey ?? "default");
+    const policyVersion = this.requiredText("policyVersion", input.policyVersion);
+    const fieldClassifications = this.validateFieldClassifications(input.fieldClassifications ?? {});
+    const retentionDays = this.nonNegativeInteger("retentionDays", input.retentionDays ?? 0);
+    const maxPayloadBytes = this.nonNegativeInteger("maxPayloadBytes", input.maxPayloadBytes ?? 0);
+
+    return this.prisma.tenant(tenantKey).aiTenantPolicy.upsert({
+      where: {
+        tenantKey_capability_providerKey_policyVersion: {
+          tenantKey,
+          capability,
+          providerKey,
+          policyVersion,
+        },
+      },
+      create: {
+        tenantKey,
+        capability,
+        providerKey,
+        policyVersion,
+        status: input.status ?? "draft",
+        intelligenceEnabled: Boolean(input.intelligenceEnabled),
+        providerExecutionEnabled: Boolean(input.providerExecutionEnabled),
+        killSwitchEnabled: input.killSwitchEnabled !== false,
+        tenantOptOut: input.tenantOptOut !== false,
+        allowModelTraining: false,
+        allowHumanProviderReview: Boolean(input.allowHumanProviderReview),
+        allowRawPayloadStorage: false,
+        retentionDays,
+        maxPayloadBytes,
+        defaultClassification: input.defaultClassification ?? "AI_BLOCKED",
+        allowedCapabilities: this.stringArray(input.allowedCapabilities) as Prisma.InputJsonValue,
+        allowedProviderKeys: this.stringArray(input.allowedProviderKeys) as Prisma.InputJsonValue,
+        fieldClassifications: fieldClassifications as unknown as Prisma.InputJsonValue,
+        redactionPolicyVersion: this.requiredText("redactionPolicyVersion", input.redactionPolicyVersion),
+        classificationPolicyHash: this.requiredText("classificationPolicyHash", input.classificationPolicyHash),
+        dataUseNotes: this.safeText(input.dataUseNotes),
+        approvedBy: this.safeText(input.approvedBy),
+        approvedAt: this.optionalDate(input.approvedAt),
+        auditEventIds: this.stringArray(input.auditEventIds) as Prisma.InputJsonValue,
+        createdByActorId: this.safeText(input.createdByActorId),
+        updatedByActorId: this.safeText(input.updatedByActorId),
+      },
+      update: {
+        status: input.status ?? "draft",
+        intelligenceEnabled: Boolean(input.intelligenceEnabled),
+        providerExecutionEnabled: Boolean(input.providerExecutionEnabled),
+        killSwitchEnabled: input.killSwitchEnabled !== false,
+        tenantOptOut: input.tenantOptOut !== false,
+        allowModelTraining: false,
+        allowHumanProviderReview: Boolean(input.allowHumanProviderReview),
+        allowRawPayloadStorage: false,
+        retentionDays,
+        maxPayloadBytes,
+        defaultClassification: input.defaultClassification ?? "AI_BLOCKED",
+        allowedCapabilities: this.stringArray(input.allowedCapabilities) as Prisma.InputJsonValue,
+        allowedProviderKeys: this.stringArray(input.allowedProviderKeys) as Prisma.InputJsonValue,
+        fieldClassifications: fieldClassifications as unknown as Prisma.InputJsonValue,
+        redactionPolicyVersion: this.requiredText("redactionPolicyVersion", input.redactionPolicyVersion),
+        classificationPolicyHash: this.requiredText("classificationPolicyHash", input.classificationPolicyHash),
+        dataUseNotes: this.safeText(input.dataUseNotes),
+        approvedBy: this.safeText(input.approvedBy),
+        approvedAt: this.optionalDate(input.approvedAt),
+        auditEventIds: this.stringArray(input.auditEventIds) as Prisma.InputJsonValue,
+        updatedByActorId: this.safeText(input.updatedByActorId),
+      },
+    });
+  }
+
+  async classifyPayloadForIntelligence(input: ClassifyIntelligencePayloadInput): Promise<IntelligencePayloadClassificationResult> {
+    const tenantKey = normalizeTenantKey(input.tenantKey);
+    const capability = this.requiredText("capability", input.capability);
+    const providerKey = this.requiredText("providerKey", input.providerKey ?? "default");
+    const payload = this.requiredJson("payload", input.payload);
+    const redactedFields = this.stringArray(input.redactedFields);
+    const policy = await this.prisma.tenant(tenantKey).aiTenantPolicy.findFirst({
+      where: {
+        tenantKey,
+        capability,
+        providerKey,
+        status: "active",
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    if (!policy) {
+      return this.blockedClassificationResult("tenant_policy_blocked", "No active tenant policy found.");
+    }
+    if (!policy.intelligenceEnabled || !policy.providerExecutionEnabled || policy.killSwitchEnabled || policy.tenantOptOut) {
+      return this.blockedClassificationResult("tenant_policy_blocked", "Tenant policy does not permit intelligence payload use.", policy);
+    }
+    if (!this.jsonStringArray(policy.allowedCapabilities).includes(capability)) {
+      return this.blockedClassificationResult("tenant_policy_blocked", "Capability is not allowed by tenant policy.", policy);
+    }
+    if (!this.jsonStringArray(policy.allowedProviderKeys).includes(providerKey)) {
+      return this.blockedClassificationResult("tenant_policy_blocked", "Provider key is not allowed by tenant policy.", policy);
+    }
+    if (policy.maxPayloadBytes > 0 && Buffer.byteLength(this.stableJsonStringify(payload), "utf8") > policy.maxPayloadBytes) {
+      return this.blockedClassificationResult("tenant_policy_blocked", "Payload exceeds tenant policy size limit.", policy);
+    }
+
+    const rules = this.normalizeFieldClassifications(policy.fieldClassifications);
+    const flattened = this.flattenPayloadLeaves(payload);
+    const blockedFields: string[] = [];
+    const unknownFields: string[] = [];
+
+    for (const item of flattened) {
+      const rule = rules[item.path];
+      const classification = rule?.classification ?? (policy.defaultClassification as AiDataClassification);
+      if (!rule) {
+        unknownFields.push(item.path);
+      }
+      if (classification === "AI_BLOCKED") {
+        blockedFields.push(item.path);
+        continue;
+      }
+      if (classification === "AI_ALLOWED_WITH_REDACTION" && !redactedFields.includes(item.path)) {
+        blockedFields.push(item.path);
+        continue;
+      }
+      if (typeof item.value === "string" && this.hasSecretLikeText(item.value)) {
+        blockedFields.push(item.path);
+      }
+    }
+
+    if (blockedFields.length > 0 || unknownFields.length > 0) {
+      return {
+        allowed: false,
+        policyId: policy.id,
+        policyVersion: policy.policyVersion,
+        blockedFields: [...new Set(blockedFields)],
+        unknownFields: [...new Set(unknownFields)],
+        redactedFields,
+        classificationEvidenceId: this.buildEvidenceId("classification", policy.id, payload),
+        redactionEvidenceId: redactedFields.length > 0 ? this.buildEvidenceId("redaction", policy.id, redactedFields) : undefined,
+        reason: "Payload contains blocked or unknown fields.",
+      };
+    }
+
+    return {
+      allowed: true,
+      policyId: policy.id,
+      policyVersion: policy.policyVersion,
+      blockedFields: [],
+      unknownFields: [],
+      redactedFields,
+      classificationEvidenceId: this.buildEvidenceId("classification", policy.id, payload),
+      redactionEvidenceId: redactedFields.length > 0 ? this.buildEvidenceId("redaction", policy.id, redactedFields) : undefined,
+      payloadHash: policy.allowRawPayloadStorage ? this.hashJson(payload) : undefined,
+    };
+  }
+
+  async recordPolicyBlockedExecution(input: RecordPolicyBlockedExecutionInput) {
+    return this.finalizeExecution(input.executionId, input.tenantKey, {
+      status: "blocked",
+      failureClass: input.result.reason?.includes("policy") ? "tenant_policy_blocked" : "classification_blocked",
+      providerCallAttempted: false,
+      estimatedCostMicros: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      reasoningTokens: 0,
+      billableUnits: 0,
+      auditEventIds: input.auditEventIds,
+      classificationEvidenceId: input.result.classificationEvidenceId,
+      redactionEvidenceId: input.result.redactionEvidenceId,
+      requestPayloadHash: null,
+      containsBlockedData: input.result.blockedFields.length > 0,
+      containsCredentials: false,
+      blockedFields: [...input.result.blockedFields, ...input.result.unknownFields],
+      redactedFields: input.result.redactedFields,
     });
   }
 
@@ -415,6 +602,23 @@ export class IntelligenceService {
     return `sha256:${createHash("sha256").update(`${input.tenantKey}|${input.generationFingerprint}`).digest("hex")}`;
   }
 
+  private buildEvidenceId(kind: string, policyId: string, value: unknown) {
+    return `${kind}:${createHash("sha256").update(`${policyId}|${this.stableJsonStringify(value)}`).digest("hex")}`;
+  }
+
+  private blockedClassificationResult(reasonCode: string, reason: string, policy?: { id: string; policyVersion: string }): IntelligencePayloadClassificationResult {
+    return {
+      allowed: false,
+      policyId: policy?.id,
+      policyVersion: policy?.policyVersion,
+      blockedFields: [],
+      redactedFields: [],
+      unknownFields: [],
+      classificationEvidenceId: `${reasonCode}:blocked`,
+      reason,
+    };
+  }
+
   private async markSuggestionStatus(id: string, tenantKey: string, status: "blocked_stale" | "blocked_tampered", auditEventIds?: string[]) {
     await this.prisma.tenant(tenantKey).aiSuggestion.update({
       where: { id, tenantKey },
@@ -447,9 +651,51 @@ export class IntelligenceService {
     if (!normalized) {
       return;
     }
-    if (/\b(api[_ -]?key|bearer\s+|oauth|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|credential)/i.test(normalized)) {
+    if (this.hasSecretLikeText(normalized)) {
       throw new BadRequestException(`${field} contains forbidden sensitive telemetry.`);
     }
+  }
+
+  private hasSecretLikeText(value: string) {
+    return /\b(api[_ -]?key|bearer\s+|oauth|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|credential|password|token)(?=\b|_)/i.test(value);
+  }
+
+  private validateFieldClassifications(value: Record<string, AiFieldClassificationRule>) {
+    const result: Record<string, AiFieldClassificationRule> = {};
+    for (const [fieldPath, rule] of Object.entries(value)) {
+      const normalizedPath = String(fieldPath ?? "").trim();
+      if (!normalizedPath) {
+        throw new BadRequestException("field classification path is required.");
+      }
+      if (!AI_DATA_CLASSIFICATIONS.has(rule.classification)) {
+        throw new BadRequestException("Unsupported AI data classification.");
+      }
+      result[normalizedPath] = {
+        classification: rule.classification,
+        redactionEvidenceRequired: Boolean(rule.redactionEvidenceRequired),
+      };
+    }
+    return result;
+  }
+
+  private normalizeFieldClassifications(value: unknown) {
+    if (!this.isRecord(value)) {
+      return {};
+    }
+    const result: Record<string, AiFieldClassificationRule> = {};
+    for (const [fieldPath, rule] of Object.entries(value)) {
+      if (!this.isRecord(rule)) {
+        continue;
+      }
+      const classification = rule.classification;
+      if (typeof classification === "string" && AI_DATA_CLASSIFICATIONS.has(classification as AiDataClassification)) {
+        result[fieldPath] = {
+          classification: classification as AiDataClassification,
+          redactionEvidenceRequired: Boolean(rule.redactionEvidenceRequired),
+        };
+      }
+    }
+    return result;
   }
 
   private requiredJson(field: string, value: unknown): Prisma.InputJsonValue {
@@ -527,6 +773,20 @@ export class IntelligenceService {
 
   private hashJson(value: unknown) {
     return `sha256:${createHash("sha256").update(this.stableJsonStringify(value)).digest("hex")}`;
+  }
+
+  private jsonStringArray(value: unknown) {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  }
+
+  private flattenPayloadLeaves(value: unknown, prefix = ""): Array<{ path: string; value: unknown }> {
+    if (Array.isArray(value)) {
+      return [{ path: prefix, value }];
+    }
+    if (!this.isRecord(value)) {
+      return prefix ? [{ path: prefix, value }] : [];
+    }
+    return Object.entries(value).flatMap(([key, child]) => this.flattenPayloadLeaves(child, prefix ? `${prefix}.${key}` : key));
   }
 
   private stableJsonStringify(value: unknown): string {
@@ -607,5 +867,18 @@ export class IntelligenceService {
 
   private stringArray(value: string[] | undefined) {
     return Array.isArray(value) ? value.map((item) => this.requiredText("array item", item)) : [];
+  }
+
+  private fieldPathArray(value: string[] | undefined) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.map((item) => {
+      const normalized = String(item ?? "").trim();
+      if (!normalized) {
+        throw new BadRequestException("field path array item is required.");
+      }
+      return normalized;
+    });
   }
 }
