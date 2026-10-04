@@ -1,8 +1,13 @@
 # Connector DNS pinning
 
-Credential-bearing requests to a tenant-supplied host (Odoo, WooCommerce, PrestaShop,
-Shopware) go through one transport, `PinnedUndiciTransport`
-(`apps/api/src/common/security/`), reached via `getConnectorTransport()`.
+Requests to a tenant-supplied host go through one transport class, `PinnedUndiciTransport`
+(`apps/api/src/common/security/`): credential-bearing connector requests (Odoo, WooCommerce,
+PrestaShop, Shopware) via `getConnectorTransport()`, and outbound webhook delivery via
+`getWebhookTransport()`, whose refusal messages use the webhook wording
+("Webhook target URL ..."). Webhook-specific behavior is unchanged: redirects stay manual
+(a 3xx is a failed delivery, never followed), the strict dispatch-time URL check still runs
+first, signing and the 10 s timeout are untouched, and `PIM_UNSAFE_HTTP_WEBHOOK_TARGETS=true`
+still permits plain `http://` and loopback for local fixtures.
 
 ## Problem
 
@@ -62,8 +67,10 @@ certificate hostname check, and TLS verification is left at defaults.
   restriction that the socket can only dial validated addresses does not depend on it.
 - Resolution moves from c-ares to getaddrinfo, so `/etc/hosts` and the system resolver
   configuration now apply.
-- Not covered yet: outbound webhook dispatch (same transport, separate follow-up) and
-  fixed-host connectors, which take no tenant URL.
+- Not covered: fixed-host connectors, which take no tenant URL, and operator-configured
+  alert destinations (internal-ops alerts), which are set by environment variables.
+- Remote image import (`media.service.ts`) pins its own connection with a private classifier;
+  moving it to the shared classifier is a separate item.
 
 ## Tests
 

@@ -199,6 +199,7 @@ jobs:
           src/common/security
           src/connector-framework/connector-http-client
           src/connectors/connector-transport-wiring
+          src/outbound-webhooks/outbound-webhooks.pinning
 
   # ── Backend tests (DB + Redis required) ───────────────────────────────
   # Skipped when only frontend files change on a PR.

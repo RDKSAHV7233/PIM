@@ -33,10 +33,16 @@ export interface PinnedTransportOptions {
    * throwaway CA; production leaves it unset (default system trust).
    */
   trustedCa?: string | Buffer | Array<string | Buffer>;
+  /**
+   * What the refused URL is called in error messages, e.g. "Connector base URL" (default)
+   * or "Webhook target URL". Wording only; it has no effect on what is refused.
+   */
+  targetLabel?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+const DEFAULT_TARGET_LABEL = "Connector base URL";
 
 async function defaultResolveHost(hostname: string): Promise<ValidatedCandidate[]> {
   const answers = await dns.promises.lookup(hostname, { all: true, verbatim: true });
@@ -111,6 +117,7 @@ export class PinnedUndiciTransport implements ConnectorTransport {
   private readonly resolveHost: (hostname: string) => Promise<ValidatedCandidate[]>;
   private readonly connectTimeoutMs: number;
   private readonly trustedCa: PinnedTransportOptions["trustedCa"];
+  private readonly targetLabel: string;
 
   constructor(options: PinnedTransportOptions = {}) {
     if (typeof undiciFetch !== "function" || typeof Agent !== "function" || typeof buildConnector !== "function") {
@@ -123,6 +130,7 @@ export class PinnedUndiciTransport implements ConnectorTransport {
     this.resolveHost = options.resolveHost ?? defaultResolveHost;
     this.connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
     this.trustedCa = options.trustedCa;
+    this.targetLabel = options.targetLabel ?? DEFAULT_TARGET_LABEL;
     this.agent = new Agent({
       // Per-connection validation and pinning (see connect()).
       connect: (opts, callback) => this.connect(opts, callback),
@@ -166,7 +174,7 @@ export class PinnedUndiciTransport implements ConnectorTransport {
     if (net.isIP(hostname)) {
       if (this.isBlocked(hostname)) {
         callback(
-          new ConnectorTargetUnsafeError("Connector base URL points to a private or reserved IP address.", "PRIVATE_IP_LITERAL"),
+          new ConnectorTargetUnsafeError(`${this.targetLabel} points to a private or reserved IP address.`, "PRIVATE_IP_LITERAL"),
           null,
         );
         return;
@@ -189,7 +197,7 @@ export class PinnedUndiciTransport implements ConnectorTransport {
     // rebinding signal, so the safe members are not used.
     if (candidates.some((c) => this.isBlocked(c.address))) {
       throw new ConnectorTargetUnsafeError(
-        "Connector base URL resolves to a private or reserved IP address.",
+        `${this.targetLabel} resolves to a private or reserved IP address.`,
         "PRIVATE_IP_RESOLVED",
       );
     }

@@ -52,15 +52,16 @@ describe("connector transport static guards", () => {
   });
 
   describe.each([
-    ["odoo", "connectors/odoo/odoo.connector.ts"],
-    ["woocommerce", "connectors/woocommerce/woocommerce.connector.ts"],
-    ["prestashop", "connectors/prestashop/prestashop.connector.ts"],
-    ["shopware", "connectors/shopware/shopware.connector.ts"],
-  ])("%s connector", (_name, file) => {
-    it("sends credential-bearing requests only through the transport seam", () => {
+    ["odoo connector", "connectors/odoo/odoo.connector.ts", "getConnectorTransport"],
+    ["woocommerce connector", "connectors/woocommerce/woocommerce.connector.ts", "getConnectorTransport"],
+    ["prestashop connector", "connectors/prestashop/prestashop.connector.ts", "getConnectorTransport"],
+    ["shopware connector", "connectors/shopware/shopware.connector.ts", "getConnectorTransport"],
+    ["outbound webhooks service", "outbound-webhooks/outbound-webhooks.service.ts", "getWebhookTransport"],
+  ])("%s", (_name, file, accessor) => {
+    it("sends tenant-targeted requests only through the transport seam", () => {
       const source = read(file);
       expect(bareFetchLines(source)).toEqual([]);
-      expect(code(source)).toMatch(/getConnectorTransport\(\)/);
+      expect(code(source)).toContain(`${accessor}()`);
     });
 
     it("never touches TLS verification settings", () => {

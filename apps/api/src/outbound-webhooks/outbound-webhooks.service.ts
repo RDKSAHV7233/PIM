@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import type { AppRole } from "../common/rbac/roles";
+import { getWebhookTransport } from "../common/security/connector-transport";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import {
   buildEncryptedCredential,
@@ -674,7 +675,10 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
       // Dispatch-time re-validation is strict (requireResolvable defaults to
       // true): a target that no longer resolves must not be contacted.
       const targetUrl = await this.normalizeTargetUrl(endpoint.targetUrl);
-      const response = await fetch(targetUrl, {
+      // The target is tenant-configured. The pinned webhook transport resolves it once,
+      // refuses the attempt if any resolved address is unsafe, and lets the socket dial only
+      // the validated addresses. Redirects stay manual: a 3xx is never followed.
+      const response = await getWebhookTransport().fetch(targetUrl, {
         method: "POST",
         redirect: "manual",
         headers: {
@@ -687,7 +691,7 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
           "X-PIM1-Webhook-Signature": `sha256=${signature}`,
         },
         body: requestBody,
-        signal: AbortSignal.timeout(OUTBOUND_WEBHOOK_TIMEOUT_MS),
+        timeoutMs: OUTBOUND_WEBHOOK_TIMEOUT_MS,
       });
 
       const responseBody = this.truncateResponse(await response.text());
