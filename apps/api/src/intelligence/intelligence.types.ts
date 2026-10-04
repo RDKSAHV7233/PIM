@@ -1,4 +1,5 @@
 import type { AppRole } from "../common/rbac/roles";
+import type { Prisma } from "@prisma/client";
 
 export type IntelligenceCapabilityStatus = "planned" | "disabled";
 
@@ -122,4 +123,53 @@ export interface FinalizeAiExecutionInput {
   containsCredentials?: boolean;
   redactedFields?: string[];
   blockedFields?: string[];
+}
+
+export type AiSuggestionStatus =
+  | "generated"
+  | "pending_review"
+  | "accepted"
+  | "edited"
+  | "rejected"
+  | "blocked_stale"
+  | "blocked_tampered"
+  | "blocked_unauthorized"
+  | "applied";
+
+export type AiSuggestionReviewDecision = "accept" | "edit" | "reject";
+
+export interface CreateAiSuggestionInput {
+  tenantKey: string;
+  executionId: string;
+  capability: string;
+  entityType: string;
+  entityId: string;
+  fieldPath: string;
+  sourceRecordId: string;
+  sourceVersion: number;
+  sourceHash: string;
+  promptVersion: string;
+  schemaVersion: string;
+  generatedPayload: Prisma.InputJsonValue;
+  suggestedValue: Prisma.InputJsonValue;
+  evidence?: Prisma.InputJsonValue[];
+  requiresEvidence?: boolean;
+  confidence?: number | null;
+  attributeFamily?: string | null;
+  generationFingerprint?: string | null;
+  idempotencyFingerprint?: string | null;
+  validationEvidenceId?: string | null;
+  auditEventIds?: string[];
+  evaluation?: Prisma.InputJsonValue;
+}
+
+export interface ReviewAiSuggestionInput {
+  decision: AiSuggestionReviewDecision;
+  reviewedBy: string;
+  reviewedValue?: Prisma.InputJsonValue | null;
+  reviewReason?: string | null;
+  reviewedAt?: Date | string | null;
+  currentSourceVersion?: number;
+  currentSourceHash?: string | null;
+  auditEventIds?: string[];
 }

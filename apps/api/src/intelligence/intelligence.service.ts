@@ -1,14 +1,16 @@
-import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import type {
+  CreateAiSuggestionInput,
   CreateAiExecutionInput,
   FinalizeAiExecutionInput,
   IntelligenceActor,
   IntelligenceBoundaryStatus,
   IntelligenceCapabilitySummary,
+  ReviewAiSuggestionInput,
 } from "./intelligence.types";
 
 const PRODUCT_INTELLIGENCE_CAPABILITIES: readonly IntelligenceCapabilitySummary[] = [
@@ -170,6 +172,191 @@ export class IntelligenceService {
     });
   }
 
+  async createSuggestion(input: CreateAiSuggestionInput) {
+    const tenantKey = normalizeTenantKey(input.tenantKey);
+    const generatedPayload = this.requiredJson("generatedPayload", input.generatedPayload);
+    const suggestedValue = this.requiredJson("suggestedValue", input.suggestedValue);
+    const evidence = this.evidenceArray(input.evidence);
+    const requiresEvidence = input.requiresEvidence !== false;
+
+    this.assertSafeJson("generatedPayload", generatedPayload);
+    this.assertSafeJson("suggestedValue", suggestedValue);
+    this.assertSafeJson("evidence", evidence);
+    this.assertEvidenceMatches(
+      {
+        sourceRecordId: this.requiredText("sourceRecordId", input.sourceRecordId),
+        sourceVersion: this.nonNegativeInteger("sourceVersion", input.sourceVersion),
+        sourceHash: this.requiredText("sourceHash", input.sourceHash),
+      },
+      requiresEvidence,
+      evidence,
+    );
+
+    const generatedPayloadHash = this.hashJson(generatedPayload);
+    const suggestedValueHash = this.hashJson(suggestedValue);
+    const evidenceHash = evidence.length > 0 ? this.hashJson(evidence) : null;
+    const sourceRecordId = this.requiredText("sourceRecordId", input.sourceRecordId);
+    const sourceVersion = this.nonNegativeInteger("sourceVersion", input.sourceVersion);
+    const sourceHash = this.requiredText("sourceHash", input.sourceHash);
+    const capability = this.requiredText("capability", input.capability);
+    const entityType = this.requiredText("entityType", input.entityType);
+    const entityId = this.requiredText("entityId", input.entityId);
+    const fieldPath = this.requiredText("fieldPath", input.fieldPath);
+    const promptVersion = this.requiredText("promptVersion", input.promptVersion);
+    const schemaVersion = this.requiredText("schemaVersion", input.schemaVersion);
+    const generationFingerprint =
+      this.safeText(input.generationFingerprint) ??
+      this.buildSuggestionGenerationFingerprint({
+        tenantKey,
+        capability,
+        entityType,
+        entityId,
+        fieldPath,
+        sourceRecordId,
+        sourceVersion,
+        sourceHash,
+        promptVersion,
+        schemaVersion,
+        generatedPayloadHash,
+      });
+    const idempotencyFingerprint =
+      this.safeText(input.idempotencyFingerprint) ??
+      this.buildSuggestionIdempotencyFingerprint({
+        tenantKey,
+        generationFingerprint,
+      });
+
+    return this.prisma.tenant(tenantKey).aiSuggestion.upsert({
+      where: {
+        tenantKey_idempotencyFingerprint: {
+          tenantKey,
+          idempotencyFingerprint,
+        },
+      },
+      create: {
+        tenantKey,
+        executionId: this.requiredText("executionId", input.executionId),
+        capability,
+        entityType,
+        entityId,
+        fieldPath,
+        attributeFamily: this.safeText(input.attributeFamily),
+        sourceRecordId,
+        sourceVersion,
+        sourceHash,
+        promptVersion,
+        schemaVersion,
+        generationFingerprint,
+        idempotencyFingerprint,
+        generatedPayload,
+        generatedPayloadHash,
+        suggestedValue,
+        suggestedValueHash,
+        confidence: this.optionalConfidence(input.confidence),
+        evidence: evidence as Prisma.InputJsonValue,
+        requiresEvidence,
+        evidenceHash,
+        status: "pending_review",
+        validationEvidenceId: this.safeText(input.validationEvidenceId),
+        auditEventIds: this.stringArray(input.auditEventIds) as Prisma.InputJsonValue,
+        evaluation: this.optionalJsonObject(input.evaluation),
+      },
+      update: {},
+    });
+  }
+
+  async reviewSuggestion(id: string, tenantKeyInput: string, input: ReviewAiSuggestionInput) {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const suggestion = await this.prisma.tenant(tenantKey).aiSuggestion.findUnique({
+      where: {
+        id,
+        tenantKey,
+      },
+    });
+
+    if (!suggestion) {
+      throw new NotFoundException("AiSuggestion was not found for this tenant.");
+    }
+
+    if (
+      suggestion.generatedPayloadHash !== this.hashJson(suggestion.generatedPayload) ||
+      suggestion.suggestedValueHash !== this.hashJson(suggestion.suggestedValue) ||
+      (suggestion.evidenceHash && suggestion.evidenceHash !== this.hashJson(suggestion.evidence))
+    ) {
+      await this.markSuggestionStatus(id, tenantKey, "blocked_tampered", input.auditEventIds);
+      throw new BadRequestException("AiSuggestion generated payload failed tamper validation.");
+    }
+
+    if (
+      (input.currentSourceVersion !== undefined && input.currentSourceVersion !== suggestion.sourceVersion) ||
+      (input.currentSourceHash && input.currentSourceHash !== suggestion.sourceHash)
+    ) {
+      await this.markSuggestionStatus(id, tenantKey, "blocked_stale", input.auditEventIds);
+      throw new BadRequestException("AiSuggestion source is stale.");
+    }
+
+    const decision = input.decision;
+    const reviewedBy = this.requiredText("reviewedBy", input.reviewedBy);
+    const reviewedAt = this.optionalDate(input.reviewedAt) ?? new Date();
+    const auditEventIds = this.stringArray(input.auditEventIds) as Prisma.InputJsonValue;
+
+    if (decision === "accept") {
+      return this.prisma.tenant(tenantKey).aiSuggestion.update({
+        where: { id, tenantKey },
+        data: {
+          status: "accepted",
+          reviewDecision: "accept",
+          reviewedValue: suggestion.suggestedValue as Prisma.InputJsonValue,
+          reviewedValueHash: suggestion.suggestedValueHash,
+          reviewedBy,
+          reviewedAt,
+          reviewReason: this.safeText(input.reviewReason),
+          auditEventIds,
+        },
+      });
+    }
+
+    if (decision === "edit") {
+      const reviewedValue = this.requiredJson("reviewedValue", input.reviewedValue);
+      this.assertSafeJson("reviewedValue", reviewedValue);
+      const reviewedValueHash = this.hashJson(reviewedValue);
+      if (reviewedValueHash === suggestion.suggestedValueHash) {
+        throw new BadRequestException("Edited suggestions must preserve a distinct reviewed value.");
+      }
+      return this.prisma.tenant(tenantKey).aiSuggestion.update({
+        where: { id, tenantKey },
+        data: {
+          status: "edited",
+          reviewDecision: "edit",
+          reviewedValue,
+          reviewedValueHash,
+          reviewedBy,
+          reviewedAt,
+          reviewReason: this.requiredText("reviewReason", input.reviewReason),
+          auditEventIds,
+        },
+      });
+    }
+
+    return this.prisma.tenant(tenantKey).aiSuggestion.update({
+      where: { id, tenantKey },
+      data: {
+        status: "rejected",
+        reviewDecision: "reject",
+        reviewedValue: Prisma.DbNull,
+        reviewedValueHash: null,
+        reviewedBy,
+        reviewedAt,
+        reviewReason: this.requiredText("reviewReason", input.reviewReason),
+        appliedValue: Prisma.DbNull,
+        appliedValueHash: null,
+        appliedAt: null,
+        productServiceApplyTransactionId: null,
+        auditEventIds,
+      },
+    });
+  }
+
   private buildIdempotencyFingerprint(input: {
     tenantKey: string;
     capability: string;
@@ -193,6 +380,49 @@ export class IntelligenceService {
       input.schemaVersion,
     ].join("|");
     return `sha256:${createHash("sha256").update(payload).digest("hex")}`;
+  }
+
+  private buildSuggestionGenerationFingerprint(input: {
+    tenantKey: string;
+    capability: string;
+    entityType: string;
+    entityId: string;
+    fieldPath: string;
+    sourceRecordId: string;
+    sourceVersion: number;
+    sourceHash: string;
+    promptVersion: string;
+    schemaVersion: string;
+    generatedPayloadHash: string;
+  }) {
+    const payload = [
+      input.tenantKey,
+      input.capability,
+      input.entityType,
+      input.entityId,
+      input.fieldPath,
+      input.sourceRecordId,
+      String(input.sourceVersion),
+      input.sourceHash,
+      input.promptVersion,
+      input.schemaVersion,
+      input.generatedPayloadHash,
+    ].join("|");
+    return `sha256:${createHash("sha256").update(payload).digest("hex")}`;
+  }
+
+  private buildSuggestionIdempotencyFingerprint(input: { tenantKey: string; generationFingerprint: string }) {
+    return `sha256:${createHash("sha256").update(`${input.tenantKey}|${input.generationFingerprint}`).digest("hex")}`;
+  }
+
+  private async markSuggestionStatus(id: string, tenantKey: string, status: "blocked_stale" | "blocked_tampered", auditEventIds?: string[]) {
+    await this.prisma.tenant(tenantKey).aiSuggestion.update({
+      where: { id, tenantKey },
+      data: {
+        status,
+        auditEventIds: this.stringArray(auditEventIds) as Prisma.InputJsonValue,
+      },
+    });
   }
 
   private requiredText(field: string, value: string | null | undefined) {
@@ -220,6 +450,101 @@ export class IntelligenceService {
     if (/\b(api[_ -]?key|bearer\s+|oauth|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|credential)/i.test(normalized)) {
       throw new BadRequestException(`${field} contains forbidden sensitive telemetry.`);
     }
+  }
+
+  private requiredJson(field: string, value: unknown): Prisma.InputJsonValue {
+    if (value === undefined || value === null) {
+      throw new BadRequestException(`${field} is required.`);
+    }
+    return value as Prisma.InputJsonValue;
+  }
+
+  private optionalJsonObject(value: unknown): Prisma.InputJsonValue {
+    if (value === undefined || value === null) {
+      return {};
+    }
+    this.assertSafeJson("evaluation", value);
+    return value as Prisma.InputJsonValue;
+  }
+
+  private evidenceArray(value: Prisma.InputJsonValue[] | undefined) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value;
+  }
+
+  private assertEvidenceMatches(
+    source: { sourceRecordId: string; sourceVersion: number; sourceHash: string },
+    requiresEvidence: boolean,
+    evidence: Prisma.InputJsonValue[],
+  ) {
+    if (!requiresEvidence) {
+      return;
+    }
+    if (evidence.length === 0) {
+      throw new BadRequestException("Factual suggestions require evidence.");
+    }
+    for (const item of evidence) {
+      if (!this.isRecord(item)) {
+        throw new BadRequestException("Evidence entries must be objects.");
+      }
+      const evidenceRecord = item as Record<string, unknown>;
+      if (evidenceRecord.sourceRecordId !== source.sourceRecordId) {
+        throw new BadRequestException("Evidence sourceRecordId must match suggestion sourceRecordId.");
+      }
+      if (evidenceRecord.sourceVersion !== source.sourceVersion) {
+        throw new BadRequestException("Evidence sourceVersion must match suggestion sourceVersion.");
+      }
+      if (evidenceRecord.sourceHash !== source.sourceHash) {
+        throw new BadRequestException("Evidence sourceHash must match suggestion sourceHash.");
+      }
+      if (!evidenceRecord.sourceField || !evidenceRecord.citation || !evidenceRecord.evidenceHash) {
+        throw new BadRequestException("Factual evidence must include sourceField, citation, and evidenceHash.");
+      }
+    }
+  }
+
+  private assertSafeJson(field: string, value: unknown) {
+    const visit = (current: unknown, path: string) => {
+      if (typeof current === "string") {
+        this.assertSafeTelemetryText(path, current);
+        return;
+      }
+      if (Array.isArray(current)) {
+        current.forEach((item, index) => visit(item, `${path}[${index}]`));
+        return;
+      }
+      if (this.isRecord(current)) {
+        for (const [key, nested] of Object.entries(current)) {
+          this.assertSafeTelemetryText(`${path}.${key}`, key);
+          visit(nested, `${path}.${key}`);
+        }
+      }
+    };
+    visit(value, field);
+  }
+
+  private hashJson(value: unknown) {
+    return `sha256:${createHash("sha256").update(this.stableJsonStringify(value)).digest("hex")}`;
+  }
+
+  private stableJsonStringify(value: unknown): string {
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => this.stableJsonStringify(item)).join(",")}]`;
+    }
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${this.stableJsonStringify(record[key])}`)
+      .join(",")}}`;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private safeFailureMessage(value: string | null | undefined) {
@@ -257,6 +582,16 @@ export class IntelligenceService {
       return null;
     }
     return this.nonNegativeInteger(field, value);
+  }
+
+  private optionalConfidence(value: number | null | undefined) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value !== "number" || Number.isNaN(value) || value < 0 || value > 1) {
+      throw new BadRequestException("confidence must be between 0 and 1.");
+    }
+    return value;
   }
 
   private optionalDate(value: Date | string | null | undefined) {

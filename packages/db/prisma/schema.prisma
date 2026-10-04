@@ -143,6 +143,24 @@ enum AiExecutionFailureClass {
   internal_error
 }
 
+enum AiSuggestionStatus {
+  generated
+  pending_review
+  accepted
+  edited
+  rejected
+  blocked_stale
+  blocked_tampered
+  blocked_unauthorized
+  applied
+}
+
+enum AiSuggestionReviewDecision {
+  accept
+  edit
+  reject
+}
+
 // Bulk-Publish Goes Async, Story 2. Mirrors BulkImportRunStatus/BulkEditOperationStatus —
 // same shape for the same reason: a run that queues work for a worker to process later.
 enum MarketplaceBulkPublishRunStatus {
@@ -1721,6 +1739,7 @@ model AiExecution {
   blockedFields               Json                     @default("[]") @map("blocked_fields")
   createdAt                   DateTime                 @default(now()) @map("created_at")
   updatedAt                   DateTime                 @updatedAt @map("updated_at")
+  suggestions                 AiSuggestion[]
 
   @@unique([tenantKey, idempotencyFingerprint], map: "ai_executions_tenant_idempotency_unique")
   @@index([tenantKey, capability, status, createdAt(sort: Desc)], map: "idx_ai_executions_tenant_capability_status_created")
@@ -1728,4 +1747,54 @@ model AiExecution {
   @@index([tenantKey, entityType, entityId, createdAt(sort: Desc)], map: "idx_ai_executions_tenant_entity_created")
   @@index([tenantKey, budgetPeriodKey], map: "idx_ai_executions_tenant_budget_period")
   @@map("ai_executions")
+}
+
+model AiSuggestion {
+  id                               String                      @id @default(cuid())
+  tenantKey                        String                      @default("default") @map("tenant_key")
+  executionId                      String                      @map("execution_id")
+  execution                        AiExecution                 @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  capability                       String
+  entityType                       String                      @map("entity_type")
+  entityId                         String                      @map("entity_id")
+  fieldPath                        String                      @map("field_path")
+  attributeFamily                  String?                     @map("attribute_family")
+  sourceRecordId                   String                      @map("source_record_id")
+  sourceVersion                    Int                         @map("source_version")
+  sourceHash                       String                      @map("source_hash")
+  promptVersion                    String                      @map("prompt_version")
+  schemaVersion                    String                      @map("schema_version")
+  generationFingerprint            String                      @map("generation_fingerprint")
+  idempotencyFingerprint           String                      @map("idempotency_fingerprint")
+  generatedPayload                 Json                        @map("generated_payload")
+  generatedPayloadHash             String                      @map("generated_payload_hash")
+  suggestedValue                   Json                        @map("suggested_value")
+  suggestedValueHash               String                      @map("suggested_value_hash")
+  confidence                       Float?
+  evidence                         Json                        @default("[]")
+  requiresEvidence                 Boolean                     @default(true) @map("requires_evidence")
+  evidenceHash                     String?                     @map("evidence_hash")
+  status                           AiSuggestionStatus          @default(generated)
+  reviewDecision                   AiSuggestionReviewDecision? @map("review_decision")
+  reviewedValue                    Json?                       @map("reviewed_value")
+  reviewedValueHash                String?                     @map("reviewed_value_hash")
+  reviewedBy                       String?                     @map("reviewed_by")
+  reviewedAt                       DateTime?                   @map("reviewed_at")
+  reviewReason                     String?                     @map("review_reason")
+  appliedValue                     Json?                       @map("applied_value")
+  appliedValueHash                 String?                     @map("applied_value_hash")
+  appliedAt                        DateTime?                   @map("applied_at")
+  productServiceApplyTransactionId String?                     @map("product_service_apply_transaction_id")
+  validationEvidenceId             String?                     @map("validation_evidence_id")
+  auditEventIds                    Json                        @default("[]") @map("audit_event_ids")
+  evaluation                       Json                        @default("{}")
+  createdAt                        DateTime                    @default(now()) @map("created_at")
+  updatedAt                        DateTime                    @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, idempotencyFingerprint], map: "ai_suggestions_tenant_idempotency_unique")
+  @@index([tenantKey, executionId], map: "idx_ai_suggestions_tenant_execution")
+  @@index([tenantKey, capability, status, createdAt(sort: Desc)], map: "idx_ai_suggestions_tenant_capability_status_created")
+  @@index([tenantKey, entityType, entityId, fieldPath], map: "idx_ai_suggestions_tenant_entity_field")
+  @@index([tenantKey, reviewDecision, reviewedAt(sort: Desc)], map: "idx_ai_suggestions_tenant_review_decision")
+  @@map("ai_suggestions")
 }
