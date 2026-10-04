@@ -7,28 +7,48 @@ const BLOCKED_HOSTNAMES = new Set([
   "metadata.internal",
 ]);
 
+// A trailing dot is a valid, equivalent FQDN spelling ("localhost." resolves to
+// the same address as "localhost") that the WHATWG URL parser preserves, so it
+// must be stripped before any name comparison or the suffix checks are bypassed.
+function stripTrailingDots(hostname: string): string {
+  return hostname.replace(/\.+$/, "");
+}
+
 function isBlockedHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase();
+  const lower = stripTrailingDots(hostname.toLowerCase());
   if (BLOCKED_HOSTNAMES.has(lower)) return true;
-  if (lower.endsWith(".internal") || lower.endsWith(".local")) return true;
+  if (
+    lower.endsWith(".internal") ||
+    lower.endsWith(".local") ||
+    lower.endsWith(".localhost")
+  ) {
+    return true;
+  }
   return false;
 }
 
-function ipV4ToInt(ip: string): number {
+function parseIpV4(ip: string): number[] | null {
   const parts = ip.split(".");
-  if (parts.length !== 4) return -1;
-  let result = 0;
+  if (parts.length !== 4) return null;
+  const bytes: number[] = [];
   for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
     const n = Number(part);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return -1;
-    result = (result << 8) | n;
+    if (n > 255) return null;
+    bytes.push(n);
   }
-  return result >>> 0;
+  return bytes;
+}
+
+function ipV4ToInt(ip: string): number {
+  const bytes = parseIpV4(ip);
+  if (!bytes) return -1;
+  return ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
 }
 
 function isInCidr4(ip: string, cidr: string): boolean {
   const [base, bits] = cidr.split("/");
-  const mask = (~0 << (32 - Number(bits))) >>> 0;
+  const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
   const ipInt = ipV4ToInt(ip);
   const baseInt = ipV4ToInt(base);
   if (ipInt < 0 || baseInt < 0) return false;
@@ -42,10 +62,19 @@ const BLOCKED_IPV4_CIDRS = [
   "127.0.0.0/8",
   "169.254.0.0/16",
   "172.16.0.0/12",
+  "192.0.0.0/24", // IETF protocol assignments (includes Oracle metadata 192.0.0.192)
+  "192.0.2.0/24", // TEST-NET-1
   "192.168.0.0/16",
+  "198.18.0.0/15", // benchmarking
+  "198.51.100.0/24", // TEST-NET-2
+  "203.0.113.0/24", // TEST-NET-3
+  "224.0.0.0/4", // multicast
+  "240.0.0.0/4", // reserved + limited broadcast
 ];
 
 function isBlockedIpV4(ip: string): boolean {
+  // Fail closed: an address we cannot parse is never treated as public.
+  if (ipV4ToInt(ip) < 0) return true;
   return BLOCKED_IPV4_CIDRS.some((cidr) => isInCidr4(ip, cidr));
 }
 
@@ -53,12 +82,85 @@ function normalizeIpV6(ip: string): string {
   return ip.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
 }
 
-const BLOCKED_IPV6_PREFIXES = ["fe80:", "fc", "fd"];
+// Expands any textual IPv6 form (compressed "::", embedded dotted IPv4 tail,
+// zone id) to its eight 16-bit groups, or null when it is not a valid address.
+function parseIpV6(ip: string): number[] | null {
+  let text = normalizeIpV6(ip);
+  const zone = text.indexOf("%");
+  if (zone !== -1) text = text.slice(0, zone);
+  if (!text.includes(":")) return null;
+
+  const dotted = text.lastIndexOf(".");
+  if (dotted !== -1) {
+    const lastColon = text.lastIndexOf(":");
+    const v4 = parseIpV4(text.slice(lastColon + 1));
+    if (!v4) return null;
+    const hi = ((v4[0] << 8) | v4[1]).toString(16);
+    const lo = ((v4[2] << 8) | v4[3]).toString(16);
+    text = `${text.slice(0, lastColon + 1)}${hi}:${lo}`;
+  }
+
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const parseGroups = (part: string): number[] | null => {
+    if (part === "") return [];
+    const groups: number[] = [];
+    for (const g of part.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+      groups.push(parseInt(g, 16));
+    }
+    return groups;
+  };
+  const head = parseGroups(halves[0]);
+  const tail = halves.length === 2 ? parseGroups(halves[1]) : [];
+  if (!head || !tail) return null;
+
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const missing = 8 - head.length - tail.length;
+  if (missing < 1) return null;
+  return [...head, ...new Array<number>(missing).fill(0), ...tail];
+}
+
+function embeddedIpV4(hi: number, lo: number): string {
+  return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+}
 
 function isBlockedIpV6(ip: string): boolean {
-  const normalized = normalizeIpV6(ip);
-  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
-  return BLOCKED_IPV6_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+  const g = parseIpV6(ip);
+  // Fail closed on anything that is not a well-formed address.
+  if (!g) return true;
+
+  const upperZero = g.slice(0, 5).every((x) => x === 0);
+
+  // IPv4-mapped (::ffff:a.b.c.d) is the IPv4 address in disguise: judge it by
+  // the IPv4 rules, otherwise ::ffff:7f00:1 reaches loopback past the IPv4 list.
+  if (upperZero && g[5] === 0xffff) return isBlockedIpV4(embeddedIpV4(g[6], g[7]));
+
+  // NAT64 well-known prefix 64:ff9b::/96 translates to the embedded IPv4;
+  // the local-use prefix 64:ff9b:1::/48 has no public meaning.
+  if (g[0] === 0x64 && g[1] === 0xff9b) {
+    if (g.slice(2, 6).every((x) => x === 0)) return isBlockedIpV4(embeddedIpV4(g[6], g[7]));
+    return true;
+  }
+
+  // 6to4 (2002::/16) embeds the IPv4 the tunnel endpoint will contact.
+  if (g[0] === 0x2002) return isBlockedIpV4(embeddedIpV4(g[1], g[2]));
+
+  // Everything outside global unicast 2000::/3 is non-public: ::, ::1,
+  // IPv4-compatible ::a.b.c.d, discard 100::/64, unique-local fc00::/7,
+  // link-local fe80::/10, site-local fec0::/10, multicast ff00::/8.
+  if ((g[0] & 0xe000) !== 0x2000) return true;
+
+  // Carve-outs inside 2000::/3.
+  if (g[0] === 0x2001 && g[1] < 0x0200) return true; // 2001::/23 IETF assignments incl. Teredo
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return true; // documentation
+  if (g[0] === 0x3fff && g[1] < 0x1000) return true; // documentation 3fff::/20
+
+  return false;
+}
+
+function isBlockedIp(address: string): boolean {
+  return address.includes(":") ? isBlockedIpV6(address) : isBlockedIpV4(address);
 }
 
 function isIpLiteral(hostname: string): boolean {
@@ -155,7 +257,7 @@ async function validateOutboundTargetUrl(
   }
 
   if (isIpLiteral(hostname)) {
-    if (isBlockedIpV4(hostname) || isBlockedIpV6(hostname)) {
+    if (isBlockedIp(hostname)) {
       throw new BadRequestException(labels.blockedIpLiteral);
     }
     return parsed.toString();
@@ -184,7 +286,7 @@ async function validateOutboundTargetUrl(
   }
 
   for (const addr of resolvedAddresses) {
-    if (isBlockedIpV4(addr) || isBlockedIpV6(addr)) {
+    if (isBlockedIp(addr)) {
       throw new BadRequestException(labels.blockedResolved);
     }
   }
