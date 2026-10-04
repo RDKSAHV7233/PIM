@@ -58,6 +58,10 @@ import {
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
+import {
+  ConnectorRedirectError,
+  fetchWithValidatedRedirects,
+} from "../../common/security/validated-redirect-fetch";
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 const DEFAULT_LANG_ID = "1";
@@ -159,8 +163,20 @@ export class PrestaShopConnector implements ConnectorInterface {
     return `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}`;
   }
 
+  // Every request carries the webservice key (Basic auth) and, for writes, the
+  // product XML, so fetch must never follow a redirect on its own: each hop is
+  // sent with redirect: "manual", re-validated, and a cross-origin hop fails
+  // closed. Callers only ever pass plain-object headers and string bodies.
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-    return fetch(url, { ...init, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) });
+    return fetchWithValidatedRedirects(
+      (hopUrl, hopInit) => fetch(hopUrl, { ...hopInit, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) }),
+      url,
+      {
+        method: init.method,
+        headers: init.headers as Record<string, string> | undefined,
+        body: init.body as string | undefined,
+      },
+    );
   }
 
   // ─── required: validateCredentials ───────────────────────────────────────
@@ -187,6 +203,9 @@ export class PrestaShopConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
+      if (error instanceof ConnectorRedirectError) {
+        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.code}` };
+      }
       // PIM#890: resolveCredentials() above now throws before returning a
       // store_url that's non-HTTPS or resolves to a private/blocked address —
       // classify that the same way the still-reachable explicit HTTPS check
@@ -230,7 +249,10 @@ export class PrestaShopConnector implements ConnectorInterface {
         return { outcome: "unavailable", reasonCode: `HTTP_${response.status}` };
       }
       return { outcome: "valid" };
-    } catch {
+    } catch (error) {
+      if (error instanceof ConnectorRedirectError) {
+        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.code}` };
+      }
       return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
     }
   }
