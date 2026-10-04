@@ -624,3 +624,117 @@ describe("ShopwareConnector — tenant-controlled store_url SSRF boundary", () =
     });
   });
 });
+
+// Redirect handling on the credential-bearing Admin API transport. The OAuth
+// token exchange puts the Integration's client_secret in the request body and
+// every later call carries the bearer token, so fetch must never follow a
+// redirect to a destination that has not passed the canonical SSRF validation.
+describe("ShopwareConnector — authenticated redirect handling", () => {
+  const SHOP = "https://shop.example.com";
+  const SECRET = "SHOPWARE-CLIENT-SECRET-DO-NOT-LEAK";
+  const candidate = { store_url: SHOP, client_id: "SWIA-TEST", client_secret: SECRET };
+  const redirect = (status: number, location: string) =>
+    new Response(null, { status, headers: { location } });
+  const tokenResponse = () =>
+    new Response(JSON.stringify({ access_token: "tok", expires_in: 600 }), { status: 200 });
+  const configResponse = () => new Response("{}", { status: 200 });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (global as any).fetch = undefined;
+  });
+
+  it("sends the client_secret-bearing token exchange with redirect: 'manual'", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(configResponse());
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result.outcome).toBe("valid");
+    expect(fetchMock.mock.calls[0][0]).toBe(`${SHOP}/api/oauth/token`);
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("manual");
+    expect(fetchMock.mock.calls[1][1].redirect).toBe("manual");
+  });
+
+  it.each([
+    ["private IPv4", "https://10.0.0.5/api/oauth/token"],
+    ["cloud metadata", "https://169.254.169.254/latest/meta-data/"],
+    ["IPv4-mapped IPv6 loopback", "https://[::ffff:7f00:1]/api/oauth/token"],
+    ["plain http downgrade", "http://shop.example.com/api/oauth/token"],
+  ])("never sends the client_secret to a redirect to %s", async (_label, location) => {
+    const fetchMock = jest.fn().mockResolvedValue(redirect(307, location));
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_UNSAFE_TARGET" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${SHOP}/api/oauth/token`);
+  });
+
+  it("fails closed on an apex->www cross-origin redirect of the token exchange", async () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+      const fetchMock = jest.fn().mockResolvedValue(redirect(status, "https://www.shop.example.com/api/oauth/token"));
+      (global as any).fetch = fetchMock;
+      const result = await makeConnector().verifyCandidateCredentials!(candidate);
+      expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("fails closed on a same-origin 302 for the POST rather than letting fetch drop the body", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(redirect(302, "/api/oauth/token/"));
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_METHOD_UNSUPPORTED" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows an explicit same-origin 308 and re-sends the body only to the same origin", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(redirect(308, "/api/oauth/token/"))
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(configResponse());
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result.outcome).toBe("valid");
+    expect(new URL(fetchMock.mock.calls[1][0]).origin).toBe(SHOP);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).client_secret).toBe(SECRET);
+  });
+
+  it("refuses a redirect of the bearer-token request (second call) as well", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(redirect(301, "https://www.shop.example.com/api/_info/config"));
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("validateStoredCredentialsDetailed reports a refused token-exchange redirect as invalid", async () => {
+    const connector = makeConnector();
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      storeUrl: SHOP,
+      clientId: "id",
+      clientSecret: SECRET,
+    });
+    const fetchMock = jest.fn().mockResolvedValue(redirect(301, "https://www.shop.example.com/api/oauth/token"));
+    (global as any).fetch = fetchMock;
+    const ctx = {
+      tenantId: "t1",
+      installationId: "i1",
+      connectorId: "shopware",
+      getAccessToken: () => (connector as any).exchangeToken(SHOP, "id", SECRET).then((t: any) => t.access_token),
+    };
+    await expect(connector.validateStoredCredentialsDetailed!(ctx as any)).resolves.toEqual({
+      outcome: "invalid",
+      reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report a redirect refusal as a transient (unavailable) failure", async () => {
+    (global as any).fetch = jest.fn().mockResolvedValue(redirect(307, "https://evil.example.net/api/oauth/token"));
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result.outcome).toBe("invalid");
+  });
+});

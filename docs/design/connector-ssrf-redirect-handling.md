@@ -1,8 +1,9 @@
 # Connector SSRF: authenticated redirect handling
 
-Status: implemented for **Odoo** (the worst path: its JSON-RPC body carries the database
-password/API key). WooCommerce, PrestaShop and Shopware are not yet wired up; see
-"Rollout". DNS pinning is a separate control and is not part of this change.
+Status: implemented for **Odoo** (its JSON-RPC body carries the database password/API key),
+**WooCommerce**, **PrestaShop** and **Shopware** (its OAuth token exchange carries the
+client_secret in the body), one PR each. DNS pinning is a separate control and is not part
+of this change.
 
 ## Problem
 
@@ -50,10 +51,15 @@ It is never classified as a retryable network error.
 ## Rollout
 
 1. Odoo (done): single choke point `OdooConnector.httpFetch`.
-2. WooCommerce, PrestaShop, Shopware: each wraps its own tenant-URL fetch the same way; they
-   authenticate with headers, which fetch strips on a cross-origin hop, but body/query-borne
-   values and the unvalidated destination remain. One connector per PR with its own tests.
-3. Unauthenticated discovery calls (none implemented) could follow cross-origin hops with
+2. WooCommerce (`callApi`), PrestaShop and Shopware (`fetchWithTimeout`) (done): each wraps
+   its connector's single outbound choke point the same way. Their write bodies (product
+   JSON/XML, Shopware's token-exchange `client_secret`) and the unvalidated destination were
+   exposed even where the auth header would have been stripped cross-origin.
+3. These four are the only connectors that read a tenant-supplied URL credential
+   (`odoo_url`, `site_url`, `store_url` x2). Shopify's shop domain is pinned by regex to
+   `*.myshopify.com`; the other connectors use fixed provider hosts. Any connector that later
+   accepts a tenant URL must adopt the wrapper.
+4. Unauthenticated discovery calls (none implemented) could follow cross-origin hops with
    per-hop validation; that mode is intentionally absent until a caller needs it.
 
 ## Out of scope

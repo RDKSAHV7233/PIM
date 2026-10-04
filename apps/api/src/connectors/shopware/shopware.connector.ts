@@ -33,6 +33,10 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
 import {
+  ConnectorRedirectError,
+  fetchWithValidatedRedirects,
+} from "../../common/security/validated-redirect-fetch";
+import {
   decryptCredentialValue,
   parseCredentialKeyVersion,
   loadCredentialEncryptionKeys,
@@ -139,8 +143,21 @@ export class ShopwareConnector implements ConnectorInterface {
     return { storeUrl: normalizedStoreUrl, clientId, clientSecret };
   }
 
+  // Every request carries the Integration's client_secret (the OAuth token
+  // exchange body) or its bearer token, so fetch must never follow a redirect on
+  // its own: each hop is sent with redirect: "manual", re-validated, and a
+  // cross-origin hop fails closed. Callers only ever pass plain-object headers
+  // and string bodies.
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-    return fetch(url, { ...init, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) });
+    return fetchWithValidatedRedirects(
+      (hopUrl, hopInit) => fetch(hopUrl, { ...hopInit, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) }),
+      url,
+      {
+        method: init.method,
+        headers: init.headers as Record<string, string> | undefined,
+        body: init.body as string | undefined,
+      },
+    );
   }
 
   private async exchangeToken(storeUrl: string, clientId: string, clientSecret: string): Promise<{ access_token?: string; expires_in?: number }> {
@@ -189,6 +206,9 @@ export class ShopwareConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
+      if (error instanceof ConnectorRedirectError) {
+        return { outcome: "invalid", reasonCode: `SHOPWARE_${error.code}` };
+      }
       // resolveCredentials() now throws for a non-HTTPS or unsafe store_url
       // before the explicit HTTPS check above is reachable — keep classifying
       // that as invalid (as before), not as a generic unavailable provider.
@@ -239,6 +259,9 @@ export class ShopwareConnector implements ConnectorInterface {
         },
       };
     } catch (err) {
+      if (err instanceof ConnectorRedirectError) {
+        return { outcome: "invalid", reasonCode: `SHOPWARE_${err.code}` };
+      }
       if (err instanceof ShopwareTokenExchangeError) {
         return { outcome: err.status === 401 ? "invalid" : "unavailable", reasonCode: `HTTP_${err.status}` };
       }
