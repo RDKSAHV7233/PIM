@@ -1,0 +1,91 @@
+{
+  "contractId": "AI-SRE-001-OPERATIONS-CONTRACT-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "owner": "sre-backend-data-finops",
+  "killSwitch": {
+    "name": "aiProviderExecutionEnabled",
+    "defaultState": "disabled_until_gate_b",
+    "disabledBehavior": {
+      "providerExecution": "blocked_before_provider_call",
+      "newJobAdmission": "blocked_for_provider_required_work",
+      "existingSuggestionsRead": "allowed",
+      "corePimAvailability": "must_remain_available",
+      "costCapture": "no_provider_cost_when_call_not_executed"
+    },
+    "requiredEvidence": [
+      "operator_visible_status",
+      "provider_call_prevention",
+      "core_pim_health_unaffected",
+      "audit_or_event_record"
+    ]
+  },
+  "jobPolicy": {
+    "idempotencyFingerprint": [
+      "tenant",
+      "product",
+      "sourceVersion",
+      "capability",
+      "promptVersion",
+      "schemaVersion"
+    ],
+    "retry": {
+      "maxAttempts": 3,
+      "backoff": "exponential",
+      "retryableFailures": ["provider_timeout", "provider_5xx", "rate_limited"],
+      "nonRetryableFailures": ["policy_blocked", "schema_invalid_after_retry_budget", "tenant_disabled"]
+    },
+    "timeout": {
+      "providerCallTimeoutMs": 30000,
+      "jobTimeoutMs": 120000,
+      "timeoutBehavior": "fail_intelligence_job_only"
+    },
+    "cancellation": {
+      "operatorCancellation": "mark_cancelled_before_provider_call_when_possible",
+      "killSwitchCancellation": "cancel_pending_provider_required_jobs",
+      "reviewerCancellation": "does_not_mutate_product"
+    },
+    "deadLetter": {
+      "enabled": true,
+      "reasonRequired": true,
+      "mustInclude": ["tenant", "capability", "fingerprint", "failureClass", "lastErrorCode"],
+      "replayRequiresOperator": true
+    },
+    "tenantIsolation": {
+      "required": true,
+      "crossTenantLeakageAllowed": false
+    }
+  },
+  "providerOutage": {
+    "degradationMode": "intelligence_unavailable_core_pim_available",
+    "mustRemainAvailable": [
+      "catalog_read",
+      "catalog_validation",
+      "quality_approval_review",
+      "audit_read",
+      "auth",
+      "billing_read"
+    ],
+    "mustFailClosed": [
+      "provider_execution",
+      "new_ai_generation",
+      "provider_required_bulk_ai_work"
+    ],
+    "requiredEvidence": [
+      "provider_outage_signal",
+      "intelligence_degraded_status",
+      "core_pim_health_check",
+      "no_canonical_ai_write",
+      "no_provider_cost_for_blocked_call"
+    ]
+  },
+  "pilotSafetyThresholds": {
+    "crossTenantLeakage": 0,
+    "secretLeakage": 0,
+    "unauthorizedCanonicalWrites": 0,
+    "directModelMutationPaths": 0,
+    "staleTamperedSuggestionAcceptance": 0,
+    "requiredEvidenceCoveragePercent": 100,
+    "providerExecutionCostVisibilityPercent": 100
+  }
+}
