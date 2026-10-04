@@ -974,9 +974,19 @@ model ConnectorInstallation {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @default(now()) @map("updated_at")
 
+  // Heartbeat credential-validation facts. lastValidatedAt only moves on genuine validation
+  // success; lastValidationAttemptAt moves on every attempt (batch ordering). Outcome is
+  // VALID | INVALID | INDETERMINATE | CONFIGURATION_ERROR; reason is a short safe code.
+  // Unrelated to ConnectorCredential.lastValidatedAt (per-credential).
+  lastValidatedAt         DateTime? @map("last_validated_at")
+  lastValidationAttemptAt DateTime? @map("last_validation_attempt_at")
+  lastValidationOutcome   String?   @map("last_validation_outcome")
+  lastValidationReason    String?   @map("last_validation_reason")
+
   @@unique([tenantKey, connectorId, accountAlias], map: "connector_installations_tenant_connector_alias_unique")
   @@index([tenantKey, installedAt(sort: Desc), id(sort: Desc)], map: "idx_connector_installations_tenant_installed_at")
   @@index([tenantKey, connectorId], map: "idx_connector_installations_tenant_connector_id")
+  @@index([status, lastValidationAttemptAt, id], map: "idx_connector_installations_status_validation_attempt")
   @@map("connector_installations")
 }
 
