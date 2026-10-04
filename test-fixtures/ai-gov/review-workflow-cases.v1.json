@@ -1,0 +1,431 @@
+{
+  "fixtureSetId": "AI-GOV-001-REVIEW-WORKFLOW-CASES-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "fixtures": [
+    {
+      "fixtureId": "AI-GOV-001-ACCEPT-VALID",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-001",
+      "sourceRecordId": "supplier-row-001",
+      "sourceVersion": 7,
+      "sourceHash": "sha256:source-a-v7",
+      "currentSourceVersion": 7,
+      "currentSourceHash": "sha256:source-a-v7",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.material",
+        "value": "Cotton"
+      },
+      "generatedPayloadHash": "sha256:payload-accept-valid",
+      "serverGeneratedPayloadHash": "sha256:payload-accept-valid",
+      "suggestedValue": "Cotton",
+      "reviewDecision": "accepted",
+      "reviewedValue": "Cotton",
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "high",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "description",
+        "citation": "material: cotton"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-1",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-001",
+        "reviewEventId": "audit-review-001",
+        "applyEventId": null
+      },
+      "expectedOutcome": "valid_review_no_canonical_write"
+    },
+    {
+      "fixtureId": "AI-GOV-001-EDIT-VALID",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-002",
+      "sourceRecordId": "supplier-row-002",
+      "sourceVersion": 3,
+      "sourceHash": "sha256:source-a-v3",
+      "currentSourceVersion": 3,
+      "currentSourceHash": "sha256:source-a-v3",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.capacity",
+        "value": "1.2 L"
+      },
+      "generatedPayloadHash": "sha256:payload-edit-valid",
+      "serverGeneratedPayloadHash": "sha256:payload-edit-valid",
+      "suggestedValue": "1.2 L",
+      "reviewDecision": "edited",
+      "reviewedValue": "1.25 L",
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": "Reviewer corrected pack label reading.",
+      "confidenceBand": "medium",
+      "validation": {
+        "status": "passed",
+        "ruleId": "normalized-unit"
+      },
+      "provenance": {
+        "sourceField": "supplierSpecification",
+        "citation": "capacity 1.25 litre"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-2",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-002",
+        "reviewEventId": "audit-review-002",
+        "applyEventId": null
+      },
+      "expectedOutcome": "valid_review_no_canonical_write"
+    },
+    {
+      "fixtureId": "AI-GOV-001-REJECT-VALID",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-003",
+      "sourceRecordId": "supplier-row-003",
+      "sourceVersion": 2,
+      "sourceHash": "sha256:source-a-v2",
+      "currentSourceVersion": 2,
+      "currentSourceHash": "sha256:source-a-v2",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.color",
+        "value": "Blue"
+      },
+      "generatedPayloadHash": "sha256:payload-reject-valid",
+      "serverGeneratedPayloadHash": "sha256:payload-reject-valid",
+      "suggestedValue": "Blue",
+      "reviewDecision": "rejected",
+      "reviewedValue": null,
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": "Evidence describes packaging, not product color.",
+      "editReason": null,
+      "confidenceBand": "low",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "description",
+        "citation": "blue box"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-3",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-003",
+        "reviewEventId": "audit-review-003",
+        "applyEventId": null
+      },
+      "expectedOutcome": "valid_review_no_canonical_write"
+    },
+    {
+      "fixtureId": "AI-GOV-001-STALE-BLOCKED",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-004",
+      "sourceRecordId": "supplier-row-004",
+      "sourceVersion": 4,
+      "sourceHash": "sha256:source-a-v4",
+      "currentSourceVersion": 5,
+      "currentSourceHash": "sha256:source-a-v5",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.material",
+        "value": "Steel"
+      },
+      "generatedPayloadHash": "sha256:payload-stale",
+      "serverGeneratedPayloadHash": "sha256:payload-stale",
+      "suggestedValue": "Steel",
+      "reviewDecision": "blocked_stale",
+      "reviewedValue": null,
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "high",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "description",
+        "citation": "steel body"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-4",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-004",
+        "reviewEventId": null,
+        "applyEventId": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "fixtureId": "AI-GOV-001-TAMPERED-BLOCKED",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-005",
+      "sourceRecordId": "supplier-row-005",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 1,
+      "currentSourceHash": "sha256:source-a-v1",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.size",
+        "value": "XL"
+      },
+      "generatedPayloadHash": "sha256:payload-original",
+      "serverGeneratedPayloadHash": "sha256:payload-server-different",
+      "suggestedValue": "XL",
+      "reviewDecision": "blocked_tampered",
+      "reviewedValue": null,
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "medium",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "supplierSpecification",
+        "citation": "size: XL"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-5",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-005",
+        "reviewEventId": null,
+        "applyEventId": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "fixtureId": "AI-GOV-001-UNAUTHORIZED-BLOCKED",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-006",
+      "sourceRecordId": "supplier-row-006",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 1,
+      "currentSourceHash": "sha256:source-a-v1",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.material",
+        "value": "Wool"
+      },
+      "generatedPayloadHash": "sha256:payload-unauthorized",
+      "serverGeneratedPayloadHash": "sha256:payload-unauthorized",
+      "suggestedValue": "Wool",
+      "reviewDecision": "blocked_unauthorized",
+      "reviewedValue": null,
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "high",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "description",
+        "citation": "wool blend"
+      },
+      "reviewer": {
+        "actorId": "user-viewer-1",
+        "roles": ["viewer"],
+        "scopes": ["catalog.read"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-006",
+        "reviewEventId": null,
+        "applyEventId": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "fixtureId": "AI-GOV-001-TENANT-MISMATCH-BLOCKED",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-b",
+      "entityType": "product",
+      "entityId": "prod-007",
+      "sourceRecordId": "supplier-row-007",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 1,
+      "currentSourceHash": "sha256:source-a-v1",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.brand",
+        "value": "Acme"
+      },
+      "generatedPayloadHash": "sha256:payload-tenant",
+      "serverGeneratedPayloadHash": "sha256:payload-tenant",
+      "suggestedValue": "Acme",
+      "reviewDecision": "blocked_unauthorized",
+      "reviewedValue": null,
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "medium",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "title",
+        "citation": "Acme bottle"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-tenant-b",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-007",
+        "reviewEventId": null,
+        "applyEventId": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "fixtureId": "AI-GOV-001-UNSUPPORTED-EVIDENCE-BLOCKED",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-008",
+      "sourceRecordId": "supplier-row-008",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 1,
+      "currentSourceHash": "sha256:source-a-v1",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.material",
+        "value": "Silk"
+      },
+      "generatedPayloadHash": "sha256:payload-evidence",
+      "serverGeneratedPayloadHash": "sha256:payload-evidence",
+      "suggestedValue": "Silk",
+      "reviewDecision": "blocked_tampered",
+      "reviewedValue": null,
+      "appliedValue": null,
+      "canonicalProductPatch": null,
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "low",
+      "validation": {
+        "status": "failed",
+        "ruleId": "evidence-required"
+      },
+      "provenance": {
+        "sourceField": null,
+        "citation": null
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-8",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-008",
+        "reviewEventId": null,
+        "applyEventId": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "fixtureId": "AI-GOV-001-APPLY-BOUNDARY",
+      "tenantId": "tenant-a",
+      "actorTenantId": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-009",
+      "sourceRecordId": "supplier-row-009",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 1,
+      "currentSourceHash": "sha256:source-a-v1",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generatedPayload": {
+        "field": "attributes.material",
+        "value": "Glass"
+      },
+      "generatedPayloadHash": "sha256:payload-apply",
+      "serverGeneratedPayloadHash": "sha256:payload-apply",
+      "suggestedValue": "Glass",
+      "reviewDecision": "accepted",
+      "reviewedValue": "Glass",
+      "appliedValue": "Glass",
+      "canonicalProductPatch": null,
+      "productServiceApplyTransactionId": "ps-apply-001",
+      "rejectReason": null,
+      "editReason": null,
+      "confidenceBand": "high",
+      "validation": {
+        "status": "passed",
+        "ruleId": "attribute-value-known"
+      },
+      "provenance": {
+        "sourceField": "description",
+        "citation": "glass bottle"
+      },
+      "reviewer": {
+        "actorId": "user-reviewer-9",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "audit": {
+        "generationEventId": "audit-gen-009",
+        "reviewEventId": "audit-review-009",
+        "applyEventId": "audit-apply-009"
+      },
+      "expectedOutcome": "valid_product_service_apply_reference_only"
+    }
+  ]
+}

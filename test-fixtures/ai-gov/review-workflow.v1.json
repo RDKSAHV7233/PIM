@@ -1,0 +1,134 @@
+{
+  "contractId": "AI-GOV-001-REVIEW-WORKFLOW-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "owner": "po-ux-qa",
+  "gateStatus": "blocked_until_gate_a_passes",
+  "coreInvariant": "AI proposes. Vexa validates. People approve. Product Service mutates.",
+  "valueModel": {
+    "immutableFields": [
+      "suggestedValue",
+      "evidence",
+      "sourceVersion",
+      "promptVersion",
+      "schemaVersion",
+      "generationFingerprint"
+    ],
+    "lifecycleFields": [
+      "reviewDecision",
+      "reviewedValue",
+      "appliedValue",
+      "reviewedBy",
+      "reviewedAt",
+      "rejectionReason",
+      "applyStatus"
+    ],
+    "requiredStoredValues": [
+      "suggestedValue",
+      "reviewDecision",
+      "reviewedValue",
+      "appliedValue"
+    ]
+  },
+  "reviewStates": [
+    "pending_review",
+    "accepted",
+    "edited",
+    "rejected",
+    "blocked_stale",
+    "blocked_tampered",
+    "blocked_unauthorized"
+  ],
+  "reviewDecisions": [
+    {
+      "decision": "accept",
+      "requiresReviewedValue": false,
+      "preservesSuggestedValue": true,
+      "requiresEvidence": true,
+      "requiresCurrentSuggestion": true,
+      "canonicalWriteAllowed": false
+    },
+    {
+      "decision": "edit",
+      "requiresReviewedValue": true,
+      "preservesSuggestedValue": true,
+      "requiresEvidence": true,
+      "requiresCurrentSuggestion": true,
+      "canonicalWriteAllowed": false
+    },
+    {
+      "decision": "reject",
+      "requiresReviewedValue": false,
+      "preservesSuggestedValue": true,
+      "requiresEvidence": false,
+      "requiresCurrentSuggestion": false,
+      "canonicalWriteAllowed": false,
+      "requiresReason": true
+    }
+  ],
+  "requiredReviewerSurface": [
+    "sourceContext",
+    "suggestedValue",
+    "evidence",
+    "validationState",
+    "confidence",
+    "freshnessState",
+    "reviewDecisionHistory",
+    "auditTrail"
+  ],
+  "staleTamperedGuards": {
+    "sourceVersionMustMatch": true,
+    "promptVersionMustMatch": true,
+    "schemaVersionMustMatch": true,
+    "evidenceHashMustMatch": true,
+    "tenantMustMatch": true,
+    "capabilityMustMatch": true,
+    "blockAcceptanceWhenStale": true,
+    "blockAcceptanceWhenTampered": true
+  },
+  "rbac": {
+    "reviewDecisionRoles": ["admin", "approver", "reviewer"],
+    "commentRoles": ["admin", "editor", "reviewer", "approver"],
+    "canonicalCatalogWriteRolesRemain": ["admin", "editor"],
+    "mustNotBroadenCanonicalWriteAccess": true
+  },
+  "mutationBoundary": {
+    "aiDirectCanonicalWriteAllowed": false,
+    "controlledApplyPath": "product_service_after_human_approval",
+    "applyRequiresDeterministicValidation": true,
+    "applyRequiresAuditEvent": true
+  },
+  "auditEvent": {
+    "requiredFields": [
+      "tenant",
+      "actor",
+      "suggestionId",
+      "capability",
+      "decision",
+      "previousLifecycleState",
+      "newLifecycleState",
+      "sourceVersion",
+      "promptVersion",
+      "schemaVersion",
+      "evidenceHash"
+    ]
+  },
+  "bulkReview": {
+    "status": "deferred_until_workflow_valid",
+    "requiresPerSuggestionEvidence": true,
+    "requiresPerSuggestionStaleTamperedChecks": true,
+    "requiresReviewerBurdenAssessment": true,
+    "cannotBypassProductServiceValidation": true,
+    "partialFailureBehaviorRequired": true
+  },
+  "negativeCases": [
+    "accept_without_evidence",
+    "edit_replaces_suggested_value",
+    "accept_stale_suggestion",
+    "accept_tampered_evidence",
+    "direct_ai_canonical_write",
+    "broadened_reviewer_catalog_write",
+    "bulk_accept_without_per_suggestion_checks"
+  ],
+  "fixtureSet": "test-fixtures/ai-gov/review-workflow-cases.v1.json"
+}
