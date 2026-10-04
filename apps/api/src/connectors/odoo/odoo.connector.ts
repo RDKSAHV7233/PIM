@@ -66,6 +66,7 @@ import {
   targetSecurityVerificationReason,
   type ConnectorTargetSecurityError,
 } from '../../common/security/connector-target-errors';
+import { configurationInvalid } from '../../connector-framework/credential-validation';
 import { getConnectorTransport } from '../../common/security/connector-transport';
 import {
   fetchWithValidatedRedirects,
@@ -332,7 +333,7 @@ export class OdooConnector implements ConnectorInterface {
     try {
       const { odooUrl, database, username, password } = await this.resolveCredentials(ctx);
       if (!odooUrl.startsWith('https://')) {
-        return { outcome: 'invalid', reasonCode: 'ODOO_URL_NOT_HTTPS' };
+        return configurationInvalid('ODOO_URL_NOT_HTTPS');
       }
       const uid = await this.authenticate(odooUrl, database, username, password);
       if (uid == null) {
@@ -341,7 +342,7 @@ export class OdooConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (isConnectorTargetSecurityError(err)) {
-        return { outcome: 'invalid', reasonCode: targetSecurityVerificationReason('ODOO', err) };
+        return configurationInvalid(targetSecurityVerificationReason('ODOO', err));
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
@@ -351,7 +352,7 @@ export class OdooConnector implements ConnectorInterface {
       // classify that as invalid, not an unavailable/transient failure.
       if (err instanceof BadRequestException) {
         const reasonCode = err.message.includes('HTTPS') ? 'ODOO_URL_NOT_HTTPS' : 'ODOO_URL_UNSAFE';
-        return { outcome: 'invalid', reasonCode };
+        return configurationInvalid(reasonCode);
       }
       return { outcome: 'unavailable', reasonCode: 'UNKNOWN_NETWORK_ERROR' };
     }
@@ -369,14 +370,14 @@ export class OdooConnector implements ConnectorInterface {
     const password = String(candidate.password ?? '').trim();
 
     if (!odooUrl.startsWith('https://')) {
-      return { outcome: 'invalid', reasonCode: 'ODOO_URL_NOT_HTTPS' };
+      return configurationInvalid('ODOO_URL_NOT_HTTPS');
     }
     // PIM#890: reject a candidate odoo_url that points at a private/internal/
     // metadata-endpoint address before this ever gets saved as a credential.
     try {
       await validateConnectorTargetUrl(odooUrl, { requireResolvable: false });
     } catch {
-      return { outcome: 'invalid', reasonCode: 'ODOO_URL_UNSAFE' };
+      return configurationInvalid('ODOO_URL_UNSAFE');
     }
     try {
       const uid = await this.authenticate(odooUrl, database, username, password);
@@ -386,7 +387,7 @@ export class OdooConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (isConnectorTargetSecurityError(err)) {
-        return { outcome: 'invalid', reasonCode: targetSecurityVerificationReason('ODOO', err) };
+        return configurationInvalid(targetSecurityVerificationReason('ODOO', err));
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };

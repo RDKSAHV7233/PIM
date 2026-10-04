@@ -460,7 +460,7 @@ describe("FlipkartConnector.validateCredentials / validateStoredCredentialsDetai
     const connector = makeConnector();
     const ctx = makeCtx(jest.fn().mockResolvedValue("token-123"));
 
-    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({ outcome: "valid" });
+    await expect(connector.validateStoredCredentialsDetailed(ctx)).resolves.toEqual({ outcome: "valid", evidence: "token_only" });
     await expect(connector.validateCredentials(ctx)).resolves.toBe(true);
   });
 

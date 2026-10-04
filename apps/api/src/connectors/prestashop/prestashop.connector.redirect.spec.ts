@@ -55,7 +55,7 @@ describe("PrestaShopConnector authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(302, location));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "PRESTASHOP_REDIRECT_UNSAFE_TARGET" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "PRESTASHOP_REDIRECT_UNSAFE_TARGET", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -63,7 +63,7 @@ describe("PrestaShopConnector authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(301, "https://www.shop.example.com/api/"));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "PRESTASHOP_REDIRECT_CROSS_ORIGIN" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "PRESTASHOP_REDIRECT_CROSS_ORIGIN", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -121,7 +121,7 @@ describe("PrestaShopConnector authenticated redirect handling", () => {
     (global as any).fetch = jest.fn().mockResolvedValue(redirect(301, "https://www.shop.example.com/api/"));
     await expect(
       connector.validateStoredCredentialsDetailed!({ tenantId: "t1", installationId: "i1", connectorId: "prestashop" } as any),
-    ).resolves.toEqual({ outcome: "invalid", reasonCode: "PRESTASHOP_REDIRECT_CROSS_ORIGIN" });
+    ).resolves.toEqual({ outcome: "invalid", reasonCode: "PRESTASHOP_REDIRECT_CROSS_ORIGIN", category: "configuration" });
   });
 
   it("does not report a redirect refusal as a transient (unavailable) failure", async () => {

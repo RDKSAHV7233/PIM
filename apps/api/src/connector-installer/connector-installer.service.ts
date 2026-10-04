@@ -30,6 +30,7 @@ import {
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { resolveConnectorLaunchPolicy, resolveConnectorPipelineMetadata, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
+import { unvalidatedAfterCredentialChange, verifiedValidationStamp } from "../connector-framework/credential-validation";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
@@ -1069,12 +1070,20 @@ export class ConnectorInstallerService {
         );
       }
 
+      // Reconnect clears the recorded validation facts rather than stamping VALID: the check above
+      // is a gate, not a recorded provider verdict (and deferred-validation connectors skip it), and
+      // a stale INVALID / CONFIGURATION_ERROR must not outlive a reconnect. A NULL attempt time puts
+      // this installation first in the next heartbeat batch, which records the truthful outcome.
       const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         UPDATE connector_installations
         SET
           status = 'ACTIVE',
           metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('reconnectRequestedAt', NOW()),
-          updated_at = NOW()
+          updated_at = NOW(),
+          last_validated_at = NULL,
+          last_validation_attempt_at = NULL,
+          last_validation_outcome = NULL,
+          last_validation_reason = NULL
         WHERE id = $1 AND tenant_key = $2
         `,
         [installationId, tenantKey]);
@@ -1378,7 +1387,7 @@ export class ConnectorInstallerService {
       }
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1446,7 +1455,7 @@ export class ConnectorInstallerService {
       );
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: suppliedOdooUrl, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: suppliedOdooUrl, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1505,7 +1514,7 @@ export class ConnectorInstallerService {
       );
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: suppliedStoreUrl, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: suppliedStoreUrl, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1553,7 +1562,7 @@ export class ConnectorInstallerService {
       );
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: suppliedStoreHash, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: suppliedStoreHash, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1628,7 +1637,7 @@ export class ConnectorInstallerService {
       }
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: storeUrl, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: storeUrl, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1708,7 +1717,7 @@ export class ConnectorInstallerService {
       }
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: organizationId, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: organizationId, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1786,7 +1795,7 @@ export class ConnectorInstallerService {
         }
         await tx.connectorInstallation.updateMany({
           where: { id: installation.id, tenantKey },
-          data: { status: "ACTIVE", externalAccountRef: shopId, updatedAt: new Date() },
+          data: { status: "ACTIVE", externalAccountRef: shopId, updatedAt: new Date(), ...verifiedValidationStamp() },
         });
       });
     } catch (txError) {
@@ -1872,7 +1881,7 @@ export class ConnectorInstallerService {
       }
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: aadTenant, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: aadTenant, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -1927,7 +1936,7 @@ export class ConnectorInstallerService {
       );
       await tx.connectorInstallation.updateMany({
         where: { id: installation.id, tenantKey },
-        data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date() },
+        data: { status: "ACTIVE", externalAccountRef: suppliedExternalAccountRef, updatedAt: new Date(), ...verifiedValidationStamp() },
       });
     });
 
@@ -2031,7 +2040,7 @@ export class ConnectorInstallerService {
         }
         await tx.connectorInstallation.updateMany({
           where: { id: installation.id, tenantKey },
-          data: { status: "ACTIVE", updatedAt: new Date() },
+          data: { status: "ACTIVE", updatedAt: new Date(), ...verifiedValidationStamp() },
         });
       });
     } catch (txError) {
@@ -2062,6 +2071,15 @@ export class ConnectorInstallerService {
       throw new ServiceUnavailableException({
         error: `${prefix}_CREDENTIALS_UNAVAILABLE`,
         message: `${prefix} couldn't be reached to verify these credentials right now. Existing credentials were not changed — try again shortly.`,
+        verification,
+      });
+    }
+    // Only an explicit "valid" counts as verified: a result with no verdict (not_supported) must
+    // not let credentials be saved and recorded as validated.
+    if (verification.outcome !== "valid") {
+      throw new BadRequestException({
+        error: `${prefix}_CREDENTIALS_UNVERIFIED`,
+        message: `${prefix} could not verify these credentials. Existing credentials were not changed.`,
         verification,
       });
     }
@@ -2325,6 +2343,7 @@ export class ConnectorInstallerService {
       data: {
         status: "ACTIVE",
         updatedAt: new Date(),
+        ...unvalidatedAfterCredentialChange(),
       },
     });
     return { id: installationId, status: "CONNECTED" };
@@ -2394,6 +2413,7 @@ export class ConnectorInstallerService {
       data: {
         status: "ACTIVE",
         updatedAt: new Date(),
+        ...unvalidatedAfterCredentialChange(),
       },
     });
 

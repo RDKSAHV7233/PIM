@@ -242,8 +242,25 @@ export type TokenCommitMaterial = { value: string; expiresAt: Date | null };
  * either way) so a transient blip never gets reported as bad credentials.
  */
 export type CredentialVerificationResult =
-  | { outcome: "valid"; commitExtra?: { accessToken?: TokenCommitMaterial; refreshToken?: TokenCommitMaterial } }
-  | { outcome: "invalid"; reasonCode?: string }
+  | {
+      outcome: "valid";
+      /**
+       * "token_only": success was inferred from obtaining / holding a usable access token (a cached,
+       * unexpired token needs no provider round trip). Weaker than a live authenticated read, and
+       * recorded as such (reason TOKEN_ONLY). Omitted when a provider call authenticated the check.
+       */
+      evidence?: "token_only";
+      commitExtra?: { accessToken?: TokenCommitMaterial; refreshToken?: TokenCommitMaterial };
+    }
+  | {
+      outcome: "invalid";
+      reasonCode?: string;
+      /**
+       * "configuration": the configured target (URL, redirect) is refused. Not evidence that
+       * the credentials are wrong, so it must never expire them (see credential-validation.ts).
+       */
+      category?: "configuration";
+    }
   | { outcome: "unavailable"; reasonCode?: string }
   | { outcome: "not_supported" };
 

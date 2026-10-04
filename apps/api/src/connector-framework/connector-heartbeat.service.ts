@@ -7,6 +7,13 @@ import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorCredentialService } from "./connector-credential.service";
 import { ConnectorHttpClient } from "./connector-http-client.service";
 import { ConnectorContext } from "./connector.interface";
+import {
+  classifyDetailedResult,
+  classifyLegacyBoolean,
+  classifyThrown,
+  validationColumns,
+  type ValidationRecord,
+} from "./credential-validation";
 
 const HEARTBEAT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_DELAY_MS = 30 * 1000;                // 30 seconds after boot
@@ -123,43 +130,83 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
     }
     this.running = true;
     this.logger.info("Connector credential heartbeat started.");
-    let checked = 0;
-    let expired = 0;
-    let errors = 0;
+    const counts = { checked: 0, valid: 0, expired: 0, indeterminate: 0, configurationError: 0, errors: 0 };
 
     try {
       const installations = await this.loadActiveInstallations();
       for (const inst of installations) {
+        let record: ValidationRecord;
         try {
-          const connector = this.registry.getConnector(inst.slug);
-          const ctx = this.buildContext(inst);
-          const valid = await connector.validateCredentials(ctx);
-
-          if (!valid) {
-            await this.markExpired(inst);
-            expired++;
-            this.logger.warn("Connector credential heartbeat: credentials expired", {
-              slug: inst.slug,
-              installationId: inst.id,
-              tenantKey: inst.tenantKey,
-            });
-          } else {
-            await this.markValidated(inst);
-          }
-          checked++;
+          record = await this.validate(inst);
         } catch (err) {
-          errors++;
+          // A verifier that throws failed to check; that is not evidence about the credentials.
+          counts.errors++;
+          record = classifyThrown();
           this.logger.warn("Connector credential heartbeat: error checking installation", {
+            installationId: inst.id,
+            tenantKey: inst.tenantKey,
+            slug: inst.slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        try {
+          await this.recordOutcome(inst, record);
+        } catch (err) {
+          counts.errors++;
+          this.logger.warn("Connector credential heartbeat: could not record validation outcome", {
             installationId: inst.id,
             tenantKey: inst.tenantKey,
             error: err instanceof Error ? err.message : String(err),
           });
+          continue;
+        }
+        counts.checked++;
+        switch (record.outcome) {
+          case "VALID":
+            counts.valid++;
+            break;
+          case "INVALID":
+            counts.expired++;
+            this.logger.warn("Connector credential heartbeat: credentials expired", {
+              slug: inst.slug,
+              installationId: inst.id,
+              tenantKey: inst.tenantKey,
+              reason: record.reason,
+            });
+            break;
+          case "INDETERMINATE":
+            counts.indeterminate++;
+            break;
+          case "CONFIGURATION_ERROR":
+            counts.configurationError++;
+            this.logger.warn("Connector credential heartbeat: configuration problem", {
+              slug: inst.slug,
+              installationId: inst.id,
+              tenantKey: inst.tenantKey,
+              reason: record.reason,
+            });
+            break;
         }
       }
     } finally {
       this.running = false;
-      this.logger.info("Connector credential heartbeat completed.", { checked, expired, errors });
+      this.logger.info("Connector credential heartbeat completed.", counts);
     }
+  }
+
+  // Prefer the tri-state verifier (valid / invalid / unavailable). A connector without it
+  // falls back to the legacy boolean, whose `false` is only trusted as a rejection for an
+  // audited connector (see credential-validation.ts).
+  private async validate(inst: InstallationRow): Promise<ValidationRecord> {
+    const connector = this.registry.getConnector(inst.slug);
+    const ctx = this.buildContext(inst);
+    if (connector.validateStoredCredentialsDetailed) {
+      const result = await connector.validateStoredCredentialsDetailed(ctx);
+      if (result.outcome !== "not_supported") {
+        return classifyDetailedResult(result);
+      }
+    }
+    return classifyLegacyBoolean(inst.slug, await connector.validateCredentials(ctx));
   }
 
   private async loadActiveInstallations(): Promise<InstallationRow[]> {
@@ -168,7 +215,9 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
       where: { status: { in: ["ACTIVE", "CREDENTIAL_EXPIRED"] } },
       take: HEARTBEAT_BATCH_SIZE,
       select: { id: true, tenantKey: true, connectorId: true },
-      orderBy: { updatedAt: "asc" },
+      // Never-attempted installations first, then the longest-unattempted, then id: a stable
+      // order in which every installation is visited once before any is visited twice.
+      orderBy: [{ lastValidationAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     });
 
     if (rows.length === 0) return [];
@@ -214,21 +263,26 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
     return ctx;
   }
 
-  private async markExpired(inst: InstallationRow): Promise<void> {
+  // Records the outcome. lastValidatedAt moves only on VALID. Only INVALID changes the
+  // installation status (to CREDENTIAL_EXPIRED); INDETERMINATE and CONFIGURATION_ERROR keep
+  // whatever status the installation had. VALID promotes CREDENTIAL_EXPIRED back to ACTIVE
+  // and leaves ACTIVE as it is. updatedAt moves only on a status transition, as before.
+  private async recordOutcome(inst: InstallationRow, record: ValidationRecord): Promise<void> {
     const db = this.prismaDirect.getClient();
     await db.connectorInstallation.updateMany({
       where: { id: inst.id, tenantKey: inst.tenantKey },
-      data: { status: "CREDENTIAL_EXPIRED", updatedAt: new Date() },
+      data: validationColumns(record, new Date()),
     });
-  }
-
-  private async markValidated(inst: InstallationRow): Promise<void> {
-    const db = this.prismaDirect.getClient();
-    // Only promote CREDENTIAL_EXPIRED → ACTIVE when validation passes again.
-    // Leave ACTIVE as-is to avoid unnecessary writes.
-    await db.connectorInstallation.updateMany({
-      where: { id: inst.id, tenantKey: inst.tenantKey, status: "CREDENTIAL_EXPIRED" },
-      data: { status: "ACTIVE", updatedAt: new Date() },
-    });
+    if (record.outcome === "INVALID") {
+      await db.connectorInstallation.updateMany({
+        where: { id: inst.id, tenantKey: inst.tenantKey },
+        data: { status: "CREDENTIAL_EXPIRED", updatedAt: new Date() },
+      });
+    } else if (record.outcome === "VALID") {
+      await db.connectorInstallation.updateMany({
+        where: { id: inst.id, tenantKey: inst.tenantKey, status: "CREDENTIAL_EXPIRED" },
+        data: { status: "ACTIVE", updatedAt: new Date() },
+      });
+    }
   }
 }

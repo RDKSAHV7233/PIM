@@ -401,6 +401,53 @@ describe("ConnectorInstallerService", () => {
       );
     });
 
+    it("clears the recorded validation facts instead of stamping VALID, so a stale outcome cannot survive a reconnect", async () => {
+      const { service, queryMock, executeMock, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      executeMock.mockResolvedValue(1);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ validateCredentials: jest.fn().mockResolvedValue(true) });
+
+      await service.reconnect("inst_1", { actorId: "user_1", actorRole: "admin" });
+
+      const sql = String(executeMock.mock.calls[0][0]);
+      expect(sql).toContain("last_validated_at = NULL");
+      expect(sql).toContain("last_validation_attempt_at = NULL");
+      expect(sql).toContain("last_validation_outcome = NULL");
+      expect(sql).toContain("last_validation_reason = NULL");
+      expect(sql).not.toMatch(/last_validation_outcomes*=s*'VALID'/);
+    });
+
+    it("handleOAuthCallback (authenticated) clears validation facts instead of recording VALID", async () => {
+      const { service, queryMock, executeMock, connectorRegistry } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow());
+      const oauthUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      (service as any).prisma.tenant.mockReturnValue({
+        $queryRawUnsafe: queryMock, // RLS-BYPASS: manual tenant filter
+        $executeRawUnsafe: executeMock, // RLS-BYPASS: manual tenant filter
+        connectorInstallation: { updateMany: oauthUpdateMany },
+      });
+      // WooCommerce app-auth only stores the delivered keys; it never contacts the provider.
+      const handleOAuthCallback = jest.fn().mockResolvedValue(undefined);
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({ handleOAuthCallback });
+
+      const result = await service.handleOAuthCallback("inst_1", { consumer_key: "ck", consumer_secret: "cs" }, { actorId: "user_1", actorRole: "admin" });
+
+      expect(result).toEqual({ id: "inst_1", status: "CONNECTED" });
+      expect(handleOAuthCallback).toHaveBeenCalledTimes(1);
+      expect(oauthUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: "ACTIVE",
+            lastValidatedAt: null,
+            lastValidationAttemptAt: null,
+            lastValidationOutcome: null,
+            lastValidationReason: null,
+          }),
+        }),
+      );
+      expect(JSON.stringify(oauthUpdateMany.mock.calls)).not.toContain("VALID");
+    });
+
     it("refuses to mark the installation ACTIVE when credentials still don't validate", async () => {
       const { service, queryMock, executeMock, auditService, connectorRegistry } = createService();
       queryMock.mockResolvedValue(mockRuntimeRecordRow());
@@ -879,11 +926,12 @@ describe("ConnectorInstallerService", () => {
 
         mockInstallationWithNonce(queryMock, executeMock, nonceHash, expiresAt);
         // Second call: prisma update for status = ACTIVE
+        const oauthUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
         const tenantMock = (service as any).prisma.tenant;
         tenantMock.mockReturnValue({
           $queryRawUnsafe: queryMock, // RLS-BYPASS: manual tenant filter
           $executeRawUnsafe: executeMock, // RLS-BYPASS: manual tenant filter
-          connectorInstallation: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          connectorInstallation: { updateMany: oauthUpdateMany },
         });
 
         const result = await service.handlePublicOAuthCallback(
@@ -892,6 +940,20 @@ describe("ConnectorInstallerService", () => {
           "shopify",
         );
         expect(result).toEqual({ installationId: "inst_001", status: "CONNECTED" });
+        // An OAuth callback may only store keys (WooCommerce app-auth never contacts the provider), so
+        // it must not claim a validation: facts are cleared to "unknown" for the next heartbeat tick.
+        expect(oauthUpdateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              status: "ACTIVE",
+              lastValidatedAt: null,
+              lastValidationAttemptAt: null,
+              lastValidationOutcome: null,
+              lastValidationReason: null,
+            }),
+          }),
+        );
+        expect(JSON.stringify(oauthUpdateMany.mock.calls)).not.toContain("VALID");
         expect(connectorMock.handleOAuthCallback).toHaveBeenCalledTimes(1);
         // Nonce should be cleared (executeMock called with null values via positional args)
         expect(executeMock).toHaveBeenCalledWith(
@@ -1167,6 +1229,45 @@ describe("ConnectorInstallerService", () => {
       expect(webhookCall).toBeDefined();
       expect(webhookCall![1]).toBeDefined(); // tx passed
       expect(webhookCall![2]).toBeUndefined(); // no health param
+    });
+
+    it("WooCommerce valid: records VALID (provider-verified candidate) on the installation in the same transaction as the credentials", async () => {
+      const { service, queryMock, connectorRegistry, txConnectorInstallationUpdateMany } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({ outcome: "valid" }),
+      });
+
+      await service.updateCredentials("inst_1", { externalAccountRef: "https://store.example.com", clientId: "ck", clientSecret: "cs" }, ACTOR);
+
+      expect(txConnectorInstallationUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: "ACTIVE",
+            lastValidatedAt: expect.any(Date),
+            lastValidationAttemptAt: expect.any(Date),
+            lastValidationOutcome: "VALID",
+            lastValidationReason: null,
+          }),
+        }),
+      );
+    });
+
+    it("a verification with no verdict (not_supported) is never saved and never recorded as validated", async () => {
+      const { service, queryMock, connectorRegistry, credentialEncryptionService, txConnectorInstallationUpdateMany } = createService();
+      queryMock.mockResolvedValue(mockRuntimeRecordRow({ slug: "woocommerce" }));
+      (connectorRegistry.getConnector as jest.Mock).mockReturnValue({
+        verifyCandidateCredentials: jest.fn().mockResolvedValue({ outcome: "not_supported" }),
+      });
+
+      await expect(
+        service.updateCredentials("inst_1", { externalAccountRef: "https://store.example.com", clientId: "ck", clientSecret: "cs" }, ACTOR),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: expect.objectContaining({ error: "WOOCOMMERCE_CREDENTIALS_UNVERIFIED" }),
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+      expect(txConnectorInstallationUpdateMany).not.toHaveBeenCalled();
     });
 
     it("WooCommerce invalid: zero storeCredential calls, status untouched, 4xx with verification in the response", async () => {

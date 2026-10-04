@@ -239,7 +239,8 @@ export class AmazonConnector implements ConnectorInterface {
       this.logger.info("Amazon credentials validated", {
         installationId: ctx.installationId,
       });
-      return { outcome: "valid" };
+      // Token-only: resolveAccessToken() returns a cached unexpired token without a provider call.
+      return { outcome: "valid", evidence: "token_only" };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await this.noteCredentialHealth(ctx, reason);

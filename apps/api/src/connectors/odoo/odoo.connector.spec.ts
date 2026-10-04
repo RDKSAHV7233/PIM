@@ -312,7 +312,7 @@ describe("OdooConnector authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(302, location));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "ODOO_REDIRECT_UNSAFE_TARGET" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "ODOO_REDIRECT_UNSAFE_TARGET", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("https://odoo.example.com/jsonrpc");
   });
@@ -321,7 +321,7 @@ describe("OdooConnector authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(301, "https://www.odoo.example.com/jsonrpc"));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "ODOO_REDIRECT_CROSS_ORIGIN" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "ODOO_REDIRECT_CROSS_ORIGIN", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -343,7 +343,7 @@ describe("OdooConnector authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(302, "/jsonrpc/"));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "ODOO_REDIRECT_METHOD_UNSUPPORTED" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "ODOO_REDIRECT_METHOD_UNSUPPORTED", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

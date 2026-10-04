@@ -115,7 +115,11 @@ describe("tenant-URL connectors use the pinned transport seam", () => {
       const transport = refusingTransport(refusal);
       setConnectorTransportForTesting(transport);
       const result = await make().verifyCandidateCredentials!(candidate as Record<string, string>);
-      expect(result).toEqual({ outcome: "invalid", reasonCode: `${prefix}_${prefix === "WOOCOMMERCE" ? "SITE_URL" : "URL"}_UNSAFE` });
+      expect(result).toEqual({
+        outcome: "invalid",
+        reasonCode: `${prefix}_${prefix === "WOOCOMMERCE" ? "SITE_URL" : "URL"}_UNSAFE`,
+        category: "configuration",
+      });
       expect(transport.calls).toHaveLength(1); // not retried
     });
   });

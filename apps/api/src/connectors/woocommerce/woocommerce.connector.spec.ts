@@ -469,7 +469,7 @@ describe("WooCommerceConnector.verifyCandidateCredentials", () => {
 
     const result = await connector.verifyCandidateCredentials!({ ...candidate, site_url: "http://insecure.example.com" });
 
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_SITE_URL_NOT_HTTPS" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_SITE_URL_NOT_HTTPS", category: "configuration" });
     expect(callApi).not.toHaveBeenCalled();
   });
 
@@ -983,7 +983,7 @@ describe("WooCommerceConnector authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(302, location));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_UNSAFE_TARGET" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_UNSAFE_TARGET", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -993,7 +993,7 @@ describe("WooCommerceConnector authenticated redirect handling", () => {
       .mockResolvedValue(redirect(301, "https://www.store.example.com/wp-json/wc/v3/products?per_page=1"));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_CROSS_ORIGIN" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_CROSS_ORIGIN", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1065,6 +1065,6 @@ describe("WooCommerceConnector authenticated redirect handling", () => {
     (global as any).fetch = jest.fn().mockResolvedValue(redirect(301, "https://www.store.example.com/x"));
     await expect(
       connector.validateStoredCredentialsDetailed!({ tenantId: "t1", installationId: "i1", connectorId: "woocommerce" } as any),
-    ).resolves.toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_CROSS_ORIGIN" });
+    ).resolves.toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_CROSS_ORIGIN", category: "configuration" });
   });
 });

@@ -33,6 +33,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
 import { isConnectorTargetSecurityError, targetSecurityVerificationReason } from "../../common/security/connector-target-errors";
+import { configurationInvalid } from "../../connector-framework/credential-validation";
 import { getConnectorTransport } from "../../common/security/connector-transport";
 import {
   fetchWithValidatedRedirects,
@@ -194,7 +195,7 @@ export class ShopwareConnector implements ConnectorInterface {
     try {
       const { storeUrl } = await this.resolveCredentials(ctx);
       if (!storeUrl.startsWith("https://")) {
-        return { outcome: "invalid", reasonCode: "SHOPWARE_URL_NOT_HTTPS" };
+        return configurationInvalid("SHOPWARE_URL_NOT_HTTPS");
       }
       const token = await ctx.getAccessToken();
       // Verified live in the pre-port prototype: /api/_info/shopware-version
@@ -211,14 +212,14 @@ export class ShopwareConnector implements ConnectorInterface {
       return { outcome: "valid" };
     } catch (error) {
       if (isConnectorTargetSecurityError(error)) {
-        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("SHOPWARE", error) };
+        return configurationInvalid(targetSecurityVerificationReason("SHOPWARE", error));
       }
       // resolveCredentials() now throws for a non-HTTPS or unsafe store_url
       // before the explicit HTTPS check above is reachable — keep classifying
       // that as invalid (as before), not as a generic unavailable provider.
       if (error instanceof BadRequestException) {
         const reasonCode = error.message.includes("HTTPS") ? "SHOPWARE_URL_NOT_HTTPS" : "SHOPWARE_URL_UNSAFE";
-        return { outcome: "invalid", reasonCode };
+        return configurationInvalid(reasonCode);
       }
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn("Shopware credential validation failed", { installationId: ctx.installationId, reason });
@@ -236,14 +237,14 @@ export class ShopwareConnector implements ConnectorInterface {
     const clientId = String(candidate.client_id ?? "").trim();
     const clientSecret = String(candidate.client_secret ?? "").trim();
     if (!storeUrl.startsWith("https://")) {
-      return { outcome: "invalid", reasonCode: "SHOPWARE_URL_NOT_HTTPS" };
+      return configurationInvalid("SHOPWARE_URL_NOT_HTTPS");
     }
     // Reject an unsafe candidate store_url before the client_secret is ever
     // attached to a request, and before it can be saved as a credential.
     try {
       await validateConnectorTargetUrl(storeUrl, { requireResolvable: false });
     } catch {
-      return { outcome: "invalid", reasonCode: "SHOPWARE_URL_UNSAFE" };
+      return configurationInvalid("SHOPWARE_URL_UNSAFE");
     }
     try {
       const token = await this.exchangeToken(storeUrl, clientId, clientSecret);
@@ -264,7 +265,7 @@ export class ShopwareConnector implements ConnectorInterface {
       };
     } catch (err) {
       if (isConnectorTargetSecurityError(err)) {
-        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("SHOPWARE", err) };
+        return configurationInvalid(targetSecurityVerificationReason("SHOPWARE", err));
       }
       if (err instanceof ShopwareTokenExchangeError) {
         return { outcome: err.status === 401 ? "invalid" : "unavailable", reasonCode: `HTTP_${err.status}` };

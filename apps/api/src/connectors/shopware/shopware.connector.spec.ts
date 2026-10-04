@@ -663,7 +663,7 @@ describe("ShopwareConnector — authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(307, location));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_UNSAFE_TARGET" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_UNSAFE_TARGET", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(`${SHOP}/api/oauth/token`);
   });
@@ -673,7 +673,7 @@ describe("ShopwareConnector — authenticated redirect handling", () => {
       const fetchMock = jest.fn().mockResolvedValue(redirect(status, "https://www.shop.example.com/api/oauth/token"));
       (global as any).fetch = fetchMock;
       const result = await makeConnector().verifyCandidateCredentials!(candidate);
-      expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN" });
+      expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN", category: "configuration" });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     }
   });
@@ -682,7 +682,7 @@ describe("ShopwareConnector — authenticated redirect handling", () => {
     const fetchMock = jest.fn().mockResolvedValue(redirect(302, "/api/oauth/token/"));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_METHOD_UNSUPPORTED" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_METHOD_UNSUPPORTED", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -706,7 +706,7 @@ describe("ShopwareConnector — authenticated redirect handling", () => {
       .mockResolvedValueOnce(redirect(301, "https://www.shop.example.com/api/_info/config"));
     (global as any).fetch = fetchMock;
     const result = await makeConnector().verifyCandidateCredentials!(candidate);
-    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN" });
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN", category: "configuration" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -728,6 +728,7 @@ describe("ShopwareConnector — authenticated redirect handling", () => {
     await expect(connector.validateStoredCredentialsDetailed!(ctx as any)).resolves.toEqual({
       outcome: "invalid",
       reasonCode: "SHOPWARE_REDIRECT_CROSS_ORIGIN",
+      category: "configuration",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

@@ -197,7 +197,9 @@ export class FlipkartConnector implements ConnectorInterface {
       this.logger.info("Flipkart credentials validated", {
         installationId: ctx.installationId,
       });
-      return { outcome: "valid" };
+      // Token-only: a cached unexpired access token and a not-yet-expired refresh token are
+      // checked locally; a provider call happens only when the token has to be refreshed.
+      return { outcome: "valid", evidence: "token_only" };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await this.noteCredentialHealth(ctx, reason);

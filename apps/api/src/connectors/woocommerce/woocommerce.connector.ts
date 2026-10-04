@@ -53,6 +53,7 @@ import { ConnectorNetworkError } from '../../connector-framework/connector.error
 import { tenantExecRaw } from '../../common/tenant/tenant-raw';
 import { validateConnectorTargetUrl } from '../../common/security/url-safety';
 import { isConnectorTargetSecurityError, targetSecurityVerificationReason } from '../../common/security/connector-target-errors';
+import { configurationInvalid } from '../../connector-framework/credential-validation';
 import { getConnectorTransport } from '../../common/security/connector-transport';
 import {
   fetchWithValidatedRedirects,
@@ -867,7 +868,7 @@ export class WooCommerceConnector implements ConnectorInterface {
         this.logger.warn('WooCommerce preflight failed: site URL must use HTTPS', {
           installationId: ctx.installationId,
         });
-        return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' };
+        return configurationInvalid('WOOCOMMERCE_SITE_URL_NOT_HTTPS');
       }
 
       const res = await this.callApi('GET', '/products?per_page=1', siteUrl, consumerKey, consumerSecret);
@@ -890,7 +891,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (isConnectorTargetSecurityError(err)) {
-        return { outcome: 'invalid', reasonCode: targetSecurityVerificationReason('WOOCOMMERCE', err, 'SITE_URL') };
+        return configurationInvalid(targetSecurityVerificationReason('WOOCOMMERCE', err, 'SITE_URL'));
       }
       if (err instanceof ConnectorNetworkError) {
         this.logger.warn('WooCommerce credential validation inconclusive: transient network failure', {
@@ -905,7 +906,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       // classify that as invalid, not an unavailable/transient failure.
       if (err instanceof BadRequestException) {
         const reasonCode = err.message.includes('HTTPS') ? 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' : 'WOOCOMMERCE_SITE_URL_UNSAFE';
-        return { outcome: 'invalid', reasonCode };
+        return configurationInvalid(reasonCode);
       }
       this.logger.warn('WooCommerce credential validation error', {
         installationId: ctx.installationId,
@@ -936,7 +937,7 @@ export class WooCommerceConnector implements ConnectorInterface {
     const consumerSecret = String(candidate.consumer_secret ?? '').trim();
 
     if (!siteUrl.startsWith('https://')) {
-      return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_NOT_HTTPS' };
+      return configurationInvalid('WOOCOMMERCE_SITE_URL_NOT_HTTPS');
     }
 
     // PIM#890: reject a candidate site_url that points at a private/internal/
@@ -944,7 +945,7 @@ export class WooCommerceConnector implements ConnectorInterface {
     try {
       await validateConnectorTargetUrl(siteUrl, { requireResolvable: false });
     } catch {
-      return { outcome: 'invalid', reasonCode: 'WOOCOMMERCE_SITE_URL_UNSAFE' };
+      return configurationInvalid('WOOCOMMERCE_SITE_URL_UNSAFE');
     }
 
     try {
@@ -958,7 +959,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       return { outcome: 'valid' };
     } catch (err) {
       if (isConnectorTargetSecurityError(err)) {
-        return { outcome: 'invalid', reasonCode: targetSecurityVerificationReason('WOOCOMMERCE', err, 'SITE_URL') };
+        return configurationInvalid(targetSecurityVerificationReason('WOOCOMMERCE', err, 'SITE_URL'));
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };

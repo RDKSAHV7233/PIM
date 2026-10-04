@@ -59,6 +59,7 @@ import {
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
 import { isConnectorTargetSecurityError, targetSecurityVerificationReason } from "../../common/security/connector-target-errors";
+import { configurationInvalid } from "../../connector-framework/credential-validation";
 import { getConnectorTransport } from "../../common/security/connector-transport";
 import {
   fetchWithValidatedRedirects,
@@ -194,7 +195,7 @@ export class PrestaShopConnector implements ConnectorInterface {
     try {
       const { storeUrl, apiKey } = await this.resolveCredentials(ctx);
       if (!storeUrl.startsWith("https://")) {
-        return { outcome: "invalid", reasonCode: "PRESTASHOP_URL_NOT_HTTPS" };
+        return configurationInvalid("PRESTASHOP_URL_NOT_HTTPS");
       }
       const response = await this.fetchWithTimeout(`${storeUrl}/api/`, {
         headers: { Authorization: this.buildAuthHeader(apiKey) },
@@ -208,7 +209,7 @@ export class PrestaShopConnector implements ConnectorInterface {
       return { outcome: "valid" };
     } catch (error) {
       if (isConnectorTargetSecurityError(error)) {
-        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("PRESTASHOP", error) };
+        return configurationInvalid(targetSecurityVerificationReason("PRESTASHOP", error));
       }
       // PIM#890: resolveCredentials() above now throws before returning a
       // store_url that's non-HTTPS or resolves to a private/blocked address —
@@ -217,7 +218,7 @@ export class PrestaShopConnector implements ConnectorInterface {
       // generic network-failure bucket below.
       if (error instanceof BadRequestException) {
         const reasonCode = error.message.includes("HTTPS") ? "PRESTASHOP_URL_NOT_HTTPS" : "PRESTASHOP_URL_UNSAFE";
-        return { outcome: "invalid", reasonCode };
+        return configurationInvalid(reasonCode);
       }
       this.logger.warn("PrestaShop credential validation failed", {
         installationId: ctx.installationId,
@@ -233,14 +234,14 @@ export class PrestaShopConnector implements ConnectorInterface {
     const storeUrl = normalizeStoreUrl(String(candidate.store_url ?? "").trim());
     const apiKey = String(candidate.api_key ?? "").trim();
     if (!storeUrl.startsWith("https://")) {
-      return { outcome: "invalid", reasonCode: "PRESTASHOP_URL_NOT_HTTPS" };
+      return configurationInvalid("PRESTASHOP_URL_NOT_HTTPS");
     }
     // PIM#890: reject a candidate store_url that points at a private/internal/
     // metadata-endpoint address before this ever gets saved as a credential.
     try {
       await validateConnectorTargetUrl(storeUrl, { requireResolvable: false });
     } catch {
-      return { outcome: "invalid", reasonCode: "PRESTASHOP_URL_UNSAFE" };
+      return configurationInvalid("PRESTASHOP_URL_UNSAFE");
     }
     try {
       const response = await this.fetchWithTimeout(`${storeUrl}/api/`, {
@@ -255,7 +256,7 @@ export class PrestaShopConnector implements ConnectorInterface {
       return { outcome: "valid" };
     } catch (error) {
       if (isConnectorTargetSecurityError(error)) {
-        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("PRESTASHOP", error) };
+        return configurationInvalid(targetSecurityVerificationReason("PRESTASHOP", error));
       }
       return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
     }
