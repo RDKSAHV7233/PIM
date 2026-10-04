@@ -52,6 +52,11 @@ import { ConnectorHttpClient } from '../../connector-framework/connector-http-cl
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { tenantExecRaw } from '../../common/tenant/tenant-raw';
 import { validateConnectorTargetUrl } from '../../common/security/url-safety';
+import {
+  ConnectorRedirectError,
+  fetchWithValidatedRedirects,
+  type RedirectHopInit,
+} from '../../common/security/validated-redirect-fetch';
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 
@@ -710,24 +715,27 @@ export class WooCommerceConnector implements ConnectorInterface {
     body?: unknown,
   ): Promise<Response> {
     const url = `${siteUrl}/wp-json/wc/v3${path}`;
-    if (this.httpClient) {
-      return this.httpClient.fetch('woocommerce', `${this.slug}:${siteUrl}`, url, {
-        method,
-        timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': buildBasicAuthHeader(consumerKey, consumerSecret),
-        },
-        body: body != null ? JSON.stringify(body) : undefined,
-      });
-    }
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CONNECTOR_HTTP_TIMEOUT_MS);
+    // Every request carries the consumer key/secret (Basic auth, plus any body),
+    // so fetch must never follow a redirect on its own: each hop is sent with
+    // redirect: "manual", re-validated, and a cross-origin hop fails closed.
+    const hop = async (hopUrl: string, hopInit: RedirectHopInit): Promise<Response> => {
+      if (this.httpClient) {
+        return this.httpClient.fetch('woocommerce', `${this.slug}:${siteUrl}`, hopUrl, {
+          ...hopInit,
+          timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS,
+        });
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CONNECTOR_HTTP_TIMEOUT_MS);
+      try {
+        return await fetch(hopUrl, { ...hopInit, signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
     try {
-      return await fetch(url, {
+      return await fetchWithValidatedRedirects(hop, url, {
         method,
-        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -736,6 +744,14 @@ export class WooCommerceConnector implements ConnectorInterface {
         body: body != null ? JSON.stringify(body) : undefined,
       });
     } catch (err) {
+      // A redirect refusal is a configuration problem, not a transient network
+      // failure: surface it as-is so it is neither retried nor mislabelled.
+      if (err instanceof ConnectorRedirectError) {
+        this.logger.warn('WooCommerce callApi redirect refused', { method, path, code: err.code });
+        throw err;
+      }
+      // The shared client path never classified transport errors; keep that.
+      if (this.httpClient) throw err;
       const { category, retryable, detail } = classifyCallApiFailure(err);
       this.logger.warn('WooCommerce callApi network failure', {
         method,
@@ -746,8 +762,6 @@ export class WooCommerceConnector implements ConnectorInterface {
         cause: err instanceof Error && err.cause ? String(err.cause) : undefined,
       });
       throw new ConnectorNetworkError('woocommerce', category, retryable, detail);
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -879,6 +893,9 @@ export class WooCommerceConnector implements ConnectorInterface {
       this.logger.info('WooCommerce credentials validated', { installationId: ctx.installationId });
       return { outcome: 'valid' };
     } catch (err) {
+      if (err instanceof ConnectorRedirectError) {
+        return { outcome: 'invalid', reasonCode: `WOOCOMMERCE_${err.code}` };
+      }
       if (err instanceof ConnectorNetworkError) {
         this.logger.warn('WooCommerce credential validation inconclusive: transient network failure', {
           installationId: ctx.installationId,
@@ -944,6 +961,9 @@ export class WooCommerceConnector implements ConnectorInterface {
       }
       return { outcome: 'valid' };
     } catch (err) {
+      if (err instanceof ConnectorRedirectError) {
+        return { outcome: 'invalid', reasonCode: `WOOCOMMERCE_${err.code}` };
+      }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
       }

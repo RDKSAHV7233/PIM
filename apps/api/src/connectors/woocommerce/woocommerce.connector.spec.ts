@@ -944,3 +944,127 @@ describe("WooCommerceConnector.reconcileSubmission — W6 pim_wins drift detecti
     expect(result).toEqual({ needsRepublish: false, driftedFields: [], providerReadUnavailable: true });
   });
 });
+
+// Redirect handling on the credential-bearing REST transport. Every request
+// carries the consumer key/secret (Basic auth) and, for writes, the product
+// body, so fetch must never follow a redirect to a destination that has not
+// passed the canonical SSRF validation.
+describe("WooCommerceConnector authenticated redirect handling", () => {
+  const SITE = "https://store.example.com";
+  const candidate = {
+    site_url: SITE,
+    consumer_key: "ck_REDIRECT_TEST",
+    consumer_secret: "cs_REDIRECT_TEST_SECRET",
+  };
+  const redirect = (status: number, location: string) =>
+    new Response(null, { status, headers: { location } });
+  const okJson = () => new Response("[]", { status: 200 });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (global as any).fetch = undefined;
+  });
+
+  it("sends the credential-bearing request with redirect: 'manual'", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(okJson());
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "valid" });
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("manual");
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toMatch(/^Basic /);
+  });
+
+  it.each([
+    ["private IPv4", "https://10.0.0.5/wp-json/wc/v3/products"],
+    ["cloud metadata", "https://169.254.169.254/latest/meta-data/"],
+    ["IPv4-mapped IPv6 loopback", "https://[::ffff:7f00:1]/wp-json/wc/v3/products"],
+    ["plain http downgrade", "http://store.example.com/wp-json/wc/v3/products"],
+  ])("never sends the credentials to a redirect to %s", async (_label, location) => {
+    const fetchMock = jest.fn().mockResolvedValue(redirect(302, location));
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_UNSAFE_TARGET" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed on an apex->www cross-origin redirect instead of following it", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue(redirect(301, "https://www.store.example.com/wp-json/wc/v3/products?per_page=1"));
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_CROSS_ORIGIN" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows a same-origin redirect for a GET, keeping the credentials on the same origin only", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(redirect(301, "/wp-json/wc/v3/products/?per_page=1"))
+      .mockResolvedValueOnce(okJson());
+    (global as any).fetch = fetchMock;
+    const result = await makeConnector().verifyCandidateCredentials!(candidate);
+    expect(result).toEqual({ outcome: "valid" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new URL(fetchMock.mock.calls[1][0]).origin).toBe(SITE);
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(fetchMock.mock.calls[0][1].headers.Authorization);
+  });
+
+  it("fails closed on a 302 for a product write rather than letting fetch drop the body", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(redirect(302, "/wp-json/wc/v3/products/"));
+    (global as any).fetch = fetchMock;
+    const connector = makeConnector();
+    await expect(
+      (connector as any).callApi("POST", "/products", SITE, "ck", "cs", { name: "x", sku: "S1" }),
+    ).rejects.toMatchObject({ name: "ConnectorRedirectError", code: "REDIRECT_METHOD_UNSUPPORTED" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows a same-origin 307 for a product write, preserving method and body", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(redirect(307, "/wp-json/wc/v3/products/"))
+      .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+    (global as any).fetch = fetchMock;
+    const res = await (makeConnector() as any).callApi("POST", "/products", SITE, "ck", "cs", { name: "x" });
+    expect(res.status).toBe(201);
+    expect(fetchMock.mock.calls[1][1].method).toBe("POST");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ name: "x" });
+  });
+
+  it("does not report a redirect refusal as a transient (retryable) network failure", async () => {
+    (global as any).fetch = jest.fn().mockResolvedValue(redirect(307, "https://evil.example.net/x"));
+    await expect(
+      (makeConnector() as any).callApi("GET", "/products", SITE, "ck", "cs"),
+    ).rejects.not.toBeInstanceOf(ConnectorNetworkError);
+  });
+
+  it("passes redirect: 'manual' through the shared HTTP client and refuses a cross-origin hop there too", async () => {
+    process.env.CREDENTIAL_ENCRYPTION_KEY_V1 = TEST_KEY;
+    process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION = "1";
+    const clientFetch = jest.fn().mockResolvedValue(redirect(301, "https://www.store.example.com/x"));
+    const connector = new WooCommerceConnector(
+      { getClient: () => ({}) } as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn(), log: jest.fn() } as never,
+      { fetch: clientFetch } as never,
+    );
+    await expect(
+      (connector as any).callApi("GET", "/products", SITE, "ck", "cs"),
+    ).rejects.toMatchObject({ code: "REDIRECT_CROSS_ORIGIN" });
+    expect(clientFetch).toHaveBeenCalledTimes(1);
+    expect(clientFetch.mock.calls[0][3].redirect).toBe("manual");
+  });
+
+  it("validateStoredCredentialsDetailed reports a refused redirect as invalid with a reason code", async () => {
+    const connector = makeConnector();
+    jest.spyOn(connector as any, "resolveCredentials").mockResolvedValue({
+      siteUrl: SITE,
+      consumerKey: "ck",
+      consumerSecret: "cs",
+    });
+    (global as any).fetch = jest.fn().mockResolvedValue(redirect(301, "https://www.store.example.com/x"));
+    await expect(
+      connector.validateStoredCredentialsDetailed!({ tenantId: "t1", installationId: "i1", connectorId: "woocommerce" } as any),
+    ).resolves.toEqual({ outcome: "invalid", reasonCode: "WOOCOMMERCE_REDIRECT_CROSS_ORIGIN" });
+  });
+});
