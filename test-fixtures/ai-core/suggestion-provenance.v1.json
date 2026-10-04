@@ -1,0 +1,585 @@
+{
+  "contractId": "AI-CORE-003-SUGGESTION-PROVENANCE-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "owner": "backend-qa-pim-sme",
+  "gateStatus": "blocked_until_gate_a_passes",
+  "invariant": "generated_suggestion_is_immutable_review_and_apply_values_are_separate",
+  "coreInvariant": "generated_suggestion_payload_is_immutable",
+  "identityFields": [
+    "suggestionId",
+    "executionId",
+    "tenantKey",
+    "entityType",
+    "entityId",
+    "capability",
+    "fieldPath",
+    "sourceRecordId",
+    "sourceVersion",
+    "sourceHash",
+    "promptVersion",
+    "schemaVersion",
+    "generationFingerprint",
+    "idempotencyFingerprint"
+  ],
+  "generationFingerprintFields": [
+    "tenantKey",
+    "capability",
+    "entityType",
+    "entityId",
+    "fieldPath",
+    "sourceVersion",
+    "sourceHash",
+    "promptVersion",
+    "schemaVersion",
+    "generatedPayloadHash"
+  ],
+  "idempotencyFields": [
+    "tenantKey",
+    "capability",
+    "entityType",
+    "entityId",
+    "fieldPath",
+    "sourceVersion",
+    "sourceHash",
+    "promptVersion",
+    "schemaVersion",
+    "generationFingerprint"
+  ],
+  "immutableGeneratedFields": [
+    "suggestedValue",
+    "suggestedValueHash",
+    "generatedPayload",
+    "generatedPayloadHash",
+    "confidence",
+    "evidence",
+    "sourceVersion",
+    "sourceHash",
+    "promptVersion",
+    "schemaVersion",
+    "generationFingerprint",
+    "idempotencyFingerprint"
+  ],
+  "reviewFields": [
+    "reviewDecision",
+    "reviewedValue",
+    "reviewedValueHash",
+    "reviewedBy",
+    "reviewedAt",
+    "reviewReason"
+  ],
+  "applyFields": [
+    "appliedValue",
+    "appliedValueHash",
+    "appliedAt",
+    "productServiceApplyTransactionId"
+  ],
+  "lifecycleStates": [
+    "generated",
+    "pending_review",
+    "accepted",
+    "edited",
+    "rejected",
+    "blocked_stale",
+    "blocked_tampered",
+    "blocked_unauthorized",
+    "applied"
+  ],
+  "reviewDecisions": [
+    "pending",
+    "accept",
+    "edit",
+    "reject"
+  ],
+  "requiredEvidenceFields": [
+    "sourceField",
+    "sourceRecordId",
+    "sourceVersion",
+    "sourceHash",
+    "citation",
+    "evidenceHash"
+  ],
+  "evaluationDimensions": [
+    "attributeFamily",
+    "evidenceCoverage",
+    "acceptedWithoutEdit",
+    "correctedByReviewer",
+    "rejectedByReviewer",
+    "blockedStaleOrTampered",
+    "correctionDelta"
+  ],
+  "freshnessAndTamperChecks": [
+    "sourceVersion_matches_currentSourceVersion",
+    "sourceHash_matches_currentSourceHash",
+    "generatedPayloadHash_matches_serverGeneratedPayloadHash",
+    "evidenceHash_matches_serverEvidenceHash",
+    "tenantKey_matches_actorTenantKey",
+    "reviewer_has_ai_suggestion_review_scope"
+  ],
+  "tenantBoundary": {
+    "tenantKeyMustMatchActorTenantKey": true,
+    "crossTenantReviewState": "blocked_unauthorized"
+  },
+  "rbacBoundary": {
+    "requiredRole": "AI_SUGGESTION_REVIEWER",
+    "requiredScope": "ai:suggestion:review"
+  },
+  "forbiddenRuntimeEffects": [
+    "directProductPatch",
+    "canonicalProductPatch",
+    "productUpdate",
+    "productServiceMutation",
+    "providerCall",
+    "schemaMigration"
+  ],
+  "negativeCases": [
+    "missing_factual_evidence",
+    "tampered_generated_payload",
+    "stale_source_version",
+    "reviewer_edit_overwrites_suggested_value",
+    "accepted_with_changed_reviewed_value",
+    "edited_without_distinct_reviewed_value",
+    "rejected_with_applied_value",
+    "wrong_tenant_review",
+    "unauthorized_reviewer",
+    "direct_product_patch_present",
+    "duplicate_generation_without_same_idempotency_key",
+    "apply_without_product_service_transaction",
+    "terminal_state_without_audit_linkage"
+  ],
+  "examples": [
+    {
+      "exampleId": "AI-CORE-003-ACCEPT-FACTUAL",
+      "suggestionId": "ai-suggestion-001",
+      "executionId": "ai-exec-001",
+      "tenantKey": "tenant-a",
+      "actorTenantKey": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-001",
+      "capability": "product_attribute_extraction",
+      "fieldPath": "attributes.material",
+      "attributeFamily": "material",
+      "sourceRecordId": "supplier-row-001",
+      "sourceVersion": 7,
+      "sourceHash": "sha256:source-a-v7",
+      "currentSourceVersion": 7,
+      "currentSourceHash": "sha256:source-a-v7",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generationFingerprint": "sha256:suggestion-001-generation",
+      "idempotencyFingerprint": "sha256:suggestion-001-idempotency",
+      "generatedPayload": {
+        "fieldPath": "attributes.material",
+        "value": "Cotton"
+      },
+      "generatedPayloadHash": "sha256:payload-suggestion-001",
+      "serverGeneratedPayloadHash": "sha256:payload-suggestion-001",
+      "suggestedValue": "Cotton",
+      "suggestedValueHash": "sha256:value-cotton",
+      "confidence": {
+        "score": 0.91,
+        "band": "high"
+      },
+      "requiresEvidence": true,
+      "evidence": [
+        {
+          "sourceField": "description",
+          "sourceRecordId": "supplier-row-001",
+          "sourceVersion": 7,
+          "sourceHash": "sha256:source-a-v7",
+          "citation": "100% cotton towel",
+          "evidenceHash": "sha256:evidence-001",
+          "serverEvidenceHash": "sha256:evidence-001"
+        }
+      ],
+      "lifecycleState": "accepted",
+      "reviewDecision": "accept",
+      "reviewedValue": "Cotton",
+      "reviewedValueHash": "sha256:value-cotton",
+      "reviewedBy": "user-reviewer-1",
+      "reviewedAt": "2026-10-04T11:00:00.000Z",
+      "reviewReason": null,
+      "appliedValue": null,
+      "appliedValueHash": null,
+      "appliedAt": null,
+      "productServiceApplyTransactionId": null,
+      "reviewer": {
+        "actorId": "user-reviewer-1",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "auditEventIds": ["audit-suggestion-generated-001", "audit-suggestion-reviewed-001"],
+      "evaluation": {
+        "acceptedWithoutEdit": true,
+        "correctedByReviewer": false,
+        "rejectedByReviewer": false,
+        "blockedStaleOrTampered": false,
+        "evidenceCoverage": 1,
+        "correctionDelta": null
+      },
+      "expectedOutcome": "valid_review_no_canonical_write"
+    },
+    {
+      "exampleId": "AI-CORE-003-EDIT-FACTUAL",
+      "suggestionId": "ai-suggestion-002",
+      "executionId": "ai-exec-002",
+      "tenantKey": "tenant-a",
+      "actorTenantKey": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-002",
+      "capability": "product_specification_extraction",
+      "fieldPath": "attributes.capacity",
+      "attributeFamily": "capacity",
+      "sourceRecordId": "supplier-row-002",
+      "sourceVersion": 3,
+      "sourceHash": "sha256:source-a-v3",
+      "currentSourceVersion": 3,
+      "currentSourceHash": "sha256:source-a-v3",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generationFingerprint": "sha256:suggestion-002-generation",
+      "idempotencyFingerprint": "sha256:suggestion-002-idempotency",
+      "generatedPayload": {
+        "fieldPath": "attributes.capacity",
+        "value": "1.2 L"
+      },
+      "generatedPayloadHash": "sha256:payload-suggestion-002",
+      "serverGeneratedPayloadHash": "sha256:payload-suggestion-002",
+      "suggestedValue": "1.2 L",
+      "suggestedValueHash": "sha256:value-1-2-l",
+      "confidence": {
+        "score": 0.67,
+        "band": "medium"
+      },
+      "requiresEvidence": true,
+      "evidence": [
+        {
+          "sourceField": "supplierSpecification",
+          "sourceRecordId": "supplier-row-002",
+          "sourceVersion": 3,
+          "sourceHash": "sha256:source-a-v3",
+          "citation": "capacity 1.25 litre",
+          "evidenceHash": "sha256:evidence-002",
+          "serverEvidenceHash": "sha256:evidence-002"
+        }
+      ],
+      "lifecycleState": "edited",
+      "reviewDecision": "edit",
+      "reviewedValue": "1.25 L",
+      "reviewedValueHash": "sha256:value-1-25-l",
+      "reviewedBy": "user-reviewer-2",
+      "reviewedAt": "2026-10-04T11:05:00.000Z",
+      "reviewReason": "Reviewer corrected the normalized capacity.",
+      "appliedValue": null,
+      "appliedValueHash": null,
+      "appliedAt": null,
+      "productServiceApplyTransactionId": null,
+      "reviewer": {
+        "actorId": "user-reviewer-2",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "auditEventIds": ["audit-suggestion-generated-002", "audit-suggestion-reviewed-002"],
+      "evaluation": {
+        "acceptedWithoutEdit": false,
+        "correctedByReviewer": true,
+        "rejectedByReviewer": false,
+        "blockedStaleOrTampered": false,
+        "evidenceCoverage": 1,
+        "correctionDelta": {
+          "from": "1.2 L",
+          "to": "1.25 L"
+        }
+      },
+      "expectedOutcome": "valid_review_no_canonical_write"
+    },
+    {
+      "exampleId": "AI-CORE-003-REJECT-FACTUAL",
+      "suggestionId": "ai-suggestion-003",
+      "executionId": "ai-exec-003",
+      "tenantKey": "tenant-a",
+      "actorTenantKey": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-003",
+      "capability": "product_attribute_extraction",
+      "fieldPath": "attributes.color",
+      "attributeFamily": "color",
+      "sourceRecordId": "supplier-row-003",
+      "sourceVersion": 2,
+      "sourceHash": "sha256:source-a-v2",
+      "currentSourceVersion": 2,
+      "currentSourceHash": "sha256:source-a-v2",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generationFingerprint": "sha256:suggestion-003-generation",
+      "idempotencyFingerprint": "sha256:suggestion-003-idempotency",
+      "generatedPayload": {
+        "fieldPath": "attributes.color",
+        "value": "Blue"
+      },
+      "generatedPayloadHash": "sha256:payload-suggestion-003",
+      "serverGeneratedPayloadHash": "sha256:payload-suggestion-003",
+      "suggestedValue": "Blue",
+      "suggestedValueHash": "sha256:value-blue",
+      "confidence": {
+        "score": 0.54,
+        "band": "low"
+      },
+      "requiresEvidence": true,
+      "evidence": [
+        {
+          "sourceField": "description",
+          "sourceRecordId": "supplier-row-003",
+          "sourceVersion": 2,
+          "sourceHash": "sha256:source-a-v2",
+          "citation": "blue box",
+          "evidenceHash": "sha256:evidence-003",
+          "serverEvidenceHash": "sha256:evidence-003"
+        }
+      ],
+      "lifecycleState": "rejected",
+      "reviewDecision": "reject",
+      "reviewedValue": null,
+      "reviewedValueHash": null,
+      "reviewedBy": "user-reviewer-3",
+      "reviewedAt": "2026-10-04T11:10:00.000Z",
+      "reviewReason": "Evidence describes packaging, not product color.",
+      "appliedValue": null,
+      "appliedValueHash": null,
+      "appliedAt": null,
+      "productServiceApplyTransactionId": null,
+      "reviewer": {
+        "actorId": "user-reviewer-3",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "auditEventIds": ["audit-suggestion-generated-003", "audit-suggestion-reviewed-003"],
+      "evaluation": {
+        "acceptedWithoutEdit": false,
+        "correctedByReviewer": false,
+        "rejectedByReviewer": true,
+        "blockedStaleOrTampered": false,
+        "evidenceCoverage": 1,
+        "correctionDelta": null
+      },
+      "expectedOutcome": "valid_rejection_no_canonical_write"
+    },
+    {
+      "exampleId": "AI-CORE-003-STALE-BLOCKED",
+      "suggestionId": "ai-suggestion-004",
+      "executionId": "ai-exec-004",
+      "tenantKey": "tenant-a",
+      "actorTenantKey": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-004",
+      "capability": "product_attribute_extraction",
+      "fieldPath": "attributes.material",
+      "attributeFamily": "material",
+      "sourceRecordId": "supplier-row-004",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 2,
+      "currentSourceHash": "sha256:source-a-v2",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generationFingerprint": "sha256:suggestion-004-generation",
+      "idempotencyFingerprint": "sha256:suggestion-004-idempotency",
+      "generatedPayload": {
+        "fieldPath": "attributes.material",
+        "value": "Steel"
+      },
+      "generatedPayloadHash": "sha256:payload-suggestion-004",
+      "serverGeneratedPayloadHash": "sha256:payload-suggestion-004",
+      "suggestedValue": "Steel",
+      "suggestedValueHash": "sha256:value-steel",
+      "confidence": {
+        "score": 0.88,
+        "band": "high"
+      },
+      "requiresEvidence": true,
+      "evidence": [
+        {
+          "sourceField": "description",
+          "sourceRecordId": "supplier-row-004",
+          "sourceVersion": 1,
+          "sourceHash": "sha256:source-a-v1",
+          "citation": "steel body",
+          "evidenceHash": "sha256:evidence-004",
+          "serverEvidenceHash": "sha256:evidence-004"
+        }
+      ],
+      "lifecycleState": "blocked_stale",
+      "reviewDecision": "pending",
+      "reviewedValue": null,
+      "reviewedValueHash": null,
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "reviewReason": null,
+      "appliedValue": null,
+      "appliedValueHash": null,
+      "appliedAt": null,
+      "productServiceApplyTransactionId": null,
+      "reviewer": {
+        "actorId": "user-reviewer-4",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "auditEventIds": ["audit-suggestion-generated-004"],
+      "evaluation": {
+        "acceptedWithoutEdit": false,
+        "correctedByReviewer": false,
+        "rejectedByReviewer": false,
+        "blockedStaleOrTampered": true,
+        "evidenceCoverage": 1,
+        "correctionDelta": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "exampleId": "AI-CORE-003-TAMPERED-BLOCKED",
+      "suggestionId": "ai-suggestion-005",
+      "executionId": "ai-exec-005",
+      "tenantKey": "tenant-a",
+      "actorTenantKey": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-005",
+      "capability": "product_attribute_extraction",
+      "fieldPath": "attributes.size",
+      "attributeFamily": "size",
+      "sourceRecordId": "supplier-row-005",
+      "sourceVersion": 5,
+      "sourceHash": "sha256:source-a-v5",
+      "currentSourceVersion": 5,
+      "currentSourceHash": "sha256:source-a-v5",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generationFingerprint": "sha256:suggestion-005-generation",
+      "idempotencyFingerprint": "sha256:suggestion-005-idempotency",
+      "generatedPayload": {
+        "fieldPath": "attributes.size",
+        "value": "XL"
+      },
+      "generatedPayloadHash": "sha256:payload-original",
+      "serverGeneratedPayloadHash": "sha256:payload-changed",
+      "suggestedValue": "XL",
+      "suggestedValueHash": "sha256:value-xl",
+      "confidence": {
+        "score": 0.73,
+        "band": "medium"
+      },
+      "requiresEvidence": true,
+      "evidence": [
+        {
+          "sourceField": "supplierSpecification",
+          "sourceRecordId": "supplier-row-005",
+          "sourceVersion": 5,
+          "sourceHash": "sha256:source-a-v5",
+          "citation": "size XL",
+          "evidenceHash": "sha256:evidence-original",
+          "serverEvidenceHash": "sha256:evidence-original"
+        }
+      ],
+      "lifecycleState": "blocked_tampered",
+      "reviewDecision": "pending",
+      "reviewedValue": null,
+      "reviewedValueHash": null,
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "reviewReason": null,
+      "appliedValue": null,
+      "appliedValueHash": null,
+      "appliedAt": null,
+      "productServiceApplyTransactionId": null,
+      "reviewer": {
+        "actorId": "user-reviewer-5",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "auditEventIds": ["audit-suggestion-generated-005"],
+      "evaluation": {
+        "acceptedWithoutEdit": false,
+        "correctedByReviewer": false,
+        "rejectedByReviewer": false,
+        "blockedStaleOrTampered": true,
+        "evidenceCoverage": 1,
+        "correctionDelta": null
+      },
+      "expectedOutcome": "blocked"
+    },
+    {
+      "exampleId": "AI-CORE-003-APPLY-REFERENCE",
+      "suggestionId": "ai-suggestion-006",
+      "executionId": "ai-exec-006",
+      "tenantKey": "tenant-a",
+      "actorTenantKey": "tenant-a",
+      "entityType": "product",
+      "entityId": "prod-006",
+      "capability": "product_attribute_extraction",
+      "fieldPath": "attributes.material",
+      "attributeFamily": "material",
+      "sourceRecordId": "supplier-row-006",
+      "sourceVersion": 1,
+      "sourceHash": "sha256:source-a-v1",
+      "currentSourceVersion": 1,
+      "currentSourceHash": "sha256:source-a-v1",
+      "promptVersion": "ai-001-prompt-v1",
+      "schemaVersion": "ai-suggestion-v1",
+      "generationFingerprint": "sha256:suggestion-006-generation",
+      "idempotencyFingerprint": "sha256:suggestion-006-idempotency",
+      "generatedPayload": {
+        "fieldPath": "attributes.material",
+        "value": "Glass"
+      },
+      "generatedPayloadHash": "sha256:payload-suggestion-006",
+      "serverGeneratedPayloadHash": "sha256:payload-suggestion-006",
+      "suggestedValue": "Glass",
+      "suggestedValueHash": "sha256:value-glass",
+      "confidence": {
+        "score": 0.9,
+        "band": "high"
+      },
+      "requiresEvidence": true,
+      "evidence": [
+        {
+          "sourceField": "description",
+          "sourceRecordId": "supplier-row-006",
+          "sourceVersion": 1,
+          "sourceHash": "sha256:source-a-v1",
+          "citation": "glass bottle",
+          "evidenceHash": "sha256:evidence-006",
+          "serverEvidenceHash": "sha256:evidence-006"
+        }
+      ],
+      "lifecycleState": "applied",
+      "reviewDecision": "accept",
+      "reviewedValue": "Glass",
+      "reviewedValueHash": "sha256:value-glass",
+      "reviewedBy": "user-reviewer-6",
+      "reviewedAt": "2026-10-04T11:30:00.000Z",
+      "reviewReason": null,
+      "appliedValue": "Glass",
+      "appliedValueHash": "sha256:value-glass",
+      "appliedAt": "2026-10-04T11:35:00.000Z",
+      "productServiceApplyTransactionId": "ps-apply-006",
+      "reviewer": {
+        "actorId": "user-reviewer-6",
+        "roles": ["AI_SUGGESTION_REVIEWER"],
+        "scopes": ["ai:suggestion:review"]
+      },
+      "auditEventIds": [
+        "audit-suggestion-generated-006",
+        "audit-suggestion-reviewed-006",
+        "audit-suggestion-applied-006"
+      ],
+      "evaluation": {
+        "acceptedWithoutEdit": true,
+        "correctedByReviewer": false,
+        "rejectedByReviewer": false,
+        "blockedStaleOrTampered": false,
+        "evidenceCoverage": 1,
+        "correctionDelta": null
+      },
+      "expectedOutcome": "valid_product_service_apply_reference_only"
+    }
+  ]
+}
