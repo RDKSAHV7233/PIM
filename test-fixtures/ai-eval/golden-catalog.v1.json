@@ -1,0 +1,361 @@
+{
+  "catalogId": "AI-EVAL-001-GOLDEN-CATALOG-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "owner": "qa-ai-evaluation",
+  "items": [
+    {
+      "id": "AI-GC-APP-001",
+      "sku": "AI-GC-APP-001-SKU",
+      "scenario": "complete_apparel_product",
+      "input": {
+        "title": "Aarika Cotton Straight Kurta Navy Blue M",
+        "description": "Straight-fit cotton kurta with three-quarter sleeves, round neck, side slits, and block printed yoke. Suitable for casual daily wear.",
+        "brand": "Aarika",
+        "categoryPath": ["Apparel", "Women", "Kurtas"],
+        "attributes": {
+          "material": "cotton",
+          "color": "navy blue",
+          "size": "M",
+          "sleeveLength": "three-quarter",
+          "fit": "straight"
+        },
+        "price": {
+          "mrp": 1299,
+          "sellingPrice": 999,
+          "currency": "INR"
+        },
+        "media": [
+          {
+            "kind": "image",
+            "uri": "urn:vexa-ai-eval:image:apparel-kurta-navy-front"
+          }
+        ]
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "Aarika", "source": "title" },
+          { "field": "material", "value": "cotton", "source": "description" },
+          { "field": "color", "value": "navy blue", "source": "title" },
+          { "field": "size", "value": "M", "source": "title" }
+        ],
+        "allowedInferences": [
+          { "field": "category", "value": "Kurtas", "basis": "categoryPath" }
+        ],
+        "disallowedClaims": [
+          "organic cotton",
+          "handmade",
+          "machine washable"
+        ],
+        "qualitySignals": [
+          "complete_core_attributes",
+          "evidence_required_for_material_and_color"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-APP-002",
+      "sku": "AI-GC-APP-002-SKU",
+      "scenario": "variant_rich_apparel",
+      "input": {
+        "title": "Northtrail Performance T-Shirt",
+        "description": "Crew neck active T-shirt available in Black and Teal. Variants include S, M, L, and XL. Polyester blend fabric with quick-dry finish.",
+        "brand": "Northtrail",
+        "categoryPath": ["Apparel", "Men", "T-Shirts"],
+        "attributes": {
+          "material": "polyester blend",
+          "neck": "crew",
+          "finish": "quick-dry"
+        },
+        "variants": [
+          { "sku": "AI-GC-APP-002-BLK-S", "color": "Black", "size": "S" },
+          { "sku": "AI-GC-APP-002-BLK-M", "color": "Black", "size": "M" },
+          { "sku": "AI-GC-APP-002-TEAL-L", "color": "Teal", "size": "L" },
+          { "sku": "AI-GC-APP-002-TEAL-XL", "color": "Teal", "size": "XL" }
+        ],
+        "price": {
+          "mrp": 899,
+          "sellingPrice": 749,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "Northtrail", "source": "title" },
+          { "field": "material", "value": "polyester blend", "source": "description" },
+          { "field": "variantColors", "value": ["Black", "Teal"], "source": "description" },
+          { "field": "variantSizes", "value": ["S", "M", "L", "XL"], "source": "description" }
+        ],
+        "allowedInferences": [
+          { "field": "category", "value": "T-Shirts", "basis": "categoryPath" }
+        ],
+        "disallowedClaims": [
+          "waterproof",
+          "UV protection",
+          "compression fit"
+        ],
+        "qualitySignals": [
+          "variant_grouping_required",
+          "do_not_collapse_variants"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-HOME-001",
+      "sku": "AI-GC-HOME-001-SKU",
+      "scenario": "missing_material_and_dimensions",
+      "input": {
+        "title": "Minimal Storage Basket Grey",
+        "description": "Open top storage basket for shelves and wardrobes. Neutral grey finish. Dimensions and material are not provided by the supplier.",
+        "brand": "Nestory",
+        "categoryPath": ["Home", "Storage", "Baskets"],
+        "attributes": {
+          "color": "grey"
+        },
+        "price": {
+          "mrp": 599,
+          "sellingPrice": 449,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "Nestory", "source": "input.brand" },
+          { "field": "color", "value": "grey", "source": "title" }
+        ],
+        "allowedInferences": [
+          { "field": "storageUse", "value": "shelves and wardrobes", "basis": "description" }
+        ],
+        "disallowedClaims": [
+          "plastic",
+          "fabric",
+          "foldable",
+          "30 cm"
+        ],
+        "qualitySignals": [
+          "missing_material_must_remain_unknown",
+          "missing_dimensions_must_remain_unknown"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-ELEC-001",
+      "sku": "AI-GC-ELEC-001-SKU",
+      "scenario": "ambiguous_category",
+      "input": {
+        "title": "Voltix USB-C Desk Hub 6-in-1",
+        "description": "Compact desk accessory with HDMI, two USB-A ports, one USB-C pass-through port, SD card slot, and braided cable. Works with compatible laptops and tablets.",
+        "brand": "Voltix",
+        "categoryPath": ["Electronics"],
+        "attributes": {
+          "ports": ["HDMI", "USB-A", "USB-C", "SD card"],
+          "color": "space grey"
+        },
+        "price": {
+          "mrp": 2499,
+          "sellingPrice": 1999,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "Voltix", "source": "title" },
+          { "field": "portCount", "value": 6, "source": "title" },
+          { "field": "ports", "value": ["HDMI", "USB-A", "USB-C", "SD card"], "source": "description" }
+        ],
+        "allowedInferences": [
+          { "field": "possibleCategory", "value": "USB hubs", "basis": "title and description" }
+        ],
+        "disallowedClaims": [
+          "Thunderbolt",
+          "100W charging",
+          "MacBook certified"
+        ],
+        "qualitySignals": [
+          "category_requires_human_review",
+          "do_not_invent_certification"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-BOOK-001",
+      "sku": "AI-GC-BOOK-001-SKU",
+      "scenario": "unicode_rtl_title",
+      "input": {
+        "title": "The Courtyard Journal دفتر الفناء",
+        "description": "Hardcover lined journal with 160 pages, ribbon marker, and matte olive cover. Includes Arabic subtitle on cover art.",
+        "brand": "Paperlane",
+        "categoryPath": ["Stationery", "Notebooks", "Journals"],
+        "attributes": {
+          "format": "hardcover",
+          "pageCount": 160,
+          "coverColor": "olive"
+        },
+        "price": {
+          "mrp": 699,
+          "sellingPrice": 549,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "Paperlane", "source": "input.brand" },
+          { "field": "pageCount", "value": 160, "source": "description" },
+          { "field": "format", "value": "hardcover", "source": "description" }
+        ],
+        "allowedInferences": [
+          { "field": "languageSignal", "value": "Arabic subtitle present", "basis": "description" }
+        ],
+        "disallowedClaims": [
+          "bilingual pages",
+          "Quranic text",
+          "translation included"
+        ],
+        "qualitySignals": [
+          "unicode_preservation",
+          "rtl_text_must_not_be_dropped"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-BEAUTY-001",
+      "sku": "AI-GC-BEAUTY-001-SKU",
+      "scenario": "long_description_noise",
+      "input": {
+        "title": "LumaCare Daily Moisture Lotion 200 ml",
+        "description": "Daily body lotion with shea butter and glycerin. Lightweight texture for normal to dry skin. The supplier note also mentions warehouse shelf C-17, festival campaign copy, and photography instructions that are not product attributes.",
+        "brand": "LumaCare",
+        "categoryPath": ["Beauty", "Skin Care", "Body Lotion"],
+        "attributes": {
+          "volume": "200 ml",
+          "skinType": "normal to dry",
+          "ingredientsHighlighted": ["shea butter", "glycerin"]
+        },
+        "price": {
+          "mrp": 399,
+          "sellingPrice": 329,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "LumaCare", "source": "title" },
+          { "field": "volume", "value": "200 ml", "source": "title" },
+          { "field": "ingredientsHighlighted", "value": ["shea butter", "glycerin"], "source": "description" }
+        ],
+        "allowedInferences": [
+          { "field": "productType", "value": "body lotion", "basis": "title and categoryPath" }
+        ],
+        "disallowedClaims": [
+          "dermatologist tested",
+          "fragrance free",
+          "campaign copy",
+          "warehouse shelf C-17"
+        ],
+        "qualitySignals": [
+          "ignore_operational_noise",
+          "separate_product_facts_from_internal_notes"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-HEALTH-001",
+      "sku": "AI-GC-HEALTH-001-SKU",
+      "scenario": "unsafe_claim_guard",
+      "input": {
+        "title": "Herbora Tulsi Ginger Infusion 25 Bags",
+        "description": "Caffeine-free herbal infusion with tulsi, ginger, and lemongrass. Supplier draft copy says customers may feel warm and relaxed after drinking.",
+        "brand": "Herbora",
+        "categoryPath": ["Grocery", "Beverages", "Herbal Tea"],
+        "attributes": {
+          "bagCount": 25,
+          "caffeine": "caffeine-free",
+          "ingredientsHighlighted": ["tulsi", "ginger", "lemongrass"]
+        },
+        "price": {
+          "mrp": 349,
+          "sellingPrice": 299,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "Herbora", "source": "title" },
+          { "field": "bagCount", "value": 25, "source": "title" },
+          { "field": "caffeine", "value": "caffeine-free", "source": "description" }
+        ],
+        "allowedInferences": [
+          { "field": "productType", "value": "herbal infusion", "basis": "description" }
+        ],
+        "disallowedClaims": [
+          "treats cold",
+          "improves immunity",
+          "reduces inflammation",
+          "medical benefit"
+        ],
+        "qualitySignals": [
+          "reject_medical_claims_without_source",
+          "do_not_upgrade_soft_marketing_to_health_claim"
+        ]
+      }
+    },
+    {
+      "id": "AI-GC-TOOLS-001",
+      "sku": "AI-GC-TOOLS-001-SKU",
+      "scenario": "no_source_hallucination_guard",
+      "input": {
+        "title": "FixPro Compact Screwdriver Set",
+        "description": "Compact screwdriver set in a storage case. Supplier feed does not specify piece count, bit types, handle material, or warranty.",
+        "brand": "FixPro",
+        "categoryPath": ["Tools", "Hand Tools", "Screwdrivers"],
+        "attributes": {},
+        "price": {
+          "mrp": 799,
+          "sellingPrice": 649,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "requiredFacts": [
+          { "field": "brand", "value": "FixPro", "source": "title" },
+          { "field": "productType", "value": "screwdriver set", "source": "title" }
+        ],
+        "allowedInferences": [
+          { "field": "storageIncluded", "value": true, "basis": "description" }
+        ],
+        "disallowedClaims": [
+          "12-piece",
+          "magnetic bits",
+          "rubber grip",
+          "lifetime warranty"
+        ],
+        "qualitySignals": [
+          "no_source_no_fact",
+          "unknown_values_must_remain_unknown"
+        ]
+      }
+    }
+  ],
+  "evaluationAxes": [
+    {
+      "id": "factuality",
+      "weight": 35
+    },
+    {
+      "id": "catalog_completeness",
+      "weight": 25
+    },
+    {
+      "id": "taxonomy_fit",
+      "weight": 20
+    },
+    {
+      "id": "safety_and_policy",
+      "weight": 10
+    },
+    {
+      "id": "channel_neutrality",
+      "weight": 10
+    }
+  ]
+}
