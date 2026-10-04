@@ -73,6 +73,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   "ProductTranslation",
   "CategoryTranslation",
   "ProductTaxCode",
+  "AiExecution",
 ]);
 
 /**

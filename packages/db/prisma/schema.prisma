@@ -107,6 +107,42 @@ enum BulkEditItemStatus {
   failed
 }
 
+enum AiExecutionStatus {
+  queued
+  validating
+  blocked
+  running
+  succeeded
+  failed
+  timed_out
+  budget_blocked
+  provider_disabled
+  cancelled
+}
+
+enum AiExecutionCostSource {
+  none
+  estimated
+  actual
+  provider
+}
+
+enum AiExecutionFailureClass {
+  validation_error
+  classification_blocked
+  redaction_failed
+  tenant_policy_blocked
+  budget_exhausted
+  provider_disabled
+  provider_timeout
+  provider_rate_limited
+  provider_auth_error
+  provider_5xx
+  provider_schema_invalid
+  unsafe_output
+  internal_error
+}
+
 // Bulk-Publish Goes Async, Story 2. Mirrors BulkImportRunStatus/BulkEditOperationStatus —
 // same shape for the same reason: a run that queues work for a worker to process later.
 enum MarketplaceBulkPublishRunStatus {
@@ -1614,4 +1650,82 @@ model ProductTaxCode {
   @@index([tenantKey, productId])   // fast delete path: deleteMany({ where: { tenantKey, productId } })
   @@index([tenantKey, marketCode])
   @@map("product_tax_codes")
+}
+
+model AiExecution {
+  id                          String                   @id @default(cuid())
+  tenantKey                   String                   @default("default") @map("tenant_key")
+  capability                  String
+  entityType                  String                   @map("entity_type")
+  entityId                    String                   @map("entity_id")
+  sourceRecordId              String?                  @map("source_record_id")
+  sourceVersion               Int                      @map("source_version")
+  sourceHash                  String                   @map("source_hash")
+  requestFingerprint          String                   @map("request_fingerprint")
+  promptVersion               String                   @map("prompt_version")
+  schemaVersion               String                   @map("schema_version")
+  idempotencyFingerprint      String                   @map("idempotency_fingerprint")
+  createdByActorId            String?                  @map("created_by_actor_id")
+  createdByActorRole          String?                  @map("created_by_actor_role")
+  correlationId               String?                  @map("correlation_id")
+  status                      AiExecutionStatus        @default(queued)
+  providerKey                 String?                  @map("provider_key")
+  providerDisplayName         String?                  @map("provider_display_name")
+  providerRequestId           String?                  @map("provider_request_id")
+  modelKey                    String?                  @map("model_key")
+  modelVersion                String?                  @map("model_version")
+  providerRegion              String?                  @map("provider_region")
+  providerPolicyVersion       String?                  @map("provider_policy_version")
+  classificationPolicyVersion String?                  @map("classification_policy_version")
+  redactionPolicyVersion      String?                  @map("redaction_policy_version")
+  promptTemplateHash          String?                  @map("prompt_template_hash")
+  schemaHash                  String?                  @map("schema_hash")
+  outputContractVersion       String?                  @map("output_contract_version")
+  capabilityContractVersion   String?                  @map("capability_contract_version")
+  startedAt                   DateTime?                @map("started_at")
+  finishedAt                  DateTime?                @map("finished_at")
+  durationMs                  Int?                     @map("duration_ms")
+  attemptNumber               Int                      @default(1) @map("attempt_number")
+  maxAttempts                 Int                      @default(1) @map("max_attempts")
+  retryable                   Boolean                  @default(false)
+  inputTokens                 Int                      @default(0) @map("input_tokens")
+  outputTokens                Int                      @default(0) @map("output_tokens")
+  cachedInputTokens           Int                      @default(0) @map("cached_input_tokens")
+  reasoningTokens             Int                      @default(0) @map("reasoning_tokens")
+  totalTokens                 Int                      @default(0) @map("total_tokens")
+  billableUnits               Int                      @default(0) @map("billable_units")
+  estimatedCostMicros         Int                      @default(0) @map("estimated_cost_micros")
+  actualCostMicros            Int?                     @map("actual_cost_micros")
+  currency                    String                   @default("USD")
+  costSource                  AiExecutionCostSource    @default(none) @map("cost_source")
+  pricingVersion              String?                  @map("pricing_version")
+  budgetPeriodKey             String?                  @map("budget_period_key")
+  failureClass                AiExecutionFailureClass? @map("failure_class")
+  failureCode                 String?                  @map("failure_code")
+  failureMessageSafe          String?                  @map("failure_message_safe")
+  providerStatusCode          Int?                     @map("provider_status_code")
+  providerCallAttempted       Boolean                  @default(false) @map("provider_call_attempted")
+  auditEventIds               Json                     @default("[]") @map("audit_event_ids")
+  validationEvidenceId        String?                  @map("validation_evidence_id")
+  classificationEvidenceId    String?                  @map("classification_evidence_id")
+  redactionEvidenceId         String?                  @map("redaction_evidence_id")
+  requestPayloadHash          String?                  @map("request_payload_hash")
+  responsePayloadHash         String?                  @map("response_payload_hash")
+  generatedPayloadHash        String?                  @map("generated_payload_hash")
+  suggestionIds               Json                     @default("[]") @map("suggestion_ids")
+  requestPayloadStorageRef    String?                  @map("request_payload_storage_ref")
+  responsePayloadStorageRef   String?                  @map("response_payload_storage_ref")
+  containsBlockedData         Boolean                  @default(false) @map("contains_blocked_data")
+  containsCredentials         Boolean                  @default(false) @map("contains_credentials")
+  redactedFields              Json                     @default("[]") @map("redacted_fields")
+  blockedFields               Json                     @default("[]") @map("blocked_fields")
+  createdAt                   DateTime                 @default(now()) @map("created_at")
+  updatedAt                   DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, idempotencyFingerprint], map: "ai_executions_tenant_idempotency_unique")
+  @@index([tenantKey, capability, status, createdAt(sort: Desc)], map: "idx_ai_executions_tenant_capability_status_created")
+  @@index([tenantKey, providerKey, modelKey, status, createdAt(sort: Desc)], map: "idx_ai_executions_tenant_provider_model_status_created")
+  @@index([tenantKey, entityType, entityId, createdAt(sort: Desc)], map: "idx_ai_executions_tenant_entity_created")
+  @@index([tenantKey, budgetPeriodKey], map: "idx_ai_executions_tenant_budget_period")
+  @@map("ai_executions")
 }

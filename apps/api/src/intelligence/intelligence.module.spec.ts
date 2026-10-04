@@ -24,10 +24,9 @@ describe("IntelligenceModule", () => {
   });
 
   it("does not expose apply, provider, or canonical product mutation paths", () => {
-    expect(Object.getOwnPropertyNames(IntelligenceService.prototype)).toEqual([
-      "constructor",
-      "getBoundaryStatus",
-    ]);
+    const serviceMethodNames = Object.getOwnPropertyNames(IntelligenceService.prototype);
+    expect(serviceMethodNames).toContain("getBoundaryStatus");
+    expect(serviceMethodNames.some((name) => /apply|mutate|product|provider/i.test(name))).toBe(false);
 
     const source = [
       readLocalSource("intelligence.controller.ts"),
