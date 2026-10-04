@@ -1,0 +1,165 @@
+{
+  "policyId": "AI-POL-001-PROVIDER-PAYLOAD-POLICY-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "owner": "privacy-security-backend",
+  "classificationValues": ["AI_ALLOWED", "AI_ALLOWED_WITH_REDACTION", "AI_BLOCKED"],
+  "fields": [
+    {
+      "path": "product.title",
+      "classification": "AI_ALLOWED",
+      "reason": "Product title is core catalog content required for product intelligence."
+    },
+    {
+      "path": "product.description",
+      "classification": "AI_ALLOWED",
+      "reason": "Product description is core catalog content required for product intelligence."
+    },
+    {
+      "path": "product.brand",
+      "classification": "AI_ALLOWED",
+      "reason": "Brand is a catalog fact used for attribute/specification extraction."
+    },
+    {
+      "path": "product.categoryPath",
+      "classification": "AI_ALLOWED",
+      "reason": "Taxonomy path is needed for category-aware extraction."
+    },
+    {
+      "path": "product.attributes",
+      "classification": "AI_ALLOWED",
+      "reason": "Product attributes are the primary extraction source."
+    },
+    {
+      "path": "product.supplierSpecifications",
+      "classification": "AI_ALLOWED",
+      "reason": "Supplier product specifications are in AI-001 scope when not mixed with blocked data."
+    },
+    {
+      "path": "product.media.altText",
+      "classification": "AI_ALLOWED",
+      "reason": "Alt text can provide product evidence without binary media processing."
+    },
+    {
+      "path": "product.internalNotes",
+      "classification": "AI_ALLOWED_WITH_REDACTION",
+      "redaction": {
+        "required": true,
+        "removePatterns": ["email", "phone", "token", "secret", "credential", "apiKey"],
+        "evidenceField": "redactedFields"
+      },
+      "reason": "Internal notes may contain product clues but can also contain operational or sensitive data."
+    },
+    {
+      "path": "supplier.contactEmail",
+      "classification": "AI_ALLOWED_WITH_REDACTION",
+      "redaction": {
+        "required": true,
+        "replacement": "[REDACTED_EMAIL]",
+        "evidenceField": "redactedFields"
+      },
+      "reason": "Supplier contact details are not product facts and must not be sent raw."
+    },
+    {
+      "path": "customer.email",
+      "classification": "AI_BLOCKED",
+      "reason": "Customer PII is out of scope for product intelligence."
+    },
+    {
+      "path": "customer.phone",
+      "classification": "AI_BLOCKED",
+      "reason": "Customer PII is out of scope for product intelligence."
+    },
+    {
+      "path": "auth.password",
+      "classification": "AI_BLOCKED",
+      "reason": "Passwords must never enter provider payloads."
+    },
+    {
+      "path": "connector.apiKey",
+      "classification": "AI_BLOCKED",
+      "reason": "API credentials must never enter provider payloads."
+    },
+    {
+      "path": "connector.accessToken",
+      "classification": "AI_BLOCKED",
+      "reason": "OAuth access tokens must never enter provider payloads."
+    },
+    {
+      "path": "connector.refreshToken",
+      "classification": "AI_BLOCKED",
+      "reason": "OAuth refresh tokens must never enter provider payloads."
+    },
+    {
+      "path": "connector.webhookSecret",
+      "classification": "AI_BLOCKED",
+      "reason": "Webhook secrets must never enter provider payloads."
+    },
+    {
+      "path": "billing.cardNumber",
+      "classification": "AI_BLOCKED",
+      "reason": "Billing secrets and payment details are out of scope for product intelligence."
+    },
+    {
+      "path": "tenant.internalKey",
+      "classification": "AI_BLOCKED",
+      "reason": "Tenant operational identifiers must not be exposed to providers."
+    }
+  ],
+  "providerPayloadExamples": [
+    {
+      "id": "AI-POL-EX-001",
+      "description": "Allowed product extraction payload with redacted supplier contact",
+      "payload": {
+        "product": {
+          "title": "Aarika Cotton Straight Kurta Navy Blue M",
+          "description": "Straight-fit cotton kurta with three-quarter sleeves.",
+          "brand": "Aarika",
+          "categoryPath": ["Apparel", "Women", "Kurtas"],
+          "attributes": {
+            "material": "cotton",
+            "color": "navy blue"
+          },
+          "supplierSpecifications": {
+            "fit": "straight",
+            "sleeveLength": "three-quarter"
+          },
+          "internalNotes": "Supplier prefers weekday pickup. Contact removed."
+        },
+        "supplier": {
+          "contactEmail": "[REDACTED_EMAIL]"
+        },
+        "redactedFields": ["product.internalNotes", "supplier.contactEmail"]
+      }
+    }
+  ],
+  "blockedPayloadExamples": [
+    {
+      "id": "AI-POL-BLOCK-001",
+      "description": "Raw customer PII must fail validation",
+      "payload": {
+        "customer": {
+          "email": "buyer@example.invalid"
+        }
+      }
+    },
+    {
+      "id": "AI-POL-BLOCK-002",
+      "description": "Connector secrets must fail validation",
+      "payload": {
+        "connector": {
+          "accessToken": "token_should_not_be_sent"
+        }
+      }
+    },
+    {
+      "id": "AI-POL-BLOCK-003",
+      "description": "Redactable field without redaction evidence must fail validation",
+      "payload": {
+        "supplier": {
+          "contactEmail": "supplier@example.invalid"
+        }
+      }
+    }
+  ]
+}
