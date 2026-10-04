@@ -75,6 +75,6 @@ classified as a retryable network error. Two provider-neutral errors
 
 ## Out of scope
 
-- Pinning the validated IP for the actual connection (resolve once, connect to that address,
-  keep TLS SNI/hostname verification): next PR.
-- Dropping `requireResolvable: false` at dispatch time.
+- Connection-time address pinning is a separate control: see `connector-dns-pinning.md`.
+- Dropping `requireResolvable: false` at dispatch time (the URL pre-check still soft-allows a
+  name with no DNS answer; the pinned transport fails closed at connection time).

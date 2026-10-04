@@ -12,6 +12,8 @@ module.exports = {
   openHandlesTimeout: 10000,
   forceExit: true,
   rootDir: "src",
+  // Routes the connector transport seam to the (mockable) global fetch for unit specs.
+  setupFiles: ["<rootDir>/../test/setup-connector-transport.ts"],
   testMatch: ["**/*.spec.ts"],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

@@ -28,6 +28,11 @@ export interface ConnectorFetchInit {
    * fetchWithValidatedRedirects (common/security) instead of following blindly.
    */
   redirect?: "follow" | "manual" | "error";
+  /**
+   * Route this call through a pinned transport (tenant-supplied hosts). Requires
+   * redirect "manual" (or omitted) and a string body; omitted = global fetch.
+   */
+  transport?: import("../common/security/connector-transport").ConnectorTransport;
 }
 
 export interface ConnectorContext {

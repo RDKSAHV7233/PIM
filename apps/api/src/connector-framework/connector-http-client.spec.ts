@@ -358,3 +358,91 @@ describe("ConnectorHttpClient.fetch — redirect mode", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── pinned transport routing ─────────────────────────────────────────────────
+
+describe("ConnectorHttpClient.fetch — transport", () => {
+  const okTransport = () => ({ fetch: jest.fn().mockResolvedValue(mockResponse(200)) });
+
+  it("sends the call through the supplied transport and never touches global fetch", async () => {
+    global.fetch = jest.fn();
+    const transport = okTransport();
+    const resp = await makeClient().fetch("odoo", "inst-1", "https://example.com/jsonrpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      redirect: "manual",
+      timeoutMs: 1234,
+      transport,
+    });
+    expect(resp.status).toBe(200);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(transport.fetch).toHaveBeenCalledWith("https://example.com/jsonrpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      redirect: "manual",
+      timeoutMs: 1234,
+    });
+  });
+
+  it("treats an omitted redirect as manual for a transport call", async () => {
+    const transport = okTransport();
+    await makeClient().fetch("odoo", "inst-1", "https://example.com/x", { transport });
+    expect(transport.fetch.mock.calls[0][1].redirect).toBe("manual");
+  });
+
+  it("rejects redirect follow/error for a transport call immediately, without retrying", async () => {
+    const transport = okTransport();
+    await expect(
+      makeClient().fetch("odoo", "inst-1", "https://example.com/x", { transport, redirect: "follow" }),
+    ).rejects.toThrow(/requires redirect "manual"/);
+    expect(transport.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string body for a transport call immediately, without retrying", async () => {
+    const transport = okTransport();
+    await expect(
+      makeClient().fetch("odoo", "inst-1", "https://example.com/x", {
+        transport,
+        body: new URLSearchParams({ a: "b" }),
+      }),
+    ).rejects.toThrow(/string request bodies only/);
+    expect(transport.fetch).not.toHaveBeenCalled();
+  });
+
+  it("uses the transport again for every retry attempt (each attempt is a fresh resolve-validate-connect)", async () => {
+    jest.useFakeTimers();
+    try {
+      const transport = { fetch: jest.fn().mockResolvedValueOnce(mockResponse(503)).mockResolvedValueOnce(mockResponse(200)) };
+      const pending = makeClient().fetch("odoo", "inst-1", "https://example.com/x", { transport });
+      await jest.runAllTimersAsync();
+      const resp = await pending;
+      expect(resp.status).toBe(200);
+      expect(transport.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("surfaces a target-security refusal immediately and never retries it", async () => {
+    const { ConnectorTargetUnsafeError } = jest.requireActual("../common/security/connector-target-errors");
+    const refusal = new ConnectorTargetUnsafeError("blocked", "PRIVATE_IP_RESOLVED");
+    const transport = { fetch: jest.fn().mockRejectedValue(refusal) };
+    await expect(makeClient().fetch("odoo", "inst-1", "https://example.com/x", { transport })).rejects.toBe(refusal);
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("still retries an ordinary transport failure with backoff", async () => {
+    jest.useFakeTimers();
+    try {
+      const transport = { fetch: jest.fn().mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValueOnce(mockResponse(200)) };
+      const pending = makeClient().fetch("odoo", "inst-1", "https://example.com/x", { transport });
+      await jest.runAllTimersAsync();
+      expect((await pending).status).toBe(200);
+      expect(transport.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

@@ -58,8 +58,9 @@ import {
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
+import { isConnectorTargetSecurityError, targetSecurityVerificationReason } from "../../common/security/connector-target-errors";
+import { getConnectorTransport } from "../../common/security/connector-transport";
 import {
-  ConnectorRedirectError,
   fetchWithValidatedRedirects,
 } from "../../common/security/validated-redirect-fetch";
 
@@ -169,7 +170,10 @@ export class PrestaShopConnector implements ConnectorInterface {
   // closed. Callers only ever pass plain-object headers and string bodies.
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
     return fetchWithValidatedRedirects(
-      (hopUrl, hopInit) => fetch(hopUrl, { ...hopInit, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) }),
+      // Pinned transport: the validated DNS result for this attempt is the only set
+      // of addresses the socket may connect to.
+      (hopUrl, hopInit) =>
+        getConnectorTransport().fetch(hopUrl, { ...hopInit, timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS }),
       url,
       {
         method: init.method,
@@ -203,8 +207,8 @@ export class PrestaShopConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
-      if (error instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.reason}` };
+      if (isConnectorTargetSecurityError(error)) {
+        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("PRESTASHOP", error) };
       }
       // PIM#890: resolveCredentials() above now throws before returning a
       // store_url that's non-HTTPS or resolves to a private/blocked address —
@@ -250,8 +254,8 @@ export class PrestaShopConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
-      if (error instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `PRESTASHOP_${error.reason}` };
+      if (isConnectorTargetSecurityError(error)) {
+        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("PRESTASHOP", error) };
       }
       return { outcome: "unavailable", reasonCode: "UNKNOWN_NETWORK_ERROR" };
     }

@@ -32,8 +32,9 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { LoggerService } from "../../common/logging/logger.service";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
+import { isConnectorTargetSecurityError, targetSecurityVerificationReason } from "../../common/security/connector-target-errors";
+import { getConnectorTransport } from "../../common/security/connector-transport";
 import {
-  ConnectorRedirectError,
   fetchWithValidatedRedirects,
 } from "../../common/security/validated-redirect-fetch";
 import {
@@ -150,7 +151,10 @@ export class ShopwareConnector implements ConnectorInterface {
   // and string bodies.
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
     return fetchWithValidatedRedirects(
-      (hopUrl, hopInit) => fetch(hopUrl, { ...hopInit, signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS) }),
+      // Pinned transport: the validated DNS result for this attempt is the only set
+      // of addresses the socket may connect to.
+      (hopUrl, hopInit) =>
+        getConnectorTransport().fetch(hopUrl, { ...hopInit, timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS }),
       url,
       {
         method: init.method,
@@ -206,8 +210,8 @@ export class ShopwareConnector implements ConnectorInterface {
       }
       return { outcome: "valid" };
     } catch (error) {
-      if (error instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `SHOPWARE_${error.reason}` };
+      if (isConnectorTargetSecurityError(error)) {
+        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("SHOPWARE", error) };
       }
       // resolveCredentials() now throws for a non-HTTPS or unsafe store_url
       // before the explicit HTTPS check above is reachable — keep classifying
@@ -259,8 +263,8 @@ export class ShopwareConnector implements ConnectorInterface {
         },
       };
     } catch (err) {
-      if (err instanceof ConnectorRedirectError) {
-        return { outcome: "invalid", reasonCode: `SHOPWARE_${err.reason}` };
+      if (isConnectorTargetSecurityError(err)) {
+        return { outcome: "invalid", reasonCode: targetSecurityVerificationReason("SHOPWARE", err) };
       }
       if (err instanceof ShopwareTokenExchangeError) {
         return { outcome: err.status === 401 ? "invalid" : "unavailable", reasonCode: `HTTP_${err.status}` };

@@ -21,7 +21,8 @@ export type ConnectorTargetUnsafeReason =
   | "BLOCKED_HOST"
   | "PRIVATE_IP_LITERAL"
   | "PRIVATE_IP_RESOLVED"
-  | "UNRESOLVABLE";
+  | "UNRESOLVABLE"
+  | "CONNECTED_ADDRESS_NOT_VALIDATED";
 
 export type ConnectorRedirectBlockedReason =
   | "REDIRECT_UNSAFE_TARGET"
@@ -89,4 +90,19 @@ export function toConnectorTargetSecurityIssue(
     reason: error.reason,
     provider,
   };
+}
+
+/**
+ * Credential-verification reason code for a target-security refusal, prefixed with
+ * the connector (e.g. WOOCOMMERCE_REDIRECT_CROSS_ORIGIN). Unsafe targets keep the
+ * existing <PREFIX>_<URL>_NOT_HTTPS / <PREFIX>_<URL>_UNSAFE codes; `urlSegment` is
+ * the connector's own spelling ('URL', or 'SITE_URL' for WooCommerce).
+ */
+export function targetSecurityVerificationReason(
+  prefix: string,
+  error: ConnectorTargetSecurityError,
+  urlSegment = "URL",
+): string {
+  if (error.code === CONNECTOR_REDIRECT_BLOCKED) return `${prefix}_${error.reason}`;
+  return error.reason === "HTTPS_REQUIRED" ? `${prefix}_${urlSegment}_NOT_HTTPS` : `${prefix}_${urlSegment}_UNSAFE`;
 }

@@ -161,6 +161,45 @@ jobs:
       - name: Web integration DB-free suite (PIM#754)
         run: node scripts/run-web-integration-db-free.cjs --timeout=30
 
+  # ── Connector network transport (Node 22 + 24) ────────────────────────
+  # The pinned transport pairs the npm undici Agent with undici's OWN fetch. Mixing an
+  # npm Agent with Node's bundled global fetch breaks across undici majors, so the real
+  # local-TLS pinning specs run on both the CI baseline (22) and the production
+  # runtime (24). Only these specs run here; the rest of CI stays on 22.
+  # REQUIRE_FULL_LOOPBACK makes missing loopback aliases (127.0.0.2, ::1) fail the run
+  # instead of silently weakening the "no connection to an unvalidated address" proof.
+  connector-network-transport:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    env:
+      REDISMS_DISABLE_POSTINSTALL: "true"
+      REQUIRE_FULL_LOOPBACK: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Connector network transport specs
+        working-directory: apps/api
+        run: >-
+          npx jest --config jest.config.js
+          src/common/security
+          src/connector-framework/connector-http-client
+          src/connectors/connector-transport-wiring
+
   # ── Backend tests (DB + Redis required) ───────────────────────────────
   # Skipped when only frontend files change on a PR.
   backend-tests:

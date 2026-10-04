@@ -63,10 +63,11 @@ import { ConnectorNetworkError } from '../../connector-framework/connector.error
 import { validateConnectorTargetUrl } from '../../common/security/url-safety';
 import {
   isConnectorTargetSecurityError,
+  targetSecurityVerificationReason,
   type ConnectorTargetSecurityError,
 } from '../../common/security/connector-target-errors';
+import { getConnectorTransport } from '../../common/security/connector-transport';
 import {
-  ConnectorRedirectError,
   fetchWithValidatedRedirects,
   type RedirectHopInit,
 } from '../../common/security/validated-redirect-fetch';
@@ -137,7 +138,7 @@ const ODOO_ERROR_MAP: Record<string, { fieldPath: string; sellerMessage: string;
 // ─── network-failure classification (mirrors woocommerce.connector.ts) ─────
 
 function classifyFetchFailure(err: unknown): { category: 'TIMEOUT' | 'DNS' | 'TLS' | 'NETWORK'; retryable: boolean; detail: string } {
-  if (err instanceof Error && err.name === 'AbortError') {
+  if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
     return { category: 'TIMEOUT', retryable: true, detail: `request exceeded ${CONNECTOR_HTTP_TIMEOUT_MS}ms timeout` };
   }
   const cause = err instanceof Error ? (err.cause as { code?: string; message?: string } | undefined) : undefined;
@@ -232,17 +233,14 @@ export class OdooConnector implements ConnectorInterface {
     // never be followed by fetch itself: every hop is sent with redirect:
     // "manual" and re-validated, and a cross-origin hop fails closed.
     const hop = async (hopUrl: string, hopInit: RedirectHopInit): Promise<Response> => {
+      // Pinned transport: the validated DNS result for this attempt is the only
+      // set of addresses the socket may connect to.
+      const transport = getConnectorTransport();
       const init = { ...hopInit, timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS };
       if (this.httpClient) {
-        return this.httpClient.fetch('odoo', odooUrl, hopUrl, init);
+        return this.httpClient.fetch('odoo', odooUrl, hopUrl, { ...init, transport });
       }
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), CONNECTOR_HTTP_TIMEOUT_MS);
-      try {
-        return await fetch(hopUrl, { ...hopInit, signal: controller.signal });
-      } finally {
-        clearTimeout(timeoutId);
-      }
+      return transport.fetch(hopUrl, init);
     };
     try {
       return await fetchWithValidatedRedirects(hop, url, {
@@ -253,8 +251,8 @@ export class OdooConnector implements ConnectorInterface {
     } catch (err) {
       // A redirect refusal is a configuration problem, not a transient network
       // failure: surface it as-is so it is neither retried nor mislabelled.
-      if (err instanceof ConnectorRedirectError) {
-        this.logger.warn('Odoo httpFetch redirect refused', { odooUrl, code: err.code });
+      if (isConnectorTargetSecurityError(err)) {
+        this.logger.warn('Odoo httpFetch target refused', { odooUrl, code: err.code, reason: err.reason });
         throw err;
       }
       const { category, retryable, detail } = classifyFetchFailure(err);
@@ -342,8 +340,8 @@ export class OdooConnector implements ConnectorInterface {
       }
       return { outcome: 'valid' };
     } catch (err) {
-      if (err instanceof ConnectorRedirectError) {
-        return { outcome: 'invalid', reasonCode: `ODOO_${err.reason}` };
+      if (isConnectorTargetSecurityError(err)) {
+        return { outcome: 'invalid', reasonCode: targetSecurityVerificationReason('ODOO', err) };
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };
@@ -387,8 +385,8 @@ export class OdooConnector implements ConnectorInterface {
       }
       return { outcome: 'valid' };
     } catch (err) {
-      if (err instanceof ConnectorRedirectError) {
-        return { outcome: 'invalid', reasonCode: `ODOO_${err.reason}` };
+      if (isConnectorTargetSecurityError(err)) {
+        return { outcome: 'invalid', reasonCode: targetSecurityVerificationReason('ODOO', err) };
       }
       if (err instanceof ConnectorNetworkError) {
         return { outcome: 'unavailable', reasonCode: err.category };

@@ -164,6 +164,15 @@ function isBlockedIp(address: string): boolean {
   return address.includes(":") ? isBlockedIpV6(address) : isBlockedIpV4(address);
 }
 
+/**
+ * True when connecting to this IP (v4 or v6, IPv4-mapped/NAT64/6to4 judged by
+ * the embedded IPv4) must be refused. The single classifier shared by URL
+ * validation and the connection-time pinning transport.
+ */
+export function isBlockedAddress(address: string): boolean {
+  return isBlockedIp(address);
+}
+
 function isIpLiteral(hostname: string): boolean {
   return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":");
 }
@@ -226,7 +235,10 @@ const CONNECTOR_TARGET_LABELS: TargetUrlErrorLabels = {
   logPrefix: "Connector base URL",
 };
 
-const TARGET_URL_REASON_MESSAGE_KEY: Record<ConnectorTargetUnsafeReason, keyof TargetUrlErrorLabels> = {
+// CONNECTED_ADDRESS_NOT_VALIDATED is raised by the connection-time transport, not by URL validation.
+type UrlValidationReason = Exclude<ConnectorTargetUnsafeReason, "CONNECTED_ADDRESS_NOT_VALIDATED">;
+
+const TARGET_URL_REASON_MESSAGE_KEY: Record<UrlValidationReason, keyof TargetUrlErrorLabels> = {
   URL_REQUIRED: "required",
   URL_INVALID: "invalidUrl",
   HTTPS_REQUIRED: "httpsRequired",
@@ -238,7 +250,7 @@ const TARGET_URL_REASON_MESSAGE_KEY: Record<ConnectorTargetUnsafeReason, keyof T
 
 // ConnectorTargetUnsafeError extends BadRequestException, so existing
 // instanceof / message-substring handling of the connector flavor is unchanged.
-function targetUrlError(labels: TargetUrlErrorLabels, reason: ConnectorTargetUnsafeReason): BadRequestException {
+function targetUrlError(labels: TargetUrlErrorLabels, reason: UrlValidationReason): BadRequestException {
   const message = String(labels[TARGET_URL_REASON_MESSAGE_KEY[reason]]);
   return labels.typedError ? new ConnectorTargetUnsafeError(message, reason) : new BadRequestException(message);
 }

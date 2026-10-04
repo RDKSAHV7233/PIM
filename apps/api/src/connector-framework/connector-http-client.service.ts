@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { LoggerService } from "../common/logging/logger.service";
+import { isConnectorTargetSecurityError } from "../common/security/connector-target-errors";
+import type { ConnectorTransport } from "../common/security/connector-transport";
 
 export interface ConnectorFetchInit {
   method?: string;
@@ -7,6 +9,7 @@ export interface ConnectorFetchInit {
   body?: string | URLSearchParams | Buffer;
   timeoutMs?: number;
   redirect?: "follow" | "manual" | "error";
+  transport?: ConnectorTransport;
 }
 
 // Per-connector rate limits: capacity (burst) and refill rate (ms per token = 1/req-per-sec * 1000)
@@ -113,6 +116,10 @@ export class ConnectorHttpClient {
     const bucket = this.getOrCreateBucket(slug, bucketKey);
     const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+    // Validate transport-call preconditions once, up front: a misuse is a programming
+    // error, not a network failure to be retried with backoff.
+    const transportInit = init.transport ? this.toTransportInit(init, timeoutMs) : undefined;
+
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -120,14 +127,19 @@ export class ConnectorHttpClient {
 
       let response: Response;
       try {
-        response = await fetch(url, {
-          method: init.method ?? "GET",
-          headers: init.headers,
-          body: init.body as BodyInit | undefined,
-          signal: AbortSignal.timeout(timeoutMs),
-          redirect: init.redirect,
-        });
+        response = init.transport && transportInit
+          ? await init.transport.fetch(url, transportInit)
+          : await fetch(url, {
+              method: init.method ?? "GET",
+              headers: init.headers,
+              body: init.body as BodyInit | undefined,
+              signal: AbortSignal.timeout(timeoutMs),
+              redirect: init.redirect,
+            });
       } catch (err) {
+        // A refused target (unsafe address, blocked redirect) is a deterministic
+        // configuration/security outcome: surface it at once, never retry it.
+        if (isConnectorTargetSecurityError(err)) throw err;
         lastError = err;
         // Network error or timeout — retry with backoff
         const isLastAttempt = attempt >= MAX_RETRIES;
@@ -173,6 +185,24 @@ export class ConnectorHttpClient {
 
     // Should not reach here — last response returned above
     throw new Error(`connector.http: exhausted retries for ${url}`);
+  }
+
+  // A pinned transport only supports caller-managed redirects and string bodies;
+  // anything else would silently change what the validated connection carries.
+  private toTransportInit(init: ConnectorFetchInit, timeoutMs: number) {
+    if (init.redirect !== undefined && init.redirect !== "manual") {
+      throw new Error(`connector.http: a pinned transport requires redirect "manual" (got "${init.redirect}").`);
+    }
+    if (init.body !== undefined && typeof init.body !== "string") {
+      throw new Error("connector.http: a pinned transport supports string request bodies only.");
+    }
+    return {
+      method: init.method ?? "GET",
+      headers: init.headers,
+      body: init.body as string | undefined,
+      redirect: "manual" as const,
+      timeoutMs,
+    };
   }
 
   private getOrCreateBucket(slug: string, key: string): TokenBucket {
