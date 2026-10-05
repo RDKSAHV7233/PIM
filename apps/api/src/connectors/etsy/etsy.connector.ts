@@ -19,6 +19,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from "../../connector-framework/connector.interface";
+import { noAutomaticRetry, type ConnectorFetchRetryOptions } from "../../connector-framework/connector-retry-policy";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 
 type CredentialRow = {
@@ -310,11 +311,19 @@ export class EtsyConnector implements ConnectorInterface {
     const headers = await this.buildApiHeaders(ctx);
 
     this.logger.info("Etsy publish request started", { installationId: ctx.installationId, sku: product.sku });
-    const response = await this.fetchWithTokenRetry(ctx, `${API_BASE}/shops/${shopId}/listings`, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
-      body: this.encodeFormBody(this.buildListingPayload(product)),
-    });
+    // createDraftListing has no idempotency key and the listing read has no key filter, so a
+    // repeated create after a lost response may make a second draft. One attempt only; the
+    // 401 token refresh inside fetchWithTokenRetry stays (a 401 proves the request was refused).
+    const response = await this.fetchWithTokenRetry(
+      ctx,
+      `${API_BASE}/shops/${shopId}/listings`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+        body: this.encodeFormBody(this.buildListingPayload(product)),
+      },
+      noAutomaticRetry("etsy_create_draft_listing"),
+    );
     const body = await this.parseJsonResponse<Record<string, unknown>>(response);
     this.logger.info("Etsy publish request completed", {
       installationId: ctx.installationId,
@@ -650,11 +659,12 @@ export class EtsyConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     url: string,
     init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
+    retry?: ConnectorFetchRetryOptions,
   ): Promise<Response> {
     const doFetch = async () => {
       const headers = await this.buildApiHeaders(ctx);
       return ctx.fetch
-        ? ctx.fetch(url, { method: init.method, body: init.body as string | undefined, headers: { ...init.headers, ...headers } })
+        ? ctx.fetch(url, { method: init.method, body: init.body as string | undefined, headers: { ...init.headers, ...headers }, ...retry })
         : this.fetchWithTimeout(url, { ...init, headers: { ...init.headers, ...headers } });
     };
     let response = await doFetch();

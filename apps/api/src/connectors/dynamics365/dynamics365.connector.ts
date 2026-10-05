@@ -19,6 +19,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from "../../connector-framework/connector.interface";
+import { noAutomaticRetry } from "../../connector-framework/connector-retry-policy";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 
 // Business Central Online API v2.0 (OData). Auth: Azure AD client_credentials
@@ -225,10 +226,13 @@ export class Dynamics365Connector implements ConnectorInterface {
     const base = await this.resolveApiBase(ctx);
     const token = await ctx.getAccessToken();
 
+    // Microsoft documents no idempotency or duplicate behavior for POST /items, so a repeated
+    // create after a lost response is not provably safe. One attempt only.
     const response = await (ctx.fetch ? ctx.fetch(`${base}/items`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(this.buildItemPayload(product)),
+      ...noAutomaticRetry("dynamics365_create_item"),
     }) : this.fetchWithTimeout(`${base}/items`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

@@ -48,6 +48,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
+import { noAutomaticRetry, type ConnectorFetchRetryOptions } from '../../connector-framework/connector-retry-policy';
 import { ConnectorHttpClient } from '../../connector-framework/connector-http-client.service';
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { tenantExecRaw } from '../../common/tenant/tenant-raw';
@@ -715,6 +716,7 @@ export class WooCommerceConnector implements ConnectorInterface {
     consumerKey: string,
     consumerSecret: string,
     body?: unknown,
+    retry?: ConnectorFetchRetryOptions,
   ): Promise<Response> {
     const url = `${siteUrl}/wp-json/wc/v3${path}`;
     // Every request carries the consumer key/secret (Basic auth, plus any body),
@@ -726,7 +728,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       const transport = getConnectorTransport();
       const init = { ...hopInit, timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS };
       if (this.httpClient) {
-        return this.httpClient.fetch('woocommerce', `${this.slug}:${siteUrl}`, hopUrl, { ...init, transport });
+        return this.httpClient.fetch('woocommerce', `${this.slug}:${siteUrl}`, hopUrl, { ...init, ...retry, transport });
       }
       return transport.fetch(hopUrl, init);
     };
@@ -1429,7 +1431,14 @@ export class WooCommerceConnector implements ConnectorInterface {
     const method = existingId != null ? 'PUT' : 'POST';
     const path   = existingId != null ? `/products/${existingId}` : '/products';
 
-    const res = await this.callApi(method, path, siteUrl, consumerKey, consumerSecret, wcProduct);
+    // The create branch has no idempotency key, and the SKU check that rejects a duplicate is an
+    // application check (not atomic, filterable, skipped for an empty SKU). The lookup above is
+    // reconciliation evidence for the next attempt, not a reason to repeat a create after a lost
+    // response. The update branch (PUT) keeps the default.
+    const res = await this.callApi(
+      method, path, siteUrl, consumerKey, consumerSecret, wcProduct,
+      method === 'POST' ? noAutomaticRetry('woocommerce_create_product') : undefined,
+    );
     if (!res.ok) {
       throw await this.buildPublishError(res, 'publish');
     }

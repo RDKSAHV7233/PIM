@@ -48,6 +48,15 @@ export interface ConnectorFetchRetryOptions {
   operation?: string;
 }
 
+/**
+ * Options for a provider create that has no idempotency mechanism and no proven reconciliation:
+ * exactly one attempt, so a lost response surfaces to the caller instead of being repeated into a
+ * possible duplicate. `operation` is the short log label.
+ */
+export function noAutomaticRetry(operation: string): ConnectorFetchRetryOptions {
+  return { retryPolicy: "NO_AUTOMATIC_RETRY", operation };
+}
+
 /** A call that misstates its retry policy. A programming error, never retried. */
 export class ConnectorRetryPolicyError extends Error {
   constructor(message: string) {

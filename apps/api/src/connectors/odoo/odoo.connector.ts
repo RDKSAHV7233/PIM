@@ -58,6 +58,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from '../../connector-framework/connector.interface';
+import { noAutomaticRetry, type ConnectorFetchRetryOptions } from '../../connector-framework/connector-retry-policy';
 import { ConnectorHttpClient } from '../../connector-framework/connector-http-client.service';
 import { ConnectorNetworkError } from '../../connector-framework/connector.errors';
 import { validateConnectorTargetUrl } from '../../common/security/url-safety';
@@ -228,7 +229,7 @@ export class OdooConnector implements ConnectorInterface {
   // transport-level problems and returns the raw RPC error object to callers
   // that need to classify it (auth vs validation vs unknown).
 
-  private async httpFetch(odooUrl: string, body: unknown): Promise<Response> {
+  private async httpFetch(odooUrl: string, body: unknown, retry?: ConnectorFetchRetryOptions): Promise<Response> {
     const url = `${odooUrl}/jsonrpc`;
     // The request body carries the database password/API key, so a redirect must
     // never be followed by fetch itself: every hop is sent with redirect:
@@ -239,7 +240,7 @@ export class OdooConnector implements ConnectorInterface {
       const transport = getConnectorTransport();
       const init = { ...hopInit, timeoutMs: CONNECTOR_HTTP_TIMEOUT_MS };
       if (this.httpClient) {
-        return this.httpClient.fetch('odoo', odooUrl, hopUrl, { ...init, transport });
+        return this.httpClient.fetch('odoo', odooUrl, hopUrl, { ...init, ...retry, transport });
       }
       return transport.fetch(hopUrl, init);
     };
@@ -265,13 +266,19 @@ export class OdooConnector implements ConnectorInterface {
     }
   }
 
-  private async rpc<T>(odooUrl: string, service: string, method: string, args: unknown[]): Promise<{ result?: T; error?: OdooRpcError }> {
+  private async rpc<T>(
+    odooUrl: string,
+    service: string,
+    method: string,
+    args: unknown[],
+    retry?: ConnectorFetchRetryOptions,
+  ): Promise<{ result?: T; error?: OdooRpcError }> {
     const res = await this.httpFetch(odooUrl, {
       jsonrpc: '2.0',
       method: 'call',
       params: { service, method, args },
       id: 1,
-    });
+    }, retry);
     const body = (await res.json()) as OdooRpcResponse<T>;
     return { result: body.result, error: body.error };
   }
@@ -298,10 +305,11 @@ export class OdooConnector implements ConnectorInterface {
     method: string,
     args: unknown[],
     kwargs?: Record<string, unknown>,
+    retry?: ConnectorFetchRetryOptions,
   ): Promise<T> {
     const callArgs: unknown[] = [database, uid, password, model, method, args];
     if (kwargs) callArgs.push(kwargs);
-    const { result, error } = await this.rpc<T>(odooUrl, 'object', 'execute_kw', callArgs);
+    const { result, error } = await this.rpc<T>(odooUrl, 'object', 'execute_kw', callArgs, retry);
     if (error) {
       throw new OdooRpcCallError(error);
     }
@@ -506,7 +514,24 @@ export class OdooConnector implements ConnectorInterface {
       const recordId = await this.executeKw<number>(
         odooUrl, database, uid, password,
         'product.template', 'create', [[this.buildPayload(product)]],
+        // Odoo does not enforce default_code uniqueness and has no idempotency key, so a
+        // repeated create after a lost response makes a second record. One attempt only.
+        undefined, noAutomaticRetry('odoo_create_product'),
       );
+      // A create that answers without a record id (for example a proxy 5xx whose JSON body has no
+      // result) is not a success. With one attempt per create, reporting it as SUCCESS would hide
+      // a product that may or may not exist.
+      if (typeof recordId !== 'number' || !Number.isInteger(recordId) || recordId <= 0) {
+        throw new OdooPublishError(
+          [{
+            code: 'AMBIGUOUS_CREATE_OUTCOME',
+            fieldPath: '',
+            severity: 'error',
+            sellerMessage: 'Odoo did not confirm the product was created, so it may or may not exist. Check Odoo for this internal reference before publishing again.',
+          }],
+          'Odoo product publish failed: the create response had no record id (outcome unknown).',
+        );
+      }
       return { externalRef: String(recordId), status: 'SUCCESS', isAsync: false };
     } catch (err) {
       throw this.toPublishError(err, 'publish');

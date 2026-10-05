@@ -16,10 +16,10 @@ A connector is exposed to the first layer only if it sends the call through the 
 Several send creates with their own `fetch` and make a single attempt. A manual resubmit also
 re-runs the create.
 
-## The per-call retry policy (this change)
+## The per-call retry policy
 
 `ConnectorFetchInit` takes `retryPolicy`, `idempotency` and `operation`. Omitting the policy
-keeps today's behavior exactly; no connector selects a policy yet.
+keeps today's behavior exactly. Four provider creates select `NO_AUTOMATIC_RETRY` (see below); no connector selects another policy.
 
 | Policy | Retries | Requires |
 |---|---|---|
@@ -47,36 +47,69 @@ existing `url`, `status` and `backoffMs`):
 `reason` is `network_error`, `timeout` or `http_<status>`. The idempotency key and request
 headers are never logged, and an `operation` label that is not a short code is replaced.
 
+## Provider evidence and classification (2026-10-05)
+
+Each create is classified from primary evidence (provider source or published specification),
+never from memory or code comments. Whether a retried create produces a duplicate depends on
+what the provider enforces.
+
+- `PROVEN_IDEMPOTENT`: a retry cannot create a second record (a key the provider honors, or a
+  keyed upsert). Retry is permitted under an explicit policy.
+- `PROVEN_RECONCILABLE`: a lookup can tell whether the write happened. No blind retry;
+  reconcile first.
+- `AMBIGUOUS`: neither is proven. No automatic retry.
+
+| Create | Evidence | Class | Policy today |
+|---|---|---|---|
+| Odoo `product.template` create | Odoo 17 `product_product.py` has no constraint on `default_code` (only an onchange warning) and the JSON-RPC call has no idempotency key. A lookup by `default_code` cannot tell a record from this attempt from an older one. | `AMBIGUOUS` (**`AMBIGUOUS_CREATE_OUTCOME`**) | `NO_AUTOMATIC_RETRY` |
+| Etsy `createDraftListing` | The published OpenAPI spec mentions idempotency nowhere; the create body does not list `sku`; the listings read filters by `state` but not by any key. | `AMBIGUOUS` (**`AMBIGUOUS_CREATE_OUTCOME`**) | `NO_AUTOMATIC_RETRY` |
+| Dynamics 365 `POST /items` | Microsoft documents nothing about duplicates or idempotency for the create. The connector sends `number: sku` (a client-supplied key); only third-party integrator documentation says a duplicate item number errors. | `AMBIGUOUS` until proven against a sandbox | `NO_AUTOMATIC_RETRY` |
+| WooCommerce `POST /products` | `WC_Product::set_sku` rejects a duplicate SKU with `product_invalid_sku`, and a new product has `object_read` true, so it applies to REST creates. It is an application check (`is_existing_sku` SELECT, then insert), not a database constraint: not atomic, disabled by the `wc_product_has_unique_sku` filter, skipped for an empty SKU. `GET /products?sku=` reconciles. | `PROVEN_RECONCILABLE` (with the settle-time rule below) | `NO_AUTOMATIC_RETRY` on the create; the update (`PUT`) keeps the default |
+| BigCommerce `POST /catalog/products` | The published spec returns 409 for "duplicate unique values, such as name or SKU" and describes `sku` as unique; no idempotency header. A retried create is rejected, not duplicated, but the job-level replay then reports a failure although the product exists. | `PROVEN_RECONCILABLE` | unchanged here; separate job-level story (3b-B) |
+
+`RETRY_WITH_IDEMPOTENCY`: current users = 0. None of the five providers above offers an
+idempotency key, so no connector selects it. It stays in the framework as a valid future
+capability; no provider user is invented for it.
+
+### Rules this establishes
+
+1. **Absence from a lookup right after a lost response does not prove the create failed.** The
+   provider may still be executing the original request. Reconcile-then-recreate is only allowed
+   after the provider's maximum request time has passed, or with a unique marker the lookup can
+   match. WooCommerce's existing SKU lookup is reconciliation evidence for the next attempt, not a
+   reason to repeat a create immediately.
+2. **A create is never reported as a success without a provider-confirmed id.** Odoo's create now
+   fails with `AMBIGUOUS_CREATE_OUTCOME` if the response carries no record id (for example a proxy
+   5xx with a JSON body), instead of recording SUCCESS.
+3. **A 401 proves the request was refused**, so Etsy's refresh-token-and-resend inside
+   `fetchWithTokenRetry` is kept: the resend is of a request the provider rejected before executing.
+
 ## Exposure by connector (read from `main`, 2026-10-05)
 
-Whether a duplicate is actually created, or rejected by the provider, depends on provider
-uniqueness rules that have not been verified. None is assumed here.
-
-| Connector | Create path | HTTP-layer retry | Job-level retry | Classification |
+| Connector | Create path | HTTP-layer retry | Job-level retry | State |
 |---|---|---|---|---|
-| Odoo `product.template create` | `httpClient` | yes | no (network errors are wrapped as `OdooPublishError`) | needs evidence |
-| Etsy create-draft listing | `ctx.fetch` | yes | no | needs evidence |
-| Dynamics 365 `POST /items` | `ctx.fetch` | yes | no | needs provider semantics: stable client key, alternate key, idempotency mechanism or reliable reconciliation lookup |
-| WooCommerce create | `callApi` through `httpClient` | yes | after a lookup by SKU | needs evidence; the lookup does not protect a retry inside one call, and a timeout after the POST succeeds is not covered by it |
-| BigCommerce create | raw `fetch` | no | **yes** (retryable `ConnectorNetworkError`) | needs evidence; a separate job-level story, the shared policy does not reach it |
+| Odoo `product.template create` | `httpClient` | **removed** (3b-A) | no (network errors are wrapped as `OdooPublishError`) | one attempt |
+| Etsy create-draft listing | `ctx.fetch` | **removed** (3b-A) | no | one attempt |
+| Dynamics 365 `POST /items` | `ctx.fetch` | **removed** (3b-A) | no | one attempt |
+| WooCommerce create | `callApi` through `httpClient` | **removed** (3b-A) | after a lookup by SKU | one attempt |
+| BigCommerce create | raw `fetch` | no | **yes** (retryable `ConnectorNetworkError`) | 3b-B |
 | Shopware, PrestaShop, Zoho Inventory, eBay offer | raw `fetch` or pinned transport | no | no | single attempt; a manual resubmit re-creates |
 | Amazon (PUT by SKU), Flipkart | `ctx.fetch` | yes | no | SKU-keyed; unverified |
 
-### Classification required before any connector changes
+### Duplicate-prone writes not changed in 3b-A
 
-Each create operation is classified from evidence, never from memory or comments:
-
-- `PROVEN_IDEMPOTENT`: a retry cannot create a second record (a client-supplied key the provider
-  honors, or a keyed upsert). Retry is permitted under an explicit policy.
-- `PROVEN_RECONCILABLE`: a lookup can tell whether the write happened. No blind retry; reconcile
-  first, re-issue only if absence is proven.
-- `AMBIGUOUS`: neither is proven. No automatic retry.
+Left on the default policy on purpose (they are not the four identified creates): WooCommerce
+category/tag creation (`POST /products/categories|tags`) and variation creation, Etsy image upload,
+every update, read and authentication call. They are candidates for a later classification pass.
 
 ## Sequence
 
-1. This change: the policy framework, tests and log. No connector behavior changes.
-2. Read-only provider-semantics check: classify every create above.
-3. Shared-client unsafe creates (Odoo, Etsy, Dynamics 365, WooCommerce) per their classification.
-4. Job-level unsafe create re-run (BigCommerce): a retried job must not blindly create again.
-5. Pre-call intent: record a PENDING submission before the provider call so an ambiguous timeout
-   reads as "outcome unknown", not "failed".
+1. Done (3a): the policy framework, tests and log. No connector behavior changes.
+2. Done: read-only provider-semantics check (above).
+3. This change (3b-A): `NO_AUTOMATIC_RETRY` on the four shared-client creates; reads, auth,
+   updates and other writes unchanged. Consequence: a transient failure on one of these creates now
+   surfaces instead of being silently retried.
+4. 3b-B: BigCommerce. Before a create, look up by SKU; if the product already exists, reconcile as
+   success/existing; create only when absence is established.
+5. 3c: record a PENDING submission before the provider call so an ambiguous timeout reads as
+   "outcome unknown", not "failed", and give Odoo and Etsy a trustworthy reconciliation strategy.
