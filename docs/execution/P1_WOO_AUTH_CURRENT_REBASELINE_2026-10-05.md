@@ -10,6 +10,11 @@ supersedes: the forward-looking conclusions and requirements of P1_WOO_AUTH_READ
 
 # P1 Woo/Auth Current Re-Baseline — 2026-10-05
 
+> **Decisions recorded (2026-10-05, later).** The decision request in section 7 was answered by the owners and is recorded in
+> `docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md`: the 2026-10-03 closure is superseded and `p1_blocker_hold` is
+> restored; closure requires named CTO, PO, Security, QA and SRE approvals and production RLS evidence; manual key
+> installation is the supported onboarding and app-auth is unsupported. The evidence and findings below are unchanged.
+
 ## Scope and authority
 
 This is a Claude-run audit. It reports what the repository records, what evidence exists, which class of

@@ -172,12 +172,12 @@ function connectorStatusNote(
       return "Myntra API access is account-manager gated. Credentials (Merchant ID, Secret Key, Warehouse ID) are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff and Postman collection receipt.";
     }
     if (slug === "woocommerce") {
-      return "WooCommerce is in early access. Single-product publish, edit/republish, status sync, credential management, and reconnect are verified. Multi-variant publishing is not yet verified for production use.";
+      return "WooCommerce is on a P1 release hold. New installs and customer rollout are paused until the current CTO, PO, Security, QA, and SRE approvals and production database-isolation evidence are recorded. Connect with WooCommerce REST API keys (manual key installation); WooCommerce app authorization is not supported.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
   if (slug === "woocommerce") {
-    return "WooCommerce is in early access. Single-product publish, edit/republish, status sync, credential management, and reconnect are verified. Multi-variant publishing is not yet verified for production use.";
+    return "WooCommerce is on a P1 release hold. New installs and customer rollout are paused until the current CTO, PO, Security, QA, and SRE approvals and production database-isolation evidence are recorded. Connect with WooCommerce REST API keys (manual key installation); WooCommerce app authorization is not supported.";
   }
   return null;
 }

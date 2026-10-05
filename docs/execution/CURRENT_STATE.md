@@ -101,7 +101,7 @@ exist in code and still be blocked from public GA claims.
 | Myntra | `myntra` | live | API access requires account-manager enablement. |
 | Nykaa | `nykaa` | manual export | Seller upload workflow; direct API requires partner credentials. |
 | Shopify | `shopify` | live | Direct-token publishing, selected edit/republish, status sync, reconnect validation, jobs visibility, and manual bulk publish up to 50. Managed OAuth, webhook subscriptions, and multi-image sync are not production-verified. |
-| WooCommerce | `woocommerce` | P1 blocker-closure hold | Code-complete internally, but hidden/blocked from customer setup and install lanes while P1-1 tenant-owned credential persistence and P1-2 auth revocation behavior are reviewed, CI-verified, staged, and runtime-verified. #660/#662 evidence remains useful historical remediation context, not current onboarding approval. |
+| WooCommerce | `woocommerce` | P1 blocker-closure hold (restored 2026-10-05) | Technically available for controlled engineering use; new installs and customer rollout are paused until named CTO/PO/Security/QA/SRE approvals and production RLS evidence are recorded (`docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md`). Manual API-key installation is the supported onboarding; app-auth is unsupported. The 2026-10-03 closure (#1052, #1059) is historical and superseded. #660/#662 evidence remains historical remediation context, not current onboarding approval. |
 
 ## Latest Readiness Evidence
 

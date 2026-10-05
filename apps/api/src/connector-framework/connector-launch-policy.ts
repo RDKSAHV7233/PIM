@@ -229,21 +229,15 @@ export function resolveConnectorLaunchPolicy(
   }
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
-    // E2E battery PASSED 2026-10-03 (QA/PO/required-team signoff, advancing to early_access):
-    // T1 — ACTIVE, Healthy; credentials masked; 100 submissions; 0 pending/retrying.
-    // T2 — Credentials masked in UI; Replace Credentials requires admin password step-up.
-    // T3 — 67 products in scope, 69 variants, 0 blocking readiness issues. Recovery: 0 failures.
-    //       23 "errors" are all QA test fixtures with non-public image URLs — correct connector
-    //       behaviour (WC reports inaccessible URL and stops); not real merchant product failures.
-    // T4 — Real publishes confirmed: products 2383, 2381, 307, 260, 404, 212 all SUCCESS.
-    // T5 — Last full sync 14/9/2026; delta sync available for 1 pending product.
-    // T6 — Mappings: Export readiness Ready, 0 missing fields.
-    // Known limitation: multi-variant publishing not yet verified (QAPILOT-002 internal_server_error).
-    // P1-1 CLOSED 2026-10-03; P1-2 CLOSED 2026-10-03 (INC-85, PR #1052).
+    // Governance correction 2026-10-05 (docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md): the
+    // 2026-10-03 advance to early_access (#1052, #1059) is superseded and the P1 hold restored. Those events
+    // remain historical. This is a release-progression hold, not an engineering regression: the surfaced
+    // capabilities are unchanged. The hold lifts only on the closure criteria in the decision record (named
+    // CTO/PO/Security/QA/SRE approvals against current evidence and SHA, and production RLS evidence).
     return {
-      launchStage: "early_access",
+      launchStage: "p1_blocker_hold",
       launchNote:
-        "WooCommerce is in early access. Single-product publish, edit/republish, status sync, credential management, and reconnect are verified. Multi-variant publishing is not yet verified for production use.",
+        "WooCommerce is on a P1 release hold. New installs and customer rollout are paused until the current CTO, PO, Security, QA, and SRE approvals and production database-isolation evidence are recorded. Connect with WooCommerce REST API keys (manual key installation); WooCommerce app authorization is not supported.",
       surfacedCapabilities: capabilities,
     };
   }
@@ -413,10 +407,17 @@ export function resolveConnectorPipelineMetadata(slug: string): ConnectorPipelin
   if (s === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
       owner: "Platform",
-      milestone: "early_access",
-      blockers: ["Multi-variant publishing not yet verified (QAPILOT-002 internal_server_error)"],
+      milestone: "P1 blocker-closure hold",
+      blockers: [
+        "CTO approval against current evidence and SHA",
+        "Product Owner approval against current evidence and SHA",
+        "Security approval against current evidence and SHA",
+        "QA approval against current evidence and SHA",
+        "SRE approval against current evidence and SHA",
+        "Production RLS evidence: application/pool role, BYPASSRLS = false, table ownership, FORCE ROW LEVEL SECURITY disposition",
+      ],
       internalNotes:
-        "Advanced to early_access 2026-10-03 after full E2E battery (QA/PO/required-team signoff): T1 ACTIVE Healthy, T2 credentials masked+step-up, T3 67 products 0 blockers (23 QA-fixture image errors are correct connector behaviour), T4 real publishes 2383/2381/307/260/404/212 SUCCESS, T5 last sync 14/9/2026, T6 mappings ready. P1-1 CLOSED (runtime-confirmed Healthy, masked creds, admin step-up). P1-2 CLOSED (validateCredentials() returns false on 401/403, atomic deleteInstallationTransaction, reconnectRequestedAt 2026-09-30 live). BUG-WOO-HEALTH-001 open (transient network errors → inconclusive, not revocation). Pilot installation 4cc83efd-a71b-4d61-8649-299795c35e11 active at vexapim.com.",
+        "Governance correction 2026-10-05 supersedes the 2026-10-03 closure (#1052, #1059), which remain historical events. Closure criteria: docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md. Engineering evidence: docs/execution/P1_WOO_AUTH_CURRENT_REBASELINE_2026-10-05.md. Manual API-key installation is the supported onboarding; app-auth is unsupported and needs a separately approved feature, with BUG-WOO-OAUTH-QUERY-SECRET fixed first.",
     };
   }
   if (s === CONNECTOR_SLUGS.ZOHO_INVENTORY) {

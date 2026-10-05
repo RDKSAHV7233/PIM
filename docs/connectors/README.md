@@ -35,7 +35,7 @@ Current connector implementations present in code:
 | Myntra | `myntra` | implemented | `live` |
 | Nykaa | `nykaa` | partial/manual path | `manual` |
 | Shopify | `shopify` | implemented | `live` |
-| WooCommerce | `woocommerce` | code-complete | `blocker_closure` — no customer app-auth onboarding until P1-1 tenant-owned credential persistence and reads are reviewed, CI-verified, staged, and runtime-verified |
+| WooCommerce | `woocommerce` | code-complete | `p1_blocker_hold` (restored 2026-10-05) — new installs and customer rollout paused until the closure criteria in `docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md` are recorded; manual API-key installation is the supported onboarding, app-auth is unsupported |
 
 Important nuance:
 

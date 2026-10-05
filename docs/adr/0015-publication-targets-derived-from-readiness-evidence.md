@@ -1,6 +1,6 @@
 # ADR-0015: Publication Targets Are Derived From Readiness Evidence
 
-**Status**: Proposed (owner decisions of 2026-10-05 applied; becomes Accepted on merge)
+**Status**: Accepted (owner decisions of 2026-10-05 applied; contract verified on `main`; implementation gated on `docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md`)
 **Date**: 2026-10-05
 **Author**: Sprint 5 (registry-derived publication targets), design only
 **Amends**: ADR-0006 (adds a publication-level readiness above connector-level availability), ADR-0007 (adds a path dimension to certification evidence), ADR-0014 §2 (realizes "the frontend derives its channel list from the API")

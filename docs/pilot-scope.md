@@ -37,7 +37,7 @@ blockers are closed and re-signed.
 | Flipkart | Live | Controlled connector use | Default fallback connector path. |
 | Myntra | Live | Controlled connector use where API access is enabled | Requires account-manager/API enablement. |
 | Amazon India | Under development | No production publish promise | Install and credential validation available; publish/status sync under validation. |
-| WooCommerce | Blocker closure | No customer app-auth onboarding | P1-1 app-auth tenant ownership is locally fixed but pending PR review, CI, staging, and runtime verification. Not GA/public-sellable until store-admin evidence and full team signoff. |
+| WooCommerce | P1 blocker-closure hold (restored 2026-10-05) | No customer onboarding; manual API-key installation is the supported mechanism; app-auth unsupported | New installs and customer rollout are paused until named CTO/PO/Security/QA/SRE approvals and production RLS evidence are recorded (`docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md`). Not GA/public-sellable. |
 | Meesho | Manual export | Manual workflow only | Export file plus Supplier Panel upload; direct API blocked on partner access. |
 | Nykaa | Manual export | Manual workflow only | Export file plus seller portal upload; direct API requires partner credentials. |
 | ONDC | Internal / feature-gated | Internal only | Requires `FEATURE_ONDC_ENABLED=true`; not seller-facing pilot scope. |

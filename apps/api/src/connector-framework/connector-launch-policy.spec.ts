@@ -105,42 +105,47 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
-  describe("woocommerce", () => {
-    it("is early_access after E2E battery sign-off (2026-10-03)", () => {
+  describe("woocommerce — P1 blocker hold restored (governance correction 2026-10-05)", () => {
+    it("is p1_blocker_hold", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchStage).toBe("early_access");
+      expect(policy.launchStage).toBe("p1_blocker_hold");
     });
 
-    it("REGRESSION GUARD: woocommerce is no longer controlled_pilot — advanced to early_access (2026-10-03)", () => {
+    it("REGRESSION GUARD: woocommerce is neither early_access nor controlled_pilot until the closure criteria are recorded", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
+      expect(policy.launchStage).not.toBe("early_access");
       expect(policy.launchStage).not.toBe("controlled_pilot");
     });
 
-    it("is installable in early_access stage — new customer installs are now open", () => {
+    it("is not installable and not customer visible while the hold is open — new installs are paused", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(isInstallableStage(policy.launchStage)).toBe(true);
+      expect(isInstallableStage(policy.launchStage)).toBe(false);
+      expect(isCustomerVisibleStage(policy.launchStage)).toBe(false);
     });
 
-    it("launchNote states early_access copy with verified capabilities and known limitation", () => {
+    it("is a release hold, not an engineering regression: every declared capability is still surfaced", () => {
       const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchNote).toMatch(/early access/i);
-      expect(policy.launchNote).toMatch(/Multi-variant publishing is not yet verified/i);
-      expect(policy.launchNote).not.toMatch(/paused|p1_blocker_hold|controlled conditions/i);
-    });
-  });
-
-  describe("woocommerce — P1 blockers CLOSED (2026-10-03)", () => {
-    it("REGRESSION GUARD: woocommerce is no longer p1_blocker_hold — P1-1 and P1-2 closed", () => {
-      const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
-      expect(policy.launchStage).not.toBe("p1_blocker_hold");
+      expect(policy.surfacedCapabilities).toEqual(allCaps);
     });
 
-    it("woocommerce resolveConnectorPipelineMetadata reflects early_access milestone", () => {
+    it("launchNote states the hold, manual key installation, and that app authorization is not supported", () => {
+      const policy = resolveConnectorLaunchPolicy("woocommerce", allCaps);
+      expect(policy.launchNote).toMatch(/P1 release hold/i);
+      expect(policy.launchNote).toMatch(/manual key installation/i);
+      expect(policy.launchNote).toMatch(/app authorization is not supported/i);
+      expect(policy.launchNote).not.toMatch(/early access/i);
+    });
+
+    it("resolveConnectorPipelineMetadata lists the named approvals and the production RLS evidence as blockers", () => {
       const woo = resolveConnectorPipelineMetadata("woocommerce");
-      expect(woo.milestone).toBe("early_access");
-      expect(woo.blockers).not.toContain("P1-1 tenant-owned app-auth credential verification");
-      expect(woo.blockers).not.toContain("P1-2 auth revocation failure policy");
-      expect(woo.internalNotes).toMatch(/P1-1.*CLOSED|P1-2.*CLOSED/i);
+      expect(woo.milestone).toBe("P1 blocker-closure hold");
+      expect(woo.owner).toBe("Platform");
+      for (const role of ["CTO", "Product Owner", "Security", "QA", "SRE"]) {
+        expect(woo.blockers.some((b) => b.startsWith(role))).toBe(true);
+      }
+      expect(woo.blockers.some((b) => /Production RLS evidence/.test(b) && /BYPASSRLS = false/.test(b) && /FORCE ROW LEVEL SECURITY/.test(b))).toBe(true);
+      expect(woo.internalNotes).toMatch(/DR-2026-10-05-woocommerce-p1-governance/);
+      expect(woo.internalNotes).toMatch(/#1052, #1059/);
     });
   });
 
@@ -397,12 +402,11 @@ describe("resolveConnectorPipelineMetadata", () => {
     expect(prestashop.blockers).not.toContain("PO review");
   });
 
-  it("returns early_access metadata for WooCommerce after E2E battery sign-off (2026-10-03)", () => {
+  it("returns hold metadata for WooCommerce (governance correction 2026-10-05)", () => {
     const woo = resolveConnectorPipelineMetadata("woocommerce");
-    expect(woo.milestone).toBe("early_access");
-    expect(woo.blockers).not.toContain("P1-1 tenant-owned app-auth credential verification");
-    expect(woo.blockers).not.toContain("P1-2 auth revocation failure policy");
+    expect(woo.milestone).toBe("P1 blocker-closure hold");
     expect(woo.owner).toBe("Platform");
+    expect(woo.blockers.length).toBeGreaterThan(0);
   });
 
   it("returns unknown owner for unregistered slugs", () => {

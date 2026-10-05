@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-10-03T00:00",
+    "lastUpdated": "2026-10-05T00:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -6353,6 +6353,35 @@
             "Browser, local stack, as admin: a validated Blocked version shows the role=note inside its Publish details and the Publish submit button is enabled"
           ],
           "notes": "The non-Blocked negative case is covered by the source contract only (the warning is conditional on compatibilityState); it was not separately viewed in the browser in this run. The web build now needs PLAYWRIGHT_WEB_BUILD_TIMEOUT_MS above the 240 s default locally."
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-95",
+      "name": "WooCommerce P1 governance correction — p1_blocker_hold restored",
+      "status": "completed",
+      "locked": true,
+      "scope": [
+        "apps/api/src/connector-framework/connector-launch-policy.ts",
+        "apps/api/src/connector-framework/connector-launch-policy.spec.ts",
+        "apps/web/src/app/connectors/setup/page.tsx",
+        "apps/web/test/integration/woocommerce-launch-copy-consistency.test.cjs",
+        "docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md",
+        "docs/execution/INCREMENT_STATE.json"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-95-S1",
+          "title": "Supersede the 2026-10-03 closure (#1052, #1059) and restore p1_blocker_hold for WooCommerce",
+          "status": "completed",
+          "locked": true,
+          "acceptance": [
+            "WooCommerce launchStage = p1_blocker_hold; surfaced capabilities unchanged; new installs and customer rollout paused",
+            "Closure criteria recorded: named CTO/PO/Security/QA/SRE approvals against current evidence and SHA, and production RLS evidence (application/pool role, BYPASSRLS = false, table ownership, FORCE ROW LEVEL SECURITY disposition)",
+            "Manual API-key installation recorded as the supported onboarding; app-auth recorded as unsupported",
+            "INC-85, #1052, #1059 and the dated 2026-09-03 to 2026-09-05 records preserved unchanged"
+          ],
+          "decision_record": "docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md"
         }
       ]
     }
