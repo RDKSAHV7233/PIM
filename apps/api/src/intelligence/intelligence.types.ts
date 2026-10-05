@@ -234,6 +234,64 @@ export interface IntelligencePayloadDryRunResult {
   estimatedCostMicros: 0;
 }
 
+export interface IntelligenceProviderOutputSuggestionCandidate {
+  fieldPath: string;
+  suggestedValue: Prisma.InputJsonValue;
+  generatedPayload?: Prisma.InputJsonValue;
+  evidence?: Prisma.InputJsonValue[];
+  requiresEvidence?: boolean;
+  confidence?: number | null;
+  attributeFamily?: string | null;
+}
+
+export interface ValidateIntelligenceProviderOutputInput {
+  tenantKey: string;
+  executionId: string;
+  capability: string;
+  entityType: string;
+  entityId: string;
+  sourceRecordId: string;
+  sourceVersion: number;
+  sourceHash: string;
+  promptVersion: string;
+  schemaVersion: string;
+  providerOutput: Prisma.InputJsonValue;
+  auditEventIds?: string[];
+}
+
+export interface IntelligenceProviderValidatedSuggestion {
+  tenantKey: string;
+  executionId: string;
+  capability: string;
+  entityType: string;
+  entityId: string;
+  fieldPath: string;
+  sourceRecordId: string;
+  sourceVersion: number;
+  sourceHash: string;
+  promptVersion: string;
+  schemaVersion: string;
+  generatedPayload: Prisma.InputJsonValue;
+  suggestedValue: Prisma.InputJsonValue;
+  evidence: Prisma.InputJsonValue[];
+  requiresEvidence: boolean;
+  confidence?: number | null;
+  attributeFamily?: string | null;
+  validationEvidenceId: string;
+  auditEventIds?: string[];
+}
+
+export interface IntelligenceProviderOutputValidationResult {
+  schemaValid: boolean;
+  suggestionCount: number;
+  outputPayloadHash?: string;
+  validationEvidenceId: string;
+  errors: string[];
+  validatedSuggestions: IntelligenceProviderValidatedSuggestion[];
+  providerCallAttempted: false;
+  canonicalProductMutationEnabled: false;
+}
+
 export interface CreateAiSuggestionInput {
   tenantKey: string;
   executionId: string;

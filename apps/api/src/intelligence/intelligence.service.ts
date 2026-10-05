@@ -16,13 +16,30 @@ import type {
   IntelligenceCapabilitySummary,
   IntelligencePayloadClassificationResult,
   IntelligencePayloadDryRunResult,
+  IntelligenceProviderOutputSuggestionCandidate,
+  IntelligenceProviderOutputValidationResult,
   PrepareIntelligencePayloadDryRunInput,
   RecordPolicyBlockedExecutionInput,
   ReviewAiSuggestionInput,
   UpsertAiTenantPolicyInput,
+  ValidateIntelligenceProviderOutputInput,
 } from "./intelligence.types";
 
 const AI_DATA_CLASSIFICATIONS = new Set<AiDataClassification>(["AI_ALLOWED", "AI_ALLOWED_WITH_REDACTION", "AI_BLOCKED"]);
+const PROVIDER_OUTPUT_AUTHORITY_FIELDS = new Set([
+  "tenantKey",
+  "executionId",
+  "capability",
+  "entityType",
+  "entityId",
+  "sourceRecordId",
+  "sourceVersion",
+  "sourceHash",
+  "promptVersion",
+  "schemaVersion",
+  "generationFingerprint",
+  "idempotencyFingerprint",
+]);
 
 @Injectable()
 export class IntelligenceService {
@@ -368,6 +385,125 @@ export class IntelligenceService {
     };
   }
 
+  async validateStructuredOutputForSuggestions(
+    input: ValidateIntelligenceProviderOutputInput,
+  ): Promise<IntelligenceProviderOutputValidationResult> {
+    const tenantKey = normalizeTenantKey(input.tenantKey);
+    const capability = this.requiredText("capability", input.capability);
+    const entityType = this.requiredText("entityType", input.entityType);
+    const entityId = this.requiredText("entityId", input.entityId);
+    const promptVersion = this.requiredText("promptVersion", input.promptVersion);
+    const schemaVersion = this.requiredText("schemaVersion", input.schemaVersion);
+    const source = {
+      sourceRecordId: this.requiredText("sourceRecordId", input.sourceRecordId),
+      sourceVersion: this.nonNegativeInteger("sourceVersion", input.sourceVersion),
+      sourceHash: this.requiredText("sourceHash", input.sourceHash),
+    };
+    const validationEvidenceId = this.buildEvidenceId("provider-output-validation", input.executionId, input.providerOutput);
+    const errors: string[] = [];
+    const validatedSuggestions: IntelligenceProviderOutputValidationResult["validatedSuggestions"] = [];
+
+    if (!this.capabilityRegistry.isInAi001Scope(capability)) {
+      errors.push("capability is not in AI-001 scope.");
+    }
+    if (this.capabilityRegistry.isExplicitlyOutOfScope(capability)) {
+      errors.push("capability is explicitly out of scope for AI-001.");
+    }
+    if (entityType !== "product") {
+      errors.push("entityType must be product.");
+    }
+
+    try {
+      this.assertSafeJson("providerOutput", input.providerOutput);
+    } catch (error) {
+      errors.push(this.errorMessage(error));
+    }
+
+    if (!this.isRecord(input.providerOutput)) {
+      errors.push("providerOutput must be an object.");
+      return this.structuredOutputValidationResult(false, 0, validationEvidenceId, errors, validatedSuggestions);
+    }
+
+    const providerOutput = input.providerOutput as Record<string, unknown>;
+    const candidates = providerOutput.suggestions;
+    if (!Array.isArray(candidates)) {
+      errors.push("providerOutput.suggestions must be an array.");
+      return this.structuredOutputValidationResult(false, 0, validationEvidenceId, errors, validatedSuggestions);
+    }
+    if (candidates.length === 0) {
+      errors.push("providerOutput.suggestions must not be empty.");
+      return this.structuredOutputValidationResult(false, 0, validationEvidenceId, errors, validatedSuggestions);
+    }
+
+    const fieldPaths = new Set<string>();
+    candidates.forEach((candidate, index) => {
+      const itemErrors: string[] = [];
+      if (!this.isRecord(candidate)) {
+        errors.push(`suggestions[${index}] must be an object.`);
+        return;
+      }
+
+      const record = candidate as unknown as IntelligenceProviderOutputSuggestionCandidate;
+      for (const key of Object.keys(candidate)) {
+        if (PROVIDER_OUTPUT_AUTHORITY_FIELDS.has(key)) {
+          itemErrors.push(`provider output must not supply server authority field ${key}.`);
+        }
+      }
+      const generatedPayload = record.generatedPayload ?? (candidate as Prisma.InputJsonValue);
+      const evidence = Array.isArray(record.evidence) ? record.evidence : [];
+      let fieldPath: string | null = null;
+      let confidence: number | null | undefined = null;
+      let attributeFamily: string | null = null;
+
+      try {
+        fieldPath = this.requiredText(`suggestions[${index}].fieldPath`, record.fieldPath);
+        this.requiredJson(`suggestions[${index}].suggestedValue`, record.suggestedValue);
+        this.assertSafeJson(`suggestions[${index}].generatedPayload`, generatedPayload);
+        this.assertSafeJson(`suggestions[${index}].suggestedValue`, record.suggestedValue);
+        this.assertSafeJson(`suggestions[${index}].evidence`, evidence);
+        this.assertEvidenceMatches(source, record.requiresEvidence !== false, evidence);
+        confidence = this.optionalConfidence(record.confidence);
+        attributeFamily = this.safeText(record.attributeFamily);
+      } catch (error) {
+        itemErrors.push(this.errorMessage(error));
+      }
+
+      if (itemErrors.length > 0 || !fieldPath) {
+        errors.push(...itemErrors.map((error) => `suggestions[${index}]: ${error}`));
+        return;
+      }
+      if (fieldPaths.has(fieldPath)) {
+        errors.push(`suggestions[${index}]: duplicate fieldPath is not allowed.`);
+        return;
+      }
+      fieldPaths.add(fieldPath);
+
+      validatedSuggestions.push({
+        tenantKey,
+        executionId: this.requiredText("executionId", input.executionId),
+        capability,
+        entityType,
+        entityId,
+        fieldPath,
+        sourceRecordId: source.sourceRecordId,
+        sourceVersion: source.sourceVersion,
+        sourceHash: source.sourceHash,
+        promptVersion,
+        schemaVersion,
+        generatedPayload: generatedPayload as Prisma.InputJsonValue,
+        suggestedValue: record.suggestedValue,
+        evidence,
+        requiresEvidence: record.requiresEvidence !== false,
+        confidence,
+        attributeFamily,
+        validationEvidenceId,
+        auditEventIds: input.auditEventIds,
+      });
+    });
+
+    return this.structuredOutputValidationResult(errors.length === 0, candidates.length, validationEvidenceId, errors, validatedSuggestions);
+  }
+
   async createSuggestion(input: CreateAiSuggestionInput) {
     const tenantKey = normalizeTenantKey(input.tenantKey);
     const generatedPayload = this.requiredJson("generatedPayload", input.generatedPayload);
@@ -613,6 +749,25 @@ export class IntelligenceService {
 
   private buildEvidenceId(kind: string, policyId: string, value: unknown) {
     return `${kind}:${createHash("sha256").update(`${policyId}|${this.stableJsonStringify(value)}`).digest("hex")}`;
+  }
+
+  private structuredOutputValidationResult(
+    schemaValid: boolean,
+    suggestionCount: number,
+    validationEvidenceId: string,
+    errors: string[],
+    validatedSuggestions: IntelligenceProviderOutputValidationResult["validatedSuggestions"],
+  ): IntelligenceProviderOutputValidationResult {
+    return {
+      schemaValid,
+      suggestionCount,
+      outputPayloadHash: schemaValid ? this.hashJson(validatedSuggestions) : undefined,
+      validationEvidenceId,
+      errors,
+      validatedSuggestions: schemaValid ? validatedSuggestions : [],
+      providerCallAttempted: false,
+      canonicalProductMutationEnabled: false,
+    };
   }
 
   private blockedClassificationResult(reasonCode: string, reason: string, policy?: { id: string; policyVersion: string }): IntelligencePayloadClassificationResult {
@@ -872,6 +1027,10 @@ export class IntelligenceService {
       throw new BadRequestException("Invalid execution timestamp.");
     }
     return date;
+  }
+
+  private errorMessage(error: unknown) {
+    return error instanceof Error ? error.message : "Provider output validation failed.";
   }
 
   private stringArray(value: string[] | undefined) {

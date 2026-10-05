@@ -706,4 +706,122 @@ describe("IntelligenceService", () => {
       }),
     );
   });
+
+  it("validates provider-shaped output into suggestion inputs without persistence or provider calls", async () => {
+    const service = createService();
+
+    const result = await service.validateStructuredOutputForSuggestions({
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction",
+      entityType: "product",
+      entityId: "prod-1",
+      sourceRecordId: "source-1",
+      sourceVersion: 3,
+      sourceHash: "sha256:source",
+      promptVersion: "prompt-v1",
+      schemaVersion: "schema-v1",
+      providerOutput: {
+        suggestions: [
+          {
+            fieldPath: "attributes.material",
+            suggestedValue: "Cotton",
+            generatedPayload: { value: "Cotton", unit: null },
+            evidence,
+            confidence: 0.91,
+            attributeFamily: "material",
+          },
+        ],
+      },
+      auditEventIds: ["audit-output-validation-1"],
+    });
+
+    expect(result).toMatchObject({
+      schemaValid: true,
+      suggestionCount: 1,
+      providerCallAttempted: false,
+      canonicalProductMutationEnabled: false,
+      errors: [],
+    });
+    expect(result.outputPayloadHash).toMatch(/^sha256:/);
+    expect(result.validationEvidenceId).toMatch(/^provider-output-validation:/);
+    expect(result.validatedSuggestions[0]).toMatchObject({
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction",
+      entityType: "product",
+      entityId: "prod-1",
+      fieldPath: "attributes.material",
+      suggestedValue: "Cotton",
+      evidence,
+      requiresEvidence: true,
+      validationEvidenceId: result.validationEvidenceId,
+    });
+    expect(aiSuggestion.upsert).not.toHaveBeenCalled();
+    expect(aiExecution.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects provider output suggestions without source-matched evidence", async () => {
+    const service = createService();
+
+    const result = await service.validateStructuredOutputForSuggestions({
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction",
+      entityType: "product",
+      entityId: "prod-1",
+      sourceRecordId: "source-1",
+      sourceVersion: 3,
+      sourceHash: "sha256:source",
+      promptVersion: "prompt-v1",
+      schemaVersion: "schema-v1",
+      providerOutput: {
+        suggestions: [
+          {
+            fieldPath: "attributes.material",
+            suggestedValue: "Cotton",
+            generatedPayload: { value: "Cotton" },
+            evidence: [],
+          },
+        ],
+      },
+    });
+
+    expect(result.schemaValid).toBe(false);
+    expect(result.validatedSuggestions).toEqual([]);
+    expect(result.errors.join("\n")).toContain("require evidence");
+    expect(result.providerCallAttempted).toBe(false);
+    expect(result.canonicalProductMutationEnabled).toBe(false);
+  });
+
+  it("rejects provider output containing secret-like generated values", async () => {
+    const service = createService();
+
+    const result = await service.validateStructuredOutputForSuggestions({
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction",
+      entityType: "product",
+      entityId: "prod-1",
+      sourceRecordId: "source-1",
+      sourceVersion: 3,
+      sourceHash: "sha256:source",
+      promptVersion: "prompt-v1",
+      schemaVersion: "schema-v1",
+      providerOutput: {
+        suggestions: [
+          {
+            fieldPath: "attributes.material",
+            suggestedValue: "Cotton",
+            generatedPayload: { value: "bearer token leaked" },
+            evidence,
+          },
+        ],
+      },
+    });
+
+    expect(result.schemaValid).toBe(false);
+    expect(result.errors.join("\n")).toContain("forbidden sensitive telemetry");
+    expect(result.outputPayloadHash).toBeUndefined();
+  });
 });
