@@ -78,6 +78,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   "AiTenantPolicy",
   "AiProviderBudgetPolicy",
   "AiProviderBudgetReservation",
+  "AiProviderBudgetCharge",
 ]);
 
 /**

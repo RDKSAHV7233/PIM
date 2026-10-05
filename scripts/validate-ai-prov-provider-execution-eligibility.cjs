@@ -1,21 +1,44 @@
 #!/usr/bin/env node
 
+/**
+ * AI-PROV-004a / 004b-i: static guard for the provider execution control plane.
+ *
+ * Proves, from source, that the control plane stays controls-only and fail-closed: default-deny schema and migration,
+ * BIGINT money, one fixed counter lock order, compare-and-set transitions, no provider SDK, network call, credential or
+ * Product mutation, no caller, and platform tables written only by operators. The runtime proof lives in
+ * apps/api/test/integration/ai-provider-budget-lifecycle.test.cjs (real PostgreSQL).
+ *
+ * `validateProviderExecutionEligibility(transforms, extra)` accepts per-source text transforms and an extra governed
+ * source string so the negative tests can prove each rule actually fires.
+ */
+
 const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
-const SERVICE = path.join(REPO_ROOT, "apps", "api", "src", "intelligence", "intelligence.service.ts");
-const TYPES = path.join(REPO_ROOT, "apps", "api", "src", "intelligence", "intelligence.types.ts");
-const SCHEMA = path.join(REPO_ROOT, "packages", "db", "prisma", "schema.prisma");
-const MIGRATION = path.join(
-  REPO_ROOT,
-  "packages",
-  "db",
-  "prisma",
-  "migrations",
-  "20261005003000_ai_provider_budget_controls",
-  "migration.sql",
-);
+const INTELLIGENCE_DIR = path.join(REPO_ROOT, "apps", "api", "src", "intelligence");
+const API_SRC = path.join(REPO_ROOT, "apps", "api", "src");
+const MIGRATIONS = path.join(REPO_ROOT, "packages", "db", "prisma", "migrations");
+
+const FILES = {
+  schema: path.join(REPO_ROOT, "packages", "db", "prisma", "schema.prisma"),
+  migration004a: path.join(MIGRATIONS, "20261005003000_ai_provider_budget_controls", "migration.sql"),
+  migration004b: path.join(MIGRATIONS, "20261005120000_ai_provider_budget_lifecycle", "migration.sql"),
+  control: path.join(INTELLIGENCE_DIR, "intelligence-execution-control.service.ts"),
+  gates: path.join(INTELLIGENCE_DIR, "intelligence-execution-gates.ts"),
+  money: path.join(INTELLIGENCE_DIR, "intelligence-money.ts"),
+  maintenance: path.join(INTELLIGENCE_DIR, "intelligence-reservation-maintenance.service.ts"),
+  types: path.join(INTELLIGENCE_DIR, "intelligence.types.ts"),
+  tenantScope: path.join(API_SRC, "prisma", "extensions", "tenant-scope.ts"),
+  integration: path.join(REPO_ROOT, "apps", "api", "test", "integration", "ai-provider-budget-lifecycle.test.cjs"),
+  packageJson: path.join(REPO_ROOT, "package.json"),
+  ci: path.join(REPO_ROOT, ".github", "workflows", "ci.yml"),
+};
+
+const ALLOWED_ENV_READS = new Map([
+  [path.join(INTELLIGENCE_DIR, "intelligence-execution-gates.ts"), new Set(["process.env"])],
+  [path.join(INTELLIGENCE_DIR, "intelligence-reservation-maintenance.service.ts"), new Set(["process.env.AI_RESERVATION_SWEEP_DISABLED"])],
+]);
 
 function read(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -25,16 +48,7 @@ function fail(errors, label, message) {
   errors.push(`${label}: ${message}`);
 }
 
-function extractMethod(source, methodName) {
-  const start = source.indexOf(`async ${methodName}(`);
-  if (start < 0) {
-    return "";
-  }
-  const nextMethod = source.slice(start + 1).search(/\n\s+(async\s+|private\s+)/);
-  return nextMethod < 0 ? source.slice(start) : source.slice(start, start + 1 + nextMethod);
-}
-
-function listSourceFiles(rootDir) {
+function listSourceFiles(rootDir, { includeSpecs = false } = {}) {
   const files = [];
   function visit(current) {
     if (!fs.existsSync(current)) {
@@ -43,11 +57,14 @@ function listSourceFiles(rootDir) {
     const stat = fs.statSync(current);
     if (stat.isDirectory()) {
       for (const child of fs.readdirSync(current)) {
+        if (child === "node_modules" || child === "dist") {
+          continue;
+        }
         visit(path.join(current, child));
       }
       return;
     }
-    if (/\.(ts|tsx|js|cjs|mjs)$/.test(current)) {
+    if (/\.(ts|tsx|js|cjs|mjs)$/.test(current) && (includeSpecs || !/\.spec\.ts$/.test(current))) {
       files.push(current);
     }
   }
@@ -55,107 +72,271 @@ function listSourceFiles(rootDir) {
   return files;
 }
 
-function validateProviderExecutionEligibility() {
-  const errors = [];
-  const service = read(SERVICE);
-  const types = read(TYPES);
-  const schema = read(SCHEMA);
-  const migration = read(MIGRATION);
-  const eligibilityMethod = extractMethod(service, "evaluateExecutionEligibility");
-  const governedSource = listSourceFiles(path.join(REPO_ROOT, "apps", "api", "src", "intelligence"))
-    .map(read)
-    .join("\n");
+function modelBlock(schema, name) {
+  const match = new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`).exec(schema);
+  return match ? match[0] : "";
+}
 
-  for (const modelName of ["AiProviderBudgetPolicy", "AiProviderBudgetReservation"]) {
-    if (!schema.includes(`model ${modelName}`)) {
+function validateProviderExecutionEligibility(transforms = {}, extraGoverned = "") {
+  const errors = [];
+  const src = {};
+  for (const [key, file] of Object.entries(FILES)) {
+    src[key] = read(file);
+    if (transforms[key]) {
+      src[key] = transforms[key](src[key]);
+    }
+  }
+  const governedFiles = listSourceFiles(INTELLIGENCE_DIR);
+  const governedSource = governedFiles.map(read).join("\n") + "\n" + extraGoverned;
+
+  // ---- schema ---------------------------------------------------------------------------------------------------
+  for (const modelName of ["AiProviderBudgetPolicy", "AiProviderBudgetReservation", "AiProviderBudgetCharge", "AiPlatformControl", "AiPlatformBudgetPeriod"]) {
+    if (!src.schema.includes(`model ${modelName} `)) {
       fail(errors, "schema", `must define ${modelName}`);
     }
   }
+  for (const modelName of ["AiExecution", "AiProviderBudgetPolicy", "AiProviderBudgetReservation", "AiProviderBudgetCharge", "AiPlatformControl", "AiPlatformBudgetPeriod"]) {
+    if (/Micros\s+Int\b/.test(modelBlock(src.schema, modelName))) {
+      fail(errors, "schema.money", `${modelName} must store micros as BigInt, never Int`);
+    }
+  }
+
+  // ---- 004a migration (still the creator of the budget tables) ---------------------------------------------------
   for (const tableName of ["ai_provider_budget_policies", "ai_provider_budget_reservations"]) {
-    if (!migration.includes(`CREATE TABLE "${tableName}"`)) {
-      fail(errors, "migration", `must create ${tableName}`);
+    if (!src.migration004a.includes(`CREATE TABLE "${tableName}"`)) {
+      fail(errors, "migration004a", `must create ${tableName}`);
     }
-    if (!migration.includes(`ALTER TABLE "${tableName}" ENABLE ROW LEVEL SECURITY`)) {
-      fail(errors, "migration", `${tableName} must enable RLS`);
+    if (!src.migration004a.includes(`ALTER TABLE "${tableName}" FORCE ROW LEVEL SECURITY`)) {
+      fail(errors, "migration004a", `${tableName} must force RLS`);
     }
-    if (!migration.includes(`ALTER TABLE "${tableName}" FORCE ROW LEVEL SECURITY`)) {
-      fail(errors, "migration", `${tableName} must force RLS`);
-    }
-    if (!migration.includes(`tenant_isolation_${tableName}`)) {
-      fail(errors, "migration", `${tableName} must have a tenant isolation policy`);
-    }
-  }
-  if (!/"enabled" BOOLEAN NOT NULL DEFAULT false/.test(migration)) {
-    fail(errors, "migration", "budget policy must default disabled");
-  }
-  if (!/"spend_limit_micros" INTEGER NOT NULL DEFAULT 0/.test(migration)) {
-    fail(errors, "migration", "spend limit must use integer micros and default to zero");
-  }
-  if (!/requested_estimated_cost_micros/.test(migration) || !/reserved_cost_micros/.test(migration)) {
-    fail(errors, "migration", "reservation must record requested and reserved integer costs");
-  }
-  if (!/non_negative/.test(migration)) {
-    fail(errors, "migration", "budget controls must reject negative counters and costs");
-  }
-  if (!/tenant_key", "capability", "provider_key", "execution_mode", "period_key"/.test(migration)) {
-    fail(errors, "migration", "budget indexes must include tenant/capability/provider/mode/period scope");
   }
 
-  if (!/EvaluateProviderExecutionEligibilityInput/.test(types) || !/ProviderExecutionEligibilityResult/.test(types)) {
-    fail(errors, "types", "must declare provider execution eligibility input/result contracts");
-  }
-  if (!/providerCallAttempted:\s*false/.test(types) || !/canonicalProductMutationEnabled:\s*false/.test(types)) {
-    fail(errors, "types", "eligibility result must expose no-call and no-mutation invariants");
-  }
-
-  if (!eligibilityMethod) {
-    fail(errors, "service", "must implement evaluateExecutionEligibility");
-  }
-  for (const required of [
-    "platformProviderExecutionEnabled",
-    "platformKillSwitchEnabled",
-    "approvedBy",
-    "approvedAt",
-    "maxPayloadBytes",
-    "allowedCapabilities",
-    "allowedProviderKeys",
-    "aiProviderBudgetReservation.findUnique",
-    "aiProviderBudgetPolicy.findFirst",
-    "$transaction",
-    "UPDATE \"ai_provider_budget_policies\"",
-    "\"tenant_key\" =",
-    "\"request_count\" < \"request_limit\"",
-    "\"reserved_spend_micros\" + \"spent_spend_micros\"",
-    "aiProviderBudgetReservation.update",
+  // ---- 004b-i migration ------------------------------------------------------------------------------------------
+  const m = src.migration004b;
+  for (const column of [
+    "spend_limit_micros",
+    "reserved_spend_micros",
+    "spent_spend_micros",
+    "requested_estimated_cost_micros",
+    "reserved_cost_micros",
+    "actual_cost_micros",
+    "estimated_cost_micros",
   ]) {
-    if (!eligibilityMethod.includes(required)) {
-      fail(errors, "service.evaluateExecutionEligibility", `must include ${required}`);
+    if (!new RegExp(`ALTER COLUMN "${column}" TYPE BIGINT`).test(m)) {
+      fail(errors, "migration004b", `must widen ${column} to BIGINT`);
     }
   }
-  if (!/platformProviderExecutionEnabled\s*!==\s*true/.test(eligibilityMethod)) {
-    fail(errors, "service.platformFlag", "platform feature flag must fail closed unless explicitly true");
+  if (!/spend_limit_micros" <= 1000000000000/.test(m)) {
+    fail(errors, "migration004b", "must cap spend limits at the USD 1,000,000 sanity ceiling");
   }
-  if (!/reservedCostMicros:\s*0/.test(service)) {
-    fail(errors, "service.deny", "denied execution must reserve zero cost");
+  for (const status of ["reserved", "dispatching", "reconciled", "cancelled", "expired", "budget_blocked"]) {
+    if (!new RegExp(`'${status}'`).test(m)) {
+      fail(errors, "migration004b", `reservation status set must include ${status}`);
+    }
   }
-  if (!/providerCallAttempted:\s*false\s+as\s+const/.test(service)) {
-    fail(errors, "service.invariant", "eligibility base must keep providerCallAttempted false");
+  if (!/"tenant_key", "request_fingerprint", "attempt_number"/.test(m)) {
+    fail(errors, "migration004b", "reservation key must be (tenant, fingerprint, attempt)");
+  }
+  if (!m.includes('ALTER TABLE "ai_provider_budget_charges" FORCE ROW LEVEL SECURITY') || !m.includes("tenant_isolation_ai_provider_budget_charges")) {
+    fail(errors, "migration004b", "charges must force RLS and carry a tenant isolation policy");
+  }
+  if (!/"enabled" BOOLEAN NOT NULL DEFAULT false/.test(m) || !/"kill_switch" BOOLEAN NOT NULL DEFAULT true/.test(m)) {
+    fail(errors, "migration004b", "platform control must default disabled with the kill switch on");
+  }
+  if (!/"max_request_cost_micros" BIGINT NOT NULL DEFAULT 0/.test(m) || !/"spend_limit_micros" BIGINT NOT NULL DEFAULT 0/.test(m)) {
+    fail(errors, "migration004b", "every limit must default to zero");
+  }
+  if (!/"allowed_tenant_keys" TEXT\[\] NOT NULL DEFAULT ARRAY\[\]::TEXT\[\]/.test(m)) {
+    fail(errors, "migration004b", "the tenant allow-list must default to empty");
+  }
+  if (!/INSERT INTO "ai_platform_controls" \("id"\) VALUES \('global'\)/.test(m)) {
+    fail(errors, "migration004b", "must seed exactly the default-deny platform control row");
+  }
+  if (/INSERT INTO "ai_platform_budget_periods"|INSERT INTO "ai_provider_budget_policies"/.test(m)) {
+    fail(errors, "migration004b", "must not seed any budget row: a missing row denies");
+  }
+  if (/_micros"[^\n]*DEFAULT [1-9]/.test(m)) {
+    fail(errors, "migration004b", "no money column may have a non-zero default");
   }
 
+  // explicit, read-only maintenance path for the sweeper and the audit
+  const maintenanceSelectOnly = m.includes("FOR SELECT USING (current_setting(''app.ai_maintenance'', true) = ''on'')");
+  const maintenanceWrites = /FOR (ALL|INSERT|UPDATE|DELETE)[^;]*app[.]ai_maintenance/.test(m);
+  if (!maintenanceSelectOnly || maintenanceWrites) {
+    fail(errors, "migration004b.maintenance", "the maintenance marker may grant SELECT only, never INSERT, UPDATE, DELETE or ALL");
+  }
+  for (const table of ["ai_provider_budget_policies", "ai_provider_budget_reservations", "ai_provider_budget_charges"]) {
+    if (!m.includes(`'${table}'`)) {
+      fail(errors, "migration004b.maintenance", `the read-only maintenance policy must cover ${table}`);
+    }
+  }
+  if (!/set_config\('app[.]ai_maintenance', 'on', true\)/.test(src.maintenance)) {
+    fail(errors, "maintenance.marker", "the sweeper and audit must set the maintenance marker transaction-locally (set_config third argument true)");
+  }
+  if (/set_config\('app[.]ai_maintenance'[^)]*false\)|SET\s+(SESSION\s+)?app[.]ai_maintenance/i.test(src.maintenance)) {
+    fail(errors, "maintenance.marker", "the maintenance marker must never be set at session scope");
+  }
+  for (const file of governedFiles) {
+    if (file !== FILES.maintenance && /app[.]ai_maintenance/.test(read(file))) {
+      fail(errors, "maintenance.marker", `${path.relative(REPO_ROOT, file)} must not set or read the maintenance marker`);
+    }
+  }
+  if (/app[.]ai_maintenance/.test(extraGoverned)) {
+    fail(errors, "maintenance.marker", "extra source touches the maintenance marker");
+  }
+  if (!/NOSUPERUSER NOBYPASSRLS/.test(src.integration) || !/rolbypassrls/.test(src.integration)) {
+    fail(errors, "integration.role", "the real-PostgreSQL test must run the services as a role that is neither superuser nor BYPASSRLS");
+  }
+
+  // ---- gates ------------------------------------------------------------------------------------------------------
+  if (!/DEPLOY_FLAG_ENV = "FEATURE_INTELLIGENCE_PROVIDER_ENABLED"/.test(src.gates)) {
+    fail(errors, "gates", "the deploy flag must be FEATURE_INTELLIGENCE_PROVIDER_ENABLED");
+  }
+  if (!/raw\.trim\(\)\.toLowerCase\(\) === "true"/.test(src.gates)) {
+    fail(errors, "gates.flag", "the deploy flag must be ON only for the exact word true");
+  }
+  if (!/CHARGE_ORDER[^=]*=\s*\["platform_month", "platform_day", "tenant_month", "tenant_day"\]/.test(src.gates)) {
+    fail(errors, "gates.order", "counters must be charged in the one fixed order: platform month, platform day, tenant month, tenant day");
+  }
+  for (const reason of ["platform_control_missing", "platform_kill_switch", "tenant_not_allowlisted", "provider_pin_mismatch", "request_cost_exceeded"]) {
+    if (!src.gates.includes(`"${reason}"`)) {
+      fail(errors, "gates", `must deny with ${reason}`);
+    }
+  }
+  if (!/LIVE_PROVIDER_CAPABILITY_ALLOWLIST[^=]*=\s*\["[a-z_]+"\]/.test(src.gates)) {
+    fail(errors, "gates", "the code-level live allow-list must name exactly one capability");
+  }
+
+  // ---- control service --------------------------------------------------------------------------------------------
+  const c = src.control;
+  if (!/if \(!this\.deployFlagEnabled\(\)\)/.test(c)) {
+    fail(errors, "control.flag", "admission must deny unless the deploy flag is on");
+  }
+  if (c.indexOf("deployFlagEnabled()") > c.indexOf("readPlatformGate(parsed)")) {
+    fail(errors, "control.order", "the deploy flag must be checked before any control is read");
+  }
+  if ((c.match(/for \(const scope of CHARGE_ORDER\)/g) ?? []).length < 2 || !/CHARGE_ORDER\.indexOf\(/.test(c)) {
+    fail(errors, "control.lockOrder", "validation and charging must iterate CHARGE_ORDER, and settlement must sort its charges by it");
+  }
+  if (!/status: "reserved", expiresAt: \{ gt: now \}/.test(c)) {
+    fail(errors, "control.claim", "the claim must be a compare-and-set on status reserved and an unexpired reservation");
+  }
+  if (!/status: \{ in: fromStatuses \}/.test(c)) {
+    fail(errors, "control.settle", "settlement must be a compare-and-set on the current status");
+  }
+  if (!/OR: \[\{ status: "reserved" \}, \{ claimToken: ref\.claimToken \?\? "" \}\]/.test(c)) {
+    fail(errors, "control.token", "leaving dispatching must require the claim token");
+  }
+  for (const required of ['"request_count" < "request_limit"', '"reserved_spend_micros" + "spent_spend_micros"', "RETURNING", "tx.$queryRaw"]) {
+    if (!c.includes(required)) {
+      fail(errors, "control.reserve", `must include ${required}`);
+    }
+  }
+  if ((c.match(/"reserved_spend_micros" \+ "spent_spend_micros" \+ \$\{estimate\}\) <= "spend_limit_micros"/g) ?? []).length !== 2) {
+    fail(errors, "control.reserve", "tenant and platform counters must both use the conditional remaining-budget predicate");
+  }
+  for (const required of ["revalidateBeforeDispatch", "loadPlatformControl", "evaluateTenantPolicy", "evaluateBudgetCounterRow", "leaseExpiresAt"]) {
+    if (!c.includes(required)) {
+      fail(errors, "control.revalidate", `pre-dispatch re-validation must use ${required}`);
+    }
+  }
+  if (!/control_unreadable/.test(c)) {
+    fail(errors, "control.failClosed", "an unreadable control must deny");
+  }
+  for (const file of ["control", "gates", "money", "maintenance"]) {
+    if (/\bNumber\(|\bparseInt\(|\bparseFloat\(|\+\s*\w*[Mm]icros\w*\s*\)|\.toNumber\(/.test(src[file])) {
+      fail(errors, `${file}.money`, "money must never be converted to a JavaScript number");
+    }
+  }
+  if (/BigInt\.prototype\.toJSON\s*=|Object\.defineProperty\(\s*BigInt\.prototype/.test(governedSource)) {
+    fail(errors, "money.toJSON", "a global BigInt serialisation patch is forbidden: it hides unsafe conversions");
+  }
+
+  // ---- maintenance ------------------------------------------------------------------------------------------------
+  if (!/runWithAdvisoryLock/.test(src.maintenance) || !/\.unref\(\)/.test(src.maintenance)) {
+    fail(errors, "maintenance", "the scheduled sweeper must hold an advisory lock and unref its timers");
+  }
+  if (/\$executeRaw|\$executeRawUnsafe|UPDATE |DELETE |INSERT /.test(src.maintenance)) {
+    fail(errors, "maintenance.audit", "the counter audit and sweeper discovery must never write directly");
+  }
+
+  // ---- types ------------------------------------------------------------------------------------------------------
+  if (!/providerCallAttempted:\s*false/.test(src.types) || !/canonicalProductMutationEnabled:\s*false/.test(src.types)) {
+    fail(errors, "types", "admission results must expose the no-call and no-mutation invariants");
+  }
+  if (/requestedEstimatedCostMicros:\s*(number|bigint)\s*;|reservedCostMicros:\s*(number|bigint)\s*;/.test(src.types)) {
+    fail(errors, "types.money", "results must carry money as decimal strings, never a number or bigint");
+  }
+
+  // ---- tenant scope -----------------------------------------------------------------------------------------------
+  if (!/"AiProviderBudgetCharge"/.test(src.tenantScope)) {
+    fail(errors, "tenantScope", "AiProviderBudgetCharge has a tenant_key and must be tenant scoped");
+  }
+
+  // ---- governed source: no SDK, no network, no credentials, no Product mutation -----------------------------------
   if (/from\s+["'](openai|@openai\/openai|@anthropic-ai\/sdk|@google\/generative-ai|google-genai|langchain|@langchain\/[^"']+|cohere-ai|mistralai|groq-sdk|replicate|ollama|ai)["']/.test(governedSource)) {
-    fail(errors, "source.sdk", "004a must not import provider/model SDKs");
+    fail(errors, "source.sdk", "004b-i must not import provider/model SDKs");
   }
-  if (/\b(fetch\s*\(|axios\.|new\s+OpenAI|new\s+Anthropic|GoogleGenerativeAI)\b/.test(governedSource)) {
-    fail(errors, "source.network", "004a must not add provider/network execution");
+  if (/\bfetch\s*\(|\baxios\.|\bundici\b|node:https?|\bnew\s+OpenAI\b|\bnew\s+Anthropic\b|\bGoogleGenerativeAI\b|\bXMLHttpRequest\b/.test(governedSource)) {
+    fail(errors, "source.network", "004b-i must not add provider or network execution");
   }
-  if (/process\.env\.[A-Z0-9_]*(OPENAI|ANTHROPIC|MODEL|PROVIDER|API_KEY|SECRET|TOKEN)/.test(governedSource)) {
-    fail(errors, "source.credentials", "004a must not read provider credentials or model config");
+  if (/api[_-]?key|authorization:|bearer\s/i.test(src.control + src.gates + src.maintenance + src.money)) {
+    fail(errors, "source.credentials", "the control plane must not handle provider credentials");
   }
   if (/product\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(governedSource)) {
-    fail(errors, "source.productMutation", "004a must not mutate Product records");
+    fail(errors, "source.productMutation", "004b-i must not mutate Product records");
   }
   if (/auto-suggestions|AutoSuggestions(Module|Service)/.test(governedSource)) {
-    fail(errors, "source.autoSuggestions", "004a must not reuse AutoSuggestions");
+    fail(errors, "source.autoSuggestions", "004b-i must not reuse AutoSuggestions");
+  }
+  if (/aiSuggestion\.(create|createMany|upsert|update|updateMany)\s*\(/.test(src.control + src.maintenance + src.gates)) {
+    fail(errors, "source.suggestions", "the control plane must not persist suggestions");
+  }
+  if (/@(Post|Patch|Put|Delete|Get)\s*\(/.test(src.control + src.maintenance)) {
+    fail(errors, "source.routes", "the control plane must expose no route");
+  }
+
+  // environment reads are an explicit allow-list
+  for (const file of governedFiles) {
+    const text = read(file);
+    const allowed = ALLOWED_ENV_READS.get(file) ?? new Set();
+    for (const hit of text.match(/process\.env(?:\.[A-Za-z0-9_]+)?/g) ?? []) {
+      if (!allowed.has(hit)) {
+        fail(errors, "source.env", `${path.relative(REPO_ROOT, file)} reads ${hit}, which is not on the allow-list`);
+      }
+    }
+  }
+  for (const hit of extraGoverned.match(/process\.env(?:\.[A-Za-z0-9_]+)?/g) ?? []) {
+    fail(errors, "source.env", `extra source reads ${hit}, which is not on the allow-list`);
+  }
+
+  // platform tables are written by operators, never by the API
+  const apiSource = listSourceFiles(API_SRC).map(read).join("\n") + "\n" + src.control;
+  if (/aiPlatformControl\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(apiSource)) {
+    fail(errors, "platform.write", "the platform control row may be written only by operators, never by application code");
+  }
+  if (/aiPlatformBudgetPeriod\.(create|createMany|upsert|delete|deleteMany)\s*\(/.test(apiSource)) {
+    fail(errors, "platform.write", "platform budget periods may be configured only by operators");
+  }
+
+  // no caller: nothing outside the module may reach the guarded run
+  for (const file of listSourceFiles(API_SRC)) {
+    const text = read(file);
+    const inside = file.startsWith(INTELLIGENCE_DIR);
+    if (!inside && /IntelligenceExecutionControlService|IntelligenceReservationMaintenanceService|runWithReservation/.test(text)) {
+      fail(errors, "caller", `${path.relative(REPO_ROOT, file)} must not reference the provider control plane`);
+    }
+    if (inside && !/intelligence-execution-control\.service\.ts$|intelligence-reservation-maintenance\.service\.ts$|intelligence\.module\.ts$/.test(file) && /runWithReservation/.test(text)) {
+      fail(errors, "caller", `${path.relative(REPO_ROOT, file)} must not call runWithReservation`);
+    }
+  }
+
+  // ---- the real-PostgreSQL proof is wired into CI -----------------------------------------------------------------
+  if (!/"test:integration:ai-provider-budget-lifecycle"/.test(src.packageJson)) {
+    fail(errors, "ci", "package.json must define test:integration:ai-provider-budget-lifecycle");
+  }
+  if (!/npm run test:integration:ai-provider-budget-lifecycle/.test(src.ci)) {
+    fail(errors, "ci", "CI must run the real-PostgreSQL budget lifecycle test");
   }
 
   return { ok: errors.length === 0, errors };
@@ -164,14 +345,14 @@ function validateProviderExecutionEligibility() {
 function runCli() {
   const result = validateProviderExecutionEligibility();
   if (!result.ok) {
-    console.error("AI-PROV-004a provider execution eligibility validation failed:");
+    console.error("AI-PROV-004b-i provider execution control plane validation failed:");
     for (const error of result.errors) {
       console.error(`- ${error}`);
     }
     process.exit(1);
   }
 
-  console.log("AI-PROV-004a provider execution eligibility validation passed: fail-closed controls only.");
+  console.log("AI-PROV-004b-i provider execution control plane validation passed: fail-closed controls only, no provider call.");
 }
 
 if (require.main === module) {

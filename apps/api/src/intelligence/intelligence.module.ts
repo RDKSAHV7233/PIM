@@ -5,6 +5,8 @@ import { IntelligenceCapabilityRegistry } from "./intelligence-capability.regist
 import { IntelligenceController } from "./intelligence.controller";
 import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
 import { INTELLIGENCE_PROVIDER_ADAPTER } from "./intelligence-adapter-boundary";
+import { IntelligenceExecutionControlService } from "./intelligence-execution-control.service";
+import { IntelligenceReservationMaintenanceService } from "./intelligence-reservation-maintenance.service";
 import { IntelligenceService } from "./intelligence.service";
 
 @Module({
@@ -14,6 +16,8 @@ import { IntelligenceService } from "./intelligence.service";
     FixtureIntelligenceAdapter,
     { provide: INTELLIGENCE_PROVIDER_ADAPTER, useExisting: FixtureIntelligenceAdapter },
     IntelligenceCapabilityRegistry,
+    IntelligenceExecutionControlService,
+    IntelligenceReservationMaintenanceService,
     IntelligenceService,
   ],
 })

@@ -115,8 +115,9 @@ export interface FinalizeAiExecutionInput {
   cachedInputTokens?: number;
   reasoningTokens?: number;
   billableUnits?: number;
-  estimatedCostMicros?: number;
-  actualCostMicros?: number | null;
+  /** Micros as a bigint, a decimal string, or a safe non-negative integer. */
+  estimatedCostMicros?: bigint | string | number;
+  actualCostMicros?: bigint | string | number | null;
   currency?: string;
   costSource?: AiExecutionCostSource;
   pricingVersion?: string | null;
@@ -199,6 +200,12 @@ export type AiProviderExecutionDecision = "ALLOW" | "DENY";
 export type AiProviderExecutionDenialReason =
   | "platform_feature_disabled"
   | "platform_kill_switch"
+  | "platform_control_missing"
+  | "platform_control_invalid"
+  | "control_unreadable"
+  | "tenant_not_allowlisted"
+  | "provider_pin_mismatch"
+  | "request_cost_exceeded"
   | "missing_tenant_policy"
   | "invalid_tenant_policy"
   | "tenant_provider_disabled"
@@ -208,41 +215,87 @@ export type AiProviderExecutionDenialReason =
   | "invalid_budget_policy"
   | "budget_exhausted"
   | "budget_indeterminate"
+  | "reservation_in_flight"
+  | "reservation_settled"
   | "invalid_request";
 
-export interface EvaluateProviderExecutionEligibilityInput {
+/** The counters one reservation charges, in the fixed order they are locked. */
+export type AiBudgetChargeScope = "tenant_day" | "tenant_month" | "platform_day" | "platform_month";
+
+export type AiReservationStatus = "reserved" | "dispatching" | "reconciled" | "cancelled" | "expired" | "budget_blocked";
+
+export interface AdmitProviderExecutionInput {
   tenantKey: string;
   capability: IntelligenceCapabilityId;
-  providerKey?: string;
+  providerKey: string;
+  /** The model the caller intends to use. It must equal the platform pin. */
+  modelKey: string;
   executionMode?: AiProviderExecutionMode;
-  budgetPeriodKey: string;
   requestFingerprint: string;
-  requestedEstimatedCostMicros: number;
+  /** One reservation per billable attempt. Defaults to 1. */
+  attemptNumber?: number;
+  /** Worst-case cost in micros: a bigint, a decimal string, or a safe non-negative integer. */
+  requestedEstimatedCostMicros: bigint | string | number;
   currency?: string;
   correlationId?: string | null;
-  platformProviderExecutionEnabled?: boolean;
-  platformKillSwitchEnabled?: boolean;
 }
 
-export interface ProviderExecutionEligibilityResult {
+/** Money is a decimal string on this boundary. The control plane never exposes a bigint or a number. */
+export interface ProviderAdmissionResult {
   decision: AiProviderExecutionDecision;
   allowed: boolean;
   denialReason?: AiProviderExecutionDenialReason;
   tenantKey: string;
-  capability: IntelligenceCapabilityId;
+  capability: string;
   providerKey: string;
+  modelKey: string;
   executionMode: AiProviderExecutionMode;
+  attemptNumber: number;
+  requestFingerprint: string;
+  requestedEstimatedCostMicros: string;
+  reservedCostMicros: string;
+  currency: string;
   policyId?: string;
   policyVersion?: string;
-  budgetPolicyId?: string;
-  budgetPeriodKey: string;
   reservationId?: string;
-  requestFingerprint: string;
-  requestedEstimatedCostMicros: number;
-  reservedCostMicros: number;
-  currency: string;
+  reservationStatus?: AiReservationStatus;
+  budgetPeriodKeys?: { day: string; month: string };
   providerCallAttempted: false;
   canonicalProductMutationEnabled: false;
+}
+
+export interface ReservationRef {
+  tenantKey: string;
+  reservationId: string;
+}
+
+export type ReservationClaimResult =
+  | { claimed: true; claimToken: string; leaseExpiresAt: Date }
+  | { claimed: false; reason: "duplicate_in_flight" | "not_reserved" | "expired" | "not_found" };
+
+/** How a dispatched request ended, as far as billing is concerned. Release to zero only on proof of no billable work. */
+export type ReservationSettlement =
+  | { kind: "reconcile"; actualCostMicros: bigint | string | number }
+  | { kind: "cancel"; reason: string }
+  | { kind: "expire_unknown_billing"; reason: string };
+
+export type ReservationSettlementResult =
+  | { applied: true; status: "reconciled" | "cancelled" | "expired"; settledCostMicros: string; overrun: boolean }
+  | { applied: false; status: AiReservationStatus | "not_found"; reconcileConflict: boolean };
+
+export interface ProviderReservationSweepSummary {
+  scanned: number;
+  cancelledUnclaimed: number;
+  expiredDispatching: number;
+  skipped: number;
+}
+
+export interface ProviderCounterAuditRow {
+  scope: AiBudgetChargeScope;
+  counterRowId: string;
+  field: "reserved" | "spent" | "requests";
+  recorded: string;
+  expected: string;
 }
 
 export interface ClassifyIntelligencePayloadInput {

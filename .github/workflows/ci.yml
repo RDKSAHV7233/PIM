@@ -312,6 +312,9 @@ jobs:
       - name: Tenant isolation concurrency integration test
         run: npm run test:integration:rls-isolation
 
+      - name: AI provider budget lifecycle integration test (real PostgreSQL)
+        run: npm run test:integration:ai-provider-budget-lifecycle
+
       - name: Amazon authoritative validation integration test
         run: npm run test:integration:amazon-authoritative-validation
 

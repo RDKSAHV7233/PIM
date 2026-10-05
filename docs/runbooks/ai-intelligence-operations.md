@@ -24,6 +24,17 @@ Required operator behavior:
 - Reviewers can still view existing suggestions and audit evidence.
 - Core PIM health checks remain green unless there is an unrelated platform incident.
 
+### Platform control row (AI-PROV-004b-i)
+
+The fast, platform-wide kill switch is the single row `ai_platform_controls` (`id = 'global'`). It is read on every call, at admission and again immediately before dispatch, and an unreadable or missing row denies. It does not need a deploy and does not restart the API.
+
+```sql
+-- Stop all provider execution now (idempotent).
+UPDATE ai_platform_controls SET kill_switch = true, updated_by = '<operator>', updated_at = NOW() WHERE id = 'global';
+```
+
+The seeded state is disabled with the kill switch on, no provider, no model, no allow-listed tenant and a zero request cap. Enabling is a gated change recorded per the AI-PROV-004b design (sections 11 and 12), not a routine operation. The deploy flag `FEATURE_INTELLIGENCE_PROVIDER_ENABLED` is a second, deploy-time gate that is on only for the exact value `true`. See `docs/qa/ai-prov-004b-i-lifecycle-2026-10-05.md`.
+
 ## Queue Behavior
 
 Future AI jobs must define:

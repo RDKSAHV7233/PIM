@@ -1724,8 +1724,8 @@ model AiExecution {
   reasoningTokens             Int                      @default(0) @map("reasoning_tokens")
   totalTokens                 Int                      @default(0) @map("total_tokens")
   billableUnits               Int                      @default(0) @map("billable_units")
-  estimatedCostMicros         Int                      @default(0) @map("estimated_cost_micros")
-  actualCostMicros            Int?                     @map("actual_cost_micros")
+  estimatedCostMicros         BigInt                   @default(0) @map("estimated_cost_micros")
+  actualCostMicros            BigInt?                  @map("actual_cost_micros")
   currency                    String                   @default("USD")
   costSource                  AiExecutionCostSource    @default(none) @map("cost_source")
   pricingVersion              String?                  @map("pricing_version")
@@ -1858,9 +1858,9 @@ model AiProviderBudgetPolicy {
   policyVersion        String                        @map("policy_version")
   enabled              Boolean                       @default(false)
   requestLimit         Int                           @default(0) @map("request_limit")
-  spendLimitMicros     Int                           @default(0) @map("spend_limit_micros")
-  reservedSpendMicros  Int                           @default(0) @map("reserved_spend_micros")
-  spentSpendMicros     Int                           @default(0) @map("spent_spend_micros")
+  spendLimitMicros     BigInt                        @default(0) @map("spend_limit_micros")
+  reservedSpendMicros  BigInt                        @default(0) @map("reserved_spend_micros")
+  spentSpendMicros     BigInt                        @default(0) @map("spent_spend_micros")
   requestCount         Int                           @default(0) @map("request_count")
   currency             String                        @default("USD")
   periodKey            String                        @map("period_key")
@@ -1890,18 +1890,83 @@ model AiProviderBudgetReservation {
   executionMode                 String                 @default("live_provider") @map("execution_mode")
   periodKey                     String                 @map("period_key")
   requestFingerprint            String                 @map("request_fingerprint")
-  requestedEstimatedCostMicros  Int                    @map("requested_estimated_cost_micros")
-  reservedCostMicros            Int                    @default(0) @map("reserved_cost_micros")
-  actualCostMicros              Int?                   @map("actual_cost_micros")
+  attemptNumber                 Int                    @default(1) @map("attempt_number")
+  requestedEstimatedCostMicros  BigInt                 @map("requested_estimated_cost_micros")
+  reservedCostMicros            BigInt                 @default(0) @map("reserved_cost_micros")
+  actualCostMicros              BigInt?                @map("actual_cost_micros")
   currency                      String                 @default("USD")
   status                        String                 @default("reserved")
   correlationId                 String?                @map("correlation_id")
   executionId                   String?                @map("execution_id")
+  expiresAt                     DateTime               @default(dbgenerated("(NOW() + INTERVAL '15 minutes')")) @map("expires_at")
+  claimedAt                     DateTime?              @map("claimed_at")
+  leaseExpiresAt                DateTime?              @map("lease_expires_at")
+  claimToken                    String?                @map("claim_token")
+  settledAt                     DateTime?              @map("settled_at")
+  settlementReason              String?                @map("settlement_reason")
+  charges                       AiProviderBudgetCharge[]
   createdAt                     DateTime               @default(now()) @map("created_at")
   updatedAt                     DateTime               @updatedAt @map("updated_at")
 
-  @@unique([tenantKey, requestFingerprint], map: "ai_provider_budget_reservations_tenant_fingerprint_unique")
+  @@unique([tenantKey, requestFingerprint, attemptNumber], map: "ai_prov_budget_reservations_tenant_fp_attempt_unique")
+  @@index([status, expiresAt], map: "idx_ai_provider_budget_reservations_status_expires")
+  @@index([status, leaseExpiresAt], map: "idx_ai_provider_budget_reservations_status_lease")
   @@index([tenantKey, budgetPolicyId, status], map: "idx_ai_provider_budget_reservations_policy_status")
   @@index([tenantKey, capability, providerKey, executionMode, periodKey], map: "idx_ai_provider_budget_reservations_scope")
   @@map("ai_provider_budget_reservations")
+}
+
+// AI-PROV-004b-i: one row per counter a reservation charged, so settlement reverses exactly those counters.
+model AiProviderBudgetCharge {
+  id                  String                      @id @default(cuid())
+  tenantKey           String                      @default("default") @map("tenant_key")
+  reservationId       String                      @map("reservation_id")
+  reservation         AiProviderBudgetReservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  scope               String
+  counterRowId        String                      @map("counter_row_id")
+  amountMicros        BigInt                      @map("amount_micros")
+  settledAmountMicros BigInt?                     @map("settled_amount_micros")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+
+  @@unique([reservationId, scope], map: "ai_provider_budget_charges_reservation_scope_unique")
+  @@index([tenantKey, reservationId], map: "idx_ai_provider_budget_charges_tenant_reservation")
+  @@index([counterRowId, scope], map: "idx_ai_provider_budget_charges_counter")
+  @@map("ai_provider_budget_charges")
+}
+
+// AI-PROV-004b-i: single platform control row (id = "global"). Not tenant scoped. Default: disabled, kill switch on.
+model AiPlatformControl {
+  id                   String   @id
+  enabled              Boolean  @default(false)
+  killSwitch           Boolean  @default(true) @map("kill_switch")
+  allowedProvider      String?  @map("allowed_provider")
+  allowedModel         String?  @map("allowed_model")
+  allowedTenantKeys    String[] @default([]) @map("allowed_tenant_keys")
+  maxRequestCostMicros BigInt   @default(0) @map("max_request_cost_micros")
+  updatedBy            String?  @map("updated_by")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @default(now()) @map("updated_at")
+
+  @@map("ai_platform_controls")
+}
+
+// AI-PROV-004b-i: platform-wide day and month spend counters. Not tenant scoped. No rows are seeded.
+model AiPlatformBudgetPeriod {
+  id                  String   @id @default(cuid())
+  periodKey           String   @unique @map("period_key")
+  enabled             Boolean  @default(false)
+  spendLimitMicros    BigInt   @default(0) @map("spend_limit_micros")
+  reservedSpendMicros BigInt   @default(0) @map("reserved_spend_micros")
+  spentSpendMicros    BigInt   @default(0) @map("spent_spend_micros")
+  requestLimit        Int      @default(0) @map("request_limit")
+  requestCount        Int      @default(0) @map("request_count")
+  currency            String   @default("USD")
+  periodStartedAt     DateTime @map("period_started_at")
+  periodEndsAt        DateTime @map("period_ends_at")
+  updatedBy           String?  @map("updated_by")
+  version             Int      @default(0)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @map("updated_at")
+
+  @@map("ai_platform_budget_periods")
 }

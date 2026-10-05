@@ -19,16 +19,15 @@ import {
   normalizeIntelligenceAdapterException,
   normalizeIntelligenceAdapterFailure,
 } from "./intelligence-adapter-boundary";
+import { InvalidMoneyError, parseMicros } from "./intelligence-money";
 import type {
   AiDataClassification,
   AiFieldClassificationRule,
   ClassifyIntelligencePayloadInput,
   CreateAiSuggestionInput,
   CreateAiExecutionInput,
-  EvaluateProviderExecutionEligibilityInput,
   FinalizeAiExecutionInput,
   FixtureIntelligenceAdapterRunResult,
-  ProviderExecutionEligibilityResult,
   IntelligenceActor,
   IntelligenceBoundaryStatus,
   IntelligenceCapabilitySummary,
@@ -153,10 +152,11 @@ export class IntelligenceService {
     const reasoningTokens = this.nonNegativeInteger("reasoningTokens", input.reasoningTokens ?? 0);
     const totalTokens = inputTokens + outputTokens + cachedInputTokens + reasoningTokens;
     const providerCallAttempted = Boolean(input.providerCallAttempted);
-    const estimatedCostMicros = this.nonNegativeInteger("estimatedCostMicros", input.estimatedCostMicros ?? 0);
-    const actualCostMicros = this.optionalNonNegativeInteger("actualCostMicros", input.actualCostMicros);
+    const estimatedCostMicros = this.microsInput("estimatedCostMicros", input.estimatedCostMicros ?? 0);
+    const actualCostMicros =
+      input.actualCostMicros === null || input.actualCostMicros === undefined ? null : this.microsInput("actualCostMicros", input.actualCostMicros);
 
-    if (!providerCallAttempted && estimatedCostMicros !== 0) {
+    if (!providerCallAttempted && estimatedCostMicros !== 0n) {
       throw new BadRequestException("Blocked executions cannot record provider cost.");
     }
     if (!providerCallAttempted && actualCostMicros !== null) {
@@ -188,7 +188,7 @@ export class IntelligenceService {
         estimatedCostMicros,
         actualCostMicros,
         currency: this.safeCurrency(input.currency),
-        costSource: input.costSource ?? (estimatedCostMicros > 0 ? "estimated" : "none"),
+        costSource: input.costSource ?? (estimatedCostMicros > 0n ? "estimated" : "none"),
         pricingVersion: this.safeText(input.pricingVersion),
         failureClass: input.failureClass ?? null,
         failureCode: this.safeText(input.failureCode),
@@ -282,209 +282,6 @@ export class IntelligenceService {
         auditEventIds: this.stringArray(input.auditEventIds) as Prisma.InputJsonValue,
         updatedByActorId: this.safeText(input.updatedByActorId),
       },
-    });
-  }
-
-  async evaluateExecutionEligibility(
-    input: EvaluateProviderExecutionEligibilityInput,
-  ): Promise<ProviderExecutionEligibilityResult> {
-    const tenantKey = normalizeTenantKey(input.tenantKey);
-    const capability = this.requiredText("capability", input.capability);
-    const providerKey = this.requiredText("providerKey", input.providerKey ?? "default");
-    const executionMode = this.requiredText("executionMode", input.executionMode ?? "live_provider");
-    const budgetPeriodKey = this.requiredText("budgetPeriodKey", input.budgetPeriodKey);
-    const requestFingerprint = this.requiredText("requestFingerprint", input.requestFingerprint);
-    const requestedEstimatedCostMicros = this.positiveInteger(
-      "requestedEstimatedCostMicros",
-      input.requestedEstimatedCostMicros,
-    );
-    const currency = this.safeCurrency(input.currency);
-
-    const base = {
-      tenantKey,
-      capability: capability as EvaluateProviderExecutionEligibilityInput["capability"],
-      providerKey,
-      executionMode: executionMode as AiProviderExecutionMode,
-      budgetPeriodKey,
-      requestFingerprint,
-      requestedEstimatedCostMicros,
-      currency,
-      providerCallAttempted: false as const,
-      canonicalProductMutationEnabled: false as const,
-    };
-
-    if (input.platformProviderExecutionEnabled !== true) {
-      return this.denyExecution(base, "platform_feature_disabled");
-    }
-    if (input.platformKillSwitchEnabled === true) {
-      return this.denyExecution(base, "platform_kill_switch");
-    }
-    if (executionMode !== "live_provider") {
-      return this.denyExecution(base, "execution_mode_disabled");
-    }
-    if (!this.capabilityRegistry.isInAi001Scope(capability) || this.capabilityRegistry.isExplicitlyOutOfScope(capability)) {
-      return this.denyExecution(base, "capability_disallowed");
-    }
-
-    const db = this.prisma.tenant(tenantKey);
-    return db.$transaction(async (tx) => {
-      const policy = await tx.aiTenantPolicy.findFirst({
-        where: {
-          tenantKey,
-          capability,
-          providerKey,
-          status: "active",
-        },
-        orderBy: {
-          updatedAt: "desc",
-        },
-      });
-
-      if (!policy) {
-        return this.denyExecution(base, "missing_tenant_policy");
-      }
-
-      const policyResult = { ...base, policyId: policy.id, policyVersion: policy.policyVersion };
-      if (
-        !policy.intelligenceEnabled ||
-        !policy.providerExecutionEnabled ||
-        policy.killSwitchEnabled ||
-        policy.tenantOptOut
-      ) {
-        return this.denyExecution(policyResult, "tenant_provider_disabled");
-      }
-      if (!policy.approvedBy || !policy.approvedAt) {
-        return this.denyExecution(policyResult, "invalid_tenant_policy");
-      }
-      if (policy.maxPayloadBytes <= 0) {
-        return this.denyExecution(policyResult, "invalid_tenant_policy");
-      }
-      if (!this.jsonStringArray(policy.allowedCapabilities).includes(capability)) {
-        return this.denyExecution(policyResult, "capability_disallowed");
-      }
-      if (!this.jsonStringArray(policy.allowedProviderKeys).includes(providerKey)) {
-        return this.denyExecution(policyResult, "tenant_provider_disabled");
-      }
-
-      const existingReservation = await tx.aiProviderBudgetReservation.findUnique({
-        where: {
-          tenantKey_requestFingerprint: {
-            tenantKey,
-            requestFingerprint,
-          },
-        },
-      });
-      if (existingReservation) {
-        const existingResult = {
-          ...policyResult,
-          budgetPolicyId: existingReservation.budgetPolicyId,
-          reservationId: existingReservation.id,
-          reservedCostMicros: existingReservation.reservedCostMicros,
-        };
-        if (
-          existingReservation.status === "reserved" &&
-          existingReservation.capability === capability &&
-          existingReservation.providerKey === providerKey &&
-          existingReservation.executionMode === executionMode &&
-          existingReservation.periodKey === budgetPeriodKey &&
-          existingReservation.currency === currency
-        ) {
-          return this.allowExecution(existingResult);
-        }
-        if (existingReservation.status === "budget_blocked") {
-          return this.denyExecution(existingResult, "budget_exhausted");
-        }
-        return this.denyExecution(existingResult, "budget_indeterminate");
-      }
-
-      const budgetPolicy = await tx.aiProviderBudgetPolicy.findFirst({
-        where: {
-          tenantKey,
-          capability,
-          providerKey,
-          executionMode,
-          periodKey: budgetPeriodKey,
-          enabled: true,
-        },
-        orderBy: {
-          updatedAt: "desc",
-        },
-      });
-
-      if (!budgetPolicy) {
-        return this.denyExecution(policyResult, "missing_budget_policy");
-      }
-
-      const budgetResult = { ...policyResult, budgetPolicyId: budgetPolicy.id };
-      const now = new Date();
-      if (
-        !budgetPolicy.enabled ||
-        budgetPolicy.requestLimit <= 0 ||
-        budgetPolicy.spendLimitMicros <= 0 ||
-        budgetPolicy.currency !== currency ||
-        budgetPolicy.periodEndsAt <= now ||
-        (budgetPolicy.effectiveFrom && budgetPolicy.effectiveFrom > now) ||
-        (budgetPolicy.effectiveUntil && budgetPolicy.effectiveUntil <= now)
-      ) {
-        return this.denyExecution(budgetResult, "invalid_budget_policy");
-      }
-      if (requestedEstimatedCostMicros > budgetPolicy.spendLimitMicros) {
-        return this.denyExecution(budgetResult, "budget_exhausted");
-      }
-
-      const reservation = await tx.aiProviderBudgetReservation.create({
-        data: {
-          tenantKey,
-          budgetPolicyId: budgetPolicy.id,
-          capability,
-          providerKey,
-          executionMode,
-          periodKey: budgetPeriodKey,
-          requestFingerprint,
-          requestedEstimatedCostMicros,
-          reservedCostMicros: 0,
-          currency,
-          status: "budget_blocked",
-          correlationId: this.safeText(input.correlationId),
-        },
-      });
-
-      // RLS-BYPASS: this conditional reservation updates one tenant-scoped budget row and includes tenant_key in the predicate.
-      const reservedRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        UPDATE "ai_provider_budget_policies"
-        SET
-          "reserved_spend_micros" = "reserved_spend_micros" + ${requestedEstimatedCostMicros},
-          "request_count" = "request_count" + 1,
-          "version" = "version" + 1,
-          "updated_at" = NOW()
-        WHERE "id" = ${budgetPolicy.id}
-          AND "tenant_key" = ${tenantKey}
-          AND "enabled" = true
-          AND "request_count" < "request_limit"
-          AND ("reserved_spend_micros" + "spent_spend_micros" + ${requestedEstimatedCostMicros}) <= "spend_limit_micros"
-        RETURNING "id"
-      `);
-
-      if (reservedRows.length !== 1) {
-        return this.denyExecution({ ...budgetResult, reservationId: reservation.id }, "budget_exhausted");
-      }
-
-      const committedReservation = await tx.aiProviderBudgetReservation.update({
-        where: {
-          id: reservation.id,
-          tenantKey,
-        },
-        data: {
-          status: "reserved",
-          reservedCostMicros: requestedEstimatedCostMicros,
-        },
-      });
-
-      return this.allowExecution({
-        ...budgetResult,
-        reservationId: committedReservation.id,
-        reservedCostMicros: committedReservation.reservedCostMicros,
-      });
     });
   }
 
@@ -1155,34 +952,6 @@ export class IntelligenceService {
     };
   }
 
-  private allowExecution(
-    result: Omit<ProviderExecutionEligibilityResult, "allowed" | "decision" | "reservedCostMicros"> & {
-      reservedCostMicros?: number;
-    },
-  ): ProviderExecutionEligibilityResult {
-    return {
-      ...result,
-      decision: "ALLOW",
-      allowed: true,
-      reservedCostMicros: result.reservedCostMicros ?? result.requestedEstimatedCostMicros,
-    };
-  }
-
-  private denyExecution(
-    result: Omit<ProviderExecutionEligibilityResult, "allowed" | "decision" | "denialReason" | "reservedCostMicros"> & {
-      reservedCostMicros?: number;
-    },
-    denialReason: ProviderExecutionEligibilityResult["denialReason"],
-  ): ProviderExecutionEligibilityResult {
-    return {
-      ...result,
-      decision: "DENY",
-      allowed: false,
-      denialReason,
-      reservedCostMicros: result.reservedCostMicros ?? 0,
-    };
-  }
-
   private async markSuggestionStatus(id: string, tenantKey: string, status: "blocked_stale" | "blocked_tampered", auditEventIds?: string[]) {
     await this.prisma.tenant(tenantKey).aiSuggestion.update({
       where: { id, tenantKey },
@@ -1395,6 +1164,18 @@ export class IntelligenceService {
       return null;
     }
     return normalized.slice(0, 500);
+  }
+
+  /** Money is a bigint inside the service. Numbers are accepted only as safe integers (see intelligence-money). */
+  private microsInput(field: string, value: unknown): bigint {
+    try {
+      return parseMicros(field, value);
+    } catch (error) {
+      if (error instanceof InvalidMoneyError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
   }
 
   private safeCurrency(value: string | null | undefined) {
