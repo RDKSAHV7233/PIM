@@ -2,6 +2,8 @@
 // Connector Contract — DO NOT change method signatures without updating all connector stubs
 // Review findings applied: normaliseError returns ConnectorIssue (not string)
 
+import type { ConnectorFetchRetryOptions } from "./connector-retry-policy";
+
 export type ConnectorCap =
   | 'PUBLISH'
   | 'VALIDATE'
@@ -16,7 +18,7 @@ export type ConnectorImplementationStatus = 'full' | 'partial' | 'stub';
 // CONTEXT — injected into every connector call
 // ─────────────────────────────────────────────
 
-export interface ConnectorFetchInit {
+export interface ConnectorFetchInit extends ConnectorFetchRetryOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: string | URLSearchParams | Buffer;

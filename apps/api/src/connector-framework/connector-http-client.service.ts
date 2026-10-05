@@ -2,8 +2,13 @@ import { Injectable } from "@nestjs/common";
 import { LoggerService } from "../common/logging/logger.service";
 import { isConnectorTargetSecurityError } from "../common/security/connector-target-errors";
 import type { ConnectorTransport } from "../common/security/connector-transport";
+import {
+  automaticRetryAllowed,
+  resolveRetryPolicy,
+  type ConnectorFetchRetryOptions,
+} from "./connector-retry-policy";
 
-export interface ConnectorFetchInit {
+export interface ConnectorFetchInit extends ConnectorFetchRetryOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: string | URLSearchParams | Buffer;
@@ -74,6 +79,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && /timeout|abort/i.test(err.name);
+}
+
 function jitter(baseMs: number): number {
   // ±20% jitter to spread retries across concurrent requests
   return Math.floor(baseMs * (0.8 + Math.random() * 0.4));
@@ -116,9 +125,13 @@ export class ConnectorHttpClient {
     const bucket = this.getOrCreateBucket(slug, bucketKey);
     const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-    // Validate transport-call preconditions once, up front: a misuse is a programming
-    // error, not a network failure to be retried with backoff.
-    const transportInit = init.transport ? this.toTransportInit(init, timeoutMs) : undefined;
+    // Validate the retry policy and transport-call preconditions once, up front: a misuse is a
+    // programming error, not a network failure to be retried with backoff.
+    const retry = resolveRetryPolicy(init, init.headers);
+    const headers = Object.keys(retry.extraHeaders).length > 0 ? { ...(init.headers ?? {}), ...retry.extraHeaders } : init.headers;
+    const method = init.method ?? "GET";
+    const logBase = { slug, url, connector: slug, installation: installationId, operation: retry.operation, method, policy: retry.policy };
+    const transportInit = init.transport ? this.toTransportInit({ ...init, headers }, timeoutMs) : undefined;
 
     let lastError: unknown;
 
@@ -130,8 +143,8 @@ export class ConnectorHttpClient {
         response = init.transport && transportInit
           ? await init.transport.fetch(url, transportInit)
           : await fetch(url, {
-              method: init.method ?? "GET",
-              headers: init.headers,
+              method,
+              headers,
               body: init.body as BodyInit | undefined,
               signal: AbortSignal.timeout(timeoutMs),
               redirect: init.redirect,
@@ -141,14 +154,25 @@ export class ConnectorHttpClient {
         // configuration/security outcome: surface it at once, never retry it.
         if (isConnectorTargetSecurityError(err)) throw err;
         lastError = err;
+        const reason = isTimeoutError(err) ? "timeout" : "network_error";
+        // The request may have reached the provider; this policy declines to guess.
+        if (!automaticRetryAllowed(retry.policy)) {
+          this.logger.warn("connector.http.retry_suppressed", {
+            ...logBase,
+            attempt,
+            reason,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
         // Network error or timeout — retry with backoff
         const isLastAttempt = attempt >= MAX_RETRIES;
         if (isLastAttempt) break;
 
         const backoffMs = jitter(Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS));
         this.logger.warn("connector.http.network_error", {
-          slug,
-          url,
+          ...logBase,
+          reason,
           attempt,
           backoffMs,
           error: err instanceof Error ? err.message : String(err),
@@ -161,6 +185,16 @@ export class ConnectorHttpClient {
         return response;
       }
 
+      if (!automaticRetryAllowed(retry.policy)) {
+        this.logger.warn("connector.http.retry_suppressed", {
+          ...logBase,
+          attempt,
+          reason: `http_${response.status}`,
+          status: response.status,
+        });
+        return response;
+      }
+
       const isLastAttempt = attempt >= MAX_RETRIES;
       if (isLastAttempt) {
         return response;
@@ -170,8 +204,8 @@ export class ConnectorHttpClient {
       const backoffMs = retryAfterMs ?? jitter(Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS));
 
       this.logger.warn("connector.http.retrying", {
-        slug,
-        url,
+        ...logBase,
+        reason: `http_${response.status}`,
         status: response.status,
         attempt,
         backoffMs,
