@@ -6,9 +6,16 @@ prepared_by: Claude (analysis / evidence audit only — not a substitute for nam
 last_updated: 2026-09-11
 continues: docs/execution/P1_WOO_AUTH_POST_MERGE_REQUIRED_TEAM_REVIEW_2026-09-06.md
 supersedes: nothing — this record cannot grant approval; see Scope below
+superseded_forward_requirements_by: docs/execution/P1_WOO_AUTH_CURRENT_REBASELINE_2026-10-05.md
 ---
 
 # P1 Woo/Auth Readiness Follow-Up — 2026-09-11
+
+> **Update 2026-10-05.** This record is preserved as the 2026-09-11 analysis. Its forward-looking requirement
+> (the last section, "What would actually close this") has been replaced; the current baseline is
+> `P1_WOO_AUTH_CURRENT_REBASELINE_2026-10-05.md`. The body below is otherwise unchanged and reflects what was
+> known on 2026-09-11, including two statements that are no longer true: `main`'s CI is not red any more, and
+> the P1 hold was lifted by #1052 and #1059 on 2026-10-03.
 
 ## Scope and authority
 
@@ -94,11 +101,15 @@ WooCommerce.** Nothing between 2026-09-06 and 2026-09-11 closes the
 outstanding evidence in the checklist above, and the new `main` build failure
 makes the bar harder to clear, not easier.
 
-## What would actually close this
+## What would actually close this (replaced 2026-10-05)
 
-Everything listed as "Missing" in the evidence table, plus a fix for the
-current `main` build failure, followed by named CTO, PO, Security, QA, and
-SRE approval recorded the same way `P1_WOO_AUTH_POST_MERGE_REQUIRED_TEAM_REVIEW_2026-09-06.md`
-recorded its per-role verdicts.
+Controlled production onboarding evidence is required, and only for a flow that exists: manual-key onboarding
+now (redacted ownership evidence, authenticated validation, named CTO, PO, Security, QA and SRE approvals), and
+app-auth onboarding only after a supported WooCommerce flow has been built. See sections 6 and 7 of
+`P1_WOO_AUTH_CURRENT_REBASELINE_2026-10-05.md`.
+
+The 2026-09-11 text of this section required a real Woo app-auth onboarding proof in staging and a fix for the
+`main` build failure. There is no separate staging environment, the app-auth flow it assumed does not exist,
+and the build failure has been fixed.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

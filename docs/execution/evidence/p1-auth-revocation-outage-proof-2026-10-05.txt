@@ -1,0 +1,69 @@
+# P1-2 auth revocation outage proof (real Redis outage)
+evidence class : LOCAL / SANDBOX (a throwaway Redis container on port 16379; no shared Redis, no tenant data)
+command        : docker run -d --name p1-outage-proof-redis -p 16379:6379 redis:7
+                 node scripts/p1-auth-revocation-outage-proof.cjs
+                 docker rm -f p1-outage-proof-redis
+main SHA       : 7d109d0d9b44cbe392fda774366c071b35c32e78
+started / ended: 2026-10-05T11:44:08Z / 2026-10-05T11:44:41Z
+node           : v24.15.0
+result         : 9 passed, 0 failed (exit 0)
+prepared by    : Claude (evidence run; not an approval)
+
+
+=== Phase 1: Redis UP (baseline sanity) ===
+  PASS  baseline: unannotated GET with fresh token, Redis healthy
+  PASS  baseline: revoke()+isRevoked() real Redis round-trip detects revocation
+
+=== Killing isolated Redis (p1-outage-proof-redis) ===
+p1-outage-proof-redis
+
+=== Phase 2: Redis DOWN — JwtAuthGuard route-policy enforcement ===
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtBlocklistService] Redis error for JWT blocklist: Socket closed unexpectedly
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Revocation authority unavailable for access_token check - failing closed
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Object(3) {
+  method: 'POST',
+  path: '/catalog/products',
+  error: 'Auth service temporarily unavailable.'
+}
+  PASS  mutating POST, no special metadata -> deny
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Revocation authority unavailable for access_token check - failing closed
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Object(3) {
+  method: 'GET',
+  path: '/catalog/products',
+  error: 'Auth service temporarily unavailable.'
+}
+  PASS  admin read route (self_service + admin role) -> deny
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Revocation authority unavailable for access_token check - failing closed
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Object(3) {
+  method: 'GET',
+  path: '/catalog/products',
+  error: 'Auth service temporarily unavailable.'
+}
+  PASS  step-up / security-sensitive read route -> deny
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Revocation authority unavailable for access_token check - failing closed
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Object(3) {
+  method: 'GET',
+  path: '/catalog/products',
+  error: 'Auth service temporarily unavailable.'
+}
+  PASS  admin-boundary read route -> deny
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Revocation authority unavailable for access_token check - failing closed
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Object(3) {
+  method: 'GET',
+  path: '/catalog/products',
+  error: 'Auth service temporarily unavailable.'
+}
+  PASS  unannotated / self_service-only read route -> deny (not on the approved list)
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Revocation authority unavailable for access_token check - allowing explicitly classified read-only degraded route
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtAuthGuard] Object(2) {
+  method: 'GET',
+  path: '/catalog/products'
+}
+  PASS  taxonomy_safe_metadata read policy -> the ONE approved bounded degraded-read path
+
+=== Phase 2b: Redis DOWN — AuthService.refresh() fails closed ===
+[Nest] 19932  - 10/05/2026, 5:14:40 PM    WARN [JwtBlocklistService] Redis error for JWT blocklist: Socket closed unexpectedly
+[Nest] 19932  - 10/05/2026, 5:14:41 PM    WARN [AuthService] JWT blocklist unavailable during refresh - failing closed
+  PASS  AuthService.refresh() during Redis outage -> invalid_token (fail closed)
+
+=== SUMMARY: 9 passed, 0 failed ===
