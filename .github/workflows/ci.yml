@@ -106,6 +106,24 @@ jobs:
           GIT_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: node scripts/check-pr-scope.cjs
 
+      # VEXA-AI-001 governance validators and their fixture tests. These are DB-free and fast. A glob (not a
+      # list) is used so a new validate-ai-* script is gated automatically instead of silently left out.
+      - name: AI governance validators and fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(scripts/validate-ai-*.cjs)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No scripts/validate-ai-*.cjs found; refusing to pass an empty gate."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            echo "::group::${file}"
+            node "${file}"
+            echo "::endgroup::"
+          done
+
       - name: Integration test coverage drift guard (PIM#754)
         run: node scripts/check-integration-test-coverage.cjs
 
