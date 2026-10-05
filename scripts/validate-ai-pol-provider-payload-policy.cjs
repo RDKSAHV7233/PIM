@@ -13,10 +13,10 @@ const DEFAULT_POLICY = path.resolve(
 
 const CLASSIFICATIONS = new Set(["AI_ALLOWED", "AI_ALLOWED_WITH_REDACTION", "AI_BLOCKED"]);
 const VECTORS_PATH = path.resolve(__dirname, "..", "test-fixtures", "ai-policy", "path-semantics.v1.json");
+const SECRET_VECTORS_PATH = path.resolve(__dirname, "..", "test-fixtures", "ai-policy", "secret-detection.v1.json");
 const PATH_SEGMENT = /^[A-Za-z0-9_-]+$/;
 const PRECEDENCE = { AI_ALLOWED: 0, AI_ALLOWED_WITH_REDACTION: 1, AI_BLOCKED: 2 };
 const SECRET_LIKE_KEY = /(secret|token|passw(or)?d|credential|apikey|accesskey|privatekey|bearer|oauth|authorization)/;
-const SECRET_VALUE_PATTERN = /\b(token|secret|credential|api[\s_-]?key|access[\s_-]?key|refresh[\s_-]?token|private[\s_-]?key|password)\b/i;
 
 function readJson(filePath = DEFAULT_POLICY) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -146,9 +146,9 @@ function blockedLeaves(policy, payload) {
       blocked.push(label);
     } else if (matched.some((rule) => rule.kind !== "exact" && leaf.segments.slice(rule.base.length).some(isSecretLikeKey))) {
       blocked.push(label);
-    } else if (typeof leaf.value === "string" && SECRET_VALUE_PATTERN.test(leaf.value)) {
+    } else if (typeof leaf.value === "string" && hasCredentialShape(leaf.value)) {
       blocked.push(label);
-    } else if (Array.isArray(leaf.value) && leaf.value.some((element) => (element && typeof element === "object") || (typeof element === "string" && SECRET_VALUE_PATTERN.test(element)))) {
+    } else if (Array.isArray(leaf.value) && leaf.value.some((element) => (element && typeof element === "object") || (typeof element === "string" && hasCredentialShape(element)))) {
       blocked.push(label);
     }
   }
@@ -189,6 +189,65 @@ function validatePathSemanticsVectors(vectors) {
   return { ok: errors.length === 0, errors };
 }
 
+// ---- credential detection (CommonJS port of apps/api/src/intelligence/intelligence-secret-detection.ts) ----
+// Both implementations must satisfy test-fixtures/ai-policy/secret-detection.v1.json.
+
+const CREDENTIAL_KEYWORDS = String.raw`passw(?:or)?d|passwd|pwd|secret|client[_ -]?secret|api[_ -]?key|apikey|access[_ -]?key|auth[_ -]?token|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|token|credentials?`;
+const TOKEN_PREFIXES = [
+  String.raw`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`,
+  String.raw`\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`,
+  String.raw`\bxox[abprs]-[A-Za-z0-9-]{10,}`,
+  String.raw`\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}`,
+  String.raw`\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}`,
+  String.raw`\bAIza[0-9A-Za-z_-]{35}`,
+  String.raw`\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}`,
+  String.raw`\bshp(?:at|ca|pa|ss)_[0-9a-f]{32}\b`,
+  String.raw`\b(?:ck|cs)_[0-9a-f]{40}\b`,
+  String.raw`\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`,
+].join("|");
+
+const CREDENTIAL_DETECTORS = [
+  { id: "pem_private_key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
+  { id: "authorization_header", pattern: /\bAuthorization\s*[:=]\s*(?:Bearer|Basic|Digest|Token)\s+\S{6,}/i },
+  { id: "bearer_token", pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/i },
+  { id: "keyword_assignment", pattern: new RegExp(String.raw`\b(?:${CREDENTIAL_KEYWORDS})\b["']?\s*[:=]\s*["']?[^\s"',;]{4,}`, "i") },
+  { id: "keyword_space_value", pattern: new RegExp(String.raw`\b(?:${CREDENTIAL_KEYWORDS})\s+["']?(?=[^\s"',;]*[0-9])[^\s"',;]{4,}`, "i") },
+  { id: "keyword_prose_value", pattern: new RegExp(String.raw`\b(?:${CREDENTIAL_KEYWORDS}|passcode)\s+(?:is|was)\s+["']?(?=[^\s"',;]*[0-9_!@#$%^&*])[^\s"',;]{4,}`, "i") },
+  { id: "token_prefix", pattern: new RegExp(TOKEN_PREFIXES) },
+  { id: "connection_string", pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:[^\s@/]+@[^\s/]+/i },
+];
+
+function detectCredentialShapes(text) {
+  return CREDENTIAL_DETECTORS.filter((detector) => detector.pattern.test(String(text))).map((detector) => detector.id);
+}
+
+function hasCredentialShape(text) {
+  return detectCredentialShapes(text).length > 0;
+}
+
+function validateSecretDetectionVectors(vectors) {
+  const errors = [];
+  const join = (parts) => parts.join("");
+  for (const vector of vectors.credentials) {
+    if (!detectCredentialShapes(join(vector.parts)).includes(vector.detector)) {
+      fail(errors, `credentials.${vector.id}`, `not detected as ${vector.detector}`);
+    }
+  }
+  for (const text of vectors.innocent) {
+    if (hasCredentialShape(text)) fail(errors, "innocent", `${JSON.stringify(text)} was flagged`);
+  }
+  for (const text of vectors.mentionsWithoutValue) {
+    if (hasCredentialShape(text)) fail(errors, "mentionsWithoutValue", `${JSON.stringify(text)} was flagged`);
+  }
+  for (const sample of vectors.knownResidualFalsePositives) {
+    if (!hasCredentialShape(join(sample.parts))) fail(errors, `knownResidualFalsePositives.${sample.id}`, "no longer flagged: update the documented residual");
+  }
+  for (const sample of vectors.knownResidualMisses) {
+    if (hasCredentialShape(join(sample.parts))) fail(errors, `knownResidualMisses.${sample.id}`, "is now flagged: update the documented residual");
+  }
+  return { ok: errors.length === 0, errors };
+}
+
 function buildFieldMap(policy) {
   return new Map(policy.fields.map((field) => [field.path, field]));
 }
@@ -216,14 +275,14 @@ function validatePayloadAgainstPolicy(policy, payload, options = {}) {
       if (typeof value === "string" && value.includes("@") && !value.startsWith("[REDACTED")) {
         fail(errors, field.path, "redactable email-like value is not redacted");
       }
-      if (typeof value === "string" && SECRET_VALUE_PATTERN.test(value) && !value.includes("removed")) {
+      if (typeof value === "string" && hasCredentialShape(value) && !value.includes("removed")) {
         fail(errors, field.path, "redactable sensitive value is not safely transformed");
       }
     }
   }
 
   for (const entry of flattenStrings(payload)) {
-    if (SECRET_VALUE_PATTERN.test(entry.value)) {
+    if (hasCredentialShape(entry.value)) {
       fail(errors, entry.path, "payload contains sensitive secret-like text");
     }
   }
@@ -346,6 +405,14 @@ function runCli() {
     }
     process.exit(1);
   }
+  const secretResult = validateSecretDetectionVectors(readJson(SECRET_VECTORS_PATH));
+  if (!secretResult.ok) {
+    console.error("AI-POL-003 secret detection vectors failed:");
+    for (const error of secretResult.errors) {
+      console.error("- " + error);
+    }
+    process.exit(1);
+  }
   const result = validatePolicy(policy);
   if (!result.ok) {
     console.error("AI-POL-001 provider payload policy validation failed:");
@@ -367,13 +434,17 @@ if (require.main === module) {
 module.exports = {
   CLASSIFICATIONS,
   DEFAULT_POLICY,
+  SECRET_VECTORS_PATH,
   VECTORS_PATH,
   blockedLeaves,
+  detectCredentialShapes,
+  hasCredentialShape,
   isSecretLikeKey,
   readJson,
   resolveLeaf,
   validatePathSemanticsVectors,
   validateRulePath,
+  validateSecretDetectionVectors,
   validatePayloadAgainstPolicy,
   validatePolicy,
 };

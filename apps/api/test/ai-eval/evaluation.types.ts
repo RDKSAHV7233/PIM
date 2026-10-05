@@ -61,6 +61,8 @@ export interface StructuralCaseScore {
   expected: ExpectedPipelineOutcome;
   actual: string;
   incorrectlyBlocked: boolean;
+  /** A case that should succeed but whose output was rejected, for example by the credential guard on a citation. */
+  incorrectlyRejected: boolean;
   unexpectedlyAllowed: boolean;
 }
 
@@ -120,7 +122,7 @@ export interface ScopeScores {
     providerCallsAttempted: number;
     violations: number;
   };
-  counters: { incorrectlyBlockedCases: number; unexpectedlyAllowed: number };
+  counters: { incorrectlyBlockedCases: number; incorrectlyRejectedCases: number; unexpectedlyAllowed: number };
 }
 
 export interface SideEffectCounters {

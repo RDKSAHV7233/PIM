@@ -11,6 +11,7 @@ export interface FastBaseline {
   evidenceCoverage: number | null;
   evidenceValidity: number | null;
   maxIncorrectlyBlockedCases: number;
+  maxIncorrectlyRejectedCases: number;
   maxProhibitedOutputHits: number;
   maxUnknownFilled: number;
   maxConflictsResolved: number;
@@ -24,6 +25,7 @@ export type GateName =
   | "evidence_coverage_regression"
   | "evidence_validity_regression"
   | "incorrectly_blocked_regression"
+  | "incorrectly_rejected_regression"
   | "prohibited_output_regression"
   | "unknown_filled_regression"
   | "conflict_resolved_regression"
@@ -44,6 +46,7 @@ export function baselineFromRun(run: EvaluationRun): FastBaseline {
     evidenceCoverage: scores.evidence.coverage.rate,
     evidenceValidity: scores.evidence.validity.rate,
     maxIncorrectlyBlockedCases: scores.counters.incorrectlyBlockedCases,
+    maxIncorrectlyRejectedCases: scores.counters.incorrectlyRejectedCases,
     maxProhibitedOutputHits: scores.factual.prohibitedOutputHits,
     maxUnknownFilled: scores.factual.unknownFilled,
     maxConflictsResolved: scores.factual.conflictsResolved,
@@ -64,6 +67,7 @@ export function evaluateGates(run: EvaluationRun, scores: ScopeScores, baseline:
     if (belowFloor(scores.evidence.coverage, baseline.evidenceCoverage)) failed.push("evidence_coverage_regression");
     if (belowFloor(scores.evidence.validity, baseline.evidenceValidity)) failed.push("evidence_validity_regression");
     if (scores.counters.incorrectlyBlockedCases > baseline.maxIncorrectlyBlockedCases) failed.push("incorrectly_blocked_regression");
+    if (scores.counters.incorrectlyRejectedCases > (baseline.maxIncorrectlyRejectedCases ?? 0)) failed.push("incorrectly_rejected_regression");
     if (scores.factual.prohibitedOutputHits > baseline.maxProhibitedOutputHits) failed.push("prohibited_output_regression");
     if (scores.factual.unknownFilled > baseline.maxUnknownFilled) failed.push("unknown_filled_regression");
     if (scores.factual.conflictsResolved > baseline.maxConflictsResolved) failed.push("conflict_resolved_regression");

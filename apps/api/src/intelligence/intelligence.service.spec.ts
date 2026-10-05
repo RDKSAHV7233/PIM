@@ -1,11 +1,22 @@
 import { ForbiddenException } from "@nestjs/common";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { PrismaService } from "../prisma/prisma.service";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
 import { IntelligenceAdapterError } from "./intelligence-adapter-boundary";
 import { IntelligenceService } from "./intelligence.service";
 import type { IntelligenceAdapterRequest, IntelligenceAdapterResponse, IntelligenceProviderAdapter } from "./intelligence.types";
+
+interface SecretVectors {
+  credentials: Array<{ id: string; detector: string; parts: string[] }>;
+  innocent: string[];
+  mentionsWithoutValue: string[];
+}
+const secretVectors = JSON.parse(readFileSync(resolve(__dirname, "..", "..", "..", "..", "test-fixtures", "ai-policy", "secret-detection.v1.json"), "utf8")) as SecretVectors;
+// Credentials are assembled from fragments so no contiguous credential shape is committed.
+const credential = (id: string) => (secretVectors.credentials.find((vector) => vector.id === id) as SecretVectors["credentials"][number]).parts.join("");
 
 describe("IntelligenceService", () => {
   const aiExecution = {
@@ -350,7 +361,7 @@ describe("IntelligenceService", () => {
         sourceHash: "sha256:source",
         promptVersion: "prompt-v1",
         schemaVersion: "schema-v1",
-        generatedPayload: { value: "api_key_should_not_be_here" },
+        generatedPayload: { value: credential("assignment-api-key") },
         suggestedValue: "Cotton",
         evidence,
       }),
@@ -596,7 +607,7 @@ describe("IntelligenceService", () => {
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
       capability: "product_attribute_extraction",
-      payload: { product: { title: "bearer token leaked" } },
+      payload: { product: { title: credential("authorization-bearer") } },
     });
 
     expect(result.allowed).toBe(false);
@@ -817,7 +828,7 @@ describe("IntelligenceService", () => {
           {
             fieldPath: "attributes.material",
             suggestedValue: "Cotton",
-            generatedPayload: { value: "bearer token leaked" },
+            generatedPayload: { value: credential("bearer-bare") },
             evidence,
           },
         ],
@@ -1225,7 +1236,7 @@ describe("IntelligenceService", () => {
     });
 
     it("keeps the secret-text guard on wildcard-admitted string values", async () => {
-      const result = await classify({ product: { attributes: { note: "includes the password" } } });
+      const result = await classify({ product: { attributes: { note: credential("assignment-password-equals") } } });
       expect(result).toMatchObject({ allowed: false, blockedReasons: ["secret_like_text"] });
     });
 
@@ -1304,6 +1315,165 @@ describe("IntelligenceService", () => {
       });
       expect(result).toMatchObject({ status: "succeeded", payloadAllowed: true, canonicalProductMutationEnabled: false });
       expect(aiSuggestion.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("secret detection modes (AI-POL-003)", () => {
+    const wildcardPolicy = {
+      ...activePolicy,
+      fieldClassifications: {
+        "product.title": { classification: "AI_ALLOWED" },
+        "product.categoryPath": { classification: "AI_ALLOWED" },
+        "product.attributes.*": { classification: "AI_ALLOWED" },
+      },
+    };
+    const classify = async (payload: unknown) => {
+      aiTenantPolicy.findFirst.mockResolvedValue(wildcardPolicy);
+      return createService().classifyPayloadForIntelligence({ tenantKey: "tenant-a", capability: "product_attribute_extraction", payload: payload as never });
+    };
+    const validateOutput = (suggestion: Record<string, unknown>) =>
+      createService().validateStructuredOutputForSuggestions({
+        tenantKey: "tenant-a",
+        executionId: "exec-1",
+        capability: "product_attribute_extraction",
+        entityType: "product",
+        entityId: "prod-1",
+        sourceRecordId: "source-1",
+        sourceVersion: 3,
+        sourceHash: "sha256:source",
+        promptVersion: "prompt-v1",
+        schemaVersion: "schema-v1",
+        providerOutput: { suggestions: [{ fieldPath: "attributes.material", attributeFamily: "material", suggestedValue: "Cotton", generatedPayload: { value: "Cotton" }, evidence, ...suggestion }] },
+      });
+
+    it.each(secretVectors.innocent)("lets innocent product text through classification: %p", async (text) => {
+      const result = await classify({ product: { title: text, categoryPath: [text], attributes: { note: text } } });
+      expect(result).toMatchObject({ allowed: true, blockedFields: [] });
+    });
+
+    it.each(secretVectors.credentials.map((vector) => [vector.id, vector.parts.join("")] as const))("blocks credential %s in a title, an array element and an attribute value", async (_id, secret) => {
+      for (const payload of [{ product: { title: secret } }, { product: { categoryPath: ["Apparel", secret] } }, { product: { attributes: { note: secret } } }]) {
+        const result = await classify(payload);
+        expect(result).toMatchObject({ allowed: false, blockedReasons: ["secret_like_text"] });
+      }
+    });
+
+    it("passes text that only mentions a credential word, which is the false-positive class this change removes", async () => {
+      for (const text of secretVectors.mentionsWithoutValue) {
+        expect((await classify({ product: { title: text } })).allowed).toBe(true);
+      }
+    });
+
+    it("accepts innocent text as model output values, evidence citations and persisted suggestions", async () => {
+      for (const text of ["Secret Garden Colouring Book", "Password Keeper Notebook A5 Maroon", "Credential Badge Holder Lanyard"]) {
+        const result = await validateOutput({ suggestedValue: text, generatedPayload: { value: text }, evidence: [{ ...evidence[0], citation: text }] });
+        expect(result).toMatchObject({ schemaValid: true, errors: [] });
+      }
+      aiSuggestion.upsert.mockResolvedValue({ id: "suggestion-1" });
+      await expect(
+        createService().createSuggestion({
+          tenantKey: "tenant-a",
+          executionId: "exec-1",
+          capability: "product_attribute_extraction",
+          entityType: "product",
+          entityId: "prod-1",
+          fieldPath: "attributes.title",
+          sourceRecordId: "source-1",
+          sourceVersion: 3,
+          sourceHash: "sha256:source",
+          promptVersion: "prompt-v1",
+          schemaVersion: "schema-v1",
+          generatedPayload: { value: "Secret Garden Colouring Book" },
+          suggestedValue: "Secret Garden Colouring Book",
+          evidence,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it.each(secretVectors.credentials.slice(0, 12).map((vector) => [vector.id, vector.parts.join("")] as const))("rejects credential %s as an output value, an evidence citation and a generated payload", async (_id, secret) => {
+      for (const suggestion of [
+        { suggestedValue: secret },
+        { generatedPayload: { value: secret } },
+        { evidence: [{ ...evidence[0], citation: secret }] },
+      ]) {
+        const result = await validateOutput(suggestion);
+        expect(result.schemaValid).toBe(false);
+        expect(result.errors.join("\n")).toContain("forbidden sensitive telemetry");
+      }
+    });
+
+    it("rejects a credential in a reviewer-edited value", async () => {
+      aiSuggestion.findUnique.mockResolvedValue(storedSuggestion);
+      aiSuggestion.update.mockResolvedValue({ id: "suggestion-1", status: "edited" });
+      const service = createService();
+      await expect(
+        service.reviewSuggestion("suggestion-1", "tenant-a", {
+          decision: "edit",
+          reviewedValue: credential("assignment-password-equals"),
+          reviewedBy: "reviewer-1",
+          currentSourceVersion: 3,
+          currentSourceHash: "sha256:source",
+        }),
+      ).rejects.toThrow("forbidden sensitive telemetry");
+      // The same edit with innocent text is accepted.
+      await service.reviewSuggestion("suggestion-1", "tenant-a", {
+        decision: "edit",
+        reviewedValue: "Secret Garden Colouring Book",
+        reviewedBy: "reviewer-1",
+        reviewReason: "Corrected the title from the supplier sheet.",
+        currentSourceVersion: 3,
+        currentSourceHash: "sha256:source",
+      });
+      expect(aiSuggestion.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps JSON key names strict in output: a secret-named key is rejected even with an innocent value", async () => {
+      for (const key of ["secretKey", "api_key", "accessToken", "password"]) {
+        const result = await validateOutput({ generatedPayload: { [key]: "Cotton" } });
+        expect(result.schemaValid).toBe(false);
+      }
+      expect((await validateOutput({ generatedPayload: { colorName: "Cotton" } })).schemaValid).toBe(true);
+    });
+
+    it("keeps operational fields strict: a secret-ish word is rejected even without a credential shape", async () => {
+      for (const providerKey of ["secret-garden", "password-keeper", "api_key_should_not_be_here"]) {
+        await expect(
+          createService().createExecution({
+            tenantKey: "tenant-a",
+            capability: "product_attribute_extraction",
+            entityType: "product",
+            entityId: "prod-1",
+            sourceVersion: 1,
+            sourceHash: "sha256:source",
+            requestFingerprint: "sha256:request",
+            promptVersion: "prompt-v1",
+            schemaVersion: "schema-v1",
+            providerKey,
+          }),
+        ).rejects.toThrow("forbidden sensitive telemetry");
+      }
+    });
+
+    it("keeps the evaluation JSON strict", async () => {
+      const suggestion = {
+        tenantKey: "tenant-a",
+        executionId: "exec-1",
+        capability: "product_attribute_extraction" as const,
+        entityType: "product" as const,
+        entityId: "prod-1",
+        fieldPath: "attributes.title",
+        sourceRecordId: "source-1",
+        sourceVersion: 3,
+        sourceHash: "sha256:source",
+        promptVersion: "prompt-v1",
+        schemaVersion: "schema-v1",
+        generatedPayload: { value: "Cotton" },
+        suggestedValue: "Cotton",
+        evidence,
+      };
+      aiSuggestion.upsert.mockResolvedValue({ id: "suggestion-1" });
+      await expect(createService().createSuggestion({ ...suggestion, evaluation: { note: "Secret Garden" } })).rejects.toThrow("forbidden sensitive telemetry");
+      await expect(createService().createSuggestion({ ...suggestion, evaluation: { score: 1 } })).resolves.toBeDefined();
     });
   });
 });

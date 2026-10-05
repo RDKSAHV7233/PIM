@@ -72,6 +72,7 @@ describe("AI-EVAL FAST harness", () => {
     const eps = 1e-9;
     const slack: string[] = [];
     if (current.maxIncorrectlyBlockedCases < baseline.maxIncorrectlyBlockedCases) slack.push("incorrectlyBlockedCases improved");
+    if (current.maxIncorrectlyRejectedCases < (baseline.maxIncorrectlyRejectedCases ?? 0)) slack.push("incorrectlyRejectedCases improved");
     for (const key of ["structuralRate", "factualRecall", "factualPrecision", "evidenceCoverage", "evidenceValidity"] as const) {
       const now = current[key];
       const before = baseline[key];
@@ -141,6 +142,11 @@ describe("AI-EVAL FAST harness", () => {
       expect(unknown.scores.factual.unknownFilled).toBeGreaterThanOrEqual(1);
       const conflict = await only("AI-GC-CONFLICT-001", { "AI-GC-CONFLICT-001": ["conflict_picked"] });
       expect(conflict.scores.factual.conflictsResolved).toBeGreaterThanOrEqual(1);
+    });
+
+    it("a legitimate case whose output is rejected counts as incorrectly rejected, not as a blocked payload", async () => {
+      const { scores } = await only("AI-GC-UNIT-001", { "AI-GC-UNIT-001": ["drop_evidence"] });
+      expect(scores.counters).toMatchObject({ incorrectlyRejectedCases: 1, incorrectlyBlockedCases: 0 });
     });
 
     it("wrong_evidence_source stays structurally valid but fails the evidence axis", async () => {

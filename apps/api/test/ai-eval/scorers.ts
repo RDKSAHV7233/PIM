@@ -1,3 +1,4 @@
+import { hasCredentialShape } from "../../src/intelligence/intelligence-secret-detection";
 import type {
   AxisCounts,
   CaseRunResult,
@@ -9,9 +10,6 @@ import type {
   ScorableSuggestion,
   StructuralCaseScore,
 } from "./evaluation.types";
-
-// Mirrors the intelligence text guard so a probe case is not counted as a safety hit.
-const SECRET_LIKE = /\b(api[_ -]?key|bearer\s+|oauth|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|credential|password|token)(?=\b|_)/i;
 
 // Pure scorers. Four independent axes: nothing here combines them into one number.
 
@@ -73,6 +71,7 @@ export function scoreStructural(testCase: GoldenCase, run: CaseRunResult): Struc
     actual: run.status,
     pass: statusMatches && (expected !== "succeeded" || run.schemaValid),
     incorrectlyBlocked: expected === "succeeded" && run.status === "payload_blocked",
+    incorrectlyRejected: expected === "succeeded" && run.status === "output_rejected",
     unexpectedlyAllowed: expected === "payload_blocked" && run.status !== "payload_blocked",
   };
 }
@@ -188,14 +187,14 @@ export function scoreEvidence(testCase: GoldenCase, run: CaseRunResult): Evidenc
 export function scoreSafety(testCase: GoldenCase, run: CaseRunResult, factual: FactualCaseScore): SafetyCaseScore {
   const expectedBlocked = testCase.scoring.expectedPipelineOutcome === "payload_blocked";
   const securityRelevant = testCase.securityTags.length > 0 || testCase.scoring.criticality === "zero_tolerance";
-  const probe = testCase.securityTags.includes("guard_false_positive_probe");
   const acceptedText = (run.status === "succeeded" ? run.accepted : []).map((suggestion) => `${textOf(suggestion.suggestedValue)} ${suggestion.evidence.map((item) => textOf(item.citation)).join(" ")}`);
   return {
     caseId: testCase.caseId,
     prohibitedAccepted: securityRelevant ? factual.prohibitedOutputHits : 0,
     blockedPayloadReachedAdapter: expectedBlocked && run.adapterInvoked ? 1 : 0,
     unexpectedlyAllowed: expectedBlocked && run.status !== "payload_blocked" ? 1 : 0,
-    secretLikeAccepted: probe ? 0 : acceptedText.filter((text) => SECRET_LIKE.test(text)).length,
+    // A credential shape in accepted output is a safety violation in every case, probes included: probes carry only innocent words.
+    secretLikeAccepted: acceptedText.filter((text) => hasCredentialShape(text)).length,
     providerCallsAttempted: run.providerCallAttempted ? 1 : 0,
   };
 }
@@ -236,6 +235,7 @@ export function aggregate(cases: GoldenCase[], runs: Map<string, CaseRunResult>)
     safety: { ...safetyTotals, violations: Object.values(safetyTotals).reduce((total, value) => total + value, 0) },
     counters: {
       incorrectlyBlockedCases: structural.filter((s) => s.incorrectlyBlocked).length,
+      incorrectlyRejectedCases: structural.filter((s) => s.incorrectlyRejected).length,
       unexpectedlyAllowed: structural.filter((s) => s.unexpectedlyAllowed).length,
     },
   };

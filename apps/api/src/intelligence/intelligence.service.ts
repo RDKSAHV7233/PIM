@@ -13,6 +13,7 @@ import {
   wildcardSegments,
   type ParsedPolicyRule,
 } from "./intelligence-payload-policy";
+import { hasCredentialShape, violatesGuard, type GuardMode } from "./intelligence-secret-detection";
 import {
   INTELLIGENCE_PROVIDER_ADAPTER,
   normalizeIntelligenceAdapterException,
@@ -351,7 +352,7 @@ export class IntelligenceService {
         continue;
       }
       if (typeof leaf.value === "string") {
-        if (this.hasSecretLikeText(leaf.value)) {
+        if (hasCredentialShape(leaf.value)) {
           block(path, "secret_like_text");
         }
       } else if (Array.isArray(leaf.value)) {
@@ -360,7 +361,7 @@ export class IntelligenceService {
             block(path, "unsupported_array_element");
             break;
           }
-          if (typeof element === "string" && this.hasSecretLikeText(element)) {
+          if (typeof element === "string" && hasCredentialShape(element)) {
             block(path, "secret_like_text");
             break;
           }
@@ -971,18 +972,15 @@ export class IntelligenceService {
     return normalized;
   }
 
-  private assertSafeTelemetryText(field: string, value: string | null | undefined) {
+  /** STRICT by default: operational identifier fields and notes, where no secret-ish word belongs. */
+  private assertSafeTelemetryText(field: string, value: string | null | undefined, mode: GuardMode = "strict") {
     const normalized = String(value ?? "");
     if (!normalized) {
       return;
     }
-    if (this.hasSecretLikeText(normalized)) {
+    if (violatesGuard(normalized, mode)) {
       throw new BadRequestException(`${field} contains forbidden sensitive telemetry.`);
     }
-  }
-
-  private hasSecretLikeText(value: string) {
-    return /\b(api[_ -]?key|bearer\s+|oauth|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|credential|password|token)(?=\b|_)/i.test(value);
   }
 
   private validateFieldClassifications(value: Record<string, AiFieldClassificationRule>) {
@@ -1050,7 +1048,7 @@ export class IntelligenceService {
     if (value === undefined || value === null) {
       return {};
     }
-    this.assertSafeJson("evaluation", value);
+    this.assertSafeJson("evaluation", value, "strict");
     return value as Prisma.InputJsonValue;
   }
 
@@ -1092,10 +1090,11 @@ export class IntelligenceService {
     }
   }
 
-  private assertSafeJson(field: string, value: unknown) {
+  /** Values follow `mode` (free_text for product content, strict for operational JSON). Key names are always checked strictly. */
+  private assertSafeJson(field: string, value: unknown, mode: GuardMode = "free_text") {
     const visit = (current: unknown, path: string) => {
       if (typeof current === "string") {
-        this.assertSafeTelemetryText(path, current);
+        this.assertSafeTelemetryText(path, current, mode);
         return;
       }
       if (Array.isArray(current)) {
@@ -1104,7 +1103,9 @@ export class IntelligenceService {
       }
       if (this.isRecord(current)) {
         for (const [key, nested] of Object.entries(current)) {
-          this.assertSafeTelemetryText(`${path}.${key}`, key);
+          if (isSecretLikeKey(key)) {
+            throw new BadRequestException(`${path}.${key} contains forbidden sensitive telemetry.`);
+          }
           visit(nested, `${path}.${key}`);
         }
       }
