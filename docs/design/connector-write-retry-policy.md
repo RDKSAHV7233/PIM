@@ -111,8 +111,8 @@ every update, read and authentication call. They are candidates for a later clas
    surfaces instead of being silently retried.
 4. Done (3b-B): BigCommerce. The job-level replay no longer reports a failure for a product that exists
    (see "BigCommerce create reconciliation").
-5. 3c: record a PENDING submission before the provider call so an ambiguous timeout reads as
-   "outcome unknown", not "failed", and give Odoo and Etsy a trustworthy reconciliation strategy.
+5. Done (3c): a PENDING submission is recorded before the provider write, and a write whose response
+   is lost is recorded as an unknown outcome (see "Call intent and unknown outcomes").
 
 ## BigCommerce create reconciliation (3b-B)
 
@@ -145,3 +145,49 @@ never a second product. An empty SKU skips the lookup (uniqueness is not enforce
 Cost: one extra `GET` per first publish. A same-SKU product with a different name remains a conflict
 even if it was in fact created by an earlier attempt that BigCommerce renamed; that is a deliberate
 bias toward reporting a conflict over claiming someone else's product.
+
+## Call intent and unknown outcomes (3c)
+
+A write whose response is lost may or may not have executed. Recording it as a plain failure invites
+the operator to publish again and make a duplicate. The publish flow
+(`MarketplaceService.recordConnectorSubmission`) now writes before it calls the provider:
+
+1. **Intent.** Immediately before `connectorFramework.publish` / `update`, a PENDING submission is
+   recorded (same row as the final result: idempotency key `<jobId>:<operation>`) carrying a
+   `PROVIDER_CALL_IN_FLIGHT` channel error. If the intent cannot be persisted the provider is **not**
+   called (`SubmissionIntentNotRecordedError`, recorded as a final ERROR that never reached the
+   provider): no provider write without a durable record of it. If the process dies mid-call, that
+   PENDING row is what shows the outcome is unknown.
+2. **Result.** On success the same row is overwritten with the result; the marker does not outlive the
+   call. The attempt is counted once: the write that ends an attempt passes `completesIntent` and does
+   not increment `attempt_number` again. A row sent back to PENDING clears `resolved_at`.
+3. **Failure.** `classifyProviderCallFailure` (`provider-call-outcome.ts`) decides:
+
+| Kind | Meaning | Recorded as |
+|---|---|---|
+| `NOT_EXECUTED` | provably refused or failed before the provider could run it: DNS/TLS failure, connection refused, a refused target (unsafe address, blocked redirect), expired credentials, missing installation, intent not recorded | final `ERROR`, as before |
+| `OUTCOME_UNKNOWN` | the request may have reached the provider: a timeout, a reset, a transport failure with no pre-connect cause, a `ConnectorNetworkError` of category TIMEOUT or NETWORK, or a connector error that declares `outcomeUnknown` | `PENDING`, `resolved_at` null, first channel error `PROVIDER_OUTCOME_UNKNOWN` ("check the channel for this product before publishing again"), then the original errors |
+| `PROVIDER_ANSWERED` | anything else: the provider replied with an error, or local validation failed | final `ERROR`, as before |
+
+The error is still thrown to the job layer, so retry and dead-letter behave as before. A replay (for
+example BigCommerce's job-level replay after 3b-B) writes a new intent on the same row, counts one more
+attempt, and settles it. No new status value and no schema change: about twenty readers key off the
+existing status strings, and the unknown outcome is a PENDING row that never resolves, marked by its
+channel error. The submission detail already shows warning-level channel errors with their message and
+code.
+
+Odoo's create now reports a transport failure after authentication as `outcomeUnknown`
+(`AMBIGUOUS_CREATE_OUTCOME`), since its publish wraps every error; a failure during authentication,
+before anything is written, is not flagged. Etsy, Dynamics 365 and WooCommerce propagate raw transport
+errors, which the classifier reads directly.
+
+### Known gaps
+
+- A provider's HTTP 5xx **answer** is also ambiguous after a create, but publish errors do not carry the
+  status, so it is classified `PROVIDER_ANSWERED` and stays an ERROR. Carrying the status on publish
+  errors is a follow-up.
+- A controlled Shopify mutation keeps its own audit trail and records no intent here.
+- Nothing settles an unknown outcome automatically: that needs the per-provider reconciliation strategy
+  for Odoo and Etsy (their lookups cannot tell a record of this attempt from an older one) and is not
+  part of this change. A stale PENDING row is visible, not resolved.
+- The submissions list shows such a row as "Pending"; a dedicated "Outcome unknown" chip is a web follow-up.

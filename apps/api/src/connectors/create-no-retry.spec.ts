@@ -110,7 +110,7 @@ describe("harness control: the default policy WOULD duplicate the create", () =>
 // ─── Odoo ────────────────────────────────────────────────────────────────────
 
 describe("Odoo product.template create", () => {
-  function setup(failure: Failure | null, authFailsOnce = false) {
+  function setup(failure: Failure | null, authFailsOnce: boolean | "always" = false) {
     const provider: Provider = { creates: 0, seen: [] };
     let authCalls = 0;
     global.fetch = jest.fn(async (_url: string, init?: RequestInit) => {
@@ -119,7 +119,7 @@ describe("Odoo product.template create", () => {
       provider.seen.push(label);
       if (rpc.service === "common" && rpc.method === "authenticate") {
         authCalls += 1;
-        if (authFailsOnce && authCalls === 1) return lostResponse("reset");
+        if (authFailsOnce === "always" || (authFailsOnce && authCalls === 1)) return lostResponse("reset");
         return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: 7 }), { status: 200 });
       }
       if (rpc.args[4] === "create") {
@@ -143,6 +143,8 @@ describe("Odoo product.template create", () => {
     const result = await settle(connector.publishProduct(ctx, product));
 
     expect(result.ok).toBe(false); // the failure surfaces; it is not silently repeated
+    // The create may have executed, so the error says the outcome is unknown (the publish flow keys on this).
+    expect((result as { error: { outcomeUnknown?: boolean } }).error.outcomeUnknown).toBe(true);
     expect(provider.creates).toBe(1);
     expect(provider.seen.filter((s) => s.endsWith("product.template.create"))).toHaveLength(1);
     expect(warnLines(log, "connector.http.retrying")).toHaveLength(0);
@@ -171,6 +173,16 @@ describe("Odoo product.template create", () => {
 
     expect(result).toMatchObject({ ok: true, value: { externalRef: "4242", status: "SUCCESS" } });
     expect(provider.creates).toBe(1);
+  });
+
+  it("a transport failure BEFORE the create (authentication) is not flagged as an unknown outcome: nothing was written", async () => {
+    const { connector, provider, ctx } = setup(null, "always");
+
+    const result = await settle(connector.publishProduct(ctx, product));
+
+    expect(result.ok).toBe(false);
+    expect((result as { error: { outcomeUnknown?: boolean } }).error.outcomeUnknown).toBeFalsy();
+    expect(provider.creates).toBe(0);
   });
 
   it("leaves the authentication call on the default policy (it still retries; it creates nothing)", async () => {

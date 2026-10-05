@@ -91,6 +91,8 @@ export class OdooPublishError extends Error {
   constructor(
     public readonly issues: ConnectorIssue[],
     message: string,
+    /** True when the write may have executed although no confirmation arrived. */
+    public readonly outcomeUnknown: boolean = false,
   ) {
     super(message);
     this.name = 'OdooPublishError';
@@ -511,13 +513,32 @@ export class OdooConnector implements ConnectorInterface {
           'Odoo publish failed: authentication rejected.',
         );
       }
-      const recordId = await this.executeKw<number>(
-        odooUrl, database, uid, password,
-        'product.template', 'create', [[this.buildPayload(product)]],
-        // Odoo does not enforce default_code uniqueness and has no idempotency key, so a
-        // repeated create after a lost response makes a second record. One attempt only.
-        undefined, noAutomaticRetry('odoo_create_product'),
-      );
+      let recordId: number;
+      try {
+        recordId = await this.executeKw<number>(
+          odooUrl, database, uid, password,
+          'product.template', 'create', [[this.buildPayload(product)]],
+          // Odoo does not enforce default_code uniqueness and has no idempotency key, so a
+          // repeated create after a lost response makes a second record. One attempt only.
+          undefined, noAutomaticRetry('odoo_create_product'),
+        );
+      } catch (createError) {
+        // The authentication call above has already succeeded; a transport failure here means the
+        // create may or may not have run. Say so instead of reporting a generic failure.
+        if (createError instanceof ConnectorNetworkError && (createError.category === 'TIMEOUT' || createError.category === 'NETWORK')) {
+          throw new OdooPublishError(
+            [{
+              code: 'AMBIGUOUS_CREATE_OUTCOME',
+              fieldPath: '',
+              severity: 'error',
+              sellerMessage: 'The connection to Odoo was lost while creating the product, so it may or may not exist. Check Odoo for this internal reference before publishing again.',
+            }],
+            'Odoo product publish failed: the create outcome is unknown.',
+            true,
+          );
+        }
+        throw createError;
+      }
       // A create that answers without a record id (for example a proxy 5xx whose JSON body has no
       // result) is not a success. With one attempt per create, reporting it as SUCCESS would hide
       // a product that may or may not exist.
@@ -530,6 +551,7 @@ export class OdooConnector implements ConnectorInterface {
             sellerMessage: 'Odoo did not confirm the product was created, so it may or may not exist. Check Odoo for this internal reference before publishing again.',
           }],
           'Odoo product publish failed: the create response had no record id (outcome unknown).',
+          true,
         );
       }
       return { externalRef: String(recordId), status: 'SUCCESS', isAsync: false };

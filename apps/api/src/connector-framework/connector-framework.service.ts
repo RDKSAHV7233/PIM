@@ -381,6 +381,11 @@ export class ConnectorFrameworkService {
     externalRef?: string | null;
     payloadSnapshot: Record<string, unknown>;
     channelErrors?: Record<string, unknown>[] | null;
+    /**
+     * True when this write finishes an attempt whose PENDING intent was already recorded by
+     * recordSubmissionAttempt, so the attempt is not counted twice.
+     */
+    completesIntent?: boolean;
   }): Promise<{
     id: string;
     idempotencyKey: string;
@@ -427,15 +432,15 @@ export class ConnectorFrameworkService {
         resolvedAt,
       },
       update: {
-        attemptNumber: {
-          increment: 1,
-        },
+        ...(input.completesIntent ? {} : { attemptNumber: { increment: 1 } }),
         status: input.status,
         ...(input.externalRef ? { externalRef: input.externalRef } : {}),
         payloadSnapshot,
         payloadSnapshotUrl: cappedPayload.payloadSnapshotUrl,
         channelErrors,
-        ...(resolvedAt ? { resolvedAt } : {}),
+        // A row sent back to PENDING (a replayed attempt, or an outcome that is not known) is no
+        // longer resolved; leaving the previous attempt's resolvedAt would read as finished.
+        ...(resolvedAt ? { resolvedAt } : input.status === "PENDING" ? { resolvedAt: null } : {}),
       },
       select: {
         id: true,

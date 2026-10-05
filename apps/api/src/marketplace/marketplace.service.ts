@@ -32,6 +32,12 @@ import {
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
 import {
+  SubmissionIntentNotRecordedError,
+  classifyProviderCallFailure,
+  providerCallInFlightMarker,
+  providerOutcomeUnknownMarker,
+} from "../connector-framework/provider-call-outcome";
+import {
   isConnectorTargetSecurityError,
   toConnectorTargetSecurityIssue,
 } from "../common/security/connector-target-errors";
@@ -3531,6 +3537,9 @@ export class MarketplaceService implements OnModuleInit {
     let submission;
     let outcome: SubmissionOutcome;
     if (operation === "PUBLISH" && simulation.exportReady) {
+      // True once a PENDING submission carrying PROVIDER_CALL_IN_FLIGHT has been recorded for this
+      // attempt; the write that ends the attempt then completes it instead of counting a new one.
+      let intentRecorded = false;
       // Defaults to the mapping preview so a submission is still recorded with useful
       // context if buildConnectorProductPayload itself throws before any payload exists.
       // Overwritten below with the real payload as soon as it's built, so the stored
@@ -3617,6 +3626,28 @@ export class MarketplaceService implements OnModuleInit {
           );
         }
 
+        // Record the intent BEFORE the provider write. If this cannot be persisted the write is not
+        // made (no provider write without a durable record of it); if the process dies or the response
+        // is lost, the PENDING row is what shows the outcome is unknown. A controlled Shopify mutation
+        // keeps its own audit trail and is not covered here.
+        if (controlledMutation.outcome !== "executed") {
+          try {
+            await this.connectorFramework.recordSubmissionAttempt({
+              installation,
+              productId: job.productId,
+              jobId: job.id,
+              operation,
+              source: "LIVE_API",
+              status: "PENDING",
+              payloadSnapshot,
+              channelErrors: [providerCallInFlightMarker()],
+            });
+            intentRecorded = true;
+          } catch (intentError) {
+            throw new SubmissionIntentNotRecordedError(intentError);
+          }
+        }
+
         const publishResult = controlledMutation.outcome === "executed"
           ? controlledMutation.result
           : existingGid
@@ -3686,6 +3717,7 @@ export class MarketplaceService implements OnModuleInit {
           source: "LIVE_API",
           status: publishResult.status,
           externalRef: publishResult.externalRef,
+          completesIntent: intentRecorded,
           payloadSnapshot: submissionPayloadSnapshot,
           channelErrors: [
             ...simulation.channelIssues.map((issue) => ({
@@ -3740,15 +3772,22 @@ export class MarketplaceService implements OnModuleInit {
               }
             : { kind: publishClassification, installationId: installation.id, submissionId: submission.id };
       } catch (error) {
-        const channelErrors = this.publishFailureChannelErrors(error, installation.slug);
+        const failureErrors = this.publishFailureChannelErrors(error, installation.slug);
         const failureAudit = error instanceof ShopifyControlledMutationError ? error.audit : undefined;
+        // If the write may have executed, the attempt is not a failure we can state: it stays
+        // PENDING with PROVIDER_OUTCOME_UNKNOWN (never resolved) until a later attempt or an
+        // operator settles it. Failures where the provider answered, or provably never received
+        // the request, stay the final ERROR they have always been.
+        const outcomeUnknown = intentRecorded && classifyProviderCallFailure(error) === "OUTCOME_UNKNOWN";
+        const channelErrors = outcomeUnknown ? [providerOutcomeUnknownMarker(), ...failureErrors] : failureErrors;
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
           productId: job.productId,
           jobId: job.id,
           operation,
           source: "LIVE_API",
-          status: "ERROR",
+          status: outcomeUnknown ? "PENDING" : "ERROR",
+          completesIntent: intentRecorded,
           externalRef: failureAudit?.failureCode === "SHOPIFY_VNEXT_READBACK_MISMATCH"
             ? failureAudit.externalProductGid
             : undefined,
