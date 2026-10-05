@@ -310,19 +310,93 @@ export class BigCommerceConnector implements ConnectorInterface {
 
   // ─── optional: publishProduct ────────────────────────────────────────────
 
+  // A failed export job is replayed from the top, and BigCommerce has no idempotency key. The
+  // provider does enforce unique SKUs and names (409), so a replayed create cannot duplicate the
+  // product, but it would report a failure for a product that exists. So: look the SKU up first and,
+  // when the product that is there is the one this create would have made (same SKU and name),
+  // return it as the result; if the create itself answers 409, look again (an earlier attempt may
+  // have finished in between). A product with the same SKU but a different name is somebody else's:
+  // that stays the conflict it always was and is never reported as published.
   async publishProduct(ctx: ConnectorContext, product: ProductPayload): Promise<SubmissionRef> {
     const { storeHash, apiKey } = await this.resolveCredentials(ctx);
+    const payload = this.buildProductPayload(product);
+
+    const existing = await this.findProductBySku(storeHash, apiKey, product.sku);
+    if (existing) {
+      const reconciled = this.reconcileExistingProduct(ctx, product, payload, existing, "lookup_before_create");
+      if (reconciled) return reconciled;
+      throw new BigCommercePublishError(
+        [this.normaliseError("DuplicateSKUError", "")],
+        `BigCommerce already has a different product with SKU ${product.sku}; nothing was created.`,
+      );
+    }
+
     const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/products`, {
       method: "POST",
       headers: this.buildHeaders(apiKey),
-      body: JSON.stringify(this.buildProductPayload(product)),
+      body: JSON.stringify(payload),
     });
     const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+    if (response.status === 409) {
+      // A conflict can mean the previous attempt completed after the lookup above. Check, don't guess.
+      const afterConflict = await this.findProductBySku(storeHash, apiKey, product.sku);
+      const reconciled = afterConflict
+        ? this.reconcileExistingProduct(ctx, product, payload, afterConflict, "conflict_after_create")
+        : null;
+      if (reconciled) return reconciled;
+    }
     if (response.status !== 200 && response.status !== 201) {
       throw this.toPublishError(body, response.status);
     }
     const data = (body.data ?? {}) as Record<string, unknown>;
     return { externalRef: String(data.id ?? ""), status: "SUCCESS", isAsync: false };
+  }
+
+  // The product BigCommerce already holds for this SKU, or null. Exact SKU match on the returned
+  // item (the `sku` filter is trusted only as far as the response confirms it). A lookup that
+  // fails is thrown before anything is created, so it is always safe to repeat.
+  private async findProductBySku(
+    storeHash: string,
+    apiKey: string,
+    sku: string,
+  ): Promise<{ id: number; name: string } | null> {
+    if (!String(sku ?? "").trim()) return null; // BigCommerce does not enforce uniqueness on an empty SKU
+    const query = `sku=${encodeURIComponent(sku)}&include_fields=id,name,sku&limit=5`;
+    const response = await this.fetchWithTimeout(`${this.apiBase(storeHash)}/catalog/products?${query}`, {
+      headers: this.buildHeaders(apiKey),
+    });
+    const body = await this.parseJsonResponse<Record<string, unknown>>(response);
+    if (!response.ok) {
+      throw this.toPublishError(body, response.status);
+    }
+    const rows = Array.isArray(body.data) ? (body.data as Array<Record<string, unknown>>) : [];
+    const match = rows.find((row) => row.sku === sku && Number.isInteger(row.id) && (row.id as number) > 0);
+    return match ? { id: match.id as number, name: String(match.name ?? "") } : null;
+  }
+
+  private reconcileExistingProduct(
+    ctx: ConnectorContext,
+    product: ProductPayload,
+    payload: Record<string, unknown>,
+    existing: { id: number; name: string },
+    via: "lookup_before_create" | "conflict_after_create",
+  ): SubmissionRef | null {
+    if (existing.name.trim() !== String(payload.name ?? "").trim()) {
+      this.logger.warn("bigcommerce.create.sku_conflict_not_reconciled", {
+        installationId: ctx.installationId,
+        sku: product.sku,
+        existingId: existing.id,
+        via,
+      });
+      return null;
+    }
+    this.logger.info("bigcommerce.create.reconciled_existing", {
+      installationId: ctx.installationId,
+      sku: product.sku,
+      externalRef: String(existing.id),
+      via,
+    });
+    return { externalRef: String(existing.id), status: "SUCCESS", isAsync: false };
   }
 
   // ─── optional: updateProduct ─────────────────────────────────────────────

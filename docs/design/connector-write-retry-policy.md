@@ -65,7 +65,7 @@ what the provider enforces.
 | Etsy `createDraftListing` | The published OpenAPI spec mentions idempotency nowhere; the create body does not list `sku`; the listings read filters by `state` but not by any key. | `AMBIGUOUS` (**`AMBIGUOUS_CREATE_OUTCOME`**) | `NO_AUTOMATIC_RETRY` |
 | Dynamics 365 `POST /items` | Microsoft documents nothing about duplicates or idempotency for the create. The connector sends `number: sku` (a client-supplied key); only third-party integrator documentation says a duplicate item number errors. | `AMBIGUOUS` until proven against a sandbox | `NO_AUTOMATIC_RETRY` |
 | WooCommerce `POST /products` | `WC_Product::set_sku` rejects a duplicate SKU with `product_invalid_sku`, and a new product has `object_read` true, so it applies to REST creates. It is an application check (`is_existing_sku` SELECT, then insert), not a database constraint: not atomic, disabled by the `wc_product_has_unique_sku` filter, skipped for an empty SKU. `GET /products?sku=` reconciles. | `PROVEN_RECONCILABLE` (with the settle-time rule below) | `NO_AUTOMATIC_RETRY` on the create; the update (`PUT`) keeps the default |
-| BigCommerce `POST /catalog/products` | The published spec returns 409 for "duplicate unique values, such as name or SKU" and describes `sku` as unique; no idempotency header. A retried create is rejected, not duplicated, but the job-level replay then reports a failure although the product exists. | `PROVEN_RECONCILABLE` | unchanged here; separate job-level story (3b-B) |
+| BigCommerce `POST /catalog/products` | The published spec returns 409 for "duplicate unique values, such as name or SKU" and describes `sku` as unique; no idempotency header. A retried create is rejected, not duplicated, but the job-level replay then reports a failure although the product exists. | `PROVEN_RECONCILABLE` | reconciled by lookup (3b-B, see below); the create itself is a single attempt already |
 
 `RETRY_WITH_IDEMPOTENCY`: current users = 0. None of the five providers above offers an
 idempotency key, so no connector selects it. It stays in the framework as a valid future
@@ -92,7 +92,7 @@ capability; no provider user is invented for it.
 | Etsy create-draft listing | `ctx.fetch` | **removed** (3b-A) | no | one attempt |
 | Dynamics 365 `POST /items` | `ctx.fetch` | **removed** (3b-A) | no | one attempt |
 | WooCommerce create | `callApi` through `httpClient` | **removed** (3b-A) | after a lookup by SKU | one attempt |
-| BigCommerce create | raw `fetch` | no | **yes** (retryable `ConnectorNetworkError`) | 3b-B |
+| BigCommerce create | raw `fetch` | no | **yes** (retryable `ConnectorNetworkError`) | reconciled (3b-B): a replay returns the product that already exists |
 | Shopware, PrestaShop, Zoho Inventory, eBay offer | raw `fetch` or pinned transport | no | no | single attempt; a manual resubmit re-creates |
 | Amazon (PUT by SKU), Flipkart | `ctx.fetch` | yes | no | SKU-keyed; unverified |
 
@@ -109,7 +109,39 @@ every update, read and authentication call. They are candidates for a later clas
 3. This change (3b-A): `NO_AUTOMATIC_RETRY` on the four shared-client creates; reads, auth,
    updates and other writes unchanged. Consequence: a transient failure on one of these creates now
    surfaces instead of being silently retried.
-4. 3b-B: BigCommerce. Before a create, look up by SKU; if the product already exists, reconcile as
-   success/existing; create only when absence is established.
+4. Done (3b-B): BigCommerce. The job-level replay no longer reports a failure for a product that exists
+   (see "BigCommerce create reconciliation").
 5. 3c: record a PENDING submission before the provider call so an ambiguous timeout reads as
    "outcome unknown", not "failed", and give Odoo and Etsy a trustworthy reconciliation strategy.
+
+## BigCommerce create reconciliation (3b-B)
+
+This is a **reconciliation-safe create**, not an idempotent one. BigCommerce offers no idempotency key and
+the create itself is not idempotent; the workflow is made safe by finding the already-created resource
+before another create can be sent (pre-create lookup, and a second lookup after a 409). Classification:
+`PROVEN_RECONCILABLE`, never `PROVEN_IDEMPOTENT`.
+
+A failed export job is replayed from the top and BigCommerce has no idempotency key. It does enforce
+unique SKUs and names (409), so a replayed create cannot duplicate the product; the defect was that
+the replay reported a failure for a product that exists.
+
+`publishProduct` now:
+
+1. looks the SKU up (`GET /catalog/products?sku=`, exact match on the returned row; a lookup that
+   fails is thrown before anything is created, so it is always safe to repeat);
+2. if a product is there and **matches what this create would have made** (same SKU and same name),
+   returns it as the result (`externalRef` = its id) and logs `bigcommerce.create.reconciled_existing`;
+3. if a product is there with the same SKU but a different name, it is somebody else's: the create is
+   not attempted and the existing `DuplicateSKUError` is raised (`bigcommerce.create.sku_conflict_not_reconciled`).
+   A merchant's own product is never reported as published;
+4. otherwise creates; if the create answers 409, looks the SKU up once more, because an earlier
+   attempt may have finished between the first lookup and this create (the settle-time rule: an empty
+   first lookup does not prove the earlier attempt failed). A match is reconciled; anything else
+   surfaces the original conflict.
+
+The provider's uniqueness rule is what makes step 4 safe: the worst outcome of the race is a 409,
+never a second product. An empty SKU skips the lookup (uniqueness is not enforced on it).
+
+Cost: one extra `GET` per first publish. A same-SKU product with a different name remains a conflict
+even if it was in fact created by an earlier attempt that BigCommerce renamed; that is a deliberate
+bias toward reporting a conflict over claiming someone else's product.

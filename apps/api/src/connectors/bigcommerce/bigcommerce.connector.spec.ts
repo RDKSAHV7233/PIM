@@ -284,18 +284,22 @@ describe("BigCommerceConnector.publishProduct / updateProduct", () => {
   it("POSTs the product payload and extracts the numeric id from response.data.id", async () => {
     mockDecrypt();
     const connector = makeConnectorWithDb(dbWithCreds());
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 201,
-      text: async () => JSON.stringify({ data: { id: 77 } }),
-    });
+    // The first call is the SKU lookup (nothing there yet); the second is the create.
+    const fetchMock = jest.fn().mockImplementation(async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? { ok: true, status: 201, text: async () => JSON.stringify({ data: { id: 77 } }) }
+        : { ok: true, status: 200, text: async () => JSON.stringify({ data: [] }) },
+    );
     (global as any).fetch = fetchMock;
 
     const ref = await connector.publishProduct(fakeCtx(), baseProduct);
 
     expect(ref.externalRef).toBe("77");
     expect(ref.status).toBe("SUCCESS");
-    const [url, init] = fetchMock.mock.calls[0];
+    const [lookupUrl, lookupInit] = fetchMock.mock.calls[0];
+    expect(lookupUrl).toContain("https://api.bigcommerce.com/stores/abc123/v3/catalog/products?sku=BC-001");
+    expect(lookupInit.method).toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe("https://api.bigcommerce.com/stores/abc123/v3/catalog/products");
     expect(init.method).toBe("POST");
   });
@@ -303,12 +307,15 @@ describe("BigCommerceConnector.publishProduct / updateProduct", () => {
   it("throws a parsed BigCommercePublishError on a validation failure", async () => {
     mockDecrypt();
     const connector = makeConnectorWithDb(dbWithCreds());
-    (global as any).fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 422,
-      text: async () =>
-        JSON.stringify({ title: "DuplicateSKUError", errors: { sku: "SKU already exists" } }),
-    });
+    (global as any).fetch = jest.fn().mockImplementation(async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? {
+            ok: false,
+            status: 422,
+            text: async () => JSON.stringify({ title: "DuplicateSKUError", errors: { sku: "SKU already exists" } }),
+          }
+        : { ok: true, status: 200, text: async () => JSON.stringify({ data: [] }) },
+    );
 
     let caught: unknown;
     try {
