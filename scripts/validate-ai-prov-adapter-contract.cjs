@@ -8,6 +8,7 @@ const TYPES = path.resolve(__dirname, "..", "apps", "api", "src", "intelligence"
 const MODULE = path.resolve(__dirname, "..", "apps", "api", "src", "intelligence", "intelligence.module.ts");
 const FIXTURE = path.resolve(__dirname, "..", "apps", "api", "src", "intelligence", "intelligence-fixture.adapter.ts");
 const CONTROLLER = path.resolve(__dirname, "..", "apps", "api", "src", "intelligence", "intelligence.controller.ts");
+const ADAPTER_BOUNDARY = path.resolve(__dirname, "..", "apps", "api", "src", "intelligence", "intelligence-adapter-boundary.ts");
 
 function read(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -33,7 +34,8 @@ function validateAdapterContract() {
   const moduleSource = read(MODULE);
   const fixture = read(FIXTURE);
   const controller = read(CONTROLLER);
-  const allSource = [service, types, moduleSource, fixture, controller].join("\n");
+  const boundary = read(ADAPTER_BOUNDARY);
+  const allSource = [service, types, moduleSource, fixture, controller, boundary].join("\n");
   const runnerMethod = extractMethod(service, "runFixtureAdapterContract");
 
   if (!/class\s+FixtureIntelligenceAdapter/.test(fixture)) {
@@ -48,8 +50,33 @@ function validateAdapterContract() {
   if (!/this\.prepareIntelligencePayloadDryRun\(input\)/.test(service)) {
     fail(errors, "service.preflight", "must run payload dry-run before adapter invocation");
   }
-  if (!/this\.fixtureAdapter\.generateStructuredOutput/.test(service)) {
-    fail(errors, "service.fixtureAdapter", "must invoke only the fixture adapter");
+  if (!/this\.adapter\.generateStructuredOutput/.test(service)) {
+    fail(errors, "service.adapter", "must invoke the adapter only through the injected provider-neutral interface");
+  }
+  if (!/export\s+interface\s+IntelligenceProviderAdapter/.test(types)) {
+    fail(errors, "types", "must declare the provider-neutral IntelligenceProviderAdapter interface");
+  }
+  if (!/class\s+FixtureIntelligenceAdapter\s+implements\s+IntelligenceProviderAdapter/.test(fixture)) {
+    fail(errors, "fixture.interface", "fixture adapter must implement IntelligenceProviderAdapter");
+  }
+  if (!/useExisting:\s*FixtureIntelligenceAdapter/.test(moduleSource) || /useClass|useFactory|useValue/.test(moduleSource)) {
+    fail(errors, "module.binding", "module must bind only the fixture adapter to the provider adapter token");
+  }
+  const responseInterface = (types.match(/export\s+interface\s+IntelligenceAdapterResponse\s*\{[\s\S]*?\n\}/) || [""])[0];
+  if (/adapterKey:\s*"|modelKey:\s*"|region:\s*"|providerCallAttempted:\s*false/.test(responseInterface)) {
+    fail(errors, "types.response", "adapter response must not hardcode fixture literal types");
+  }
+  if (/errorMessageSafe/.test(allSource)) {
+    fail(errors, "source.errorMessage", "adapter free-text error messages must not cross the boundary");
+  }
+  if (!/try\s*\{[\s\S]*this\.adapter\.generateStructuredOutput[\s\S]*\}\s*catch/.test(runnerMethod)) {
+    fail(errors, "service.exceptionNormalization", "adapter invocation must be wrapped so exceptions are normalized");
+  }
+  if (/error\.message|String\(error\)|\$\{error\}/.test(boundary) || /catch\s*\((\w+)\)\s*\{[^}]*\b\1\.message/.test(runnerMethod)) {
+    fail(errors, "service.rawError", "raw adapter exception text must not be propagated");
+  }
+  if (!/finishStatus\s*!==\s*"completed"/.test(runnerMethod) || !/adapter_status_invalid/.test(runnerMethod)) {
+    fail(errors, "service.finishStatus", "only a completed finishStatus may proceed; unknown statuses must fail closed");
   }
   if (!/this\.validateStructuredOutputForSuggestions\(\{/.test(service)) {
     fail(errors, "service.outputValidation", "must route adapter output through structured output validation");

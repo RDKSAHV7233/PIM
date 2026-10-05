@@ -39,7 +39,7 @@ function validateDryRun() {
   if (/@(Post|Patch|Put|Delete)\s*\(/.test(controller)) {
     fail(errors, "controller", "dry-run must not add public write routes");
   }
-  if (/fetch\s*\(|axios\.|OpenAI|Anthropic|GoogleGenerativeAI|ProviderAdapter|product\.(create|update|upsert|delete)/.test(service)) {
+  if (/fetch\s*\(|axios\.|OpenAI|Anthropic|GoogleGenerativeAI|(?<!Intelligence)ProviderAdapter|product\.(create|update|upsert|delete)/.test(service)) {
     fail(errors, "service.forbidden", "dry-run must not add provider execution or Product mutation");
   }
 

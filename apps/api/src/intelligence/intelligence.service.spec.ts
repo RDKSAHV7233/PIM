@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import type { PrismaService } from "../prisma/prisma.service";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
+import { IntelligenceAdapterError } from "./intelligence-adapter-boundary";
 import { IntelligenceService } from "./intelligence.service";
+import type { IntelligenceAdapterRequest, IntelligenceAdapterResponse, IntelligenceProviderAdapter } from "./intelligence.types";
 
 describe("IntelligenceService", () => {
   const aiExecution = {
@@ -96,7 +98,7 @@ describe("IntelligenceService", () => {
     jest.clearAllMocks();
   });
 
-  const createService = (fixtureAdapter = new FixtureIntelligenceAdapter()) =>
+  const createService = (fixtureAdapter: IntelligenceProviderAdapter = new FixtureIntelligenceAdapter()) =>
     new IntelligenceService(prisma, new IntelligenceCapabilityRegistry(), fixtureAdapter);
 
   it("exposes only the governed boundary with provider execution and canonical mutation disabled", () => {
@@ -851,6 +853,7 @@ describe("IntelligenceService", () => {
     });
 
     expect(result).toMatchObject({
+      status: "succeeded",
       payloadAllowed: true,
       providerCallAttempted: false,
       canonicalProductMutationEnabled: false,
@@ -906,11 +909,236 @@ describe("IntelligenceService", () => {
     });
 
     expect(result).toMatchObject({
+      status: "payload_blocked",
       payloadAllowed: false,
       providerCallAttempted: false,
       canonicalProductMutationEnabled: false,
     });
     expect(result.errors.join("\n")).toContain("blocked");
     expect(adapterSpy).not.toHaveBeenCalled();
+  });
+
+  describe("adapter contract hardening", () => {
+    const baseInput = {
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction" as const,
+      entityType: "product" as const,
+      entityId: "prod-1",
+      sourceRecordId: "source-1",
+      sourceVersion: 3,
+      sourceHash: "sha256:source",
+      promptVersion: "prompt-v1",
+      schemaVersion: "schema-v1",
+      correlationId: "corr-1",
+      payload: { product: { title: "Cotton Kurta" } },
+    };
+
+    const stubResponse = (overrides: Partial<IntelligenceAdapterResponse> = {}): IntelligenceAdapterResponse => ({
+      adapterKey: "stub",
+      modelKey: "stub-model",
+      modelVersion: "stub-model-v1",
+      region: "eu-test",
+      requestId: "stub-request-1",
+      finishStatus: "completed",
+      latencyMs: 1,
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        billableUnits: 1,
+        estimatedCostMicros: 5,
+        currency: "USD",
+        pricingVersion: "stub-v1",
+      },
+      providerCallAttempted: false,
+      ...overrides,
+    });
+
+    const stubAdapter = (behavior: (request: IntelligenceAdapterRequest) => Promise<IntelligenceAdapterResponse>) => {
+      const generateStructuredOutput = jest.fn(behavior);
+      const adapter: IntelligenceProviderAdapter = { adapterKey: "stub", generateStructuredOutput };
+      return { adapter, generateStructuredOutput };
+    };
+
+    const validSuggestions = (request: IntelligenceAdapterRequest) => ({
+      suggestions: [
+        {
+          fieldPath: "attributes.title",
+          attributeFamily: "title",
+          suggestedValue: "Cotton Kurta",
+          confidence: 0.9,
+          evidence: [
+            {
+              sourceField: "product.title",
+              sourceRecordId: request.sourceRecordId,
+              sourceVersion: request.sourceVersion,
+              sourceHash: request.sourceHash,
+              citation: "stub",
+              evidenceHash: "sha256:evidence",
+            },
+          ],
+        },
+      ],
+    });
+
+    beforeEach(() => {
+      aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    });
+
+    const expectNoPersistence = () => expect(aiSuggestion.upsert).not.toHaveBeenCalled();
+
+    it("accepts any adapter that implements the provider-neutral interface", async () => {
+      const { adapter, generateStructuredOutput } = stubAdapter(async (request) =>
+        stubResponse({ structuredOutput: validSuggestions(request) }),
+      );
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(generateStructuredOutput).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ status: "succeeded", errors: [], canonicalProductMutationEnabled: false });
+      expect(result.adapterResponse).toMatchObject({ adapterKey: "stub", modelKey: "stub-model", region: "eu-test" });
+      expectNoPersistence();
+    });
+
+    it("rejects malformed structured output", async () => {
+      const { adapter } = stubAdapter(async () => stubResponse({ structuredOutput: { suggestions: "not-an-array" } }));
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(result.status).toBe("output_rejected");
+      expect(result.outputValidation?.schemaValid).toBe(false);
+      expect(result.errors.join("\n")).toContain("suggestions must be an array");
+      expectNoPersistence();
+    });
+
+    it("rejects a suggestion that is missing provenance", async () => {
+      const { adapter } = stubAdapter(async () =>
+        stubResponse({
+          structuredOutput: {
+            suggestions: [{ fieldPath: "attributes.title", attributeFamily: "title", suggestedValue: "Cotton Kurta", confidence: 0.9 }],
+          },
+        }),
+      );
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(result.status).toBe("output_rejected");
+      expect(result.outputValidation?.schemaValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expectNoPersistence();
+    });
+
+    it("rejects a completed response without structured output", async () => {
+      const { adapter } = stubAdapter(async () => stubResponse());
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(result.status).toBe("output_rejected");
+      expect(result.outputValidation).toBeUndefined();
+      expect(result.errors).toEqual(["Intelligence adapter completed without structured output."]);
+    });
+
+    it("normalizes a throwing adapter and never exposes the raw exception text", async () => {
+      const rawMessage = "401 https://api.vendor.example/v1?key=sk-live-secret Authorization: Bearer abc.def req_9f8e7d";
+      const { adapter } = stubAdapter(async () => {
+        throw new Error(rawMessage);
+      });
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(result).toMatchObject({
+        status: "adapter_failed",
+        payloadAllowed: true,
+        providerCallAttempted: true,
+        canonicalProductMutationEnabled: false,
+        adapterError: { errorClass: "internal_error", errorCode: "adapter_exception", message: "Intelligence adapter failed." },
+        errors: ["Intelligence adapter failed."],
+      });
+      const serialized = JSON.stringify(result);
+      for (const leaked of ["sk-live-secret", "Bearer", "api.vendor.example", "req_9f8e7d", "401"]) {
+        expect(serialized).not.toContain(leaked);
+      }
+      expect(result.outputValidation).toBeUndefined();
+      expectNoPersistence();
+    });
+
+    it("keeps only the class and a safe code from a classified adapter error", async () => {
+      const classified = stubAdapter(async () => {
+        throw new IntelligenceAdapterError("rate_limited", "vendor_429");
+      });
+      const unsafeCode = stubAdapter(async () => {
+        throw new IntelligenceAdapterError("timeout", "https://vendor.example/?k=secret");
+      });
+
+      const first = await createService(classified.adapter).runFixtureAdapterContract(baseInput);
+      const second = await createService(unsafeCode.adapter).runFixtureAdapterContract(baseInput);
+
+      expect(first.adapterError).toEqual({
+        errorClass: "rate_limited",
+        errorCode: "vendor_429",
+        message: "Intelligence adapter is rate limited.",
+      });
+      expect(second.adapterError).toEqual({
+        errorClass: "timeout",
+        errorCode: "adapter_error",
+        message: "Intelligence adapter timed out.",
+      });
+      expect(JSON.stringify(second)).not.toContain("secret");
+    });
+
+    it.each(["failed", "blocked"] as const)("does not validate structured output when finishStatus=%s", async (finishStatus) => {
+      const { adapter } = stubAdapter(async (request) =>
+        stubResponse({
+          finishStatus,
+          structuredOutput: validSuggestions(request),
+          errorClass: "bogus-class" as never,
+          errorCode: "https://vendor.example/?k=secret",
+        }),
+      );
+      const validateSpy = jest.spyOn(IntelligenceService.prototype, "validateStructuredOutputForSuggestions");
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(result.status).toBe(finishStatus === "failed" ? "adapter_failed" : "adapter_blocked");
+      expect(result.outputValidation).toBeUndefined();
+      expect(validateSpy).not.toHaveBeenCalled();
+      expect(result.adapterResponse?.structuredOutput).toBeUndefined();
+      expect(result.adapterError).toMatchObject({
+        errorClass: "internal_error",
+        errorCode: finishStatus === "failed" ? "adapter_failed" : "adapter_blocked",
+      });
+      expect(JSON.stringify(result)).not.toContain("secret");
+      expectNoPersistence();
+      validateSpy.mockRestore();
+    });
+
+    it("fails closed on an unknown finishStatus", async () => {
+      const { adapter } = stubAdapter(async (request) =>
+        stubResponse({ finishStatus: "partial" as never, structuredOutput: validSuggestions(request) }),
+      );
+
+      const result = await createService(adapter).runFixtureAdapterContract(baseInput);
+
+      expect(result).toMatchObject({
+        status: "adapter_status_invalid",
+        adapterError: { errorClass: "internal_error", errorCode: "adapter_status_invalid" },
+      });
+      expect(result.outputValidation).toBeUndefined();
+      expect(result.adapterResponse).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain("partial");
+      expectNoPersistence();
+    });
+
+    it("never invokes the adapter for blocked input", async () => {
+      const { adapter, generateStructuredOutput } = stubAdapter(async () => stubResponse());
+
+      const result = await createService(adapter).runFixtureAdapterContract({
+        ...baseInput,
+        payload: { product: { title: "Cotton Kurta" }, connector: { apiKey: "blocked" } },
+      });
+
+      expect(result.status).toBe("payload_blocked");
+      expect(generateStructuredOutput).not.toHaveBeenCalled();
+    });
   });
 });

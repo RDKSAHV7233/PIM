@@ -69,7 +69,7 @@ function validateTenantPolicyRuntime(files = {}) {
   requireMatch(errors, service, /classification === "AI_BLOCKED"/, "service", "AI_BLOCKED fields must block");
   requireMatch(errors, service, /classification === "AI_ALLOWED_WITH_REDACTION"/, "service", "redactable fields must require evidence");
 
-  if (/fetch\s*\(|axios\.|OpenAI|ProviderAdapter|CatalogService|AutoSuggestionsService/.test(service)) {
+  if (/fetch\s*\(|axios\.|OpenAI|(?<!Intelligence)ProviderAdapter|CatalogService|AutoSuggestionsService/.test(service)) {
     fail(errors, "service.forbidden", "must not introduce provider, Product, Catalog, or AutoSuggestions runtime paths");
   }
   requireMatch(errors, types, /UpsertAiTenantPolicyInput/, "types", "must declare tenant policy input");

@@ -294,6 +294,8 @@ export interface IntelligenceProviderOutputValidationResult {
 
 export type IntelligenceAdapterFinishStatus = "completed" | "blocked" | "failed";
 
+export const INTELLIGENCE_ADAPTER_FINISH_STATUSES: readonly IntelligenceAdapterFinishStatus[] = ["completed", "blocked", "failed"];
+
 export type IntelligenceAdapterErrorClass =
   | "input_not_allowed"
   | "schema_invalid"
@@ -331,10 +333,10 @@ export interface IntelligenceAdapterRequest {
 }
 
 export interface IntelligenceAdapterResponse {
-  adapterKey: "fixture";
-  modelKey: "fixture-model";
+  adapterKey: string;
+  modelKey: string;
   modelVersion: string;
-  region: "local";
+  region: string;
   requestId: string;
   finishStatus: IntelligenceAdapterFinishStatus;
   latencyMs: number;
@@ -342,9 +344,31 @@ export interface IntelligenceAdapterResponse {
   usage: IntelligenceAdapterUsage;
   errorClass?: IntelligenceAdapterErrorClass;
   errorCode?: string;
-  errorMessageSafe?: string;
-  providerCallAttempted: false;
+  providerCallAttempted: boolean;
 }
+
+/**
+ * Vexa-owned provider boundary. Implementations translate a governed request into a
+ * provider-shaped structured result. They must not persist suggestions or mutate Product data.
+ */
+export interface IntelligenceProviderAdapter {
+  readonly adapterKey: string;
+  generateStructuredOutput(request: IntelligenceAdapterRequest): Promise<IntelligenceAdapterResponse>;
+}
+
+export interface IntelligenceAdapterNormalizedError {
+  errorClass: IntelligenceAdapterErrorClass;
+  errorCode: string;
+  message: string;
+}
+
+export type IntelligenceAdapterRunStatus =
+  | "succeeded"
+  | "payload_blocked"
+  | "adapter_failed"
+  | "adapter_blocked"
+  | "adapter_status_invalid"
+  | "output_rejected";
 
 export interface RunFixtureIntelligenceAdapterInput extends PrepareIntelligencePayloadDryRunInput {
   capability: IntelligenceCapabilityId;
@@ -359,11 +383,13 @@ export interface RunFixtureIntelligenceAdapterInput extends PrepareIntelligenceP
 }
 
 export interface FixtureIntelligenceAdapterRunResult {
+  status: IntelligenceAdapterRunStatus;
   payloadAllowed: boolean;
   adapterResponse?: IntelligenceAdapterResponse;
+  adapterError?: IntelligenceAdapterNormalizedError;
   outputValidation?: IntelligenceProviderOutputValidationResult;
   errors: string[];
-  providerCallAttempted: false;
+  providerCallAttempted: boolean;
   canonicalProductMutationEnabled: false;
 }
 

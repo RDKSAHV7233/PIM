@@ -1,10 +1,14 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
-import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
+import {
+  INTELLIGENCE_PROVIDER_ADAPTER,
+  normalizeIntelligenceAdapterException,
+  normalizeIntelligenceAdapterFailure,
+} from "./intelligence-adapter-boundary";
 import type {
   AiDataClassification,
   AiFieldClassificationRule,
@@ -12,6 +16,7 @@ import type {
   CreateAiSuggestionInput,
   CreateAiExecutionInput,
   FinalizeAiExecutionInput,
+  FixtureIntelligenceAdapterRunResult,
   IntelligenceActor,
   IntelligenceBoundaryStatus,
   IntelligenceCapabilitySummary,
@@ -22,6 +27,8 @@ import type {
   PrepareIntelligencePayloadDryRunInput,
   RecordPolicyBlockedExecutionInput,
   ReviewAiSuggestionInput,
+  IntelligenceAdapterResponse,
+  IntelligenceProviderAdapter,
   RunFixtureIntelligenceAdapterInput,
   UpsertAiTenantPolicyInput,
   ValidateIntelligenceProviderOutputInput,
@@ -48,7 +55,7 @@ export class IntelligenceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly capabilityRegistry: IntelligenceCapabilityRegistry,
-    private readonly fixtureAdapter: FixtureIntelligenceAdapter,
+    @Inject(INTELLIGENCE_PROVIDER_ADAPTER) private readonly adapter: IntelligenceProviderAdapter,
   ) {}
 
   getBoundaryStatus(actor: IntelligenceActor): IntelligenceBoundaryStatus {
@@ -507,10 +514,11 @@ export class IntelligenceService {
     return this.structuredOutputValidationResult(errors.length === 0, candidates.length, validationEvidenceId, errors, validatedSuggestions);
   }
 
-  async runFixtureAdapterContract(input: RunFixtureIntelligenceAdapterInput) {
+  async runFixtureAdapterContract(input: RunFixtureIntelligenceAdapterInput): Promise<FixtureIntelligenceAdapterRunResult> {
     const dryRun = await this.prepareIntelligencePayloadDryRun(input);
     if (!dryRun.allowed || !dryRun.payloadFingerprint) {
       return {
+        status: "payload_blocked",
         payloadAllowed: false,
         errors: [dryRun.classification.reason ?? "Payload is not allowed across the intelligence adapter boundary."],
         providerCallAttempted: false,
@@ -518,7 +526,7 @@ export class IntelligenceService {
       };
     }
 
-    const adapterResponse = await this.fixtureAdapter.generateStructuredOutput({
+    const request = {
       tenantKey: normalizeTenantKey(input.tenantKey),
       capability: input.capability,
       entityType: input.entityType,
@@ -531,14 +539,58 @@ export class IntelligenceService {
       payload: input.payload,
       payloadFingerprint: dryRun.payloadFingerprint,
       correlationId: this.requiredText("correlationId", input.correlationId),
-    });
+    };
 
+    let adapterResponse: IntelligenceAdapterResponse;
+    try {
+      adapterResponse = await this.adapter.generateStructuredOutput(request);
+    } catch (error) {
+      // The adapter was invoked, so a provider call cannot be ruled out; report it conservatively.
+      const adapterError = normalizeIntelligenceAdapterException(error);
+      return {
+        status: "adapter_failed",
+        payloadAllowed: true,
+        adapterError,
+        errors: [adapterError.message],
+        providerCallAttempted: true,
+        canonicalProductMutationEnabled: false,
+      };
+    }
+
+    // finishStatus is untrusted adapter output: only an exact "completed" may proceed, anything unknown fails closed.
+    const finishStatus: unknown = adapterResponse?.finishStatus;
+    if (finishStatus !== "completed") {
+      const known = finishStatus === "blocked" || finishStatus === "failed";
+      const adapterError = known
+        ? normalizeIntelligenceAdapterFailure(
+            adapterResponse.errorClass,
+            adapterResponse.errorCode,
+            finishStatus === "blocked" ? "adapter_blocked" : "adapter_failed",
+          )
+        : normalizeIntelligenceAdapterFailure("internal_error", undefined, "adapter_status_invalid");
+      const { structuredOutput: _discarded, ...nonSuccessResponse } = adapterResponse ?? ({} as IntelligenceAdapterResponse);
+      return {
+        status: !known ? "adapter_status_invalid" : finishStatus === "blocked" ? "adapter_blocked" : "adapter_failed",
+        payloadAllowed: true,
+        // Unknown status means the response cannot be trusted at all, so none of it is echoed back.
+        adapterResponse: known
+          ? { ...nonSuccessResponse, errorClass: adapterError.errorClass, errorCode: adapterError.errorCode }
+          : undefined,
+        adapterError,
+        errors: [adapterError.message],
+        providerCallAttempted: adapterResponse?.providerCallAttempted === true,
+        canonicalProductMutationEnabled: false,
+      };
+    }
+
+    const providerCallAttempted = adapterResponse.providerCallAttempted === true;
     if (!adapterResponse.structuredOutput) {
       return {
+        status: "output_rejected",
         payloadAllowed: true,
         adapterResponse,
-        errors: [adapterResponse.errorMessageSafe ?? "Intelligence adapter did not return structured output."],
-        providerCallAttempted: false,
+        errors: ["Intelligence adapter completed without structured output."],
+        providerCallAttempted,
         canonicalProductMutationEnabled: false,
       };
     }
@@ -559,11 +611,12 @@ export class IntelligenceService {
     });
 
     return {
+      status: outputValidation.schemaValid && outputValidation.errors.length === 0 ? "succeeded" : "output_rejected",
       payloadAllowed: true,
       adapterResponse,
       outputValidation,
       errors: outputValidation.errors,
-      providerCallAttempted: false,
+      providerCallAttempted,
       canonicalProductMutationEnabled: false,
     };
   }

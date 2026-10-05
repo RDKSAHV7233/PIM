@@ -4,11 +4,17 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import { IntelligenceController } from "./intelligence.controller";
 import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
+import { INTELLIGENCE_PROVIDER_ADAPTER } from "./intelligence-adapter-boundary";
 import { IntelligenceService } from "./intelligence.service";
 
 @Module({
   imports: [AccessPolicyModule, PrismaModule],
   controllers: [IntelligenceController],
-  providers: [FixtureIntelligenceAdapter, IntelligenceCapabilityRegistry, IntelligenceService],
+  providers: [
+    FixtureIntelligenceAdapter,
+    { provide: INTELLIGENCE_PROVIDER_ADAPTER, useExisting: FixtureIntelligenceAdapter },
+    IntelligenceCapabilityRegistry,
+    IntelligenceService,
+  ],
 })
 export class IntelligenceModule {}

@@ -36,7 +36,8 @@ describe("IntelligenceModule", () => {
 
     expect(source).not.toContain(LEGACY_SUGGESTIONS_SERVICE);
     expect(source).not.toContain(PRODUCT_SERVICE_SHORTCUT);
-    expect(source).not.toContain(PROVIDER_ADAPTER_NAME);
+    // The Vexa-owned boundary interface is allowed; any other adapter name would be a concrete provider client.
+    expect(source.replace(/IntelligenceProviderAdapter/g, "")).not.toContain(PROVIDER_ADAPTER_NAME);
     expect(source).not.toContain(PROVIDER_CLIENT_NAME);
     expect(source).not.toMatch(/fetch\s*\(/);
     expect(source).not.toMatch(/product\.(update|updateMany|delete|deleteMany|upsert)\s*\(/);

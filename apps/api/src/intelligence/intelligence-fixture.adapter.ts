@@ -1,10 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import type { IntelligenceAdapterRequest, IntelligenceAdapterResponse } from "./intelligence.types";
+import type { IntelligenceAdapterRequest, IntelligenceAdapterResponse, IntelligenceProviderAdapter } from "./intelligence.types";
 
 @Injectable()
-export class FixtureIntelligenceAdapter {
+export class FixtureIntelligenceAdapter implements IntelligenceProviderAdapter {
+  readonly adapterKey = "fixture";
+
   async generateStructuredOutput(request: IntelligenceAdapterRequest): Promise<IntelligenceAdapterResponse> {
     const startedAt = Date.now();
     const title = this.stringAt(request.payload, ["product", "title"]) ?? "Unknown product";
@@ -18,7 +20,7 @@ export class FixtureIntelligenceAdapter {
     });
 
     return {
-      adapterKey: "fixture",
+      adapterKey: this.adapterKey,
       modelKey: "fixture-model",
       modelVersion: "fixture-model-v1",
       region: "local",
@@ -63,32 +65,6 @@ export class FixtureIntelligenceAdapter {
     };
   }
 
-  normalizeError(error: unknown): IntelligenceAdapterResponse {
-    return {
-      adapterKey: "fixture",
-      modelKey: "fixture-model",
-      modelVersion: "fixture-model-v1",
-      region: "local",
-      requestId: `fixture-error:${this.hashText(this.errorMessage(error))}`,
-      finishStatus: "failed",
-      latencyMs: 0,
-      usage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        cachedInputTokens: 0,
-        reasoningTokens: 0,
-        billableUnits: 0,
-        estimatedCostMicros: 0,
-        currency: "USD",
-        pricingVersion: "fixture-free-v1",
-      },
-      errorClass: "internal_error",
-      errorCode: "fixture_adapter_error",
-      errorMessageSafe: this.errorMessage(error).slice(0, 200),
-      providerCallAttempted: false,
-    };
-  }
-
   private stringAt(value: Prisma.InputJsonValue, path: string[]) {
     let current: unknown = value;
     for (const segment of path) {
@@ -120,9 +96,5 @@ export class FixtureIntelligenceAdapter {
       .sort()
       .map((key) => `${JSON.stringify(key)}:${this.stableJsonStringify(record[key])}`)
       .join(",")}}`;
-  }
-
-  private errorMessage(error: unknown) {
-    return error instanceof Error ? error.message : "Fixture adapter failed.";
   }
 }
