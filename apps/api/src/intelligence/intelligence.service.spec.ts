@@ -1141,4 +1141,169 @@ describe("IntelligenceService", () => {
       expect(generateStructuredOutput).not.toHaveBeenCalled();
     });
   });
+
+  describe("payload policy path semantics (AI-POL-002)", () => {
+    const wildcardPolicy = {
+      ...activePolicy,
+      fieldClassifications: {
+        "product.title": { classification: "AI_ALLOWED" },
+        "product.description": { classification: "AI_ALLOWED" },
+        "product.brand": { classification: "AI_ALLOWED" },
+        "product.categoryPath": { classification: "AI_ALLOWED" },
+        "product.attributes.*": { classification: "AI_ALLOWED" },
+        "product.attributes.cost": { classification: "AI_BLOCKED" },
+        "product.supplierSpecifications.*": { classification: "AI_ALLOWED" },
+        "product.notes.*": { classification: "AI_ALLOWED_WITH_REDACTION", redactionEvidenceRequired: true },
+        "customer.email": { classification: "AI_BLOCKED" },
+        "connector.apiKey": { classification: "AI_BLOCKED" },
+      },
+    };
+
+    const classify = async (payload: unknown, redactedFields?: string[], policy: unknown = wildcardPolicy) => {
+      aiTenantPolicy.findFirst.mockResolvedValue(policy);
+      return createService().classifyPayloadForIntelligence({
+        tenantKey: "tenant-a",
+        capability: "product_attribute_extraction",
+        payload: payload as never,
+        redactedFields,
+      });
+    };
+
+    it("allows direct children under a children wildcard (the 20 previously blocked attribute cases)", async () => {
+      const result = await classify({
+        product: { title: "Kurta", attributes: { color: "navy", size: "M", sleeveLength: "three-quarter" }, supplierSpecifications: { fit: "straight" } },
+      });
+      expect(result).toMatchObject({ allowed: true, blockedFields: [], unknownFields: [] });
+    });
+
+    it("does not let a children wildcard reach grandchildren or the parent leaf itself", async () => {
+      const grandchild = await classify({ product: { attributes: { dims: { width: "10" } } } });
+      expect(grandchild).toMatchObject({ allowed: false, unknownFields: ["product.attributes.dims.width"], blockedReasons: ["unknown_path"] });
+      const parentScalar = await classify({ product: { attributes: "navy cotton" } });
+      expect(parentScalar).toMatchObject({ allowed: false, unknownFields: ["product.attributes"] });
+    });
+
+    it("still treats an empty container as carrying no data", async () => {
+      expect((await classify({ product: { title: "Kurta", attributes: {} }, customer: {} })).allowed).toBe(true);
+    });
+
+    it("deny-overrides: a specific block beats a wildcard allow", async () => {
+      const result = await classify({ product: { attributes: { color: "navy", cost: "120" } } });
+      expect(result).toMatchObject({ allowed: false, blockedFields: ["product.attributes.cost"], blockedReasons: ["blocked_by_policy"] });
+    });
+
+    it.each([["password"], ["secretKey"], ["clientSecret"], ["apiKey"], ["access-token"]])("blocks a wildcard-admitted key named %p", async (key) => {
+      const result = await classify({ product: { attributes: { [key]: "x" } } });
+      expect(result).toMatchObject({ allowed: false, blockedReasons: ["secret_like_key"] });
+      expect(result.blockedFields).toEqual([`product.attributes.${key}`]);
+    });
+
+    it("blocks keys that are not plain path segments, including dotted keys that mimic a nested path", async () => {
+      const dotted = await classify({ "product.title": "Kurta" });
+      expect(dotted).toMatchObject({ allowed: false, blockedReasons: ["invalid_path_segment"] });
+      const mimic = await classify({ product: { attributes: { "color.shade": "navy" } } });
+      expect(mimic).toMatchObject({ allowed: false, blockedReasons: ["invalid_path_segment"] });
+      const spaced = await classify({ product: { attributes: { "bag count": 25 } } });
+      expect(spaced).toMatchObject({ allowed: false, blockedReasons: ["invalid_path_segment"] });
+      const wildcardKey = await classify({ product: { attributes: { "*": "x" } } });
+      expect(wildcardKey).toMatchObject({ allowed: false, blockedReasons: ["invalid_path_segment"] });
+    });
+
+    it("scans array contents with the text guard (previously a bypass)", async () => {
+      const category = await classify({ product: { categoryPath: ["Apparel", "password hunter2"] } });
+      expect(category).toMatchObject({ allowed: false, blockedFields: ["product.categoryPath"], blockedReasons: ["secret_like_text"] });
+      const attribute = await classify({ product: { attributes: { tags: ["fine", "api key abc123"] } } });
+      expect(attribute).toMatchObject({ allowed: false, blockedReasons: ["secret_like_text"] });
+      expect((await classify({ product: { categoryPath: ["Apparel", "Women", "Kurtas"], attributes: { sizes: ["S", "M", 3, true, null] } } })).allowed).toBe(true);
+    });
+
+    it("blocks objects and nested arrays inside arrays (fail closed)", async () => {
+      const objectElement = await classify({ product: { categoryPath: [{ token: "abc" }] } });
+      expect(objectElement).toMatchObject({ allowed: false, blockedReasons: ["unsupported_array_element"] });
+      const nestedArray = await classify({ product: { categoryPath: [["a"]] } });
+      expect(nestedArray).toMatchObject({ allowed: false, blockedReasons: ["unsupported_array_element"] });
+    });
+
+    it("keeps the secret-text guard on wildcard-admitted string values", async () => {
+      const result = await classify({ product: { attributes: { note: "includes the password" } } });
+      expect(result).toMatchObject({ allowed: false, blockedReasons: ["secret_like_text"] });
+    });
+
+    it("keeps explicitly blocked paths blocked, even with empty values", async () => {
+      const result = await classify({ product: { title: "Kurta" }, customer: { email: "" }, connector: { apiKey: "" } });
+      expect(result).toMatchObject({ allowed: false, blockedReasons: ["blocked_by_policy"] });
+      expect(result.blockedFields).toEqual(["customer.email", "connector.apiKey"]);
+    });
+
+    it("blocks a payload whose root is not an object", async () => {
+      for (const payload of ["api key abc123", ["password"], 5]) {
+        expect(await classify(payload)).toMatchObject({ allowed: false, blockedFields: ["$"], blockedReasons: ["unsupported_payload_shape"] });
+      }
+    });
+
+    it("applies redaction evidence to each leaf a wildcard rule admits", async () => {
+      const payload = { product: { notes: { pickup: "weekday", contact: "removed" } } };
+      expect(await classify(payload)).toMatchObject({ allowed: false, blockedReasons: ["redaction_required"] });
+      expect(await classify(payload, ["product.notes.pickup"])).toMatchObject({ allowed: false, blockedFields: ["product.notes.contact"] });
+      expect((await classify(payload, ["product.notes.pickup", "product.notes.contact"])).allowed).toBe(true);
+    });
+
+    it("reports reason codes only, never paths or values, in blockedReasons", async () => {
+      const result = await classify({ product: { attributes: { password: "hunter2-value" } } });
+      expect(JSON.stringify(result.blockedReasons)).not.toMatch(/hunter2|password|product/);
+    });
+
+    it("still blocks unknown leaves when the default classification would allow them", async () => {
+      const result = await classify({ product: { unlisted: "x" } }, undefined, { ...wildcardPolicy, defaultClassification: "AI_ALLOWED" });
+      expect(result).toMatchObject({ allowed: false, unknownFields: ["product.unlisted"] });
+    });
+
+    it("drops a stored rule that no longer satisfies the grammar, so its leaves fail closed", async () => {
+      const policy = { ...wildcardPolicy, fieldClassifications: { "product.title": { classification: "AI_ALLOWED" }, "product.attri*butes": { classification: "AI_ALLOWED" }, "product..x": { classification: "AI_ALLOWED" } } };
+      expect(await classify({ product: { title: "Kurta" } }, undefined, policy)).toMatchObject({ allowed: true });
+      expect(await classify({ product: { attributes: "x" } }, undefined, policy)).toMatchObject({ allowed: false, unknownFields: ["product.attributes"] });
+    });
+
+    it("rejects an invalid rule path when a tenant policy is saved, and accepts wildcard rules", async () => {
+      aiTenantPolicy.upsert.mockResolvedValue({ id: "policy-1" });
+      const save = (fieldClassifications: Record<string, { classification: "AI_ALLOWED" | "AI_BLOCKED" }>) =>
+        createService().upsertTenantPolicy({
+          tenantKey: "tenant-a",
+          capability: "product_attribute_extraction",
+          providerKey: "default",
+          policyVersion: "ai-pol-v2",
+          redactionPolicyVersion: "redaction-v1",
+          classificationPolicyHash: "sha256:policy",
+          fieldClassifications,
+          createdByActorId: "security-1",
+        } as never);
+
+      for (const bad of ["a.*.b", "a b", "a..b", "*", "a.b*", "a.***"]) {
+        await expect(save({ [bad]: { classification: "AI_ALLOWED" } })).rejects.toThrow(/is invalid/);
+      }
+      expect(aiTenantPolicy.upsert).not.toHaveBeenCalled();
+      await expect(save({ "product.attributes.*": { classification: "AI_ALLOWED" }, "product.attributes.**": { classification: "AI_BLOCKED" } })).resolves.toBeDefined();
+      expect(aiTenantPolicy.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets a payload with wildcard-admitted attributes through the adapter contract end to end", async () => {
+      aiTenantPolicy.findFirst.mockResolvedValue(wildcardPolicy);
+      const result = await createService().runFixtureAdapterContract({
+        tenantKey: "tenant-a",
+        executionId: "exec-1",
+        capability: "product_attribute_extraction",
+        entityType: "product",
+        entityId: "prod-1",
+        sourceRecordId: "source-1",
+        sourceVersion: 3,
+        sourceHash: "sha256:source",
+        promptVersion: "prompt-v1",
+        schemaVersion: "schema-v1",
+        correlationId: "corr-1",
+        payload: { product: { title: "Cotton Kurta", attributes: { color: "navy", material: "cotton" } } },
+      });
+      expect(result).toMatchObject({ status: "succeeded", payloadAllowed: true, canonicalProductMutationEnabled: false });
+      expect(aiSuggestion.upsert).not.toHaveBeenCalled();
+    });
+  });
 });

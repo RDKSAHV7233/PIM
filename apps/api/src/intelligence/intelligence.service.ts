@@ -5,6 +5,15 @@ import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import {
+  isSecretLikeKey,
+  isValidPayloadSegment,
+  parseRule,
+  resolveLeaf,
+  validateRulePath,
+  wildcardSegments,
+  type ParsedPolicyRule,
+} from "./intelligence-payload-policy";
+import {
   INTELLIGENCE_PROVIDER_ADAPTER,
   normalizeIntelligenceAdapterException,
   normalizeIntelligenceAdapterFailure,
@@ -20,6 +29,7 @@ import type {
   IntelligenceActor,
   IntelligenceBoundaryStatus,
   IntelligenceCapabilitySummary,
+  IntelligencePayloadBlockReason,
   IntelligencePayloadClassificationResult,
   IntelligencePayloadDryRunResult,
   IntelligenceProviderOutputSuggestionCandidate,
@@ -301,27 +311,60 @@ export class IntelligenceService {
       return this.blockedClassificationResult("tenant_policy_blocked", "Payload exceeds tenant policy size limit.", policy);
     }
 
-    const rules = this.normalizeFieldClassifications(policy.fieldClassifications);
-    const flattened = this.flattenPayloadLeaves(payload);
+    const rules = this.parsePolicyRules(policy.fieldClassifications);
     const blockedFields: string[] = [];
     const unknownFields: string[] = [];
+    const blockedReasons = new Set<IntelligencePayloadBlockReason>();
+    const block = (path: string, reason: IntelligencePayloadBlockReason) => {
+      blockedFields.push(path);
+      blockedReasons.add(reason);
+    };
 
-    for (const item of flattened) {
-      const rule = rules[item.path];
-      const classification = rule?.classification ?? (policy.defaultClassification as AiDataClassification);
-      if (!rule) {
-        unknownFields.push(item.path);
+    if (!this.isRecord(payload)) {
+      // Only an object can be classified field by field; any other root would otherwise carry unchecked content.
+      block("$", "unsupported_payload_shape");
+    }
+
+    for (const leaf of this.isRecord(payload) ? this.payloadLeaves(payload) : []) {
+      const path = this.leafDisplayPath(leaf.segments);
+      if (!leaf.segments.every(isValidPayloadSegment)) {
+        block(path, "invalid_path_segment");
+        continue;
       }
+
+      const { matched, effective } = resolveLeaf(rules, leaf.segments);
+      if (effective === null) {
+        unknownFields.push(path);
+      }
+      const classification = effective ?? (policy.defaultClassification as AiDataClassification);
       if (classification === "AI_BLOCKED") {
-        blockedFields.push(item.path);
+        block(path, effective === null ? "unknown_path" : "blocked_by_policy");
         continue;
       }
-      if (classification === "AI_ALLOWED_WITH_REDACTION" && !redactedFields.includes(item.path)) {
-        blockedFields.push(item.path);
+      if (classification === "AI_ALLOWED_WITH_REDACTION" && !redactedFields.includes(path)) {
+        block(path, "redaction_required");
         continue;
       }
-      if (typeof item.value === "string" && this.hasSecretLikeText(item.value)) {
-        blockedFields.push(item.path);
+      // A wildcard rule admits key names nobody listed, so those key names must not look like credentials.
+      if (matched.some((rule) => wildcardSegments(rule, leaf.segments).some(isSecretLikeKey))) {
+        block(path, "secret_like_key");
+        continue;
+      }
+      if (typeof leaf.value === "string") {
+        if (this.hasSecretLikeText(leaf.value)) {
+          block(path, "secret_like_text");
+        }
+      } else if (Array.isArray(leaf.value)) {
+        for (const element of leaf.value) {
+          if (element !== null && typeof element === "object") {
+            block(path, "unsupported_array_element");
+            break;
+          }
+          if (typeof element === "string" && this.hasSecretLikeText(element)) {
+            block(path, "secret_like_text");
+            break;
+          }
+        }
       }
     }
 
@@ -332,6 +375,7 @@ export class IntelligenceService {
         policyVersion: policy.policyVersion,
         blockedFields: [...new Set(blockedFields)],
         unknownFields: [...new Set(unknownFields)],
+        blockedReasons: [...blockedReasons].sort(),
         redactedFields,
         classificationEvidenceId: this.buildEvidenceId("classification", policy.id, payload),
         redactionEvidenceId: redactedFields.length > 0 ? this.buildEvidenceId("redaction", policy.id, redactedFields) : undefined,
@@ -951,12 +995,28 @@ export class IntelligenceService {
       if (!AI_DATA_CLASSIFICATIONS.has(rule.classification)) {
         throw new BadRequestException("Unsupported AI data classification.");
       }
+      const invalidReason = validateRulePath(normalizedPath);
+      if (invalidReason) {
+        throw new BadRequestException(`field classification path "${normalizedPath.slice(0, 80)}" is invalid: ${invalidReason}.`);
+      }
       result[normalizedPath] = {
         classification: rule.classification,
         redactionEvidenceRequired: Boolean(rule.redactionEvidenceRequired),
       };
     }
     return result;
+  }
+
+  /** Stored rules that no longer satisfy the grammar are dropped, so the leaves they would have covered fail closed as unknown. */
+  private parsePolicyRules(value: unknown): ParsedPolicyRule[] {
+    const rules: ParsedPolicyRule[] = [];
+    for (const [fieldPath, rule] of Object.entries(this.normalizeFieldClassifications(value))) {
+      const parsed = parseRule(fieldPath, rule.classification, rule.redactionEvidenceRequired);
+      if (parsed) {
+        rules.push(parsed);
+      }
+    }
+    return rules;
   }
 
   private normalizeFieldClassifications(value: unknown) {
@@ -1060,14 +1120,16 @@ export class IntelligenceService {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
   }
 
-  private flattenPayloadLeaves(value: unknown, prefix = ""): Array<{ path: string; value: unknown }> {
-    if (Array.isArray(value)) {
-      return [{ path: prefix, value }];
-    }
+  /** Objects recurse by key; arrays and primitives are leaves. Empty objects carry no data and produce no leaf. */
+  private payloadLeaves(value: unknown, prefix: string[] = []): Array<{ segments: string[]; value: unknown }> {
     if (!this.isRecord(value)) {
-      return prefix ? [{ path: prefix, value }] : [];
+      return prefix.length > 0 ? [{ segments: prefix, value }] : [];
     }
-    return Object.entries(value).flatMap(([key, child]) => this.flattenPayloadLeaves(child, prefix ? `${prefix}.${key}` : key));
+    return Object.entries(value).flatMap(([key, child]) => this.payloadLeaves(child, [...prefix, key]));
+  }
+
+  private leafDisplayPath(segments: string[]) {
+    return segments.map((segment) => (segment.length > 64 ? `${segment.slice(0, 64)}...` : segment)).join(".");
   }
 
   private stableJsonStringify(value: unknown): string {

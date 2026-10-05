@@ -1,0 +1,37 @@
+{
+  "vectorSetId": "AI-POL-002-PATH-SEMANTICS-V1",
+  "version": 1,
+  "nonRuntime": true,
+  "owner": "privacy-security-backend",
+  "note": "Shared conformance vectors. The TypeScript matcher (intelligence-payload-policy.ts) and the static validator's CommonJS port must both satisfy every vector, so the two implementations cannot diverge.",
+  "ruleGrammar": {
+    "valid": ["product.title", "product.attributes.*", "product.attributes.**", "a", "a-b.c_d", "A1.b2.*", "customer.email"],
+    "invalid": ["", ".", "a.", ".a", "a..b", "a.*.b", "a.**.b", "*", "**", "a.b*", "a.*b", "a b", "a.b[0]", "a.b/c", "a.***", "naïve.path"]
+  },
+  "payloadSegments": {
+    "valid": ["color", "sleeve_length", "size-2", "A1", "x"],
+    "invalid": ["", "a.b", "a b", "*", "**", "color[0]", "naïve", "a/b", "a\\b"]
+  },
+  "secretLikeKeys": {
+    "secret": ["password", "passwd", "apiKey", "api_key", "api-key", "secretKey", "clientSecret", "access-token", "accessToken", "refresh_token", "privateKey", "Authorization", "bearerToken", "oauthState", "credentials", "webhookSecret"],
+    "notSecret": ["color", "sleeveLength", "material", "keyboardLayout", "packSize", "brand", "caseColor", "author", "monkey", "fit"]
+  },
+  "resolution": [
+    { "id": "exact-matches-itself", "rules": [["product.attributes", "AI_ALLOWED"]], "leaf": "product.attributes", "matched": ["product.attributes"], "effective": "AI_ALLOWED" },
+    { "id": "exact-does-not-cover-child", "rules": [["product.attributes", "AI_ALLOWED"]], "leaf": "product.attributes.color", "matched": [], "effective": null },
+    { "id": "children-covers-direct-child", "rules": [["product.attributes.*", "AI_ALLOWED"]], "leaf": "product.attributes.color", "matched": ["product.attributes.*"], "effective": "AI_ALLOWED" },
+    { "id": "children-does-not-cover-parent", "rules": [["product.attributes.*", "AI_ALLOWED"]], "leaf": "product.attributes", "matched": [], "effective": null },
+    { "id": "children-does-not-cover-grandchild", "rules": [["product.attributes.*", "AI_ALLOWED"]], "leaf": "product.attributes.a.b", "matched": [], "effective": null },
+    { "id": "subtree-covers-child", "rules": [["product.attributes.**", "AI_ALLOWED"]], "leaf": "product.attributes.color", "matched": ["product.attributes.**"], "effective": "AI_ALLOWED" },
+    { "id": "subtree-covers-grandchild", "rules": [["product.attributes.**", "AI_ALLOWED"]], "leaf": "product.attributes.a.b.c", "matched": ["product.attributes.**"], "effective": "AI_ALLOWED" },
+    { "id": "subtree-does-not-cover-parent", "rules": [["product.attributes.**", "AI_ALLOWED"]], "leaf": "product.attributes", "matched": [], "effective": null },
+    { "id": "segment-boundary-not-string-prefix", "rules": [["product.attributes.*", "AI_ALLOWED"]], "leaf": "product.attributesX.color", "matched": [], "effective": null },
+    { "id": "case-sensitive", "rules": [["product.Attributes.*", "AI_ALLOWED"]], "leaf": "product.attributes.color", "matched": [], "effective": null },
+    { "id": "different-root", "rules": [["product.attributes.*", "AI_ALLOWED"]], "leaf": "other.attributes.color", "matched": [], "effective": null },
+    { "id": "deny-overrides-exact-over-wildcard-allow", "rules": [["product.attributes.**", "AI_ALLOWED"], ["product.attributes.cost", "AI_BLOCKED"]], "leaf": "product.attributes.cost", "matched": ["product.attributes.**", "product.attributes.cost"], "effective": "AI_BLOCKED" },
+    { "id": "deny-overrides-wildcard-block-over-exact-allow", "rules": [["product.internal.**", "AI_BLOCKED"], ["product.internal.note", "AI_ALLOWED"]], "leaf": "product.internal.note", "matched": ["product.internal.**", "product.internal.note"], "effective": "AI_BLOCKED" },
+    { "id": "redaction-beats-allow", "rules": [["x.*", "AI_ALLOWED"], ["x.y", "AI_ALLOWED_WITH_REDACTION"]], "leaf": "x.y", "matched": ["x.*", "x.y"], "effective": "AI_ALLOWED_WITH_REDACTION" },
+    { "id": "blocked-beats-redaction", "rules": [["x.y", "AI_ALLOWED_WITH_REDACTION"], ["x.**", "AI_BLOCKED"]], "leaf": "x.y", "matched": ["x.y", "x.**"], "effective": "AI_BLOCKED" },
+    { "id": "unlisted-sibling-unaffected", "rules": [["customer.email", "AI_BLOCKED"]], "leaf": "customer.name", "matched": [], "effective": null }
+  ]
+}

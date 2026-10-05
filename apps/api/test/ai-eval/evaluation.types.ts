@@ -1,4 +1,4 @@
-import type { FixtureIntelligenceAdapterRunResult, IntelligenceCapabilityId } from "../../src/intelligence/intelligence.types";
+import type { FixtureIntelligenceAdapterRunResult, IntelligenceCapabilityId, IntelligencePayloadBlockReason } from "../../src/intelligence/intelligence.types";
 
 export type EvaluationMode = "FAST";
 export type ExpectedPipelineOutcome = "succeeded" | "payload_blocked" | "output_rejected";
@@ -52,7 +52,7 @@ export interface CaseRunResult {
   providerCallAttempted: boolean;
   proposed: ScorableSuggestion[];
   accepted: ScorableSuggestion[];
-  blockedReasons: Array<"guard_word" | "unknown_field_path" | "blocked_field">;
+  blockedReasons: IntelligencePayloadBlockReason[];
 }
 
 export interface StructuralCaseScore {

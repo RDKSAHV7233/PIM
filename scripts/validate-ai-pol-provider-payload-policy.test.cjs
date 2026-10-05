@@ -3,7 +3,10 @@
 const assert = require("node:assert/strict");
 
 const {
+  VECTORS_PATH,
+  blockedLeaves,
   readJson,
+  validatePathSemanticsVectors,
   validatePayloadAgainstPolicy,
   validatePolicy,
 } = require("./validate-ai-pol-provider-payload-policy.cjs");
@@ -89,6 +92,60 @@ const validPolicy = readJson();
   const payload = clone(validPolicy.providerPayloadExamples[0].payload);
   const result = validatePayloadAgainstPolicy(validPolicy, payload);
   assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+
+// ---- AI-POL-002: explicit path semantics ----
+
+const vectors = readJson(VECTORS_PATH);
+
+{
+  const result = validatePathSemanticsVectors(vectors);
+  assert.equal(result.ok, true, result.errors.join(String.fromCharCode(10)));
+}
+
+{
+  // The vectors must be able to fail: a wrong expectation is detected.
+  const broken = clone(vectors);
+  broken.resolution[0].effective = "AI_BLOCKED";
+  assert.equal(validatePathSemanticsVectors(broken).ok, false);
+  const wrongGrammar = clone(vectors);
+  wrongGrammar.ruleGrammar.invalid.push("product.title");
+  assert.equal(validatePathSemanticsVectors(wrongGrammar).ok, false);
+  const wrongKey = clone(vectors);
+  wrongKey.secretLikeKeys.notSecret.push("password");
+  assert.equal(validatePathSemanticsVectors(wrongKey).ok, false);
+}
+
+{
+  const policy = clone(validPolicy);
+  policy.fields[0].path = "product.*.title";
+  assertInvalidPolicy(policy, "invalid rule path");
+  const spaced = clone(validPolicy);
+  spaced.fields[0].path = "product title";
+  assertInvalidPolicy(spaced, "invalid rule path");
+}
+
+{
+  // The fixture's own allowed example is classifiable leaf by leaf, and each wildcard rule is load-bearing.
+  assert.deepEqual(blockedLeaves(validPolicy, validPolicy.providerPayloadExamples[0].payload), []);
+  const withoutAttributes = clone(validPolicy);
+  withoutAttributes.fields = withoutAttributes.fields.filter((field) => field.path !== "product.attributes.*");
+  assertInvalidPolicy(withoutAttributes, "leaf product.attributes.material would be blocked");
+}
+
+{
+  const base = { product: { title: "Kurta" } };
+  const blocked = (payload) => blockedLeaves(validPolicy, payload);
+  assert.deepEqual(blocked({ product: { ...base.product, attributes: { color: "navy" } } }), []);
+  assert.deepEqual(blocked({ product: { attributes: { dims: { width: "10" } } } }), ["product.attributes.dims.width"]);
+  assert.deepEqual(blocked({ product: { attributes: { password: "x" } } }), ["product.attributes.password"]);
+  assert.deepEqual(blocked({ product: { attributes: { clientSecret: "x" } } }), ["product.attributes.clientSecret"]);
+  assert.deepEqual(blocked({ "product.title": "Kurta" }), ["product.title"]);
+  assert.deepEqual(blocked({ product: { categoryPath: ["Apparel", "password hunter2"] } }), ["product.categoryPath"]);
+  assert.deepEqual(blocked({ product: { categoryPath: [{ token: "abc" }] } }), ["product.categoryPath"]);
+  assert.deepEqual(blocked({ product: { categoryPath: ["Apparel", "Women"] } }), []);
+  assert.deepEqual(blocked({ customer: { email: "" } }), ["customer.email"]);
 }
 
 console.log("AI-POL-001 provider payload policy validator tests passed.");

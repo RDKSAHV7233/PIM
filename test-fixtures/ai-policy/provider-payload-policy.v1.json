@@ -26,12 +26,12 @@
       "reason": "Taxonomy path is needed for category-aware extraction."
     },
     {
-      "path": "product.attributes",
+      "path": "product.attributes.*",
       "classification": "AI_ALLOWED",
       "reason": "Product attributes are the primary extraction source."
     },
     {
-      "path": "product.supplierSpecifications",
+      "path": "product.supplierSpecifications.*",
       "classification": "AI_ALLOWED",
       "reason": "Supplier product specifications are in AI-001 scope when not mixed with blocked data."
     },

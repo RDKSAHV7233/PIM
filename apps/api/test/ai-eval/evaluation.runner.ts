@@ -142,20 +142,11 @@ export async function runEvaluation(options: RunOptions = {}): Promise<Evaluatio
       payload: payload as never,
     });
 
-    const blockedReasons: CaseRunResult["blockedReasons"] = [];
-    if (result.status === "payload_blocked") {
-      const classification = await service.classifyPayloadForIntelligence({ tenantKey: TENANT_KEY, capability: testCase.capability, payload: payload as never });
-      const policy = buildTenantPolicy().fieldClassifications;
-      if (classification.unknownFields.length > 0) {
-        blockedReasons.push("unknown_field_path");
-      }
-      if (classification.blockedFields.some((path) => policy[path]?.classification === "AI_BLOCKED" || policy[path]?.classification === "AI_ALLOWED_WITH_REDACTION")) {
-        blockedReasons.push("blocked_field");
-      }
-      if (classification.blockedFields.some((path) => policy[path]?.classification === "AI_ALLOWED")) {
-        blockedReasons.push("guard_word");
-      }
-    }
+    // The service reports reason codes only (never paths or values); the harness records them as measured.
+    const blockedReasons =
+      result.status === "payload_blocked"
+        ? (await service.classifyPayloadForIntelligence({ tenantKey: TENANT_KEY, capability: testCase.capability, payload: payload as never })).blockedReasons ?? []
+        : [];
 
     runs.set(testCase.caseId, {
       caseId: testCase.caseId,

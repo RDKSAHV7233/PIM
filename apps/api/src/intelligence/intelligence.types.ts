@@ -200,6 +200,16 @@ export interface ClassifyIntelligencePayloadInput {
   redactedFields?: string[];
 }
 
+export type IntelligencePayloadBlockReason =
+  | "unknown_path"
+  | "blocked_by_policy"
+  | "redaction_required"
+  | "secret_like_text"
+  | "secret_like_key"
+  | "invalid_path_segment"
+  | "unsupported_array_element"
+  | "unsupported_payload_shape";
+
 export interface IntelligencePayloadClassificationResult {
   allowed: boolean;
   policyId?: string;
@@ -207,6 +217,8 @@ export interface IntelligencePayloadClassificationResult {
   blockedFields: string[];
   redactedFields: string[];
   unknownFields: string[];
+  /** Why fields were blocked: reason codes only, never paths or values. */
+  blockedReasons?: IntelligencePayloadBlockReason[];
   classificationEvidenceId: string;
   redactionEvidenceId?: string;
   payloadHash?: string;
