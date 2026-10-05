@@ -31,6 +31,20 @@ export function stableStringify(value: unknown): string {
 
 export const sha256 = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
+/**
+ * Hash of the catalog's test content. Approval metadata (per-case `approvalStatus` and `approvals`, and the
+ * top-level `approvalPolicy`) is excluded on purpose: approving a case changes who may rely on it, not what it
+ * tests, so an approval PR must not invalidate the FAST baseline.
+ */
+export function catalogContentHash(catalog: GoldenCatalog): string {
+  const { approvalPolicy: _approvalPolicy, ...rest } = catalog as GoldenCatalog & { approvalPolicy?: unknown };
+  const cases = catalog.cases.map((testCase) => {
+    const { approvalStatus: _status, approvals: _approvals, ...content } = testCase as GoldenCase & { approvals?: unknown };
+    return content;
+  });
+  return sha256(stableStringify({ ...rest, cases }));
+}
+
 export function loadCatalog(): GoldenCatalog {
   return JSON.parse(readFileSync(CATALOG_PATH, "utf8")) as GoldenCatalog;
 }
@@ -164,5 +178,5 @@ export async function runEvaluation(options: RunOptions = {}): Promise<Evaluatio
     });
   }
 
-  return { catalog, catalogHash: sha256(stableStringify(catalog)), runs, sideEffects };
+  return { catalog, catalogHash: catalogContentHash(catalog), runs, sideEffects };
 }

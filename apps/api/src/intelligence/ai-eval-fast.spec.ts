@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { baselineFromRun, buildReport, evaluateGates, type FastBaseline } from "../../test/ai-eval/evaluation.report";
-import { runEvaluation, stableStringify, type EvaluationRun } from "../../test/ai-eval/evaluation.runner";
+import { catalogContentHash, loadCatalog, runEvaluation, stableStringify, type EvaluationRun } from "../../test/ai-eval/evaluation.runner";
 import type { CandidateMutation } from "../../test/ai-eval/reference-candidate";
 import { aggregate } from "../../test/ai-eval/scorers";
 
@@ -185,6 +185,43 @@ describe("AI-EVAL FAST harness", () => {
     const scores = aggregate(safetyOnly.catalog.cases, safetyOnly.runs);
     expect(evaluateGates(safetyOnly, scores, baseline)).toContain("safety_zero_tolerance");
     expect(scores.factual.recall.rate).toBe(baselineFromRun(reference).factualRecall);
+  });
+
+  describe("catalog content hash", () => {
+    const approved = () => {
+      const catalog = loadCatalog();
+      const target = catalog.cases[0] as unknown as Record<string, unknown>;
+      target.approvalStatus = "APPROVED";
+      target.approvals = { pimSme: { by: "reviewer-a", date: "2026-10-05" }, qa: { by: "reviewer-b", date: "2026-10-05" } };
+      return catalog;
+    };
+
+    it("ignores approval metadata, so approving a case does not invalidate the baseline", () => {
+      const catalog = approved();
+      (catalog as unknown as Record<string, unknown>).approvalPolicy = { changed: true };
+      expect(catalogContentHash(catalog)).toBe(catalogContentHash(loadCatalog()));
+      expect(catalogContentHash(catalog)).toBe(reference.catalogHash);
+    });
+
+    it("reports the approval in the authoritative scope without touching the all-cases metrics", async () => {
+      const catalog = approved();
+      const run = await runEvaluation({ catalog });
+      const report = buildReport(run, loadBaseline());
+      expect(report.scopes.allCases).toEqual(buildReport(reference, loadBaseline()).scopes.allCases);
+      expect(run.catalogHash).toBe(reference.catalogHash);
+      expect(report.verdict.failedGates).not.toContain("baseline_stale");
+      expect(report.scopes.authoritative).toMatchObject({ caseCount: 1 });
+      expect(report.verdict.authoritative).not.toBe("NOT_EVALUATED");
+    });
+
+    it("still changes when the content a case tests changes", () => {
+      const catalog = loadCatalog();
+      catalog.cases[0].expected.requiredFacts[0].value = "something else";
+      expect(catalogContentHash(catalog)).not.toBe(catalogContentHash(loadCatalog()));
+      const edited = loadCatalog();
+      edited.cases[1].input.title = `${String(edited.cases[1].input.title)} edited`;
+      expect(catalogContentHash(edited)).not.toBe(catalogContentHash(loadCatalog()));
+    });
   });
 
   it("reports a stale baseline instead of passing against a different catalog", async () => {
