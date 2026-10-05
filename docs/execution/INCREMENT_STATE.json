@@ -6316,6 +6316,45 @@
           "live_verified": "2026-10-03 production (deploy edd76b04, signed-in admin, approved test scope): uploading HTML bytes declared image/png now ends on /media?...uploadError=invalid-file-content with the red banner 'This file was not uploaded: its contents do not match a supported image (JPG, PNG, WebP, or GIF). Please choose a real image file.' (before: bare 500 Internal Server Error page); no asset created (asset inputs 113 unchanged), the earlier real PNG still present."
         }
       ]
+    },
+    {
+      "incrementId": "INC-94",
+      "name": "Mapping: publish-time warning for Blocked versions (D9 follow-up)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-BLOCKED-PUBLISH-WARNING-001",
+          "title": "The Publish panel of a Blocked version explains that publishing makes the category not ready; it never prevents the action",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "a9a94255",
+          "scope": [
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/lib/mapping-access.ts",
+            "apps/web/test/integration/mapping-blocked-publish-warning.test.cjs",
+            "docs/decisions/DR-2026-09-30-mapping-po-cto-rulings.md"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Decision D9: publishing a Blocked mapping version is intentional (it declares a category unsupported; apps/api/test/integration/connector-mapping-bulk-coverage.test.cjs Test 9 asserts the resulting readiness block and unaffected siblings), but the operator got no explanation of the strong consequence.",
+          "proposed_fix": "BLOCKED_PUBLISH_WARNING (lib/mapping-access.ts) rendered as a role=note inside the Publish panel when version.compatibilityState === 'blocked'. The Publish disabled rule is unchanged; the test asserts it does not reference compatibility. D11 wording in the decision record also corrected (the 429 may be the ip bucket, not per user).",
+          "team_investigation": "Product: approved follow-up in the second review input recorded in the decision record (author not named). No API change; no authorization change. CTO-lens (analysis, not approval): copy-only web change.",
+          "acceptance": [
+            "A Blocked version's Publish panel shows the warning.",
+            "Publish remains enabled for a validated Blocked version.",
+            "Non-Blocked versions show no warning."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-blocked-publish-warning.test.cjs",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=205 failed=0, before rebase onto newer main)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "Browser, local stack, as admin: a validated Blocked version shows the role=note inside its Publish details and the Publish submit button is enabled"
+          ],
+          "notes": "The non-Blocked negative case is covered by the source contract only (the warning is conditional on compatibilityState); it was not separately viewed in the browser in this run. The web build now needs PLAYWRIGHT_WEB_BUILD_TIMEOUT_MS above the 240 s default locally."
+        }
+      ]
     }
   ]
 }

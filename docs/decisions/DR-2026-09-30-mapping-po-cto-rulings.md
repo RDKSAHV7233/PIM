@@ -35,7 +35,7 @@ Ratified by: ______  Date: ______
 
 ## D11. E2E: the fourth `channels-mapping-publish.spec.js` test trips the API throttle when the file runs whole
 
-- Finding: the API allows 300 requests per minute per user (`ThrottlerModule`, `app.module.ts`); the first three scenarios and their server-rendered page calls use it up. The test passes alone. A retry-with-backoff helper and wider poll windows did not fix it and were reverted (#1014).
+- Finding: the API has two 300-requests-per-minute buckets that apply to a signed-in browser session (`ThrottlerModule`, `app.module.ts`): `ip` and `user`. Which one tripped locally was **not determined**; every request here (tests and the web app's server-rendered calls) comes from one address, so the `ip` bucket is the likelier one. (An earlier version of this record said "per user"; that was an over-specific guess.) Related, found by another session: DEF-PC-024 / issue 1099 reports that the production `ip` bucket is shared across clients behind the edge. Locally, the first three scenarios and their server-rendered page calls use the budget up. The test passes alone. A retry-with-backoff helper and wider poll windows did not fix it and were reverted (#1014).
 - **Decision: do not weaken the production throttle.** If the suite must run whole, prefer splitting the file or adding a cool-down; relaxing the limit only for the Playwright API is an API change for the API owner.
 
 ## Updates to the earlier record (D1-D7)

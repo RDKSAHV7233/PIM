@@ -55,3 +55,10 @@ export const READINESS_RESTRICTED_NOTICE = {
   title: "Readiness checks are not available for your role",
   body: "The server did not run the publish-readiness checks for your account, so the checklist below cannot confirm that this channel is ready. You can still validate and publish mapping versions. Product exports stay blocked until readiness passes, and a workspace admin can review it.",
 } as const;
+
+// Decision D9 (docs/decisions/DR-2026-09-30-mapping-po-cto-rulings.md): publishing a Blocked version is intentional, it is
+// how a category is declared unsupported for a connector. The Publish panel explains the consequence; it never prevents it.
+export const BLOCKED_PUBLISH_WARNING = {
+  title: "Blocked compatibility: this category will become not ready",
+  body: "This version is marked Blocked. Publishing it makes it the live version for this scope and marks the category as not ready for product publishing until another version replaces it. Other categories are not affected. You can still publish it.",
+} as const;

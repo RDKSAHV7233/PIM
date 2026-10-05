@@ -12,6 +12,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { AppRole, ConnectorMappingVersion } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { BLOCKED_PUBLISH_WARNING } from "@/lib/mapping-access";
 import { canArchiveMappingVersions } from "@/lib/role-capabilities";
 import {
   isDefaultMappingLevel,
@@ -379,6 +380,12 @@ export function VersionManagerCard({
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   <p className="font-semibold">Default mapping — wide impact</p>
                   <p className="mt-1">This mapping applies to every category for this connector unless a category-specific override exists.</p>
+                </div>
+              ) : null}
+              {version.compatibilityState === "blocked" ? (
+                <div role="note" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <p className="font-semibold">{BLOCKED_PUBLISH_WARNING.title}</p>
+                  <p className="mt-1">{BLOCKED_PUBLISH_WARNING.body}</p>
                 </div>
               ) : null}
               {version.fallbackAckRequired ? (
