@@ -12,6 +12,8 @@ Type: **design only. No provider SDK, no credentials, no network call, no schema
 | Kill switch | Three layers. The fast one is a **DB-backed platform control row read on every call, never cached**; environment variables are deploy-time only because changing one restarts the single API replica |
 | Reservation | Add a claim step. `reserved -> dispatching -> reconciled \| cancelled \| expired`. Reservation key becomes `(tenant, fingerprint, attempt)`. Counters and status change in the same statement or transaction |
 | Crash recovery | Lease on every non-terminal state. The next admission sweeps expired reservations first, so nothing can hold budget indefinitely and no scheduler is needed |
+| Authority | `deploy flag AND platform control AND tenant policy AND capability/provider pin AND budget = ALLOW`. Any `false`, missing, unreadable, expired or malformed value is DENY. Every mutable control is **re-evaluated immediately before dispatch**, not trusted from admission (2.4) |
+| Budget | Four counters charged atomically per call (tenant day, tenant month, platform day, platform month) plus a per-request cap. **Zero default for every tenant**; the pilot envelope is explicit configuration, never a database default (3.7) |
 | Money | `BIGINT` for every `*_micros` column (the three budget columns, the reservation columns, and `ai_executions`). `bigint` internally, decimal **strings** on every serialisation boundary |
 | Guards | Replace the blanket prohibition with a zone rule: one directory may contain the network client, and everything else stays forbidden. SDK imports stay forbidden everywhere (plain `fetch`) |
 | Mutation | The adapter returns governed output to the existing validator and nothing else. No Product write, no AutoSuggestions, no canonical write, no public route, and in 004b **no product code path calls the orchestrator at all** |
@@ -46,10 +48,17 @@ Provider execution happens only if **all five** pass. They are evaluated in this
 | G3 | Capability and provider | capability in the AI-001 registry **and** in a code-level live allow-list (one capability in 004b) **and** in the tenant `allowedCapabilities`; provider key in tenant `allowedProviderKeys` and equal to the approved provider/model pin | none allowed | per call |
 | G4 | Budget | `AiProviderBudgetPolicy` plus an atomic reservation (section 3) | no row means DENY | per call |
 
+```
+G0 deploy flag  AND  G1 platform control  AND  G2 tenant policy  AND  G3 capability/provider pin  AND  G4 budget  =  ALLOW
+```
+
+The platform layers (G0, G1) are authoritative over tenant and provider settings: a tenant policy can narrow what the platform allows and can never widen it. A tenant that is fully enabled still gets `DENY` when G0 or G1 says no.
+
 ### 2.2 Strict parsing, fail closed
 
 - G0 is ON only if the trimmed, case-insensitive value is exactly `true`. Unset, empty, `1`, `yes`, `on`, `TRUE ` with trailing junk, or any other string is OFF. This is stricter than some existing flags on purpose: an AI-spend lever must not be turned on by a typo.
 - Any thrown or timed-out read of G1, G2 or G4 is `DENY` with reason `control_unreadable`. A database or Redis blip never fails open.
+- An **expired** value is also DENY: a budget period past `period_ends_at`, a policy outside `effective_from`/`effective_until`, or a reservation lease that has lapsed.
 - A malformed row (negative limit, `currency` not `USD`, `period_ends_at <= period_started_at`, unknown mode) is `DENY invalid_*`. 004a already does this for budget policy; 004b extends it to the platform control row.
 - The result of the five gates is a closed union with no "unknown" member. The orchestrator `switch` is exhaustive and the default branch denies.
 
@@ -72,12 +81,28 @@ kill_switch       boolean  NOT NULL DEFAULT true
 allowed_provider  text     NULL      -- the one approved provider key; NULL means none
 allowed_model     text     NULL      -- the one approved model id; NULL means none
 max_tenants       integer  NOT NULL DEFAULT 0   -- operational cap, see 3.7
+max_request_cost_micros bigint NOT NULL DEFAULT 0   -- per-request estimate cap; 0 denies everything
 updated_by        text, updated_at timestamptz
 ```
 
 The migration seeds the row with `enabled = false, kill_switch = true`. A missing row is `DENY`. One uncached primary-key read per AI call is negligible at this volume (a handful of calls, each seconds long). The table is not tenant-scoped, so it does not enter `TENANT_SCOPED_MODELS`; the implementation PR must check the repo's RLS coverage guard (`verify-tenant-rls.cjs` and `tenant-scope.spec.ts`) and record how a deliberately global table is exempted. Operator procedure and a drill are required before enablement (section 11).
 
-### 2.4 Kill-switch semantics (runbook alignment)
+### 2.4 Re-validation immediately before dispatch
+
+Admission is a decision at one moment; controls are mutable. After the claim (3.2) and **before the network call**, the orchestrator re-reads and re-evaluates, in one pass, everything that can change:
+
+| Re-checked | Condition to proceed |
+|---|---|
+| G0 | flag still exactly `true` |
+| G1 | row readable, `enabled`, not `kill_switch`, and the requested provider and model still equal `allowed_provider` / `allowed_model` (the pin can change between admission and dispatch) |
+| G2 | the tenant policy row re-read: still `active`, enabled, kill switch off, not opted out, approval present, provider and capability still allowed |
+| G4 | every charged budget policy still `enabled`, inside its effective window, and not past its period end |
+| Reservation | still `dispatching`, `claim_token` matches, lease not expired, and the lease leaves at least the request timeout |
+| Circuit | still not open |
+
+Any failure cancels and releases the reservation (3.1) with outcome `provider_disabled`, and no request is sent. The check reads fresh rows, never values captured at admission.
+
+### 2.5 Kill-switch semantics (runbook alignment)
 
 | When the switch becomes active | Outcome |
 |---|---|
@@ -106,7 +131,7 @@ The migration seeds the row with `enabled = false, kill_switch = true`. A missin
 
 | From | To | Trigger | Spend effect | `request_count` |
 |---|---|---|---|---|
-| (none) | `reserved` | admission passes all gates and the conditional UPDATE reserves | `reserved_spend += estimate` | `+1` |
+| (none) | `reserved` | admission passes all gates and all four conditional UPDATEs reserve (3.5) | `reserved_spend += estimate` on each charged counter | `+1` on each |
 | (none) | `budget_blocked` | conditional UPDATE reserves nothing | none | none |
 | `reserved` | `dispatching` | claim compare-and-set succeeds | none | none |
 | `reserved` | `cancelled` | gate re-check fails, operator cancel, or unclaimed TTL expiry | `reserved_spend -= estimate` | `-1` (the provider was provably never called, because a call only happens after a claim) |
@@ -136,14 +161,19 @@ Only the caller that gets one row may call the provider. A redelivered job or se
 
 ### 3.3 Settlement by outcome
 
+**Principle: release a reservation to zero only when Vexa can prove that billable provider work did not occur. Otherwise reconcile from the provider's authoritative usage, or settle conservatively at the reserved estimate until authoritative usage exists.** Billing semantics depend on when a failure happens and on the provider, so there is no blanket "error means not billed" rule.
+
 | Outcome | Terminal state | Spend |
 |---|---|---|
-| Provider returned usage (success, refusal, invalid output, unsafe output) | `reconciled` | actual from provider usage |
-| HTTP response received that is a definitive error with no inference (401, 403, 429, 400 before inference, 5xx body) | `cancelled` | none, released |
-| Transport-level unknown: timeout, abort, connection reset after the request was sent | `expired` | **reserved estimate** (conservative: the provider may have billed) |
-| Failure before any request was sent (gate re-check, circuit open, fingerprint mismatch, adapter unavailable) | `cancelled` | none, released |
+| Failure before dispatch (gate re-check, circuit open, fingerprint mismatch, adapter unavailable, operator cancel) | `cancelled` | actual `0`, released |
+| Local policy or validation rejection (classification, credential guard on input, schema check on the request) | `cancelled` | actual `0`, released |
+| Provider returned authoritative usage or cost (success, refusal, invalid output, unsafe output) | `reconciled` | actual from provider usage |
+| Provider **confirms** the request was rejected before inference or any billable work (for example an explicit authentication or request-validation rejection, documented by the provider as non-billable) | `cancelled` | `0`, released |
+| Timeout, abort or connection loss after the request was sent | `expired` | billing **unknown**: settle at the **reserved estimate** |
+| Provider 5xx or any other response that does not prove nothing was processed | `expired` | billing **unknown**: settle at the **reserved estimate** |
+| Ambiguous provider failure | `expired` | settle at the **reserved estimate** |
 
-The "definitive error means not billed" rule is a proposal for FinOps and Privacy to confirm against the provider's billing terms. If it is wrong the safe direction is to settle those at the estimate too, which only tightens the budget.
+An "unknown" settlement is provisional. If authoritative usage later becomes available (provider usage report or invoice line), an operator reconciliation may correct it downward; it is never corrected downward from an assumption. Which provider responses count as "confirmed non-billable" is an explicit allow-list in the adapter zone, set from the provider's billing terms and reviewed by FinOps and Privacy; anything not on the list is unknown. A rate-limit response (429) is on that list only if the provider's terms say so; until verified it settles at the estimate.
 
 ### 3.4 Reservation key and retries (closes F2)
 
@@ -155,30 +185,55 @@ The "definitive error means not billed" rule is a proposal for FinOps and Privac
 
 ### 3.5 Atomic reservation (closes F7)
 
-Authorisation reserves before any provider call, by the same single-statement shape 004a introduced, which stays:
+Authorisation reserves before any provider call. A call charges **four counters** and is subject to one **per-request cap**; all are reserved in one transaction, and if any one fails the whole transaction rolls back and nothing is reserved:
+
+| Counter | Row | Key |
+|---|---|---|
+| tenant, day | `ai_provider_budget_policies` | tenant, capability, provider, mode, period `D:YYYY-MM-DD` |
+| tenant, month | `ai_provider_budget_policies` | same scope, period `M:YYYY-MM` |
+| platform, day | `ai_platform_budget_periods` (new, section 4) | period `D:YYYY-MM-DD` |
+| platform, month | `ai_platform_budget_periods` | period `M:YYYY-MM` |
+
+Per-request cap: the estimate must be at most `ai_platform_controls.max_request_cost_micros`, otherwise `DENY request_cost_exceeded` before any counter is touched.
+
+Each counter uses the single-statement shape 004a introduced, which stays:
 
 ```
-UPDATE ai_provider_budget_policies
+UPDATE <counter row>
    SET reserved_spend_micros = reserved_spend_micros + $est, request_count = request_count + 1, version = version + 1
- WHERE id = $id AND tenant_key = $tenant AND enabled
+ WHERE id = $id [AND tenant_key = $tenant] AND enabled
    AND request_count < request_limit
    AND reserved_spend_micros + spent_spend_micros + $est <= spend_limit_micros
 RETURNING id
 ```
 
-Row-level locking in PostgreSQL serialises concurrent updates to the same row and re-evaluates the predicate against the new value, so two workers cannot both pass the same remaining-budget check. This is **proven against a real PostgreSQL** in the `backend-tests` job, which already runs `postgres:16` and `prisma migrate deploy` (section 10), not with a mocked Prisma client. Exact-boundary behaviour (`reserved + spent + est == limit` passes, one micro over fails) is part of that test.
+Row-level locking in PostgreSQL serialises concurrent updates to the same row and re-evaluates the predicate against the new value, so two workers cannot both pass the same remaining-budget check. To rule out deadlock the four updates always run in one fixed order (platform month, platform day, tenant month, tenant day). The platform rows are a deliberately hot spot: every admission serialises on them, which is acceptable at the planned concurrency of 2 and is what makes the platform ceiling exact rather than approximate.
+
+The reservation records every counter it charged (a child `ai_provider_budget_charges` table, one row per counter with the amount). Settlement reverses **exactly** those rows, never recomputes them, so a period rollover or a changed policy cannot misdirect a release.
+
+This is **proven against a real PostgreSQL** in the `backend-tests` job, which already runs `postgres:16` and `prisma migrate deploy` (section 10), not with a mocked Prisma client. Exact-boundary behaviour (`reserved + spent + est == limit` passes, one micro over fails) is part of that test, for each of the four counters.
 
 ### 3.6 Period handling (closes F5)
 
-The period key is derived on the server from the budget policy window (UTC calendar month, `YYYY-MM`) and is never accepted from the caller. A reservation records its `budget_policy_id`; reconcile, cancel and expiry always act on **that** policy row even if the period rolled over meanwhile. A budget policy past `period_ends_at` is `DENY invalid_budget_policy`, so a missing next-period row fails closed.
+Period keys are derived on the server from the UTC clock: `D:YYYY-MM-DD` and `M:YYYY-MM`. They are never accepted from the caller. A call needs **both** the tenant day and tenant month rows and **both** platform rows to exist, be enabled and be inside their window; a missing row, such as an unconfigured next period, is `DENY` and fails closed. Settlement acts on the rows recorded in the charges table even if the period rolled over meanwhile.
 
-### 3.7 Platform ceiling (closes F8)
+### 3.7 Budget envelope and zero defaults (closes F8)
 
-004b adds no platform counter. Total exposure is bounded by three things that must all be stated in the enablement record:
+**No tenant has a non-zero budget by default.** The schema and migrations create no budget rows, `spend_limit_micros`, `request_limit` and `max_request_cost_micros` default to `0`, and `enabled` defaults to `false`. A migrated or new tenant therefore has `provider execution enabled = false` and `budget = 0` and is DENY until an operator explicitly configures it. Numbers below are **pilot configuration applied by a recorded operator procedure**, never a column default, a seed or a code constant.
 
-1. `ai_platform_controls.max_tenants`: admission denies if more tenants than this have an enabled budget policy for the live mode.
-2. The sum of enabled tenants' `spend_limit_micros` for the period, which is therefore at most `max_tenants x ceiling`. An alert fires if it exceeds a platform cap value held in configuration.
-3. A **provider-side spend cap** in the provider console, set lower than the sum above, as a backstop independent of Vexa code (the mechanism and its enforcement behaviour must be verified before relying on it; a human step).
+Initial hard ceilings for the first internal live-provider phase (proposed by the programme review; operational safety caps, not economic targets; FinOps owns them):
+
+| Control | Initial hard ceiling |
+|---|---:|
+| Single request, estimated cost | USD 0.25 |
+| Per pilot tenant, per day | USD 5 |
+| Per pilot tenant, per month | USD 25 |
+| Platform, per day | USD 20 |
+| Platform, per month | USD 100 |
+
+`ai_platform_controls.max_tenants` additionally caps how many tenants may hold an enabled live budget, and a **provider-side spend cap** in the provider console, set lower than the platform monthly ceiling, is the backstop independent of Vexa code (the mechanism and its enforcement behaviour must be verified before relying on it; a human step).
+
+These are replaced with data-derived limits after roughly the first 100 to 200 legitimate provider executions, once cost telemetry exists: normal request cost, P50, P95, P99, cost per accepted suggestion and cost per SKU. 004b-i needs no model pricing; it only needs to represent and enforce limits safely.
 
 ### 3.8 Crash recovery and expiry
 
@@ -189,7 +244,9 @@ Every non-terminal state has a lease. No reservation can hold budget indefinitel
 | `reserved` (unclaimed) | `expires_at = created_at + 15 min` (admission-to-dispatch TTL, tune with SRE) | the worker died or the job was dropped before dispatch: `cancelled`, released, `request_count` decremented (the call provably never happened) |
 | `dispatching` | `lease_expires_at = claimed_at + 20 s timeout + 60 s grace` | the worker died mid-call or lost the response: `expired`, settled at the estimate, flagged for operator review. The sweeper never retries. A queue-level retry, if permitted by 3.4, creates a new reservation |
 
-**Who sweeps.** No scheduler is required. Every admission first sweeps expired reservations for its own policy row (bounded, at most 20 per call, same compare-and-set transitions, so concurrent sweepers are safe). There is also an explicit `sweepExpiredReservations` method for tests and the operator drill. If nothing is being admitted, nothing is consuming the budget, so a lingering row is harmless. An alert fires on the age of the oldest non-terminal reservation (over 15 minutes), so a stuck row is visible even without traffic.
+**Who sweeps.** No scheduler is required. Every admission first sweeps expired reservations that charge the counters it is about to use (bounded, at most 20 per call, same compare-and-set transitions, so concurrent sweepers are safe). There is also an explicit `sweepExpiredReservations` method for tests and the operator drill. If nothing is being admitted, nothing is consuming the budget, so a lingering row is harmless. An alert fires on the age of the oldest non-terminal reservation (over 15 minutes), so a stuck row is visible even without traffic.
+
+**Future requirement (recorded now).** Sweeping on admission is acceptable only for the initial low-volume internal rollout. Before meaningful production scale, or before any trigger from product flows exists, a **scheduled sweeper or watchdog** is required, so a quiet system cannot leave reservations unresolved until the next request. It is a precondition for the increment that adds the first caller, and it reuses the same compare-and-set transitions, so it adds no new correctness rules.
 
 **Late result.** If a result arrives after the sweeper expired its reservation (the claim compare-and-set no longer matches), it is **discarded** (`result_discarded`), not persisted as suggestions, the spend stays settled at the estimate, and an alert fires. Because the lease is longer than the timeout, this should be rare.
 
@@ -204,6 +261,9 @@ Adopted as recommended, **before** any real usage. Every `*_micros` column becom
 | `ai_provider_budget_policies` | `spend_limit_micros`, `reserved_spend_micros`, `spent_spend_micros` |
 | `ai_provider_budget_reservations` | `requested_estimated_cost_micros`, `reserved_cost_micros`, `actual_cost_micros` |
 | `ai_executions` | `estimated_cost_micros`, `actual_cost_micros` |
+| `ai_platform_budget_periods` (new) | `spend_limit_micros`, `reserved_spend_micros`, `spent_spend_micros` (platform day and month counters; not tenant scoped, `limit` defaults to `0`, no rows seeded) |
+| `ai_provider_budget_charges` (new, tenant scoped) | `amount_micros` (one row per counter a reservation charged) |
+| `ai_platform_controls` (new) | `max_request_cost_micros` |
 
 `request_limit`, `request_count`, token counts and `duration_ms` stay `INTEGER`.
 
@@ -257,9 +317,9 @@ Every outcome has a Vexa-owned status. Provider-specific errors never leave the 
 | Kill switch between admission and dispatch | `provider_disabled` | `provider_disabled` | `cancelled` | no | no | no |
 | Kill switch during the call | `result_discarded` | `cancelled`, code `kill_switch_during_call` | `reconciled` (actual) | yes | no | **discarded** |
 | Timeout (20 s) | `adapter_failed` | `timed_out` / `provider_timeout` | `expired` (estimate) | yes | yes, if attempt < 2 | no |
-| Rate limited (429) | `adapter_failed` | `failed` / `provider_rate_limited` | `cancelled` | yes | yes, honouring `Retry-After` | no |
-| Auth failure (401/403) | `adapter_failed` | `failed` / `provider_auth_error` | `cancelled` | yes | **no**; opens the circuit and alerts | no |
-| Provider 5xx | `adapter_failed` | `failed` / `provider_5xx` | `cancelled` | yes | yes, if attempt < 2 | no |
+| Rate limited (429) | `adapter_failed` | `failed` / `provider_rate_limited` | `cancelled` only if on the confirmed non-billable list (3.3), otherwise `expired` (estimate) | yes | yes, honouring `Retry-After` | no |
+| Auth failure (401/403) | `adapter_failed` | `failed` / `provider_auth_error` | `cancelled` if on the confirmed list, otherwise `expired` (estimate) | yes | **no**; opens the circuit and alerts | no |
+| Provider 5xx | `adapter_failed` | `failed` / `provider_5xx` | `expired` (billing unknown, estimate) | yes | yes, if attempt < 2 | no |
 | Provider refusal or blocked finish | `adapter_blocked` | `failed` / `unsafe_output` or `provider_schema_invalid` per cause | `reconciled` (actual) | yes | no | no |
 | Output invalid for the schema or evidence | `output_rejected` | `failed` / `provider_schema_invalid` | `reconciled` (actual) | yes | no | no |
 | Output carries a credential shape (guard) | `output_rejected` | `failed` / `unsafe_output` | `reconciled` (actual) | yes | no; alert on any | no |
@@ -333,13 +393,20 @@ Concurrency cap 2 (in-process semaphore; the API is one replica with a 400 MB he
 
 004b-ii adds: the zone validator and its negative tests (a second `fetch(`, a variable URL, an SDK import, a Prisma import, a log of the body, a missing `redirect: "error"`), the import-graph rule that FAST and specs never import the zone, the credential-source fail-closed test, and adapter unit tests against a **local stub HTTP server** (no real provider, no key) for each outcome row, including malformed JSON, oversized bodies, slow bodies and redirects. Existing validators are updated in the same PR so that the zone is the only exemption, with their own negative tests.
 
+State-machine tests are first-class, in the same real-PostgreSQL suite:
+
+- **Forbidden transitions** are asserted to be impossible (the compare-and-set returns zero rows and nothing changes): `reconciled -> reserved`, `cancelled -> dispatching`, `expired -> reconciled`, `expired -> dispatching`, `budget_blocked -> reserved`, and every transition out of a terminal state. `expired -> reconciled` is forbidden by design: a late result is discarded (3.8), never applied.
+- **Exactly-once settlement:** on every terminal path (each row of section 6, plus crash recovery, duplicate delivery and concurrent settle attempts) the charged counters are released or settled **exactly once**. A randomised sequence of admit, claim, settle and sweep operations from concurrent workers ends with the counter-drift audit at zero.
+- **Four-counter admission:** all four counters pass or none is charged; a failure on the last counter rolls back the first three; lock order is fixed; the per-request cap denies before touching a counter; a missing day, month or platform row is DENY.
+- **Worker crash after claim, timeout while dispatching, duplicate reconciliation, lease expiry, concurrent claims, and kill-switch activation between admission and dispatch** each have a dedicated test.
+
 ## 11. Rollout
 
 | Stage | State | Evidence required to advance |
 |---|---|---|
 | R0 | 004b merged. `FEATURE_INTELLIGENCE_PROVIDER_ENABLED` unset. `ai_platform_controls` is `enabled=false, kill_switch=true`. No provider key exists in any environment. Zero callers | a test and a production query showing zero outbound provider requests, flags default OFF, kill switch default ON |
-| R1 | Kill-switch drill. A stub endpoint stands in; operator flips `kill_switch`; the next call and an in-flight call behave as in 2.4, recorded with timings. Counter-drift audit run | drill record attached to the enablement record |
-| R2 | **Synthetic only.** One internal tenant on the allow-list, one capability, one approved provider and model, small ceiling (engineering proposal: at most USD 5 per period, FinOps to set), provider-side cap below it. Only approved synthetic Golden Catalog data (004c). Needs the unblock items below | 004c baseline and thresholds set per the authority model |
+| R1 | Kill-switch drill. A stub endpoint stands in; operator flips `kill_switch`; the next call and an in-flight call behave as in 2.5, recorded with timings. Counter-drift audit run | drill record attached to the enablement record |
+| R2 | **Synthetic only.** One internal tenant on the allow-list, one capability, one approved provider and model, the pilot envelope in 3.7 applied by a recorded operator procedure, provider-side cap below the platform monthly ceiling. Only approved synthetic Golden Catalog data (004c). Needs the unblock items below | 004c baseline and thresholds set per the authority model |
 | R3 | Real tenant data. Only after Privacy sign-off on the signed agreement, zero data retention decision and `inference_geo` decision, and a Security approval of the tenant-data field list | separate go/no-go |
 
 There is only one deployed environment, bound to production, so R0 to R3 all happen in production. That is why every gate defaults closed, why the orchestrator has no caller, and why the first live traffic is synthetic. Setting provider keys and Railway variables, and setting the provider-side cap, are **human steps**; an agent does not do them.
@@ -361,6 +428,16 @@ BUT a real provider call remains BLOCKED until ALL of:
  - provider key provisioned by a human, with a provider-side spend cap
 ```
 
+Per increment, as recorded by the programme review:
+
+| | 004b-i | 004b-ii |
+|---|---|---|
+| In scope | `BIGINT` migration, platform-control persistence, flag wiring, budget lifecycle, reservation claim, reconcile/cancel/expire, PostgreSQL concurrency tests, fail-closed eligibility | the adapter shell, the zone, the single `fetch`, zone validators and changed guards |
+| Held | provider SDK, provider credential, outbound `fetch`, real provider response, customer-facing route | an actual provider request, until Security approval and Privacy decisions are recorded, the provider and model are approved, and a human has provisioned the credential and the provider-side cap |
+| Privacy decisions needed | **no**: no customer data leaves Vexa | to merge the shell: no. To send a request: **yes** |
+
+004b-ii may be merged as a shell that **cannot send**: no credential exists, G1 is disabled, and a test asserts that no request leaves the process. It still requires Security approval of the zone, the credential injection model, logging and redaction, fail-closed behaviour and the changed guard semantics before it starts.
+
 ## 13. Decisions requested (design approval gate)
 
 | Reviewer | Decision | Scope |
@@ -370,7 +447,8 @@ BUT a real provider call remains BLOCKED until ALL of:
 | SRE / Backend | **APPROVE reservation lifecycle** | state machine, claim step, leases and opportunistic sweep, DB platform control row, confirm that a Railway variable change redeploys, concurrency and timeout numbers |
 | Privacy | **REVIEW provider-data assumptions** | no prompt or payload in logs, the billing assumption in 3.3, data-retention inputs carried over from #1170. Does not replace the #1170 decisions |
 | QA / Evaluation | **APPROVE failure and test matrix** | sections 6 and 10, the real-PostgreSQL requirement |
-| FinOps | **SET** | spend ceiling and the platform cap, `max_tenants`, whether "definitive error means not billed" holds |
+| FinOps | **SET** | the pilot envelope in 3.7, `max_tenants`, the confirmed non-billable list in 3.3 |
+| Security (additional) | **OWN** | the credential token-prefix catalog and detection semantics (changing it changes the data-exfiltration boundary); Backend implements and may not widen or relax it alone |
 
 This design does not substitute for the missing AI-POL-003 Security sign-off or for the Privacy decisions from #1170.
 
@@ -378,7 +456,7 @@ This design does not substitute for the missing AI-POL-003 Security sign-off or 
 
 | PR | Dominant risk domain | Contents | Needs |
 |---|---|---|---|
-| 004b-i | data and control plane | migration: `BIGINT`, reservation columns (`claimed_at`, `lease_expires_at`, `expires_at`, `claim_token`), new status CHECK, new unique key, `ai_platform_controls`; claim, settle, sweep, audit; strict flags and gates; orchestrator against a test double; the real-PostgreSQL suite; update the 004a validator | migration review PASS; `cto-required-team-approved` label (applied by a human, then a new push) |
+| 004b-i | data and control plane | migration: `BIGINT`, reservation columns (`claimed_at`, `lease_expires_at`, `expires_at`, `claim_token`), new status CHECK, new unique key, `ai_platform_controls`, `ai_platform_budget_periods`, `ai_provider_budget_charges`; four-counter admission, claim, settle, sweep, audit; strict flags and gates; orchestrator against a test double; the real-PostgreSQL suite; update the 004a validator | migration review PASS; `cto-required-team-approved` label (applied by a human, then a new push) |
 | 004b-ii | security boundary | the zone, the single `fetch`, credential source, zone validators and updated guards, CODEOWNERS, stub-server tests; flag OFF, no key | Security review PASS; label; no real provider call, no tenant data |
 
 Scope guard: each PR stays under 60 files and 2,500 lines, and under 25 cross-domain files.
@@ -386,8 +464,23 @@ Scope guard: each PR stays under 60 files and 2,500 lines, and under 25 cross-do
 ## 15. Open items and risks
 
 - Whether a Railway variable change redeploys the service is **assumed, not verified**; SRE to confirm. If it does not, G0 is faster than assumed, but the DB row stays because it also needs no deploy rights.
-- The "definitive error means not billed" rule (3.3) and the 15-minute unclaimed TTL are proposals.
+- The 15-minute unclaimed TTL is a proposal. The billing rule in 3.3 is deliberately conservative: only a proven non-billable outcome releases to zero.
+- The platform day and month rows are a single hot row each. At concurrency 2 this is fine; it must be revisited before the API scales out or concurrency rises.
 - The in-process circuit breaker and semaphore assume one replica. If the API is scaled out, both become per-process and the platform ceiling plus the provider-side cap carry the guarantee.
 - A conservative estimate over-reserves, so the effective capacity under a small ceiling is lower than the nominal one. That is intended and is visible in utilisation metrics.
 - The Golden Catalog is still all DRAFT, so FULL-mode numbers remain informational until the approvals in the approval packet exist.
-- The token-prefix list for credential detection still has no owner.
+- The token-prefix list for credential detection is now owned by **Security**, with Backend as implementation owner (section 13).
+
+## 16. Review record and conditions incorporated
+
+Programme review of the first version of this document, 2026-10-05 (via the programme thread, from the design summary; the reviewer could not open the PR). This is **not** a recorded sign-off by the required teams, and merging does not create one.
+
+| Reviewer | Outcome | Incorporated |
+|---|---|---|
+| CTO / Architecture | APPROVE with two conditions | platform control authoritative over tenant and provider settings, with the explicit AND and DENY on false, missing, unreadable, expired or malformed (section 0, 2.1, 2.2); pre-dispatch re-evaluation of kill switch, tenant enablement, provider/model pin and reservation state (2.4) |
+| Security | architecture correct, formal approval still required | zone, credential model, logging/redaction, fail-closed behaviour and changed guards need Security approval before 004b-ii (section 12, 13) |
+| SRE / Backend | APPROVE direction | required crash/timeout/duplicate/expiry/concurrent-claim/kill-switch tests (section 10); scheduled sweeper recorded as a future requirement (3.8) |
+| QA / Evaluation | APPROVE design | forbidden-transition and exactly-once-settlement tests are first-class (section 10) |
+| Privacy | review required before network work | 004b-i does not need the #1170 decisions; no request may be sent from 004b-ii until they are recorded (section 12) |
+| FinOps | direction given | zero default budgets and an explicit pilot envelope (3.7); the generic "definitive error means not billed" rule replaced by the conservative accounting principle (3.3) |
+| Programme | decisions | `BIGINT` approved now; token-prefix list owned by Security; 004b-i GO only after #1176 is merged and its CI is green; 004b-ii network execution HOLD |
