@@ -156,6 +156,7 @@ jobs:
           node scripts/validate-daily-rollout-evidence-workflow.cjs
           node scripts/validate-staging-deploy-config.test.cjs
           node scripts/migrate-legacy-auth-password-hashes.test.cjs
+          node scripts/p1-woo-credential-ownership-proof.test.cjs
           node scripts/verify-auth-password-hash-coverage.test.cjs
           node scripts/sellable-sku-variantless-audit-report.test.cjs
           node scripts/validate-sellable-sku-variantless-production-audit-workflow.cjs
