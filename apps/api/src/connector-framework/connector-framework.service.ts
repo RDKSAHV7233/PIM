@@ -26,6 +26,7 @@ import {
 import { resolveConnectorLaunchPolicy } from "./connector-launch-policy";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorInstallationRecord } from "./connector.types";
+import { toValidationState } from "./credential-validation";
 import { parseCapabilities } from "./parse-capabilities";
 import { lookupAmazonMarketplace } from "../connectors/amazon/amazon-marketplace-registry";
 
@@ -111,6 +112,10 @@ export class ConnectorFrameworkService {
         lastSyncAt: true,
         createdAt: true,
         updatedAt: true,
+        lastValidatedAt: true,
+        lastValidationAttemptAt: true,
+        lastValidationOutcome: true,
+        lastValidationReason: true,
       },
     });
     if (!installation) {
@@ -149,6 +154,7 @@ export class ConnectorFrameworkService {
       createdAt: installation.createdAt.toISOString(),
       updatedAt: installation.updatedAt.toISOString(),
       credentialsValidated,
+      validation: toValidationState(installation),
     };
   }
 

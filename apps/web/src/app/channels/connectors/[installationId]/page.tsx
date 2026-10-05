@@ -41,7 +41,7 @@ import {
   type ConnectorSyncSchedule,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { dedupeSubmissionsByLatestPerProduct, pickLatestSuccessfulSubmission, resolveAccountHealthSyncState } from "@/lib/connector-utils";
+import { dedupeSubmissionsByLatestPerProduct, describeCredentialHealth, pickLatestSuccessfulSubmission, resolveAccountHealthSyncState } from "@/lib/connector-utils";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { canEditConnectorCredentials, canManageConnectors, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerCsrfToken } from "@/lib/server-auth";
@@ -909,6 +909,9 @@ export default async function ChannelConnectorDetailPage({
     // successfully.
     const latestSuccessfulSubmission = pickLatestSuccessfulSubmission(submissions);
     const accountHealthSyncState = resolveAccountHealthSyncState(installation.lastSyncAt, latestSuccessfulSubmission);
+    const credentialHealth = describeCredentialHealth(installation);
+    // A warning or danger credential state must not be hidden behind a "Healthy" status summary.
+    const credentialHealthAlerts = credentialHealth !== null && (credentialHealth.tone === "warning" || credentialHealth.tone === "danger") ? credentialHealth : null;
     const latestSubmissionByProductId = new Map<
       string,
       (typeof submissions)[number]
@@ -1287,6 +1290,7 @@ export default async function ChannelConnectorDetailPage({
             <>
               <StoreSwitcher currentId={installationId} stores={siblingStores} currentTab={selectedTab !== "overview" ? selectedTab : undefined} />
               <StatusChip label={installation.status} tone={installationStatusTone(installation.status)} />
+              {credentialHealth ? <StatusChip label={credentialHealth.label} tone={credentialHealth.tone} /> : null}
               <StatusChip
                 label={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
                 tone={connectorLaunchTone(installation.launchStage)}
@@ -1318,20 +1322,24 @@ export default async function ChannelConnectorDetailPage({
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Account health"
-            value={formatStatusSummary(installation.status)}
+            value={credentialHealthAlerts ? credentialHealthAlerts.label : formatStatusSummary(installation.status)}
             helper={
-              accountHealthSyncState.kind === "full_sync"
+              credentialHealthAlerts
+                ? credentialHealthAlerts.detail
+                : accountHealthSyncState.kind === "full_sync"
                 ? `Last full catalog sync ${fmtDT(accountHealthSyncState.lastSyncAt)}`
                 : accountHealthSyncState.kind === "submissions_only"
                   ? `No full catalog sync yet · last successful submission ${fmtDT(accountHealthSyncState.latestSuccessfulSubmissionAt)}`
                   : "No full catalog sync or submissions recorded yet"
             }
             tone={
-              installationStatusTone(installation.status) === "danger"
-                ? "danger"
-                : installationStatusTone(installation.status) === "warning"
-                  ? "warning"
-                  : "default"
+              credentialHealthAlerts
+                ? (credentialHealthAlerts.tone === "danger" ? "danger" : "warning")
+                : installationStatusTone(installation.status) === "danger"
+                  ? "danger"
+                  : installationStatusTone(installation.status) === "warning"
+                    ? "warning"
+                    : "default"
             }
           />
           <KpiCard label="Submissions" value={submissions.length} helper={`${pendingSubmissions.length} pending or retrying`} />
@@ -1411,6 +1419,19 @@ export default async function ChannelConnectorDetailPage({
                   <dd>{installation.externalAccountRef || "-"}</dd>
                   <dt className="text-slate-500">Installed At</dt>
                   <dd>{fmtDT(installation.installedAt)}</dd>
+                  {credentialHealth ? (
+                    <>
+                      <dt className="text-slate-500">Credential Check</dt>
+                      <dd data-testid="credential-health-detail">
+                        <span className="font-medium text-slate-800">{credentialHealth.label}</span>
+                        {" · "}
+                        {credentialHealth.lastVerifiedAt ? `last verified ${fmtDT(credentialHealth.lastVerifiedAt)}` : "never verified"}
+                        {installation.validation?.lastAttemptAt ? ` · last attempt ${fmtDT(installation.validation.lastAttemptAt)}` : ""}
+                        <br />
+                        <span className="text-xs text-slate-500">{credentialHealth.detail}</span>
+                      </dd>
+                    </>
+                  ) : null}
                   <dt className="text-slate-500">Last Full Catalog Sync</dt>
                   <dd>{installation.lastSyncAt ? fmtDT(installation.lastSyncAt) : "-"}</dd>
                   <dt className="text-slate-500">Last Successful Submission</dt>

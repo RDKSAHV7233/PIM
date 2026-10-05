@@ -204,6 +204,18 @@ export interface CatalogStats {
   redactedSections?: string[];
 }
 
+export type ConnectorValidationOutcome = "VALID" | "INVALID" | "INDETERMINATE" | "CONFIGURATION_ERROR";
+
+export interface ConnectorValidationState {
+  /** Last time authenticated validation succeeded (VALID only). */
+  lastValidatedAt: string | null;
+  /** Last time validation was attempted, any outcome. */
+  lastAttemptAt: string | null;
+  outcome: ConnectorValidationOutcome | null;
+  /** Short safe code such as HTTP_503 or TOKEN_ONLY. */
+  reason: string | null;
+}
+
 export interface ConnectorInstallation {
   id: string;
   tenantKey: string;
@@ -226,6 +238,8 @@ export interface ConnectorInstallation {
   /** True for every connector except flipkart/amazon-in, where it reflects whether
    *  at least one stored credential has actually passed validateCredentials(). */
   credentialsValidated: boolean;
+  /** What the credential heartbeat last learned. Optional so a web build tolerates an older API. */
+  validation?: ConnectorValidationState;
   actions?: ConnectorActionMatrix;
 }
 

@@ -5,6 +5,7 @@ import {
   classifyThrown,
   configurationInvalid,
   safeReason,
+  toValidationState,
   unvalidatedAfterCredentialChange,
   validationColumns,
   verifiedValidationStamp,
@@ -125,5 +126,43 @@ describe("unvalidatedAfterCredentialChange", () => {
       lastValidationReason: null,
     });
     expect(JSON.stringify(columns)).not.toContain("VALID");
+  });
+});
+
+describe("toValidationState", () => {
+  it("is all null for an installation that has never been checked", () => {
+    expect(toValidationState({})).toEqual({ lastValidatedAt: null, lastAttemptAt: null, outcome: null, reason: null });
+    expect(
+      toValidationState({ lastValidatedAt: null, lastValidationAttemptAt: null, lastValidationOutcome: null, lastValidationReason: null }),
+    ).toEqual({ lastValidatedAt: null, lastAttemptAt: null, outcome: null, reason: null });
+  });
+
+  it("serialises Date and string timestamps as ISO strings", () => {
+    const state = toValidationState({
+      lastValidatedAt: new Date("2026-10-05T01:02:03Z"),
+      lastValidationAttemptAt: "2026-10-05T04:05:06Z",
+      lastValidationOutcome: "INDETERMINATE",
+      lastValidationReason: "HTTP_503",
+    });
+    expect(state).toEqual({
+      lastValidatedAt: "2026-10-05T01:02:03.000Z",
+      lastAttemptAt: "2026-10-05T04:05:06.000Z",
+      outcome: "INDETERMINATE",
+      reason: "HTTP_503",
+    });
+  });
+
+  it.each(["VALID", "INVALID", "INDETERMINATE", "CONFIGURATION_ERROR"])("passes %s through", (outcome) => {
+    expect(toValidationState({ lastValidationOutcome: outcome }).outcome).toBe(outcome);
+  });
+
+  it("drops an unknown outcome, an unsafe reason and an unparseable date instead of echoing them", () => {
+    expect(
+      toValidationState({
+        lastValidatedAt: "not a date",
+        lastValidationOutcome: "EXPIRED",
+        lastValidationReason: "https://shop.example.com/x?token=SECRET",
+      }),
+    ).toEqual({ lastValidatedAt: null, lastAttemptAt: null, outcome: null, reason: null });
   });
 });

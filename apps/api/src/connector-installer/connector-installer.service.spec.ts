@@ -1474,4 +1474,84 @@ describe("ConnectorInstallerService", () => {
       });
     });
   });
+  describe("validation facts on the installation record (PR 2c)", () => {
+    function row(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "inst_1",
+        tenantKey: "acme",
+        connectorId: "def_1",
+        slug: "woocommerce",
+        displayName: "WooCommerce",
+        accountAlias: "primary",
+        externalAccountRef: null,
+        status: "ACTIVE",
+        capabilities: ["PUBLISH"],
+        metadata: {},
+        installedAt: new Date("2026-01-01T00:00:00Z"),
+        installedBy: "user_1",
+        lastSyncAt: null,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+        credentialsValidated: true,
+        lastValidatedAt: new Date("2026-10-04T10:00:00Z"),
+        lastValidationAttemptAt: new Date("2026-10-05T00:00:00Z"),
+        lastValidationOutcome: "CONFIGURATION_ERROR",
+        lastValidationReason: "WOOCOMMERCE_SITE_URL_UNSAFE",
+        ...overrides,
+      };
+    }
+    const expected = {
+      lastValidatedAt: "2026-10-04T10:00:00.000Z",
+      lastAttemptAt: "2026-10-05T00:00:00.000Z",
+      outcome: "CONFIGURATION_ERROR",
+      reason: "WOOCOMMERCE_SITE_URL_UNSAFE",
+    };
+
+    function wire(service: any) {
+      service.getTenantKey = jest.fn().mockReturnValue("acme");
+      service.accessPolicy.filterConnectorInstallations = jest.fn(async (_ctx: unknown, items: unknown[]) => items);
+    }
+
+    it("getInstalledById selects the four columns and returns them", async () => {
+      const { service, queryMock } = createService();
+      wire(service);
+      queryMock.mockResolvedValue([row()]);
+
+      const record = await service.getInstalledById("inst_1", { actorId: "user_1", actorRole: "admin" });
+
+      const sql = String(queryMock.mock.calls[0][0]);
+      for (const column of ["last_validated_at", "last_validation_attempt_at", "last_validation_outcome", "last_validation_reason"]) {
+        expect(sql).toContain(`ci.${column}`);
+      }
+      expect(record.validation).toEqual(expected);
+    });
+
+    it("listInstalled selects the four columns and returns them for every item", async () => {
+      const { service, queryMock } = createService();
+      wire(service);
+      queryMock.mockResolvedValue([row(), row({ id: "inst_2", lastValidatedAt: null, lastValidationAttemptAt: null, lastValidationOutcome: null, lastValidationReason: null })]);
+
+      const page = await service.listInstalled({} as never, undefined, { actorId: "user_1", actorRole: "admin" });
+
+      const sql = String(queryMock.mock.calls[0][0]);
+      for (const column of ["last_validated_at", "last_validation_attempt_at", "last_validation_outcome", "last_validation_reason"]) {
+        expect(sql).toContain(`ci.${column}`);
+      }
+      expect(page.items[0].validation).toEqual(expected);
+      expect(page.items[1].validation).toEqual({ lastValidatedAt: null, lastAttemptAt: null, outcome: null, reason: null });
+    });
+
+    it("never echoes an unsafe reason or an unknown outcome stored in the row", async () => {
+      const { service, queryMock } = createService();
+      wire(service);
+      queryMock.mockResolvedValue([row({ lastValidationOutcome: "EXPIRED", lastValidationReason: "https://shop.example.com/?token=SECRET" })]);
+
+      const record = await service.getInstalledById("inst_1", { actorId: "user_1", actorRole: "admin" });
+
+      expect(record.validation.outcome).toBeNull();
+      expect(record.validation.reason).toBeNull();
+      expect(JSON.stringify(record)).not.toContain("SECRET");
+    });
+  });
+
 });

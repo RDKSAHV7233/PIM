@@ -42,6 +42,8 @@ const IMPORT_RUN_ACTIVE_STATUSES = [
 const EXPORT_FAILURE_STATUSES = [ExportJobStatus.failed, ExportJobStatus.dead_letter] as const;
 const SUBMISSION_FAILURE_STATUSES = ["ERROR", "REJECTED", "SUPPRESSED"] as const;
 const CONNECTOR_STATUSES = ["ACTIVE", "PAUSED", "CREDENTIAL_EXPIRED", "DISABLED"] as const;
+// Only ACTIVE installations are counted for inconclusive / configuration-problem checks: an expired
+// installation is already a blocker, and a stale outcome on a paused or disabled one is not news.
 const MAPPING_BLOCKING_COMPATIBILITY_STATES = ["blocked", "remap_required"] as const;
 const MAPPING_WARNING_COMPATIBILITY_STATES = ["deprecated"] as const;
 const READINESS_TOP_RULE_FAMILY_LIMIT = 10;
@@ -342,6 +344,8 @@ export class InternalOpsSummaryService {
       this.resolveReadinessSource("readiness_connector", () => this.getReadinessConnector(), {
         blockingInstallations: null,
         warningInstallations: null,
+        inconclusiveInstallations: null,
+        configurationProblemInstallations: null,
         affectedTenants: null,
         byStatus: null,
       }),
@@ -452,7 +456,7 @@ export class InternalOpsSummaryService {
 
   private async getReadinessConnector(): Promise<Omit<InternalOpsSummaryResponse["readiness"]["connector"], "availability">> {
     return this.withPrimaryDbTimeout(async (db) => {
-      const [statusCountsResult, affectedTenants] = await Promise.all([
+      const [statusCountsResult, affectedTenants, inconclusiveInstallations, configurationProblemInstallations] = await Promise.all([
         Promise.all(
           CONNECTOR_STATUSES.map(async (status) => ({
             status,
@@ -461,6 +465,8 @@ export class InternalOpsSummaryService {
           })),
         ),
         this.countReadinessConnectorTenants(db),
+        db.connectorInstallation.count({ where: { status: "ACTIVE", lastValidationOutcome: "INDETERMINATE" } }),
+        db.connectorInstallation.count({ where: { status: "ACTIVE", lastValidationOutcome: "CONFIGURATION_ERROR" } }),
       ]);
       const byStatus = statusCountsResult
         .filter((row) => row.count > 0)
@@ -473,6 +479,10 @@ export class InternalOpsSummaryService {
       return {
         blockingInstallations: countFor(byStatus, "CREDENTIAL_EXPIRED"),
         warningInstallations: countFor(byStatus, "PAUSED"),
+        // The last credential check was inconclusive (provider unreachable) or hit a configuration
+        // problem. Counted apart from blockers: neither proves the credentials are bad.
+        inconclusiveInstallations: Number(inconclusiveInstallations ?? 0),
+        configurationProblemInstallations: Number(configurationProblemInstallations ?? 0),
         affectedTenants: Number(affectedTenants ?? 0),
         byStatus,
       };

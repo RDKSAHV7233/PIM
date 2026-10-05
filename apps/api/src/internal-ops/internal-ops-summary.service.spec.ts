@@ -128,10 +128,13 @@ function makeDb(overrides?: {
       }),
     },
     connectorInstallation: {
-      count: jest.fn((args: { where?: { status?: string; updatedAt?: unknown } }) => {
+      count: jest.fn((args: { where?: { status?: string | { in: string[] }; updatedAt?: unknown; lastValidationOutcome?: string } }) => {
         if (overrides?.empty) {
           return Promise.resolve(0);
         }
+        // Only ACTIVE installations are counted, so an expired one is never counted twice.
+        if (args.where?.lastValidationOutcome === "INDETERMINATE") return Promise.resolve(args.where.status === "ACTIVE" ? 4 : 99);
+        if (args.where?.lastValidationOutcome === "CONFIGURATION_ERROR") return Promise.resolve(args.where.status === "ACTIVE" ? 1 : 99);
         const counts: Record<string, number> = {
           ACTIVE: 10,
           CREDENTIAL_EXPIRED: 1,
@@ -274,6 +277,8 @@ describe("InternalOpsSummaryService", () => {
         availability: "available",
         blockingInstallations: 1,
         warningInstallations: 2,
+        inconclusiveInstallations: 4,
+        configurationProblemInstallations: 1,
         affectedTenants: 2,
         byStatus: [
           { status: "ACTIVE", impact: "STATUS", count: 10 },
@@ -354,6 +359,8 @@ describe("InternalOpsSummaryService", () => {
       connector: expect.objectContaining({
         blockingInstallations: 0,
         warningInstallations: 0,
+        inconclusiveInstallations: 0,
+        configurationProblemInstallations: 0,
         affectedTenants: 0,
         byStatus: [],
       }),
@@ -394,6 +401,8 @@ describe("InternalOpsSummaryService", () => {
       availability: "unavailable",
       blockingInstallations: null,
       warningInstallations: null,
+      inconclusiveInstallations: null,
+      configurationProblemInstallations: null,
       affectedTenants: null,
       byStatus: null,
     }));

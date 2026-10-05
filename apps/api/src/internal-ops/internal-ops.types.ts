@@ -101,6 +101,10 @@ export type InternalOpsSummaryResponse = {
       availability: InternalOpsCardAvailability;
       blockingInstallations: InternalOpsReadinessMetric;
       warningInstallations: InternalOpsReadinessMetric;
+      /** Last credential check was inconclusive (provider unreachable). Not a blocker. */
+      inconclusiveInstallations: InternalOpsReadinessMetric;
+      /** Last credential check hit a configuration problem (refused target). Not a blocker. */
+      configurationProblemInstallations: InternalOpsReadinessMetric;
       affectedTenants: InternalOpsReadinessMetric;
       byStatus: InternalOpsReadinessStatusCount[] | null;
     };

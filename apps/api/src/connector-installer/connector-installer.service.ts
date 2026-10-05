@@ -30,7 +30,7 @@ import {
 import { parseCapabilities } from "../connector-framework/parse-capabilities";
 import { resolveConnectorLaunchPolicy, resolveConnectorPipelineMetadata, isCustomerVisibleStage, isInstallableStage } from "../connector-framework/connector-launch-policy";
 import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
-import { unvalidatedAfterCredentialChange, verifiedValidationStamp } from "../connector-framework/credential-validation";
+import { toValidationState, unvalidatedAfterCredentialChange, verifiedValidationStamp } from "../connector-framework/credential-validation";
 import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
@@ -606,6 +606,10 @@ export class ConnectorInstallerService {
         ci.last_sync_at AS "lastSyncAt",
         ci.created_at AS "createdAt",
         ci.updated_at AS "updatedAt",
+        ci.last_validated_at AS "lastValidatedAt",
+        ci.last_validation_attempt_at AS "lastValidationAttemptAt",
+        ci.last_validation_outcome AS "lastValidationOutcome",
+        ci.last_validation_reason AS "lastValidationReason",
         EXISTS (
           SELECT 1 FROM connector_credentials cc
           WHERE cc.installation_id = ci.id
@@ -655,6 +659,7 @@ export class ConnectorInstallerService {
           // connector reports true so this field is a no-op for them.
           credentialsValidated:
             slug === "flipkart" || slug === "amazon-in" ? Boolean(row.credentialsValidated) : true,
+          validation: toValidationState(row),
           actions: actor
             ? await this.connectorPermissionService.buildInstallationActions(actor, slug, accountAlias)
             : undefined,
@@ -719,6 +724,10 @@ export class ConnectorInstallerService {
         ci.last_sync_at AS "lastSyncAt",
         ci.created_at AS "createdAt",
         ci.updated_at AS "updatedAt",
+        ci.last_validated_at AS "lastValidatedAt",
+        ci.last_validation_attempt_at AS "lastValidationAttemptAt",
+        ci.last_validation_outcome AS "lastValidationOutcome",
+        ci.last_validation_reason AS "lastValidationReason",
         EXISTS (
           SELECT 1 FROM connector_credentials cc
           WHERE cc.installation_id = ci.id
@@ -765,6 +774,7 @@ export class ConnectorInstallerService {
       updatedAt: String(row.updatedAt),
       credentialsValidated:
         slug === "flipkart" || slug === "amazon-in" ? Boolean(row.credentialsValidated) : true,
+      validation: toValidationState(row),
       actions: await this.connectorPermissionService.buildInstallationActions(actor, slug, accountAlias),
     };
 

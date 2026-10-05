@@ -140,6 +140,7 @@ const GLOB_COVERED_TESTS = [
   "connector-action-matrix-ui-gating.test.cjs",
   "connector-capability-matrix-ui.test.cjs",
   "connector-claim-consistency.test.cjs",
+  "connector-credential-health-surface.test.cjs",
   "connector-install-form.test.cjs",
   "connector-issue-snapshot-dedupe.test.cjs",
   "connector-launch-honesty-ui.test.cjs",

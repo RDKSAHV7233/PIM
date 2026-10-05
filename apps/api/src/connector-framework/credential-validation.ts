@@ -122,3 +122,42 @@ export function unvalidatedAfterCredentialChange() {
     lastValidationReason: null,
   };
 }
+
+export const VALIDATION_OUTCOMES: readonly ValidationOutcome[] = ["VALID", "INVALID", "INDETERMINATE", "CONFIGURATION_ERROR"];
+
+/** The validation facts an installation exposes through the API. All null until first recorded. */
+export interface ConnectorValidationState {
+  /** Last time authenticated validation succeeded (VALID only). */
+  lastValidatedAt: string | null;
+  /** Last time validation was attempted, any outcome. */
+  lastAttemptAt: string | null;
+  outcome: ValidationOutcome | null;
+  /** Short safe code (for example HTTP_503, TOKEN_ONLY, WOOCOMMERCE_SITE_URL_UNSAFE). */
+  reason: string | null;
+}
+
+function isoOrNull(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * Builds the API-facing validation state from a connector_installations row (Prisma row or raw SQL
+ * row with the same camelCase aliases). Unknown outcomes and unsafe reasons are dropped, not echoed.
+ */
+export function toValidationState(row: {
+  lastValidatedAt?: unknown;
+  lastValidationAttemptAt?: unknown;
+  lastValidationOutcome?: unknown;
+  lastValidationReason?: unknown;
+}): ConnectorValidationState {
+  const outcome = VALIDATION_OUTCOMES.find((candidate) => candidate === row.lastValidationOutcome) ?? null;
+  const reasonText = typeof row.lastValidationReason === "string" ? row.lastValidationReason.trim() : "";
+  return {
+    lastValidatedAt: isoOrNull(row.lastValidatedAt),
+    lastAttemptAt: isoOrNull(row.lastValidationAttemptAt),
+    outcome,
+    reason: reasonText && SAFE_REASON.test(reasonText) ? reasonText : null,
+  };
+}

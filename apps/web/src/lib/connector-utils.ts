@@ -18,6 +18,97 @@ export function connectorHealthLabel(status: string): string {
   return status || "Unknown";
 }
 
+export type CredentialHealthTone = "neutral" | "success" | "warning" | "danger";
+
+export interface CredentialHealth {
+  label: string;
+  tone: CredentialHealthTone;
+  /** One sentence for a tooltip or helper line. Never contains a raw provider message. */
+  detail: string;
+  /** ISO time of the last successful authenticated check, or null if there never was one. */
+  lastVerifiedAt: string | null;
+}
+
+const REASON_DETAIL: Record<string, string> = {
+  TOKEN_ONLY: "A stored access token is present and unexpired; the provider was not contacted.",
+  LEGACY_BOOLEAN_FALSE: "This connector cannot tell a rejected credential from an outage, so the failed check was not treated as a rejection.",
+  HEARTBEAT_ERROR: "The check itself failed before the provider gave an answer.",
+  UNAVAILABLE: "The provider could not be reached.",
+  UNSPECIFIED: "The provider rejected the credentials.",
+};
+
+function describeReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  if (REASON_DETAIL[reason]) return REASON_DETAIL[reason];
+  const http = /^HTTP_(\d{3})$/.exec(reason);
+  if (http) return `The provider answered HTTP ${http[1]}.`;
+  return `Reason code: ${reason}.`;
+}
+
+/**
+ * Credential health for an installation, derived from its status and the heartbeat's last
+ * validation facts. Returns null when the installation is not one the heartbeat checks (paused or
+ * disabled), so callers show only the status. Only an explicit rejection is "Credentials
+ * rejected"; an unreachable provider is "Check inconclusive" and never reads as bad credentials.
+ */
+export function describeCredentialHealth(
+  installation: Pick<ConnectorInstallation, "status" | "validation">,
+): CredentialHealth | null {
+  const status = String(installation.status ?? "").trim().toUpperCase();
+  if (status !== "ACTIVE" && status !== "CREDENTIAL_EXPIRED") return null;
+
+  const validation = installation.validation ?? null;
+  const outcome = validation?.outcome ?? null;
+  const lastVerifiedAt = validation?.lastValidatedAt ?? null;
+  const reasonDetail = describeReason(validation?.reason);
+  const join = (...parts: Array<string | null>) => parts.filter(Boolean).join(" ");
+
+  if (outcome === "INVALID" || (status === "CREDENTIAL_EXPIRED" && outcome !== "INDETERMINATE" && outcome !== "CONFIGURATION_ERROR")) {
+    return {
+      label: outcome === "INVALID" ? "Credentials rejected" : "Credentials expired",
+      tone: "danger",
+      detail: join("Reconnect or replace the credentials.", outcome === "INVALID" ? reasonDetail : null),
+      lastVerifiedAt,
+    };
+  }
+  if (outcome === "CONFIGURATION_ERROR") {
+    return {
+      label: "Configuration problem",
+      tone: "warning",
+      detail: join("The configured store address was refused, so credentials could not be checked.", reasonDetail),
+      lastVerifiedAt,
+    };
+  }
+  if (outcome === "INDETERMINATE") {
+    // An expired installation stays expired through an outage: the outage proves nothing either way.
+    return {
+      label: status === "CREDENTIAL_EXPIRED" ? "Credentials expired" : "Check inconclusive (provider unreachable)",
+      tone: status === "CREDENTIAL_EXPIRED" ? "danger" : "warning",
+      detail: join(
+        status === "CREDENTIAL_EXPIRED"
+          ? "The latest check was inconclusive, so the earlier rejection still stands."
+          : "The credentials were not rejected; the check could not complete.",
+        reasonDetail,
+      ),
+      lastVerifiedAt,
+    };
+  }
+  if (outcome === "VALID") {
+    return {
+      label: "Verified",
+      tone: "success",
+      detail: join("Credentials passed the last check.", reasonDetail),
+      lastVerifiedAt,
+    };
+  }
+  return {
+    label: "Not yet verified",
+    tone: "neutral",
+    detail: "No credential check has been recorded yet. The next scheduled check will record one.",
+    lastVerifiedAt,
+  };
+}
+
 function readMetadataValue(metadata: unknown, key: string): string | null {
   const record = metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)

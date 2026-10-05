@@ -227,3 +227,82 @@ describe("ConnectorFrameworkService.publish/update — touches ConnectorInstalla
     expect(updateSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("ConnectorFrameworkService.getInstallation — exposes the heartbeat's validation facts", () => {
+  function makeFindService(row: Record<string, unknown>) {
+    const findFirst = jest.fn().mockResolvedValue(row);
+    const tenant = {
+      connectorDefinition: {
+        findFirst: jest.fn().mockResolvedValue({ id: "def_1", slug: "woocommerce", displayName: "WooCommerce", capabilities: ["PUBLISH"] }),
+      },
+      connectorInstallation: { count: jest.fn().mockResolvedValue(1), findFirst },
+      connectorCredential: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const svc = new ConnectorFrameworkService(
+      { tenant: () => tenant } as never,
+      {} as never,
+      { warn: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { svc, findFirst };
+  }
+
+  const baseRow = {
+    id: "inst_1",
+    tenantKey: "tenant1",
+    connectorId: "def_1",
+    accountAlias: "default",
+    externalAccountRef: null,
+    status: "ACTIVE",
+    metadata: {},
+    installedAt: new Date("2026-01-01"),
+    installedBy: "user_1",
+    lastSyncAt: null,
+    createdAt: new Date("2026-01-01"),
+    updatedAt: new Date("2026-01-01"),
+  };
+
+  it("selects the four validation columns and maps them to ISO strings", async () => {
+    const { svc, findFirst } = makeFindService({
+      ...baseRow,
+      lastValidatedAt: new Date("2026-10-04T10:00:00Z"),
+      lastValidationAttemptAt: new Date("2026-10-05T00:00:00Z"),
+      lastValidationOutcome: "INDETERMINATE",
+      lastValidationReason: "HTTP_503",
+    });
+
+    const record = await svc.getInstallation("tenant1", "woocommerce");
+
+    expect(findFirst.mock.calls[0][0].select).toEqual(
+      expect.objectContaining({
+        lastValidatedAt: true,
+        lastValidationAttemptAt: true,
+        lastValidationOutcome: true,
+        lastValidationReason: true,
+      }),
+    );
+    expect(record?.validation).toEqual({
+      lastValidatedAt: "2026-10-04T10:00:00.000Z",
+      lastAttemptAt: "2026-10-05T00:00:00.000Z",
+      outcome: "INDETERMINATE",
+      reason: "HTTP_503",
+    });
+    expect(record?.status).toBe("ACTIVE");
+  });
+
+  it("reports all-null facts for an installation that has never been checked", async () => {
+    const { svc } = makeFindService({
+      ...baseRow,
+      lastValidatedAt: null,
+      lastValidationAttemptAt: null,
+      lastValidationOutcome: null,
+      lastValidationReason: null,
+    });
+
+    const record = await svc.getInstallation("tenant1", "woocommerce");
+
+    expect(record?.validation).toEqual({ lastValidatedAt: null, lastAttemptAt: null, outcome: null, reason: null });
+  });
+});

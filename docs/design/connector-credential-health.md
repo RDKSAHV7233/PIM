@@ -62,3 +62,29 @@ the token has to be refreshed.
 `ORDER BY last_validation_attempt_at ASC NULLS FIRST, id ASC`, 50 per tick, so a fleet larger
 than the batch is visited once before any installation is visited twice (previously ordered by
 `updated_at`, which healthy installations never moved, so the same 50 were rechecked forever).
+
+## Where the facts surface
+
+The four facts are returned on every installation record as `validation`
+(`{ lastValidatedAt, lastAttemptAt, outcome, reason }`; ISO strings or null, all null until
+the first recorded check) by the framework `getInstallation`, the installer list and the
+installer detail. Unknown outcomes and reasons that are not short safe codes are dropped, not
+echoed.
+
+| Surface | What it shows |
+|---|---|
+| Connectors list, connector detail | A credential-health chip next to the status, a one-line detail, and "Last verified" |
+| Internal ops summary (`readiness.connector`) | `inconclusiveInstallations` and `configurationProblemInstallations`, counted over `ACTIVE` installations only, so an expired installation is never counted twice. Neither is a blocker; `CREDENTIAL_EXPIRED` stays the only blocking status |
+
+| State | Chip | Tone |
+|---|---|---|
+| `ACTIVE`, no recorded check | Not yet verified | neutral |
+| `VALID` | Verified (`TOKEN_ONLY` adds that the provider was not contacted) | success |
+| `INDETERMINATE` on `ACTIVE` | Check inconclusive (provider unreachable) | warning |
+| `CONFIGURATION_ERROR` | Configuration problem | warning |
+| `INVALID` | Credentials rejected | danger |
+| `CREDENTIAL_EXPIRED` (any later outcome) | Credentials expired | danger |
+
+An `INDETERMINATE` result never clears an expired installation: the chip stays "Credentials
+expired" and the detail says the earlier rejection still stands. Paused and disabled
+installations show no credential-health chip because the heartbeat does not check them.

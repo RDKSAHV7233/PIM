@@ -5,6 +5,7 @@ import {
   ValidationResult,
 } from "./connector.interface";
 import { ConnectorLaunchStage } from "./connector-launch-policy";
+import type { ConnectorValidationState } from "./credential-validation";
 
 export type ConnectorInstallationStatus = "ACTIVE" | "PAUSED" | "CREDENTIAL_EXPIRED" | "DISABLED";
 
@@ -83,6 +84,12 @@ export interface ConnectorInstallationRecord {
    * (flipkart, amazon-in); `true` for everything else since they don't have this gap.
    */
   credentialsValidated: boolean;
+  /**
+   * What the heartbeat last learned about this installation's credentials (see
+   * credential-validation.ts). All null until the first recorded check. INDETERMINATE and
+   * CONFIGURATION_ERROR never change `status`; only INVALID does.
+   */
+  validation: ConnectorValidationState;
 }
 
 export interface PaginatedResponse<T> {

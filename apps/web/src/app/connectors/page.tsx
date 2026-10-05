@@ -27,6 +27,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { canEditConnectorCredentials } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { describeCredentialHealth } from "@/lib/connector-utils";
 import { formatDateTime } from "@/lib/format";
 import { filterTestData } from "@/lib/test-data-filter";
 import { PageHeader } from "@/components/ui/page-header";
@@ -910,6 +911,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               {filteredInstallations.map((installation) => {
                 const mappedChannel = mapConnectorSlugToMarketplaceChannel(installation.slug);
                 const displayStatus = resolveInstalledStatusPresentation(installation.status);
+                const credentialHealth = describeCredentialHealth(installation);
                 const mappingHref =
                   mappedChannel && firstProductId
                     ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
@@ -933,8 +935,19 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusChip label={displayStatus.label} tone={displayStatus.tone} />
+                        {credentialHealth ? (
+                          <StatusChip label={credentialHealth.label} tone={credentialHealth.tone} />
+                        ) : null}
                       </div>
                     </div>
+                    {credentialHealth ? (
+                      <p className="mt-2 text-xs text-slate-600" data-testid="credential-health-detail">
+                        {credentialHealth.detail}{" "}
+                        {credentialHealth.lastVerifiedAt
+                          ? `Last verified ${formatDateTime(credentialHealth.lastVerifiedAt)}.`
+                          : "Never verified."}
+                      </p>
+                    ) : null}
 
                     {isInstallationAttentionStatus(installation.status) && (
                       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">

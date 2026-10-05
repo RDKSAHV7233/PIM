@@ -334,6 +334,8 @@ function ReadinessPanel({ readiness }: { readiness: InternalOpsSummaryResponse["
             rows={[
               { label: "Blocking installations", value: readiness.connector.blockingInstallations, tone: "danger" },
               { label: "Warnings", value: readiness.connector.warningInstallations, tone: "warning" },
+              { label: "Check inconclusive", value: readiness.connector.inconclusiveInstallations, tone: "warning" },
+              { label: "Configuration problem", value: readiness.connector.configurationProblemInstallations, tone: "warning" },
             ]}
           />
         </div>

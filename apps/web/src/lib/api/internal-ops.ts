@@ -103,6 +103,8 @@ export interface InternalOpsSummaryResponse {
       availability: InternalOpsCardAvailability;
       blockingInstallations: InternalOpsReadinessMetric;
       warningInstallations: InternalOpsReadinessMetric;
+      inconclusiveInstallations: InternalOpsReadinessMetric;
+      configurationProblemInstallations: InternalOpsReadinessMetric;
       affectedTenants: InternalOpsReadinessMetric;
       byStatus: InternalOpsReadinessStatusCount[] | null;
     };
