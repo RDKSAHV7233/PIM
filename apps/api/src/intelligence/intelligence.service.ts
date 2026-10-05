@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import type {
   AiDataClassification,
   AiFieldClassificationRule,
@@ -19,29 +20,14 @@ import type {
   UpsertAiTenantPolicyInput,
 } from "./intelligence.types";
 
-const PRODUCT_INTELLIGENCE_CAPABILITIES: readonly IntelligenceCapabilitySummary[] = [
-  {
-    id: "product_attribute_extraction",
-    status: "planned",
-    canonicalMutation: false,
-  },
-  {
-    id: "product_specification_extraction",
-    status: "planned",
-    canonicalMutation: false,
-  },
-  {
-    id: "evidence_backed_suggestions",
-    status: "planned",
-    canonicalMutation: false,
-  },
-];
-
 const AI_DATA_CLASSIFICATIONS = new Set<AiDataClassification>(["AI_ALLOWED", "AI_ALLOWED_WITH_REDACTION", "AI_BLOCKED"]);
 
 @Injectable()
 export class IntelligenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly capabilityRegistry: IntelligenceCapabilityRegistry,
+  ) {}
 
   getBoundaryStatus(actor: IntelligenceActor): IntelligenceBoundaryStatus {
     if (!actor.tenantId) {
@@ -54,7 +40,7 @@ export class IntelligenceService {
       status: "boundary_only",
       providerExecutionEnabled: false,
       canonicalProductMutationEnabled: false,
-      capabilities: PRODUCT_INTELLIGENCE_CAPABILITIES.map((capability) => ({ ...capability })),
+      capabilities: this.capabilityRegistry.listCapabilities(),
     };
   }
 

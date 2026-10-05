@@ -1,9 +1,10 @@
+import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import { IntelligenceController } from "./intelligence.controller";
 import { IntelligenceService } from "./intelligence.service";
 
 describe("IntelligenceController", () => {
   it("exposes a read-only boundary endpoint and no apply or mutate handlers", () => {
-    const service = new IntelligenceService({} as never);
+    const service = new IntelligenceService({} as never, new IntelligenceCapabilityRegistry());
     const controller = new IntelligenceController(service);
     const handlerNames = Object.getOwnPropertyNames(IntelligenceController.prototype);
 

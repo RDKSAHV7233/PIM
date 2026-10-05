@@ -1,6 +1,7 @@
 import { ForbiddenException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { PrismaService } from "../prisma/prisma.service";
+import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
 import { IntelligenceService } from "./intelligence.service";
 
 describe("IntelligenceService", () => {
@@ -94,8 +95,10 @@ describe("IntelligenceService", () => {
     jest.clearAllMocks();
   });
 
+  const createService = () => new IntelligenceService(prisma, new IntelligenceCapabilityRegistry());
+
   it("exposes only the governed boundary with provider execution and canonical mutation disabled", () => {
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const status = service.getBoundaryStatus({
       actorId: "user-1",
@@ -115,14 +118,14 @@ describe("IntelligenceService", () => {
   });
 
   it("requires tenant context before exposing the boundary", () => {
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     expect(() => service.getBoundaryStatus({ actorId: "user-1", actorRole: "editor" })).toThrow(ForbiddenException);
   });
 
   it("creates an idempotent tenant-scoped AiExecution without provider execution", async () => {
     aiExecution.upsert.mockResolvedValue({ id: "exec-1" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.createExecution({
       tenantKey: "tenant-a",
@@ -160,7 +163,7 @@ describe("IntelligenceService", () => {
 
   it("finalizes blocked executions with zero provider cost", async () => {
     aiExecution.update.mockResolvedValue({ id: "exec-1", status: "provider_disabled" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.finalizeExecution("exec-1", "tenant-a", {
       status: "provider_disabled",
@@ -190,7 +193,7 @@ describe("IntelligenceService", () => {
   });
 
   it("rejects sensitive telemetry values", async () => {
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.createExecution({
@@ -210,7 +213,7 @@ describe("IntelligenceService", () => {
 
   it("creates a tenant-scoped immutable AiSuggestion with factual evidence", async () => {
     aiSuggestion.upsert.mockResolvedValue({ id: "suggestion-1" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.createSuggestion({
       tenantKey: "tenant-a",
@@ -256,7 +259,7 @@ describe("IntelligenceService", () => {
 
   it("uses a deterministic idempotency fingerprint for the same suggestion", async () => {
     aiSuggestion.upsert.mockResolvedValue({ id: "suggestion-1" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
     const input = {
       tenantKey: "tenant-a",
       executionId: "exec-1",
@@ -283,7 +286,7 @@ describe("IntelligenceService", () => {
   });
 
   it("rejects factual suggestions without evidence", async () => {
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.createSuggestion({
@@ -305,7 +308,7 @@ describe("IntelligenceService", () => {
   });
 
   it("rejects evidence that does not match the suggestion source", async () => {
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.createSuggestion({
@@ -328,7 +331,7 @@ describe("IntelligenceService", () => {
   });
 
   it("rejects sensitive suggestion payloads", async () => {
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.createSuggestion({
@@ -353,7 +356,7 @@ describe("IntelligenceService", () => {
   it("accepts a suggestion without overwriting the generated suggested value", async () => {
     aiSuggestion.findUnique.mockResolvedValue(storedSuggestion);
     aiSuggestion.update.mockResolvedValue({ id: "suggestion-1", status: "accepted" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.reviewSuggestion("suggestion-1", "tenant-a", {
       decision: "accept",
@@ -381,7 +384,7 @@ describe("IntelligenceService", () => {
   it("stores edited reviewer value separately from the generated suggestion", async () => {
     aiSuggestion.findUnique.mockResolvedValue(storedSuggestion);
     aiSuggestion.update.mockResolvedValue({ id: "suggestion-1", status: "edited" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.reviewSuggestion("suggestion-1", "tenant-a", {
       decision: "edit",
@@ -409,7 +412,7 @@ describe("IntelligenceService", () => {
   it("blocks stale suggestion review", async () => {
     aiSuggestion.findUnique.mockResolvedValue(storedSuggestion);
     aiSuggestion.update.mockResolvedValue({ id: "suggestion-1", status: "blocked_stale" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.reviewSuggestion("suggestion-1", "tenant-a", {
@@ -432,7 +435,7 @@ describe("IntelligenceService", () => {
       generatedPayloadHash: "sha256:tampered",
     });
     aiSuggestion.update.mockResolvedValue({ id: "suggestion-1", status: "blocked_tampered" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.reviewSuggestion("suggestion-1", "tenant-a", {
@@ -451,7 +454,7 @@ describe("IntelligenceService", () => {
 
   it("does not review suggestions outside the active tenant scope", async () => {
     aiSuggestion.findUnique.mockResolvedValue(null);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await expect(
       service.reviewSuggestion("suggestion-1", "tenant-b", {
@@ -465,7 +468,7 @@ describe("IntelligenceService", () => {
 
   it("creates tenant-scoped AiTenantPolicy with fail-closed defaults", async () => {
     aiTenantPolicy.upsert.mockResolvedValue({ id: "policy-1" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.upsertTenantPolicy({
       tenantKey: "tenant-a",
@@ -514,7 +517,7 @@ describe("IntelligenceService", () => {
 
   it("blocks classification when no active tenant policy exists", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue(null);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -528,7 +531,7 @@ describe("IntelligenceService", () => {
 
   it("blocks classification when the policy kill switch is enabled", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue({ ...activePolicy, killSwitchEnabled: true });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -542,7 +545,7 @@ describe("IntelligenceService", () => {
 
   it("blocks unknown fields by default", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -556,7 +559,7 @@ describe("IntelligenceService", () => {
 
   it("blocks AI_BLOCKED fields before payload use", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -570,7 +573,7 @@ describe("IntelligenceService", () => {
 
   it("requires redaction evidence for redactable fields", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -584,7 +587,7 @@ describe("IntelligenceService", () => {
 
   it("rejects secret-like values even in allowed fields", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -598,7 +601,7 @@ describe("IntelligenceService", () => {
 
   it("allows sanitized payloads when tenant policy permits every field", async () => {
     aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     const result = await service.classifyPayloadForIntelligence({
       tenantKey: "tenant-a",
@@ -615,7 +618,7 @@ describe("IntelligenceService", () => {
 
   it("records policy-blocked execution telemetry with zero cost and no request payload hash", async () => {
     aiExecution.update.mockResolvedValue({ id: "exec-1", status: "blocked" });
-    const service = new IntelligenceService(prisma);
+    const service = createService();
 
     await service.recordPolicyBlockedExecution({
       executionId: "exec-1",

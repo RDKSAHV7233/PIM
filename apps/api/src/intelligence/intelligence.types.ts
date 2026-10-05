@@ -3,6 +3,13 @@ import type { Prisma } from "@prisma/client";
 
 export type IntelligenceCapabilityStatus = "planned" | "disabled";
 
+export type IntelligenceCapabilityGateStatus = "blocked_until_gate_b";
+
+export type IntelligenceCapabilityId =
+  | "product_attribute_extraction"
+  | "product_specification_extraction"
+  | "evidence_backed_suggestions";
+
 export interface IntelligenceActor {
   actorId?: string;
   actorRole?: AppRole;
@@ -11,9 +18,18 @@ export interface IntelligenceActor {
 }
 
 export interface IntelligenceCapabilitySummary {
-  id: string;
+  id: IntelligenceCapabilityId;
   status: IntelligenceCapabilityStatus;
+  gateStatus: IntelligenceCapabilityGateStatus;
+  ai001Scope: "in_scope";
   canonicalMutation: false;
+  providerExecution: false;
+  humanReviewRequired: true;
+  evidenceRequired: true;
+  allowedEntityTypes: readonly ["product"];
+  promptContractVersion: string;
+  schemaContractVersion: string;
+  outputContractVersion: string;
 }
 
 export interface IntelligenceBoundaryStatus {
