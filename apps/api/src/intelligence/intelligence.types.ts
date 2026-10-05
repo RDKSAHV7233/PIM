@@ -192,6 +192,59 @@ export interface UpsertAiTenantPolicyInput {
   updatedByActorId?: string | null;
 }
 
+export type AiProviderExecutionMode = "live_provider";
+
+export type AiProviderExecutionDecision = "ALLOW" | "DENY";
+
+export type AiProviderExecutionDenialReason =
+  | "platform_feature_disabled"
+  | "platform_kill_switch"
+  | "missing_tenant_policy"
+  | "invalid_tenant_policy"
+  | "tenant_provider_disabled"
+  | "capability_disallowed"
+  | "execution_mode_disabled"
+  | "missing_budget_policy"
+  | "invalid_budget_policy"
+  | "budget_exhausted"
+  | "budget_indeterminate"
+  | "invalid_request";
+
+export interface EvaluateProviderExecutionEligibilityInput {
+  tenantKey: string;
+  capability: IntelligenceCapabilityId;
+  providerKey?: string;
+  executionMode?: AiProviderExecutionMode;
+  budgetPeriodKey: string;
+  requestFingerprint: string;
+  requestedEstimatedCostMicros: number;
+  currency?: string;
+  correlationId?: string | null;
+  platformProviderExecutionEnabled?: boolean;
+  platformKillSwitchEnabled?: boolean;
+}
+
+export interface ProviderExecutionEligibilityResult {
+  decision: AiProviderExecutionDecision;
+  allowed: boolean;
+  denialReason?: AiProviderExecutionDenialReason;
+  tenantKey: string;
+  capability: IntelligenceCapabilityId;
+  providerKey: string;
+  executionMode: AiProviderExecutionMode;
+  policyId?: string;
+  policyVersion?: string;
+  budgetPolicyId?: string;
+  budgetPeriodKey: string;
+  reservationId?: string;
+  requestFingerprint: string;
+  requestedEstimatedCostMicros: number;
+  reservedCostMicros: number;
+  currency: string;
+  providerCallAttempted: false;
+  canonicalProductMutationEnabled: false;
+}
+
 export interface ClassifyIntelligencePayloadInput {
   tenantKey: string;
   capability: string;

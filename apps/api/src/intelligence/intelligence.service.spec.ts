@@ -32,8 +32,26 @@ describe("IntelligenceService", () => {
     upsert: jest.fn(),
     findFirst: jest.fn(),
   };
+  const aiProviderBudgetPolicy = {
+    findFirst: jest.fn(),
+  };
+  const aiProviderBudgetReservation = {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  };
+  const tenantDb = {
+    aiExecution,
+    aiSuggestion,
+    aiTenantPolicy,
+    aiProviderBudgetPolicy,
+    aiProviderBudgetReservation,
+    $queryRaw: jest.fn(),
+    $transaction: jest.fn(),
+  };
+  tenantDb.$transaction.mockImplementation((callback: (tx: typeof tenantDb) => unknown) => callback(tenantDb));
   const prisma = {
-    tenant: jest.fn().mockReturnValue({ aiExecution, aiSuggestion, aiTenantPolicy }),
+    tenant: jest.fn().mockReturnValue(tenantDb),
   } as unknown as PrismaService;
   const evidence = [
     {
@@ -98,6 +116,8 @@ describe("IntelligenceService", () => {
     defaultClassification: "AI_BLOCKED",
     allowedCapabilities: ["product_attribute_extraction"],
     allowedProviderKeys: ["default"],
+    approvedBy: "security-1",
+    approvedAt: new Date("2026-10-05T00:00:00.000Z"),
     fieldClassifications: {
       "product.title": { classification: "AI_ALLOWED" },
       "product.internalNotes": { classification: "AI_ALLOWED_WITH_REDACTION", redactionEvidenceRequired: true },
@@ -205,6 +225,242 @@ describe("IntelligenceService", () => {
         }),
       }),
     );
+  });
+
+  it("rejects actual provider cost when no provider call was attempted", async () => {
+    const service = createService();
+
+    await expect(
+      service.finalizeExecution("exec-1", "tenant-a", {
+        status: "provider_disabled",
+        providerCallAttempted: false,
+        failureClass: "provider_disabled",
+        estimatedCostMicros: 0,
+        actualCostMicros: 1,
+      }),
+    ).rejects.toThrow("Blocked executions cannot record actual provider cost.");
+    expect(aiExecution.update).not.toHaveBeenCalled();
+  });
+
+  describe("provider execution eligibility controls (AI-PROV-004a)", () => {
+    const approvedPolicy = {
+      ...activePolicy,
+      maxPayloadBytes: 4096,
+    };
+    const budgetPolicy = {
+      id: "budget-policy-1",
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      providerKey: "default",
+      executionMode: "live_provider",
+      policyVersion: "budget-v1",
+      enabled: true,
+      requestLimit: 2,
+      spendLimitMicros: 100,
+      reservedSpendMicros: 0,
+      spentSpendMicros: 0,
+      requestCount: 0,
+      currency: "USD",
+      periodKey: "2026-10",
+      periodStartedAt: new Date("2026-10-01T00:00:00.000Z"),
+      periodEndsAt: new Date("2026-11-01T00:00:00.000Z"),
+      effectiveFrom: new Date("2026-10-01T00:00:00.000Z"),
+      effectiveUntil: null,
+    };
+    const baseEligibilityInput = {
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction" as const,
+      providerKey: "default",
+      executionMode: "live_provider" as const,
+      budgetPeriodKey: "2026-10",
+      requestFingerprint: "sha256:request-1",
+      requestedEstimatedCostMicros: 40,
+      currency: "USD",
+      correlationId: "corr-1",
+      platformProviderExecutionEnabled: true,
+      platformKillSwitchEnabled: false,
+    };
+
+    beforeEach(() => {
+      aiTenantPolicy.findFirst.mockResolvedValue(approvedPolicy);
+      aiProviderBudgetPolicy.findFirst.mockResolvedValue(budgetPolicy);
+      aiProviderBudgetReservation.findUnique.mockResolvedValue(null);
+      aiProviderBudgetReservation.create.mockResolvedValue({
+        id: "reservation-1",
+        budgetPolicyId: "budget-policy-1",
+        status: "budget_blocked",
+        reservedCostMicros: 0,
+      });
+      aiProviderBudgetReservation.update.mockResolvedValue({
+        id: "reservation-1",
+        budgetPolicyId: "budget-policy-1",
+        status: "reserved",
+        reservedCostMicros: 40,
+      });
+      tenantDb.$queryRaw.mockResolvedValue([{ id: "budget-policy-1" }]);
+    });
+
+    it("fails closed when the platform feature is disabled", async () => {
+      const result = await createService().evaluateExecutionEligibility({
+        ...baseEligibilityInput,
+        platformProviderExecutionEnabled: false,
+      });
+
+      expect(result).toMatchObject({
+        decision: "DENY",
+        allowed: false,
+        denialReason: "platform_feature_disabled",
+        providerCallAttempted: false,
+        reservedCostMicros: 0,
+      });
+      expect(aiTenantPolicy.findFirst).not.toHaveBeenCalled();
+      expect(aiProviderBudgetReservation.create).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when the platform kill switch is enabled", async () => {
+      const result = await createService().evaluateExecutionEligibility({
+        ...baseEligibilityInput,
+        platformKillSwitchEnabled: true,
+      });
+
+      expect(result.denialReason).toBe("platform_kill_switch");
+      expect(aiTenantPolicy.findFirst).not.toHaveBeenCalled();
+      expect(aiProviderBudgetReservation.create).not.toHaveBeenCalled();
+    });
+
+    it("denies when the tenant policy is missing", async () => {
+      aiTenantPolicy.findFirst.mockResolvedValue(null);
+
+      const result = await createService().evaluateExecutionEligibility(baseEligibilityInput);
+
+      expect(result).toMatchObject({
+        decision: "DENY",
+        denialReason: "missing_tenant_policy",
+        providerCallAttempted: false,
+      });
+      expect(aiProviderBudgetPolicy.findFirst).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["provider disabled", { providerExecutionEnabled: false }, "tenant_provider_disabled"],
+      ["tenant kill switch", { killSwitchEnabled: true }, "tenant_provider_disabled"],
+      ["tenant opted out", { tenantOptOut: true }, "tenant_provider_disabled"],
+      ["unapproved policy", { approvedBy: null }, "invalid_tenant_policy"],
+      ["missing live payload cap", { maxPayloadBytes: 0 }, "invalid_tenant_policy"],
+      ["capability disallowed", { allowedCapabilities: ["product_specification_extraction"] }, "capability_disallowed"],
+    ])("denies before budget when %s", async (_label, override, denialReason) => {
+      aiTenantPolicy.findFirst.mockResolvedValue({ ...approvedPolicy, ...override });
+
+      const result = await createService().evaluateExecutionEligibility(baseEligibilityInput);
+
+      expect(result.denialReason).toBe(denialReason);
+      expect(aiProviderBudgetPolicy.findFirst).not.toHaveBeenCalled();
+      expect(aiProviderBudgetReservation.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["missing budget", null, "missing_budget_policy"],
+      ["disabled budget", { ...budgetPolicy, enabled: false }, "invalid_budget_policy"],
+      ["zero request limit", { ...budgetPolicy, requestLimit: 0 }, "invalid_budget_policy"],
+      ["zero spend limit", { ...budgetPolicy, spendLimitMicros: 0 }, "invalid_budget_policy"],
+      ["currency mismatch", { ...budgetPolicy, currency: "EUR" }, "invalid_budget_policy"],
+      ["expired period", { ...budgetPolicy, periodEndsAt: new Date("2026-01-01T00:00:00.000Z") }, "invalid_budget_policy"],
+    ])("denies when budget policy is %s", async (_label, policy, denialReason) => {
+      aiProviderBudgetPolicy.findFirst.mockResolvedValue(policy);
+
+      const result = await createService().evaluateExecutionEligibility(baseEligibilityInput);
+
+      expect(result.denialReason).toBe(denialReason);
+      expect(aiProviderBudgetReservation.create).not.toHaveBeenCalled();
+    });
+
+    it("allows an exact spend and request boundary deterministically", async () => {
+      aiProviderBudgetPolicy.findFirst.mockResolvedValue({
+        ...budgetPolicy,
+        requestLimit: 1,
+        requestCount: 0,
+        spendLimitMicros: 40,
+        reservedSpendMicros: 0,
+        spentSpendMicros: 0,
+      });
+
+      const result = await createService().evaluateExecutionEligibility(baseEligibilityInput);
+
+      expect(result).toMatchObject({
+        decision: "ALLOW",
+        allowed: true,
+        reservationId: "reservation-1",
+        reservedCostMicros: 40,
+        providerCallAttempted: false,
+        canonicalProductMutationEnabled: false,
+      });
+      expect(tenantDb.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(aiProviderBudgetReservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "reservation-1", tenantKey: "tenant-a" },
+          data: { status: "reserved", reservedCostMicros: 40 },
+        }),
+      );
+      expect(aiSuggestion.upsert).not.toHaveBeenCalled();
+    });
+
+    it("denies when the atomic budget reservation cannot reserve capacity", async () => {
+      tenantDb.$queryRaw.mockResolvedValue([]);
+
+      const result = await createService().evaluateExecutionEligibility(baseEligibilityInput);
+
+      expect(result).toMatchObject({
+        decision: "DENY",
+        denialReason: "budget_exhausted",
+        reservationId: "reservation-1",
+        reservedCostMicros: 0,
+      });
+      expect(aiProviderBudgetReservation.update).not.toHaveBeenCalled();
+    });
+
+    it("reuses an existing matching reservation idempotently", async () => {
+      aiProviderBudgetReservation.findUnique.mockResolvedValue({
+        id: "reservation-existing",
+        budgetPolicyId: "budget-policy-1",
+        tenantKey: "tenant-a",
+        capability: "product_attribute_extraction",
+        providerKey: "default",
+        executionMode: "live_provider",
+        periodKey: "2026-10",
+        requestFingerprint: "sha256:request-1",
+        reservedCostMicros: 40,
+        currency: "USD",
+        status: "reserved",
+      });
+
+      const result = await createService().evaluateExecutionEligibility(baseEligibilityInput);
+
+      expect(result).toMatchObject({
+        decision: "ALLOW",
+        reservationId: "reservation-existing",
+        reservedCostMicros: 40,
+      });
+      expect(aiProviderBudgetPolicy.findFirst).not.toHaveBeenCalled();
+      expect(aiProviderBudgetReservation.create).not.toHaveBeenCalled();
+      expect(tenantDb.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it("keeps one tenant's policy from affecting another tenant", async () => {
+      const result = await createService().evaluateExecutionEligibility({
+        ...baseEligibilityInput,
+        tenantKey: "tenant-b",
+        requestFingerprint: "sha256:tenant-b-request",
+      });
+
+      expect(result.tenantKey).toBe("tenant-b");
+      expect(prisma.tenant).toHaveBeenCalledWith("tenant-b");
+      expect(aiTenantPolicy.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ tenantKey: "tenant-b" }),
+        }),
+      );
+      expect(tenantDb.$queryRaw).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("rejects sensitive telemetry values", async () => {

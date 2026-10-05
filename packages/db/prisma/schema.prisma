@@ -1848,3 +1848,60 @@ model AiTenantPolicy {
   @@index([tenantKey, status, updatedAt(sort: Desc)], map: "idx_ai_tenant_policies_tenant_status_updated")
   @@map("ai_tenant_policies")
 }
+
+model AiProviderBudgetPolicy {
+  id                   String                        @id @default(cuid())
+  tenantKey            String                        @default("default") @map("tenant_key")
+  capability           String
+  providerKey          String                        @default("default") @map("provider_key")
+  executionMode        String                        @default("live_provider") @map("execution_mode")
+  policyVersion        String                        @map("policy_version")
+  enabled              Boolean                       @default(false)
+  requestLimit         Int                           @default(0) @map("request_limit")
+  spendLimitMicros     Int                           @default(0) @map("spend_limit_micros")
+  reservedSpendMicros  Int                           @default(0) @map("reserved_spend_micros")
+  spentSpendMicros     Int                           @default(0) @map("spent_spend_micros")
+  requestCount         Int                           @default(0) @map("request_count")
+  currency             String                        @default("USD")
+  periodKey            String                        @map("period_key")
+  periodStartedAt      DateTime                      @map("period_started_at")
+  periodEndsAt         DateTime                      @map("period_ends_at")
+  effectiveFrom        DateTime?                     @map("effective_from")
+  effectiveUntil       DateTime?                     @map("effective_until")
+  updatedByActorId     String?                       @map("updated_by_actor_id")
+  version              Int                           @default(0)
+  createdAt            DateTime                      @default(now()) @map("created_at")
+  updatedAt            DateTime                      @updatedAt @map("updated_at")
+  reservations         AiProviderBudgetReservation[]
+
+  @@unique([tenantKey, capability, providerKey, executionMode, periodKey, policyVersion], map: "ai_provider_budget_policies_scope_version_unique")
+  @@index([tenantKey, capability, providerKey, executionMode, periodKey, enabled], map: "idx_ai_provider_budget_policies_scope_enabled")
+  @@index([tenantKey, periodKey, enabled], map: "idx_ai_provider_budget_policies_tenant_period")
+  @@map("ai_provider_budget_policies")
+}
+
+model AiProviderBudgetReservation {
+  id                            String                 @id @default(cuid())
+  tenantKey                     String                 @default("default") @map("tenant_key")
+  budgetPolicyId                String                 @map("budget_policy_id")
+  budgetPolicy                  AiProviderBudgetPolicy @relation(fields: [budgetPolicyId], references: [id], onDelete: Restrict)
+  capability                    String
+  providerKey                   String                 @default("default") @map("provider_key")
+  executionMode                 String                 @default("live_provider") @map("execution_mode")
+  periodKey                     String                 @map("period_key")
+  requestFingerprint            String                 @map("request_fingerprint")
+  requestedEstimatedCostMicros  Int                    @map("requested_estimated_cost_micros")
+  reservedCostMicros            Int                    @default(0) @map("reserved_cost_micros")
+  actualCostMicros              Int?                   @map("actual_cost_micros")
+  currency                      String                 @default("USD")
+  status                        String                 @default("reserved")
+  correlationId                 String?                @map("correlation_id")
+  executionId                   String?                @map("execution_id")
+  createdAt                     DateTime               @default(now()) @map("created_at")
+  updatedAt                     DateTime               @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, requestFingerprint], map: "ai_provider_budget_reservations_tenant_fingerprint_unique")
+  @@index([tenantKey, budgetPolicyId, status], map: "idx_ai_provider_budget_reservations_policy_status")
+  @@index([tenantKey, capability, providerKey, executionMode, periodKey], map: "idx_ai_provider_budget_reservations_scope")
+  @@map("ai_provider_budget_reservations")
+}
