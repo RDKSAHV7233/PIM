@@ -1,0 +1,13 @@
+{
+  "baselineVersion": 1,
+  "catalogHash": "sha256:4f10c278349ae1cef605a47d0904935afaeb71de121c9869606091aaa211e3fb",
+  "structuralRate": 0.6875,
+  "factualRecall": 1,
+  "factualPrecision": 1,
+  "evidenceCoverage": 1,
+  "evidenceValidity": 1,
+  "maxIncorrectlyBlockedCases": 20,
+  "maxProhibitedOutputHits": 0,
+  "maxUnknownFilled": 0,
+  "maxConflictsResolved": 0
+}
