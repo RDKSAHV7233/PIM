@@ -15,6 +15,8 @@ import type {
   IntelligenceBoundaryStatus,
   IntelligenceCapabilitySummary,
   IntelligencePayloadClassificationResult,
+  IntelligencePayloadDryRunResult,
+  PrepareIntelligencePayloadDryRunInput,
   RecordPolicyBlockedExecutionInput,
   ReviewAiSuggestionInput,
   UpsertAiTenantPolicyInput,
@@ -343,6 +345,27 @@ export class IntelligenceService {
       blockedFields: [...input.result.blockedFields, ...input.result.unknownFields],
       redactedFields: input.result.redactedFields,
     });
+  }
+
+  async prepareIntelligencePayloadDryRun(input: PrepareIntelligencePayloadDryRunInput): Promise<IntelligencePayloadDryRunResult> {
+    const classification = await this.classifyPayloadForIntelligence(input);
+    if (!classification.allowed && input.executionId) {
+      await this.recordPolicyBlockedExecution({
+        executionId: input.executionId,
+        tenantKey: input.tenantKey,
+        result: classification,
+        auditEventIds: input.auditEventIds,
+      });
+    }
+
+    return {
+      allowed: classification.allowed,
+      classification,
+      payloadFingerprint: classification.allowed ? this.hashJson(input.payload) : undefined,
+      executionRecorded: !classification.allowed && Boolean(input.executionId),
+      providerCallAttempted: false,
+      estimatedCostMicros: 0,
+    };
   }
 
   async createSuggestion(input: CreateAiSuggestionInput) {

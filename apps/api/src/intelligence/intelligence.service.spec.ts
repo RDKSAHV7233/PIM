@@ -616,6 +616,63 @@ describe("IntelligenceService", () => {
     expect(result.payloadHash).toBeUndefined();
   });
 
+  it("dry-runs an allowed intelligence payload without recording execution telemetry", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const service = createService();
+
+    const result = await service.prepareIntelligencePayloadDryRun({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      payload: { product: { title: "Cotton Kurta", internalNotes: "[REDACTED]" } },
+      redactedFields: ["product.internalNotes"],
+    });
+
+    expect(result).toMatchObject({
+      allowed: true,
+      executionRecorded: false,
+      providerCallAttempted: false,
+      estimatedCostMicros: 0,
+    });
+    expect(result.payloadFingerprint).toMatch(/^sha256:/);
+    expect(aiExecution.update).not.toHaveBeenCalled();
+  });
+
+  it("dry-runs and records blocked zero-cost telemetry when a payload cannot be used", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    aiExecution.update.mockResolvedValue({ id: "exec-1", status: "blocked" });
+    const service = createService();
+
+    const result = await service.prepareIntelligencePayloadDryRun({
+      tenantKey: "tenant-a",
+      capability: "product_attribute_extraction",
+      executionId: "exec-1",
+      payload: { product: { title: "Cotton Kurta" }, connector: { apiKey: "blocked" } },
+      auditEventIds: ["audit-dry-run-blocked-1"],
+    });
+
+    expect(result).toMatchObject({
+      allowed: false,
+      payloadFingerprint: undefined,
+      executionRecorded: true,
+      providerCallAttempted: false,
+      estimatedCostMicros: 0,
+    });
+    expect(result.classification.blockedFields).toContain("connector.apiKey");
+    expect(aiExecution.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "exec-1", tenantKey: "tenant-a" },
+        data: expect.objectContaining({
+          status: "blocked",
+          providerCallAttempted: false,
+          estimatedCostMicros: 0,
+          totalTokens: 0,
+          requestPayloadHash: null,
+          blockedFields: ["connector.apiKey"],
+        }),
+      }),
+    );
+  });
+
   it("records policy-blocked execution telemetry with zero cost and no request payload hash", async () => {
     aiExecution.update.mockResolvedValue({ id: "exec-1", status: "blocked" });
     const service = createService();

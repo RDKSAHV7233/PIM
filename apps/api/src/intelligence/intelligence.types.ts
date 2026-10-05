@@ -220,6 +220,20 @@ export interface RecordPolicyBlockedExecutionInput {
   auditEventIds?: string[];
 }
 
+export interface PrepareIntelligencePayloadDryRunInput extends ClassifyIntelligencePayloadInput {
+  executionId?: string | null;
+  auditEventIds?: string[];
+}
+
+export interface IntelligencePayloadDryRunResult {
+  allowed: boolean;
+  classification: IntelligencePayloadClassificationResult;
+  payloadFingerprint?: string;
+  executionRecorded: boolean;
+  providerCallAttempted: false;
+  estimatedCostMicros: 0;
+}
+
 export interface CreateAiSuggestionInput {
   tenantKey: string;
   executionId: string;
