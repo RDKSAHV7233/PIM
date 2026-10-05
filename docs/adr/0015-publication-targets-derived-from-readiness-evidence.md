@@ -1,6 +1,6 @@
 # ADR-0015: Publication Targets Are Derived From Readiness Evidence
 
-**Status**: Proposed
+**Status**: Proposed (owner decisions of 2026-10-05 applied; becomes Accepted on merge)
 **Date**: 2026-10-05
 **Author**: Sprint 5 (registry-derived publication targets), design only
 **Amends**: ADR-0006 (adds a publication-level readiness above connector-level availability), ADR-0007 (adds a path dimension to certification evidence), ADR-0014 §2 (realizes "the frontend derives its channel list from the API")
@@ -52,12 +52,13 @@ publishable**, in some places by accident of a list.
 connector definition exists                          (connector_definitions row)
 AND runtime registration exists                      (ConnectorRegistry has the slug)
 AND publish capability is declared                   (capabilities includes PUBLISH)
-AND the capability has current evidence on the       (certification at or above the minimum for the
-    path the product pipeline uses                    release stage, not expired, not recertification-due)
-AND release is allowed                               (launch stage permits publishing; not p1_blocker_hold)
-AND commercial support is recorded                   (explicit per-connector flag; default false)
+AND the capability has current evidence on the       (pipeline certification at or above the minimum for the
+    path the product pipeline uses                    release stage, before its reverify-by date)
+AND release is allowed                               (launch stage permits publishing; not p1_blocker_hold;
+                                                      this tenant is in the stage's explicit cohort)
+AND commercial support is recorded                   (Product Owner approval, per connector; default false)
 AND installation is eligible                         (exists, ACTIVE, authorization complete)
-AND credential state is acceptable                   (not expired, validated at least once, target not refused)
+AND credential state is acceptable                   (last trustworthy state is VALID and fresh; see section 8)
 AND target schema exists and is compatible           (ProductTypeSchema, ADR-0008)
 AND mapping is ready                                 (effective mapping resolves; not blocked/remap_required)
 AND product/channel readiness passes                 (no blocking validation or completeness errors)
@@ -107,31 +108,47 @@ policy, changed only by PR) with one entry per `(connector, capability, path)`:
 - `path`: `direct_adapter` (the connector called with its own context) or `product_pipeline` (the export job through
   `MarketplaceService`). Only `product_pipeline` evidence satisfies publication readiness.
 - `level`: ADR-0007's states (`untested` … `certified`).
-- `evidenceRef`: PR, commit or run reference, `verifiedAt`, `verifiedBy`, and an expiry.
-- Evidence becomes `EVIDENCE_EXPIRED` after its window and `RECERTIFICATION_REQUIRED` when ADR-0013's triggers fire
-  (schema change at `remap_required` or above).
+- `evidenceRef`, `verifiedAt`, `verifiedBy` (a role or team), and **`reverifyBy`**.
+- **`reverifyBy` is authoritative.** There is no single global age. A policy default **by evidence level** is applied
+  when the entry is created (`sandbox_verified` +30 days, `production_verified` +30 days, `certified` +90 days), and
+  an explicit shorter date set by certification or security policy wins. The entry then carries its own date. Past `reverifyBy`, or when ADR-0013's triggers fire (schema
+  change at `remap_required` or above), the capability evaluates as `RECERTIFICATION_REQUIRED`.
 
-Minimum `PUBLISH` level on the product-pipeline path by release stage:
+Minimum `PUBLISH` level on the **product-pipeline** path by release stage (owner decision, 2026-10-05):
 
-| Release stage | Publishable through the product pipeline | Minimum evidence |
+| Release stage | Publishable through the product pipeline | Minimum pipeline evidence |
 |---|---|---|
-| `live` | yes | `production_verified` or `certified` |
-| `early_access`, `controlled_pilot` | yes, for the tenants the stage allows | `sandbox_verified` |
-| `manual` | export only; not a publish target | n/a |
+| `live` | yes | `certified` |
+| `early_access` | yes, for the explicit cohort only | `production_verified` or higher |
+| `controlled_pilot` | yes, for the explicit allowlist only | `sandbox_verified` or higher |
+| `manual` | no (see section 7: export-only) | n/a |
 | `code_complete`, `qa_validation`, `po_review` | no (installable for testing) | n/a |
 | `p1_blocker_hold` | no | n/a: reason `P1_BLOCKER_HOLD` |
 | `planned`, `under_development`, `deprecated`, `internal_diagnostic` | no | n/a |
 
+**Tenant cohorts (owner decision):**
+- `controlled_pilot`: an **explicit named tenant allowlist** only.
+- `early_access`: an **explicit opted-in or entitled cohort** only. Never every tenant on a plan automatically.
+- `live` has no release-stage cohort restriction, but every other readiness gate still applies.
+- Cohort membership is a first-class **control-plane tenant entitlement record** (section 9), never a hardcoded list,
+  a subscription plan, or UI state.
+- A tenant outside the cohort gets `RELEASE_RESTRICTED`. Today the code does not restrict by tenant at either stage;
+  introducing the cohort is a behavior change, handled in shadow first (Rollout).
+
+**Commercial support (owner decision):** the `commerciallySupported` flag is owned by the **Product Owner**, who is
+accountable for it. Technical teams supply evidence; Support and SRE supply readiness input. It is recorded with
+an approval reference, defaults to false, and is never derived from the adapter's existence.
+
 ### 6. Fail closed
 
-- An unknown slug is not publishable (this replaces the launch policy's fail-open default for the purpose of
-  publication; the policy's own default is addressed in the first implementation PR).
+- **An unrecognized connector never defaults to `live`.** The launch policy's fallback for an unknown slug becomes a
+  non-installable, non-publishable stage. This is a change to the policy itself (first change in 5.1), not only to
+  publication.
 - Missing evidence, a missing descriptor, or an evaluation that cannot complete yields `unknown`, which makes the
   target unavailable with reason `EVALUATION_UNAVAILABLE`. It never yields available.
-- A condition that is a non-blocking concern is `warn` and does not block: `CREDENTIAL_CHECK_INCONCLUSIVE` (the
-  provider could not be reached; credentials were not rejected) and `MAPPING_DEPRECATED`.
+- Only a concern that does not make another publish unsafe is a `warn` (section 8).
 
-### 7. Where the channel list comes from
+### 7. Where the channel list comes from, and export-only connectors
 
 The hardcoded list stops being the publication authority. A single server-side **publication target registry**
 derives the targets from the connector registry, the launch policy, the evidence manifest, installations and
@@ -140,13 +157,111 @@ consumes that endpoint and deletes its own copy of the list, the slug maps and `
 `MARKETPLACE_CHANNELS` remains only as what ADR-0006 says it is: Tier-1 mapping-pack membership. It no longer
 decides whether a target is publishable.
 
-### 8. Credential, hold and outcome inputs are consumed, not re-derived
+**Export-only connectors do not appear as selectable publication targets** (owner decision). They belong on the
+capability-specific export surfaces. Admin and diagnostic output (`?diagnostic=true`, admin roles) may still list
+them with the reason `PUBLISH_NOT_DECLARED`, so the question "why can't I publish here?" has an answer.
 
-| Input | Source | Effect |
+### 8. Credential, mapping, hold and outcome inputs are consumed, not re-derived
+
+**Credential state uses the last trustworthy state** (owner decision), so the truthful heartbeat is honored without
+letting an installation that has never shown usable credentials become publishable:
+
+| Last known facts | Result | Code |
 |---|---|---|
-| Credential state | `connector_installations.status` and `validation.outcome` | `CREDENTIAL_EXPIRED` fails; `CONFIGURATION_ERROR` fails (the target URL is refused); `INDETERMINATE` is `warn`; never validated fails for the connectors that can install blank |
-| Release stage | `resolveConnectorLaunchPolicy` | `p1_blocker_hold` fails with `P1_BLOCKER_HOLD`; assignment of a hold is a governance decision recorded outside this ADR |
-| Prior outcome | submissions with `PROVIDER_OUTCOME_UNKNOWN` for the product on that installation | `PRIOR_OUTCOME_UNKNOWN`: `warn` by default, `fail` for connectors whose create is classified `AMBIGUOUS_CREATE_OUTCOME` (ADR-0012 taxonomy, #1157), because republishing may duplicate |
+| Recent `VALID`, then a later `INDETERMINATE` | **warn**; publication may continue (the provider was unreachable; the credentials were not rejected) | `CREDENTIAL_CHECK_INCONCLUSIVE` |
+| Never `VALID` | **unavailable** | `CREDENTIAL_NEVER_VALIDATED` |
+| Last `VALID` older than the credential freshness policy | **unavailable** | `CREDENTIAL_STALE` |
+| `INVALID` (status `CREDENTIAL_EXPIRED`) | **unavailable** | `CREDENTIAL_INVALID` |
+| `CONFIGURATION_ERROR` (the target URL is refused) | **unavailable** | `CREDENTIAL_CONFIGURATION_ERROR` |
+
+**Credential freshness is derived from the heartbeat's rotation capacity, never a fixed number:**
+
+```
+heartbeatMaxRotation     = the maximum supported time for every eligible installation to receive one
+                           validation attempt (the heartbeat checks 50 per tick, oldest attempt first, so it
+                           grows with installation count)
+credentialFreshnessWindow >= 2 x heartbeatMaxRotation + one scheduler interval
+```
+
+5.1 exposes and monitors `heartbeatMaxRotation`. If installation volume outgrows what the configured window
+implies, that is an **operational capacity failure** to be alerted and fixed; it is not a reason to declare healthy
+credentials stale silently.
+
+**`TOKEN_ONLY` is a credential type, not a health result.** A stored token is not `VALID`. A credential counts as
+`VALID` for publication only when the verifier has authenticated it against the provider. Today the amazon-in and
+flipkart verifiers can record `VALID` with reason `TOKEN_ONLY` on a held, unexpired token with no provider call
+(#1144). That record does **not** satisfy this condition: it evaluates `CREDENTIAL_NOT_PROVIDER_VERIFIED` until
+those verifiers authenticate against the provider.
+
+**Mapping.** `compatible` passes. `deprecated` is a **warn** only while the published mapping is still compatible
+(`MAPPING_DEPRECATED`). `remap_required` and `blocked` make the target unavailable (`MAPPING_NOT_READY`), as
+`evaluateMappingPreflight()` already treats them (ADR-0013).
+
+**Release stage.** `p1_blocker_hold` fails with `P1_BLOCKER_HOLD`. Assigning a hold is a governance decision recorded
+outside this ADR.
+
+**Prior provider outcome** (Sprint 3 made this visible; this makes it count): a submission for the product on that
+installation recorded as `PROVIDER_OUTCOME_UNKNOWN` produces `PRIOR_PROVIDER_OUTCOME_UNKNOWN`.
+- For an operation whose duplicate or side-effect semantics make another publication unsafe (a create classified
+  `AMBIGUOUS` in `docs/design/connector-write-retry-policy.md`: Odoo, Etsy, Dynamics 365), it **blocks** another
+  create for the same installation and product **until the outcome is reconciled**.
+- It is a **warn** only for operations proven idempotent or reconciliation-safe (WooCommerce and BigCommerce creates).
+- The block needs a way to settle an outcome (an operator action after checking the channel, or a later successful
+  attempt). That action does not exist yet; until it does, 5.1 reports the condition in shadow and does not enforce
+  it, so the block cannot become permanent.
+
+### 9. Tenant entitlements and outcome settlement
+
+**Tenant entitlement (control plane).** One record per grant; the evaluator reads it for the release condition.
+
+```
+ConnectorTenantEntitlement
+  tenant, connector, releaseStage
+  validFrom, validUntil?            (optional expiry)
+  approvedBy, approvedAt, reason, source
+  revokedAt?
+```
+
+- `controlled_pilot`: Product or Operations explicitly grants a named tenant.
+- `early_access`: the tenant explicitly opts in **and** the entitlement is recorded. No automatic plan-wide
+  enrollment.
+- `live`: no release-stage cohort restriction.
+- Grants and revocations are auditable events; an expired or revoked entitlement evaluates `RELEASE_RESTRICTED`.
+
+**Unknown-outcome settlement.** `PRIOR_PROVIDER_OUTCOME_UNKNOWN` is not enforced until a settlement exists. A
+settlement is an **append-only resolution event linked to the original submission**; the historical submission is
+never rewritten. It records the actor, timestamp, evidence source, reason, provider identifiers and correlation
+ids, and resolves the outcome to exactly one of:
+
+```
+UNKNOWN -> reconciliation / authorized investigation -> CONFIRMED_SUCCEEDED
+                                                     or CONFIRMED_NOT_APPLIED
+                                                     or SUPERSEDED
+```
+
+There is no generic "Dismiss" action. Only a resolution event clears the block.
+
+## Owner decisions recorded 2026-10-05
+
+These were given by the owners on 2026-10-05 and are applied above:
+
+| Topic | Decision |
+|---|---|
+| Minimum `PUBLISH` evidence | `controlled_pilot`: pipeline `sandbox_verified`+; `early_access`: pipeline `production_verified`+; `live`: pipeline `certified` |
+| Evidence freshness | `reverifyBy` is authoritative; policy defaults set at creation; expired evidence is `RECERTIFICATION_REQUIRED` |
+| `controlled_pilot` tenants | Explicit named tenant allowlist only |
+| `early_access` tenants | Explicit opted-in or entitled cohort only; never all tenants on a plan automatically |
+| `commerciallySupported` | Product Owner accountable; technical teams give evidence; Support and SRE give readiness input; not derived from adapter existence |
+| Prior unknown outcome | Block another ambiguous create for the same installation and product until reconciled; warn only for operations proven idempotent or reconciliation-safe |
+| Export-only connectors | Not selectable publication targets; capability-specific export surfaces; diagnostic output may explain `PUBLISH_NOT_DECLARED` |
+| Unknown connector launch policy | Fail closed; never default an unrecognized slug to `live` |
+| Credential health | Last trustworthy state, as in section 8 |
+| Mapping `deprecated` | Warn only while the published mapping is compatible; `remap_required` and `blocked` make the target unavailable |
+| Evidence `reverifyBy` defaults | Policy defaults by level: `sandbox_verified` +30d, `production_verified` +30d, `certified` +90d; an explicit shorter date wins |
+| Credential freshness | `>= 2 x heartbeatMaxRotation + one scheduler interval`; `heartbeatMaxRotation` is exposed and monitored; outgrowing it is a capacity failure |
+| Cohort storage | Control-plane tenant entitlement records; explicit and auditable; never plan, hardcoded list or UI state |
+| `TOKEN_ONLY` | A credential type, not a health result; `VALID` only after successful provider authentication |
+| Outcome settlement | Required before enforcement; append-only resolution event linked to the submission; no generic Dismiss |
 
 ## Implementation gate
 
@@ -183,8 +298,14 @@ case. The owners' decisions of 2026-10-05, recorded here as inputs and implement
 
 **Negative / cost**
 - New code surface (registry, evaluator, manifest) and one new endpoint to keep stable.
-- Behavior changes for connectors currently publishable by list membership: they must have manifest entries.
-  Rollout is shadow-first (below) so differences are measured before anything changes.
+- Behavior changes for connectors currently publishable by list membership: they must have manifest entries,
+  `early_access` now requires `production_verified` pipeline evidence, and `early_access` and `controlled_pilot`
+  require an explicit tenant cohort (none is enforced today). Existing installations whose credential facts are
+  empty are unavailable until the next heartbeat records `VALID`. Rollout is shadow-first (below) so every
+  difference is measured before anything changes.
+- **Amazon and Flipkart**: their `TOKEN_ONLY` `VALID` records are not provider verification, so both evaluate
+  `CREDENTIAL_NOT_PROVIDER_VERIFIED` until their verifiers authenticate against the provider. Flipkart is `live`, so
+  this must be resolved before enforcement, not discovered by it; the shadow report will show it.
 - The product pipeline's job DTOs still validate against `MARKETPLACE_CHANNELS`; widening them for Tier-2 is a
   separate, per-connector, PO-approved step.
 
@@ -193,14 +314,40 @@ case. The owners' decisions of 2026-10-05, recorded here as inputs and implement
 
 ## Rollout
 
-1. **5.1 Backend (shadow).** Registry, evaluator, manifest, `GET /marketplace/publication-targets`. Existing
-   behavior is unchanged; a comparison logs any divergence between the derived result and
-   `getPublishCapableChannels()`.
-2. **5.2 Consumers.** The product page's installed publish lanes and the readiness routes consume the endpoint
-   behind a flag; the web's duplicated rules are removed once divergence is zero.
-3. **5.3 First Tier-2 candidate (Zoho Inventory), behind a flag and per-connector PO approval.** Requires pipeline
-   evidence that does not exist today (a controlled write through the product pipeline, certification, commercial
-   support).
+Two phases are kept strictly apart.
+
+**5.1 SHADOW** (no customer-facing change):
+```
+derivePublicationTargets()
+  -> calculate every condition
+  -> emit availability and reason codes
+  -> compare with today's behavior and log divergence
+  -> NO change to what any customer can publish
+  -> PRIOR_PROVIDER_OUTCOME_UNKNOWN reported only
+  -> expose and monitor heartbeatMaxRotation
+```
+
+**ENFORCEMENT** (later, a separate decision) only after all of:
+- PR G (the WooCommerce governance state) is authoritative on `main`;
+- the evidence inventory exists;
+- tenant entitlement records exist for every connector at `early_access` or `controlled_pilot`;
+- Product Owner commercial-support records exist;
+- the credential freshness policy is operationally supportable (`heartbeatMaxRotation` within bounds);
+- the Amazon and Flipkart verifiers authenticate against the provider;
+- outcome settlement exists wherever blocking is required.
+
+This separation matters because the stricter contract will legitimately classify some currently selectable
+connectors as unavailable.
+
+Order of work:
+0. **PR G.** WooCommerce governance record and `p1_blocker_hold` restored; governance only.
+1. **5.1 (shadow).** Launch-policy fail-closed default for an unknown slug, registry, evaluator, manifest, entitlement
+   model, `GET /marketplace/publication-targets`, the divergence comparison, the rotation metric.
+2. **5.2 Consumers**, behind a flag, once the shadow divergence is understood; the web's duplicated rules are removed
+   only after that.
+3. **5.3 First Tier-2 candidate (Zoho Inventory)**, behind a flag and per-connector Product Owner approval; requires
+   pipeline evidence that does not exist today.
+4. **Enforcement**, after the list above.
 
 ## Machine-checkable invariants
 
@@ -209,18 +356,21 @@ case. The owners' decisions of 2026-10-05, recorded here as inputs and implement
 | Every registered connector declaring `PUBLISH` has a descriptor and a manifest entry for each capability and path (even `untested`) | ERROR |
 | `available` implies every condition is `pass`, `warn` or `not_applicable`; none is `fail` or `unknown` | ERROR |
 | Reason codes are a closed set; an unknown code fails the build | ERROR |
-| An unknown slug evaluates as unavailable | ERROR |
+| An unknown slug evaluates as unavailable, and the launch policy never resolves an unknown slug to `live` | ERROR |
 | No web file contains a slug-specific publish-readiness rule | ERROR |
-| Evidence past its expiry evaluates as `EVIDENCE_EXPIRED`, never `pass` | ERROR |
+| Evidence past its `reverifyBy` evaluates as `RECERTIFICATION_REQUIRED`, never `pass` | ERROR |
 | A target whose only evidence is `direct_adapter` evaluates as `CAPABILITY_NOT_VERIFIED` | ERROR |
+| A target with no installation fact of `VALID` (never validated) is unavailable | ERROR |
+| `commerciallySupported` is false unless a Product Owner approval reference is recorded | ERROR |
+| `credentialFreshnessWindow >= 2 x heartbeatMaxRotation + one scheduler interval`; `heartbeatMaxRotation` is exposed | ERROR |
+| A `VALID` fact whose reason is `TOKEN_ONLY` does not satisfy the credential condition | ERROR |
+| `PRIOR_PROVIDER_OUTCOME_UNKNOWN` is enforced only where an outcome-settlement path exists; otherwise shadow-only | ERROR |
 
-## Open questions for the owners
+## Remaining implementation details (not open policy)
 
-1. The minimum `PUBLISH` levels in section 5 and the evidence expiry windows.
-2. Which tenants an `early_access` or `controlled_pilot` stage allows (today the code allows all).
-3. Who owns the per-connector `commerciallySupported` flag, and its default for connectors already at `early_access`.
-4. Whether `PRIOR_OUTCOME_UNKNOWN` should block or warn for connectors whose create is `AMBIGUOUS_CREATE_OUTCOME`.
-5. Whether `manual` (export-only) connectors appear as targets with a distinct kind or only as export options.
+These are decided in principle above and are settled in 5.1 by the owners reviewing the generated inventory, not by
+reopening this ADR: the exact seeded entitlement records, the exact credential freshness value computed from the
+measured `heartbeatMaxRotation`, and the strengthening of the amazon-in and flipkart verifiers.
 
 ## Related
 - ADR-0006 (identity, state, availability), ADR-0007 (certification evidence), ADR-0008 (target schema registry),
