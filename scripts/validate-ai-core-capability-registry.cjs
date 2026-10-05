@@ -67,8 +67,8 @@ function validateCapabilityRegistry() {
   if (!/this\.capabilityRegistry\.listCapabilities\(\)/.test(service)) {
     fail(errors, "service.boundary", "boundary status must use the capability registry");
   }
-  if (!/providers:\s*\[IntelligenceCapabilityRegistry,\s*IntelligenceService\]/.test(module)) {
-    fail(errors, "module.providers", "module must register IntelligenceCapabilityRegistry");
+  if (!/providers:\s*\[[\s\S]*\bIntelligenceCapabilityRegistry\b[\s\S]*\bIntelligenceService\b[\s\S]*\]/.test(module)) {
+    fail(errors, "module.providers", "module must register IntelligenceCapabilityRegistry and IntelligenceService");
   }
   if (/fetch\s*\(|axios\.|OpenAI|Anthropic|GoogleGenerativeAI|product\.(create|update|upsert|delete)/.test(registry)) {
     fail(errors, "registry.forbidden", "registry must not add provider calls or Product mutation");

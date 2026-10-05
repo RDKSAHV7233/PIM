@@ -292,6 +292,81 @@ export interface IntelligenceProviderOutputValidationResult {
   canonicalProductMutationEnabled: false;
 }
 
+export type IntelligenceAdapterFinishStatus = "completed" | "blocked" | "failed";
+
+export type IntelligenceAdapterErrorClass =
+  | "input_not_allowed"
+  | "schema_invalid"
+  | "adapter_unavailable"
+  | "timeout"
+  | "rate_limited"
+  | "auth_failed"
+  | "upstream_5xx"
+  | "internal_error";
+
+export interface IntelligenceAdapterUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  billableUnits: number;
+  estimatedCostMicros: number;
+  currency: string;
+  pricingVersion: string;
+}
+
+export interface IntelligenceAdapterRequest {
+  tenantKey: string;
+  capability: IntelligenceCapabilityId;
+  entityType: "product";
+  entityId: string;
+  sourceRecordId: string;
+  sourceVersion: number;
+  sourceHash: string;
+  promptVersion: string;
+  schemaVersion: string;
+  payload: Prisma.InputJsonValue;
+  payloadFingerprint: string;
+  correlationId: string;
+}
+
+export interface IntelligenceAdapterResponse {
+  adapterKey: "fixture";
+  modelKey: "fixture-model";
+  modelVersion: string;
+  region: "local";
+  requestId: string;
+  finishStatus: IntelligenceAdapterFinishStatus;
+  latencyMs: number;
+  structuredOutput?: Prisma.InputJsonValue;
+  usage: IntelligenceAdapterUsage;
+  errorClass?: IntelligenceAdapterErrorClass;
+  errorCode?: string;
+  errorMessageSafe?: string;
+  providerCallAttempted: false;
+}
+
+export interface RunFixtureIntelligenceAdapterInput extends PrepareIntelligencePayloadDryRunInput {
+  capability: IntelligenceCapabilityId;
+  entityType: "product";
+  entityId: string;
+  sourceRecordId: string;
+  sourceVersion: number;
+  sourceHash: string;
+  promptVersion: string;
+  schemaVersion: string;
+  correlationId: string;
+}
+
+export interface FixtureIntelligenceAdapterRunResult {
+  payloadAllowed: boolean;
+  adapterResponse?: IntelligenceAdapterResponse;
+  outputValidation?: IntelligenceProviderOutputValidationResult;
+  errors: string[];
+  providerCallAttempted: false;
+  canonicalProductMutationEnabled: false;
+}
+
 export interface CreateAiSuggestionInput {
   tenantKey: string;
   executionId: string;

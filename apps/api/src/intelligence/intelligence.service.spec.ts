@@ -2,6 +2,7 @@ import { ForbiddenException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { PrismaService } from "../prisma/prisma.service";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
+import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
 import { IntelligenceService } from "./intelligence.service";
 
 describe("IntelligenceService", () => {
@@ -95,7 +96,8 @@ describe("IntelligenceService", () => {
     jest.clearAllMocks();
   });
 
-  const createService = () => new IntelligenceService(prisma, new IntelligenceCapabilityRegistry());
+  const createService = (fixtureAdapter = new FixtureIntelligenceAdapter()) =>
+    new IntelligenceService(prisma, new IntelligenceCapabilityRegistry(), fixtureAdapter);
 
   it("exposes only the governed boundary with provider execution and canonical mutation disabled", () => {
     const service = createService();
@@ -823,5 +825,92 @@ describe("IntelligenceService", () => {
     expect(result.schemaValid).toBe(false);
     expect(result.errors.join("\n")).toContain("forbidden sensitive telemetry");
     expect(result.outputPayloadHash).toBeUndefined();
+  });
+
+  it("runs the fixture adapter contract through dry-run and structured validation without persistence", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const fixtureAdapter = new FixtureIntelligenceAdapter();
+    const adapterSpy = jest.spyOn(fixtureAdapter, "generateStructuredOutput");
+    const service = createService(fixtureAdapter);
+
+    const result = await service.runFixtureAdapterContract({
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction",
+      entityType: "product",
+      entityId: "prod-1",
+      sourceRecordId: "source-1",
+      sourceVersion: 3,
+      sourceHash: "sha256:source",
+      promptVersion: "prompt-v1",
+      schemaVersion: "schema-v1",
+      correlationId: "corr-1",
+      payload: { product: { title: "Cotton Kurta", internalNotes: "[REDACTED]" } },
+      redactedFields: ["product.internalNotes"],
+      auditEventIds: ["audit-fixture-contract-1"],
+    });
+
+    expect(result).toMatchObject({
+      payloadAllowed: true,
+      providerCallAttempted: false,
+      canonicalProductMutationEnabled: false,
+      errors: [],
+    });
+    expect(adapterSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantKey: "tenant-a",
+        capability: "product_attribute_extraction",
+        entityType: "product",
+        payloadFingerprint: expect.stringMatching(/^sha256:/),
+        correlationId: "corr-1",
+      }),
+    );
+    expect(result.adapterResponse).toMatchObject({
+      adapterKey: "fixture",
+      modelKey: "fixture-model",
+      region: "local",
+      providerCallAttempted: false,
+      usage: expect.objectContaining({
+        estimatedCostMicros: 0,
+        billableUnits: 0,
+      }),
+    });
+    expect(result.outputValidation).toMatchObject({
+      schemaValid: true,
+      suggestionCount: 1,
+      providerCallAttempted: false,
+      canonicalProductMutationEnabled: false,
+    });
+    expect(aiSuggestion.upsert).not.toHaveBeenCalled();
+  });
+
+  it("blocks disallowed payloads before the fixture adapter boundary", async () => {
+    aiTenantPolicy.findFirst.mockResolvedValue(activePolicy);
+    const fixtureAdapter = new FixtureIntelligenceAdapter();
+    const adapterSpy = jest.spyOn(fixtureAdapter, "generateStructuredOutput");
+    const service = createService(fixtureAdapter);
+
+    const result = await service.runFixtureAdapterContract({
+      tenantKey: "tenant-a",
+      executionId: "exec-1",
+      capability: "product_attribute_extraction",
+      entityType: "product",
+      entityId: "prod-1",
+      sourceRecordId: "source-1",
+      sourceVersion: 3,
+      sourceHash: "sha256:source",
+      promptVersion: "prompt-v1",
+      schemaVersion: "schema-v1",
+      correlationId: "corr-1",
+      payload: { product: { title: "Cotton Kurta" }, connector: { apiKey: "blocked" } },
+    });
+
+    expect(result).toMatchObject({
+      payloadAllowed: false,
+      providerCallAttempted: false,
+      canonicalProductMutationEnabled: false,
+    });
+    expect(result.errors.join("\n")).toContain("blocked");
+    expect(adapterSpy).not.toHaveBeenCalled();
   });
 });

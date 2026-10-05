@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { IntelligenceCapabilityRegistry } from "./intelligence-capability.registry";
+import { FixtureIntelligenceAdapter } from "./intelligence-fixture.adapter";
 import type {
   AiDataClassification,
   AiFieldClassificationRule,
@@ -21,6 +22,7 @@ import type {
   PrepareIntelligencePayloadDryRunInput,
   RecordPolicyBlockedExecutionInput,
   ReviewAiSuggestionInput,
+  RunFixtureIntelligenceAdapterInput,
   UpsertAiTenantPolicyInput,
   ValidateIntelligenceProviderOutputInput,
 } from "./intelligence.types";
@@ -46,6 +48,7 @@ export class IntelligenceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly capabilityRegistry: IntelligenceCapabilityRegistry,
+    private readonly fixtureAdapter: FixtureIntelligenceAdapter,
   ) {}
 
   getBoundaryStatus(actor: IntelligenceActor): IntelligenceBoundaryStatus {
@@ -502,6 +505,67 @@ export class IntelligenceService {
     });
 
     return this.structuredOutputValidationResult(errors.length === 0, candidates.length, validationEvidenceId, errors, validatedSuggestions);
+  }
+
+  async runFixtureAdapterContract(input: RunFixtureIntelligenceAdapterInput) {
+    const dryRun = await this.prepareIntelligencePayloadDryRun(input);
+    if (!dryRun.allowed || !dryRun.payloadFingerprint) {
+      return {
+        payloadAllowed: false,
+        errors: [dryRun.classification.reason ?? "Payload is not allowed across the intelligence adapter boundary."],
+        providerCallAttempted: false,
+        canonicalProductMutationEnabled: false,
+      };
+    }
+
+    const adapterResponse = await this.fixtureAdapter.generateStructuredOutput({
+      tenantKey: normalizeTenantKey(input.tenantKey),
+      capability: input.capability,
+      entityType: input.entityType,
+      entityId: this.requiredText("entityId", input.entityId),
+      sourceRecordId: this.requiredText("sourceRecordId", input.sourceRecordId),
+      sourceVersion: this.nonNegativeInteger("sourceVersion", input.sourceVersion),
+      sourceHash: this.requiredText("sourceHash", input.sourceHash),
+      promptVersion: this.requiredText("promptVersion", input.promptVersion),
+      schemaVersion: this.requiredText("schemaVersion", input.schemaVersion),
+      payload: input.payload,
+      payloadFingerprint: dryRun.payloadFingerprint,
+      correlationId: this.requiredText("correlationId", input.correlationId),
+    });
+
+    if (!adapterResponse.structuredOutput) {
+      return {
+        payloadAllowed: true,
+        adapterResponse,
+        errors: [adapterResponse.errorMessageSafe ?? "Intelligence adapter did not return structured output."],
+        providerCallAttempted: false,
+        canonicalProductMutationEnabled: false,
+      };
+    }
+
+    const outputValidation = await this.validateStructuredOutputForSuggestions({
+      tenantKey: input.tenantKey,
+      executionId: this.requiredText("executionId", input.executionId),
+      capability: input.capability,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      sourceRecordId: input.sourceRecordId,
+      sourceVersion: input.sourceVersion,
+      sourceHash: input.sourceHash,
+      promptVersion: input.promptVersion,
+      schemaVersion: input.schemaVersion,
+      providerOutput: adapterResponse.structuredOutput,
+      auditEventIds: input.auditEventIds,
+    });
+
+    return {
+      payloadAllowed: true,
+      adapterResponse,
+      outputValidation,
+      errors: outputValidation.errors,
+      providerCallAttempted: false,
+      canonicalProductMutationEnabled: false,
+    };
   }
 
   async createSuggestion(input: CreateAiSuggestionInput) {
