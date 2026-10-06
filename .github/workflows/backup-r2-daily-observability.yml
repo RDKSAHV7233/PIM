@@ -78,13 +78,25 @@ jobs:
     needs: [r2-backup-observability]
     if: failure()
     runs-on: ubuntu-latest
+    # Same environment as the backup job, so the alert secrets can live beside the other staging secrets.
+    environment: staging
     steps:
       - name: Send backup-failure alert to InternalOpsAlertsService
-        # Non-blocking: a delivery failure here must never itself block anything.
+        # The backup has ALREADY failed when this job runs. This step must never fail quietly: if the alert path is not configured,
+        # or the endpoint does not accept the alert, this job goes red with an explicit error, so a failed backup is never silent.
+        env:
+          API_INTERNAL_BASE_URL: ${{ secrets.API_INTERNAL_BASE_URL }}
+          INTERNAL_OPS_API_KEY: ${{ secrets.INTERNAL_OPS_API_KEY }}
         run: |
-          curl -s -X POST \
-            "https://${{ secrets.API_INTERNAL_BASE_URL }}/internal/ops/alerts/backup-job-failure" \
-            -H "Authorization: Bearer ${{ secrets.INTERNAL_OPS_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"workflowName":"backup-r2-daily-observability","database":"observability-postgres","errorSummary":"GitHub Actions backup job failed — check run logs"}' \
-            || true
+          if [ -z "${API_INTERNAL_BASE_URL}" ] || [ -z "${INTERNAL_OPS_API_KEY}" ]; then
+            echo "::error title=Backup FAILED and nobody was alerted::API_INTERNAL_BASE_URL or INTERNAL_OPS_API_KEY is not set for this workflow, so the failure alert could not be sent. Fix the secrets and check the backup run."
+            exit 1
+          fi
+          status=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST             "https://${API_INTERNAL_BASE_URL}/internal/ops/alerts/backup-job-failure"             -H "Authorization: Bearer ${INTERNAL_OPS_API_KEY}"             -H "Content-Type: application/json"             -d '{"workflowName":"backup-r2-daily-observability","database":"observability-postgres","errorSummary":"GitHub Actions backup job failed — check run logs"}') || status="curl-failed"
+          case "${status}" in
+            2*) echo "Backup-failure alert accepted (HTTP ${status})." ;;
+            *)
+              echo "::error title=Backup FAILED and the alert was not accepted::the alert endpoint answered ${status}. Check the backup run and the API."
+              exit 1
+              ;;
+          esac

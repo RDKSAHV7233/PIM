@@ -108,6 +108,11 @@ jobs:
 
       # VEXA-AI-001 governance validators and their fixture tests. These are DB-free and fast. A glob (not a
       # list) is used so a new validate-ai-* script is gated automatically instead of silently left out.
+      - name: Backup failure alert path guard (a failed backup must never be silent)
+        run: |
+          node scripts/validate-ops-backup-alert-path.cjs
+          node scripts/validate-ops-backup-alert-path.test.cjs
+
       - name: SEC-DB-RLS-001 call-site ratchet and restricted-role lane guard
         run: |
           node scripts/validate-sec-db-call-sites.cjs
