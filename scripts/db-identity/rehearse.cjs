@@ -1,0 +1,437 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+"use strict";
+
+/**
+ * SEC-DB-RLS-001 I1: the identity-model rehearsal.
+ *
+ *   REHEARSAL_ADMIN_URL=postgresql://postgres:***@localhost:PORT/postgres  node scripts/db-identity/rehearse.cjs [--keep]
+ *   REHEARSAL_DOCKER_CONTAINER=name   optional: run pg_dump and pg_restore inside that container instead of from PATH
+ *
+ * It builds a database that **reproduces the ownership split observed in production** (a superuser `vexa_app_v2` owning the 15 tables,
+ * 2 functions and 9 enum types in packages/db/identity/production-ownership-split.v1.json, `postgres` owning everything else), then
+ * proves the transfer to the target model *from that starting state*, and every property the model claims. Only `localhost`,
+ * `127.0.0.1` and `::1` are accepted: this never touches production, and never reads a production credential.
+ *
+ * pg_dump and pg_restore must exist. A rehearsal that cannot run the backup proof fails; it does not skip.
+ */
+const cp = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const lib = require("./lib.cjs");
+
+const ROOT = path.resolve(__dirname, "..", "..");
+const MODEL_DIR = path.join(ROOT, "packages", "db", "identity");
+const manifest = JSON.parse(fs.readFileSync(path.join(MODEL_DIR, "identity-model.v1.json"), "utf8"));
+const fixture = JSON.parse(fs.readFileSync(path.join(MODEL_DIR, "production-ownership-split.v1.json"), "utf8"));
+const KEEP = process.argv.includes("--keep");
+const CONTAINER = String(process.env.REHEARSAL_DOCKER_CONTAINER || "").trim();
+
+const adminRaw = String(process.env.REHEARSAL_ADMIN_URL || "").trim();
+if (!adminRaw) {
+  console.error("REHEARSAL_ADMIN_URL is required (a local PostgreSQL superuser URL). The target is never guessed.");
+  process.exit(2);
+}
+const adminUrl = new URL(adminRaw);
+if (!["localhost", "127.0.0.1", "[::1]", "::1"].includes(adminUrl.hostname)) {
+  console.error("The rehearsal only runs against a local database. Refusing.");
+  process.exit(3);
+}
+const HOST = adminUrl.hostname;
+const PORT = adminUrl.port || "5432";
+const ADMIN_USER = decodeURIComponent(adminUrl.username);
+const ADMIN_PASS = decodeURIComponent(adminUrl.password);
+
+const PRODLIKE = "rehearsal_prodlike";
+const FRESH = "rehearsal_fresh";
+const RESTORED = "rehearsal_restored";
+const OLD_OWNER = fixture.currentOwner;
+const MIGRATOR = lib.ROLES.migrator.name;
+const RUNTIME = lib.ROLES.runtime.name;
+const BACKUP = lib.ROLES.backup.name;
+const OPS = lib.ROLES.ops.name;
+const rehearsalPassword = (role) => `${role}_rehearsal_password`;
+
+const urlFor = (db, user, pass) => `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${HOST}:${PORT}/${db}?schema=public`;
+const adminFor = (db) => urlFor(db, ADMIN_USER, ADMIN_PASS);
+
+const { PrismaClient } = require("@prisma/client");
+const clients = [];
+function open(db, user, pass) {
+  const client = new PrismaClient({ datasources: { db: { url: urlFor(db, user, pass) } }, log: [] });
+  clients.push(client);
+  return client;
+}
+const asAdmin = (db) => open(db, ADMIN_USER, ADMIN_PASS);
+const asRole = (db, role) => open(db, role, rehearsalPassword(role));
+
+const results = [];
+function check(name, ok, detail) {
+  results.push({ name, ok });
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}${!ok && detail ? `   ${String(detail).slice(0, 300)}` : ""}`);
+  return ok;
+}
+const section = (title) => console.log(`\n## ${title}`);
+const tail = (s) => String(s || "").trim().split("\n").slice(-3).join(" | ");
+
+const DENIED = /42501|permission denied|must be owner|row-level security|must be member|permission to set role|only roles with/i;
+/** True only when the statement was refused for a privilege reason; a syntax or other error is reported, not counted as a denial. */
+async function denied(client, statement) {
+  try {
+    await client.$executeRawUnsafe(statement);
+    return { ok: false, why: "the statement succeeded" };
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error);
+    return DENIED.test(message) ? { ok: true } : { ok: false, why: message.split("\n").slice(-1)[0] };
+  }
+}
+async function expectDenied(name, client, statement) {
+  const r = await denied(client, statement);
+  check(name, r.ok, r.why);
+}
+async function expectAllowed(name, client, statement) {
+  try {
+    await client.$executeRawUnsafe(statement);
+    check(name, true);
+  } catch (error) {
+    check(name, false, String(error && error.message ? error.message : error).split("\n").slice(-1)[0]);
+  }
+}
+const rows = (client, statement) => client.$queryRawUnsafe(statement);
+/** Runs statements on one connection, with the tenant context the application sets. */
+async function inTenant(client, tenant, fn) {
+  return client.$transaction(async (tx) => {
+    if (tenant !== null) {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_key', '${tenant}', true)`);
+    }
+    return fn(tx);
+  });
+}
+
+function tool(mode, db, extra = [], env = {}) {
+  const r = cp.spawnSync(process.execPath, [path.join(__dirname, "tool.cjs"), mode, ...extra], {
+    cwd: ROOT,
+    env: { ...process.env, DB_IDENTITY_ADMIN_URL: adminFor(db), ...env },
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return { status: r.status, out: r.stdout || "", err: r.stderr || "" };
+}
+
+function migrate(db, user, pass) {
+  const url = urlFor(db, user, pass);
+  const prismaCli = require.resolve("prisma/build/index.js", { paths: [ROOT] });
+  const r = cp.spawnSync(process.execPath, [prismaCli, "migrate", "deploy", "--schema", path.join(ROOT, "packages", "db", "prisma", "schema.prisma")], {
+    cwd: ROOT,
+    env: { ...process.env, DATABASE_URL: url, DATABASE_URL_POOLED: url, DATABASE_URL_DIRECT: url },
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return { status: r.status, out: r.stdout || "", err: r.stderr || "" };
+}
+
+/** pg_dump / pg_restore: from PATH, or inside a container. Missing binaries are a failure, never a skip. */
+function pg(binary, args, { user, pass, input }) {
+  const base = CONTAINER
+    ? ["docker", ["exec", "-i", "-e", `PGPASSWORD=${pass}`, CONTAINER, binary, "-h", "localhost", "-p", "5432", "-U", user, ...args]]
+    : [binary, ["-h", HOST, "-p", PORT, "-U", user, ...args]];
+  const r = cp.spawnSync(base[0], base[1], { env: { ...process.env, PGPASSWORD: pass }, input, maxBuffer: 256 * 1024 * 1024 });
+  return { status: r.error ? -1 : r.status, stdout: r.stdout || Buffer.alloc(0), stderr: r.error ? String(r.error.message) : String(r.stderr || "") };
+}
+
+async function recreate(db) {
+  const a = asAdmin("postgres");
+  await a.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
+  await a.$executeRawUnsafe(`CREATE DATABASE "${db}"`);
+}
+
+const SEEDED = ["workflow_sla", "ai_platform_controls", "ai_platform_budget_periods", "ops_alert_states"];
+async function fingerprint(client) {
+  const out = {};
+  for (const t of SEEDED) {
+    const [r] = await rows(client, `SELECT count(*)::int AS n, coalesce(md5(string_agg(x::text, '|' ORDER BY x::text)), '') AS h FROM public."${t}" x`);
+    out[t] = `${r.n}:${r.h}`;
+  }
+  return out;
+}
+const sameFingerprint = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+async function ownersOf(client) {
+  const objects = await rows(
+    client,
+    `SELECT 'table' AS kind, c.relname AS name, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
+     UNION ALL SELECT 'type', t.typname, pg_get_userbyid(t.typowner) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e'
+     UNION ALL SELECT 'function', p.proname, pg_get_userbyid(p.proowner) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.prokind = 'f'`,
+  );
+  return objects;
+}
+
+async function main() {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "db-identity-"));
+  const before = path.join(workdir, "before.json");
+  try {
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R1 build a database that reproduces the production ownership split");
+    await recreate(PRODLIKE);
+    const m1 = migrate(PRODLIKE, ADMIN_USER, ADMIN_PASS);
+    check("every migration applies as the database owner (the way the first deploys ran)", m1.status === 0, tail(m1.err || m1.out));
+    const pl = asAdmin(PRODLIKE);
+    const exists = await rows(pl, `SELECT 1 FROM pg_roles WHERE rolname = '${OLD_OWNER}'`);
+    await pl.$executeRawUnsafe(`${exists.length ? "ALTER" : "CREATE"} ROLE "${OLD_OWNER}" WITH LOGIN SUPERUSER PASSWORD '${rehearsalPassword(OLD_OWNER)}'`);
+    for (const t of fixture.tables) {
+      await pl.$executeRawUnsafe(`ALTER TABLE public."${t}" OWNER TO "${OLD_OWNER}"`);
+    }
+    for (const t of fixture.enumTypes) {
+      await pl.$executeRawUnsafe(`ALTER TYPE public."${t}" OWNER TO "${OLD_OWNER}"`);
+    }
+    for (const f of fixture.functions) {
+      const found = await rows(pl, `SELECT pg_get_function_identity_arguments(p.oid) AS args FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = '${f}'`);
+      check(`function ${f} exists exactly once`, found.length === 1, `found ${found.length}`);
+      await pl.$executeRawUnsafe(`ALTER FUNCTION public."${f}"(${found[0].args}) OWNER TO "${OLD_OWNER}"`);
+    }
+    await pl.$executeRawUnsafe(`INSERT INTO workflow_sla (id, tenant_key) VALUES ('sla-a','tenant-a'), ('sla-b','tenant-b'), ('sla-d','default')`);
+    // the singleton control row ('global') is created by its own migration
+    await pl.$executeRawUnsafe(`INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p1','2026-10', now(), now() + interval '30 days')`);
+    await pl.$executeRawUnsafe(`INSERT INTO ops_alert_states (id, alert_key, alert_type, first_observed_at, last_observed_at, updated_at) VALUES ('o1','k','t', now(), now(), now())`);
+    const seeded = await fingerprint(pl);
+    check("seed rows written (3 tenants of workflow_sla, the control row, one budget period, one alert state)", seeded.workflow_sla.startsWith("3:") && seeded.ai_platform_controls.startsWith("1:"));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R2 the starting state matches the observed production split, and is not yet the target");
+    const snap = tool("snapshot", PRODLIKE, ["--out", before]);
+    check("snapshot taken", snap.status === 0, tail(snap.err));
+    const start = JSON.parse(fs.readFileSync(before, "utf8")).objects;
+    const ownedBy = (kind, owner) => start.filter((o) => o.kind === kind && o.owner === owner).map((o) => o.name).sort();
+    check("exactly the 15 fixture tables are owned by the old superuser role", JSON.stringify(ownedBy("table", OLD_OWNER)) === JSON.stringify([...fixture.tables].sort()), JSON.stringify(ownedBy("table", OLD_OWNER)));
+    check("exactly the 2 fixture functions are owned by the old role", JSON.stringify(ownedBy("function", OLD_OWNER)) === JSON.stringify([...fixture.functions].sort()));
+    check("exactly the 9 fixture enum types are owned by the old role", JSON.stringify(ownedBy("type", OLD_OWNER)) === JSON.stringify([...fixture.enumTypes].sort()));
+    const tableCount = start.filter((o) => o.kind === "table").length;
+    check(`the schema has ${fixture.expectedTotals.tables} application tables plus _prisma_migrations`, tableCount === fixture.expectedTotals.tables + 1, `got ${tableCount}`);
+    check(`every other table is owned by the database owner (${tableCount - fixture.tables.length} tables)`, start.filter((o) => o.kind === "table" && o.owner !== OLD_OWNER).every((o) => o.owner === ADMIN_USER));
+    const v0 = tool("verify", PRODLIKE);
+    check("the target-model verifier FAILS on the starting state (roles missing, ownership wrong)", v0.status === 1, `exit ${v0.status}`);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R3 transfer to the target model from that state");
+    const cr = tool("create-roles", PRODLIKE);
+    check("create-roles", cr.status === 0, tail(cr.err));
+    const plan = tool("plan-ownership", PRODLIKE);
+    check("plan-ownership is read-only and lists the statements", plan.status === 0 && plan.out.includes("ALTER TABLE") && plan.out.startsWith("--"), tail(plan.err));
+    const ao = tool("apply-ownership", PRODLIKE);
+    const aoJson = ao.status === 0 ? JSON.parse(ao.out.trim().split("\n").pop()) : {};
+    check("apply-ownership (one transaction)", ao.status === 0, tail(ao.err));
+    const after = await ownersOf(pl);
+    check("every table, type and function is now owned by the migrator", after.every((o) => o.owner === MIGRATOR));
+    check("nothing is owned by the old role any more", after.every((o) => o.owner !== OLD_OWNER));
+    void aoJson;
+    const ag = tool("apply-grants", PRODLIKE);
+    check("apply-grants", ag.status === 0, tail(ag.err));
+    const v1 = tool("verify", PRODLIKE);
+    check("the target-model verifier PASSES", v1.status === 0, tail(v1.out));
+    const afterTransfer = await fingerprint(pl);
+    check("the ownership transfer rewrote no data (row counts and content hashes unchanged)", sameFingerprint(seeded, afterTransfer));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R4 idempotency");
+    check("create-roles again", tool("create-roles", PRODLIKE).status === 0);
+    const ao2 = tool("apply-ownership", PRODLIKE);
+    const ao2Json = ao2.status === 0 ? JSON.parse(ao2.out.trim().split("\n").pop()) : {};
+    check("apply-ownership again changes nothing (0 statements)", ao2.status === 0 && ao2Json.statements === 0, tail(ao2.out));
+    check("apply-grants again", tool("apply-grants", PRODLIKE).status === 0);
+    check("verify again", tool("verify", PRODLIKE).status === 0);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R5 rollback restores the exact original ownership, and the old role still works");
+    const rb = tool("rollback-ownership", PRODLIKE, ["--snapshot", before]);
+    const rbJson = rb.status === 0 ? JSON.parse(rb.out.trim().split("\n").pop()) : {};
+    check("rollback-ownership reports restored", rb.status === 0 && rbJson.restored === true, tail(rb.out || rb.err));
+    const restoredOwners = await ownersOf(pl);
+    const key = (o) => `${o.kind}:${o.name}=${o.owner}`;
+    const startKeys = start.filter((o) => o.kind !== "function").map(key).sort();
+    const nowKeys = restoredOwners.filter((o) => o.kind !== "function").map(key).sort();
+    check("tables and types are back to exactly their original owners (63 + 15 split)", JSON.stringify(startKeys) === JSON.stringify(nowKeys));
+    check("verify FAILS again on the rolled-back state (ownership is wrong again)", tool("verify", PRODLIKE).status === 1);
+    const oldRole = asRole(PRODLIKE, OLD_OWNER);
+    const [who] = await rows(oldRole, `SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS su`);
+    check("the old role is untouched by the whole round trip (still a working superuser)", who.u === OLD_OWNER && who.su === true);
+    await expectAllowed("the old role can still write the control row (rollback target is functional)", oldRole, `UPDATE ai_platform_controls SET kill_switch = kill_switch`);
+    check("rollback also left the data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+    check("re-apply forward after the rollback", tool("apply-ownership", PRODLIKE).status === 0 && tool("apply-grants", PRODLIKE).status === 0 && tool("verify", PRODLIKE).status === 0);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R6 the runtime role: CRUD where granted, tenant isolation, and nothing else");
+    const rt = asRole(PRODLIKE, RUNTIME);
+    const [rtAttr] = await rows(rt, `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`);
+    check("the runtime role is not a superuser and does not bypass RLS", rtAttr.rolsuper === false && rtAttr.rolbypassrls === false);
+    const a = await inTenant(rt, "tenant-a", (tx) => tx.$queryRawUnsafe(`SELECT id FROM workflow_sla ORDER BY id`));
+    const b = await inTenant(rt, "tenant-b", (tx) => tx.$queryRawUnsafe(`SELECT id FROM workflow_sla ORDER BY id`));
+    const none = await inTenant(rt, null, (tx) => tx.$queryRawUnsafe(`SELECT id FROM workflow_sla ORDER BY id`));
+    check("tenant-a sees only tenant-a rows", a.length === 1 && a[0].id === "sla-a", JSON.stringify(a));
+    check("tenant-b sees only tenant-b rows", b.length === 1 && b[0].id === "sla-b", JSON.stringify(b));
+    check("with no tenant context the runtime sees only the default tenant (the documented fallback)", none.length === 1 && none[0].id === "sla-d", JSON.stringify(none));
+    try {
+      await inTenant(rt, "tenant-c", async (tx) => {
+        await tx.$executeRawUnsafe(`INSERT INTO workflow_sla (id, tenant_key) VALUES ('sla-c','tenant-c')`);
+        await tx.$executeRawUnsafe(`UPDATE workflow_sla SET review_target_days = 9 WHERE id = 'sla-c'`);
+        const n = await tx.$executeRawUnsafe(`DELETE FROM workflow_sla WHERE id = 'sla-c'`);
+        if (n !== 1) {
+          throw new Error(`deleted ${n}`);
+        }
+      });
+      check("INSERT, UPDATE and DELETE of an own-tenant row all succeed", true);
+    } catch (error) {
+      check("INSERT, UPDATE and DELETE of an own-tenant row all succeed", false, String(error.message).split("\n").slice(-1)[0]);
+    }
+    const cross = await (async () => {
+      try {
+        await inTenant(rt, "tenant-a", (tx) => tx.$executeRawUnsafe(`INSERT INTO workflow_sla (id, tenant_key) VALUES ('sla-x','tenant-b')`));
+        return { ok: false, why: "cross-tenant insert succeeded" };
+      } catch (error) {
+        return DENIED.test(String(error.message)) ? { ok: true } : { ok: false, why: String(error.message).split("\n").slice(-1)[0] };
+      }
+    })();
+    check("a cross-tenant INSERT is rejected by row level security", cross.ok, cross.why);
+    const crossUpdate = await inTenant(rt, "tenant-a", (tx) => tx.$executeRawUnsafe(`UPDATE workflow_sla SET review_target_days = 7 WHERE id = 'sla-b'`));
+    check("a cross-tenant UPDATE matches zero rows", crossUpdate === 0, `rows ${crossUpdate}`);
+    const crossDelete = await inTenant(rt, "tenant-a", (tx) => tx.$executeRawUnsafe(`DELETE FROM workflow_sla WHERE id = 'sla-b'`));
+    check("a cross-tenant DELETE matches zero rows", crossDelete === 0, `rows ${crossDelete}`);
+    const rowSecurityOff = await (async () => {
+      try {
+        await rt.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL row_security = off`);
+          await tx.$queryRawUnsafe(`SELECT id FROM workflow_sla`);
+        });
+        return { ok: false, why: "SET row_security = off was honoured" };
+      } catch (error) {
+        return DENIED.test(String(error.message)) ? { ok: true } : { ok: false, why: String(error.message).split("\n").slice(-1)[0] };
+      }
+    })();
+    check("the runtime cannot switch row security off for itself", rowSecurityOff.ok, rowSecurityOff.why);
+    await expectDenied("runtime cannot CREATE TABLE", rt, `CREATE TABLE public.rt_ddl (id int)`);
+    await expectDenied("runtime cannot ALTER TABLE", rt, `ALTER TABLE public.workflow_sla ADD COLUMN rt_ddl int`);
+    await expectDenied("runtime cannot DROP TABLE", rt, `DROP TABLE public.workflow_sla`);
+    await expectDenied("runtime cannot TRUNCATE", rt, `TRUNCATE public.workflow_sla`);
+    await expectDenied("runtime cannot disable row level security", rt, `ALTER TABLE public.workflow_sla DISABLE ROW LEVEL SECURITY`);
+    await expectDenied("runtime cannot drop a policy", rt, `DROP POLICY IF EXISTS tenant_isolation_workflow_sla ON public.workflow_sla`);
+    await expectDenied("runtime cannot create roles", rt, `CREATE ROLE rt_made_this`);
+    await expectDenied("runtime cannot SET ROLE to the migrator", rt, `SET ROLE "${MIGRATOR}"`);
+    await expectDenied("runtime cannot read _prisma_migrations", rt, `SELECT count(*) FROM public._prisma_migrations`);
+    const ctl = await rows(rt, `SELECT id FROM ai_platform_controls`);
+    check("runtime can READ the platform control row", ctl.length === 1);
+    await expectDenied("runtime cannot UPDATE the kill switch (control row)", rt, `UPDATE ai_platform_controls SET kill_switch = false`);
+    await expectDenied("runtime cannot INSERT a control row", rt, `INSERT INTO ai_platform_controls (id) VALUES ('rogue')`);
+    await expectDenied("runtime cannot DELETE the control row", rt, `DELETE FROM ai_platform_controls`);
+    await expectAllowed("runtime can UPDATE budget counters", rt, `UPDATE ai_platform_budget_periods SET request_count = request_count`);
+    await expectDenied("runtime cannot INSERT a budget period", rt, `INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p-rogue','x', now(), now())`);
+    await expectDenied("runtime cannot DELETE a budget period", rt, `DELETE FROM ai_platform_budget_periods`);
+    check("runtime proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R7 the backup role: reads everything, writes nothing, and a dump restores completely");
+    const bk = asRole(PRODLIKE, BACKUP);
+    const seen = await rows(bk, `SELECT count(*)::int AS n FROM workflow_sla`);
+    check("backup sees ALL tenants (3 rows) while the runtime saw one", seen[0].n === 3);
+    await expectDenied("backup cannot INSERT", bk, `INSERT INTO workflow_sla (id, tenant_key) VALUES ('bk','default')`);
+    await expectDenied("backup cannot UPDATE", bk, `UPDATE workflow_sla SET review_target_days = 1`);
+    await expectDenied("backup cannot DELETE", bk, `DELETE FROM workflow_sla`);
+    await expectDenied("backup cannot CREATE TABLE", bk, `CREATE TABLE public.bk_ddl (id int)`);
+    const dump = path.join(workdir, "backup.dump");
+    const d = pg("pg_dump", ["-Fc", "-d", PRODLIKE], { user: BACKUP, pass: rehearsalPassword(BACKUP) });
+    check("pg_dump as vexa_backup succeeds (pg_dump must exist: this check never skips)", d.status === 0 && d.stdout.length > 1000, `${d.status} ${d.stderr.slice(0, 200)}`);
+    fs.writeFileSync(dump, d.stdout);
+    await recreate(RESTORED);
+    const r = pg("pg_restore", ["--no-owner", "--no-privileges", "-d", RESTORED], { user: ADMIN_USER, pass: ADMIN_PASS, input: d.stdout });
+    check("pg_restore of that dump into an empty database succeeds", r.status === 0, `${r.status} ${r.stderr.slice(0, 300)}`);
+    const restored = asAdmin(RESTORED);
+    check("the restored database matches the source: same row counts and content hashes for every seeded table", sameFingerprint(seeded, await fingerprint(restored)));
+    const [rt1] = await rows(pl, `SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'`);
+    const [rt2] = await rows(restored, `SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'`);
+    check("the restored database has every table", rt1.n === rt2.n, `${rt1.n} vs ${rt2.n}`);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R8 the ops role: the platform control tables and nothing else");
+    const op = asRole(PRODLIKE, OPS);
+    await expectAllowed("ops can write the kill switch row", op, `UPDATE ai_platform_controls SET kill_switch = true, updated_by = 'rehearsal'`);
+    await expectAllowed("ops can create a budget period", op, `INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p2','2026-11', now(), now() + interval '30 days')`);
+    await expectAllowed("ops can delete a budget period", op, `DELETE FROM ai_platform_budget_periods WHERE id = 'p2'`);
+    await expectDenied("ops cannot read an ordinary table", op, `SELECT * FROM workflow_sla`);
+    await expectDenied("ops cannot write an ordinary table", op, `UPDATE workflow_sla SET review_target_days = 1`);
+    await expectDenied("ops cannot CREATE TABLE", op, `CREATE TABLE public.ops_ddl (id int)`);
+    await pl.$executeRawUnsafe(`UPDATE ai_platform_controls SET updated_by = NULL`);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R9 a new migration as the migrator on the transferred database");
+    const mig = migrate(PRODLIKE, MIGRATOR, rehearsalPassword(MIGRATOR));
+    check("prisma migrate deploy as vexa_migrator on the transferred database succeeds (no pending migrations)", mig.status === 0, tail(mig.err || mig.out));
+    const mg = asRole(PRODLIKE, MIGRATOR);
+    await expectAllowed("migrator can create a new table (a new migration)", mg, `CREATE TABLE public.rehearsal_new_table (id text PRIMARY KEY, tenant_key text NOT NULL DEFAULT 'default')`);
+    await expectAllowed("migrator can enable and force RLS and add the policy", mg, `ALTER TABLE public.rehearsal_new_table ENABLE ROW LEVEL SECURITY`);
+    await mg.$executeRawUnsafe(`ALTER TABLE public.rehearsal_new_table FORCE ROW LEVEL SECURITY`);
+    await mg.$executeRawUnsafe(`CREATE POLICY tenant_isolation_rehearsal_new_table ON public.rehearsal_new_table USING (tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default'))`);
+    await expectDenied("a table added by a migration is NOT reachable by the runtime until it is classified (fails closed: no default privileges)", rt, `SELECT * FROM public.rehearsal_new_table`);
+    const vNew = tool("verify", PRODLIKE);
+    check("the verifier FAILS the unclassified table (this is the CI gate that forces the manifest update)", vNew.status === 1 && vNew.out.includes("classified in the runtime grants manifest"), tail(vNew.out));
+    const dBad = pg("pg_dump", ["-Fc", "-d", PRODLIKE], { user: BACKUP, pass: rehearsalPassword(BACKUP) });
+    check("a backup taken before the new table is granted FAILS LOUDLY (it does not silently omit the table)", dBad.status !== 0 && /permission denied/i.test(dBad.stderr), `${dBad.status} ${dBad.stderr.slice(0, 200)}`);
+    const candidate = JSON.parse(JSON.stringify(manifest));
+    candidate.runtime.tables.rehearsal_new_table = "crud";
+    const candidateFile = path.join(workdir, "candidate-manifest.json");
+    fs.writeFileSync(candidateFile, JSON.stringify(candidate));
+    const env = { DB_IDENTITY_MANIFEST: candidateFile };
+    check("apply-grants with the manifest that classifies the new table", tool("apply-grants", PRODLIKE, [], env).status === 0);
+    check("the verifier passes with the updated manifest", tool("verify", PRODLIKE, [], env).status === 0);
+    await mg.$executeRawUnsafe(`INSERT INTO rehearsal_new_table (id, tenant_key) VALUES ('n-a','tenant-a'), ('n-b','tenant-b')`);
+    const na = await inTenant(rt, "tenant-a", (tx) => tx.$queryRawUnsafe(`SELECT id FROM rehearsal_new_table`));
+    check("the runtime now reaches the new table, still tenant-isolated by its policy", na.length === 1 && na[0].id === "n-a", JSON.stringify(na));
+    const dOk = pg("pg_dump", ["-Fc", "-d", PRODLIKE], { user: BACKUP, pass: rehearsalPassword(BACKUP) });
+    check("the backup succeeds again once the new table is granted (apply-grants must run right after migrate in the deploy)", dOk.status === 0, `${dOk.status} ${dOk.stderr.slice(0, 200)}`);
+
+    section("R9b data-fixing migrations: why the migrator has BYPASSRLS");
+    const fixAll = await mg.$executeRawUnsafe(`UPDATE workflow_sla SET review_target_days = 5`);
+    check("a data-fixing migration run as the migrator reaches every tenant (3 rows)", fixAll === 3, `rows ${fixAll}`);
+    await pl.$executeRawUnsafe(`ALTER ROLE "${MIGRATOR}" NOBYPASSRLS`);
+    const mgNo = asRole(PRODLIKE, MIGRATOR);
+    const fixOne = await mgNo.$executeRawUnsafe(`UPDATE workflow_sla SET review_target_days = 6`);
+    check("FINDING reproduced: the same statement as a NOBYPASSRLS owner reaches only the default tenant (1 row), silently", fixOne === 1, `rows ${fixOne}`);
+    await pl.$executeRawUnsafe(`ALTER ROLE "${MIGRATOR}" BYPASSRLS`);
+    await pl.$executeRawUnsafe(`UPDATE workflow_sla SET review_target_days = 3`);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R10 a fresh database built entirely as the non-superuser migrator");
+    await recreate(FRESH);
+    check("create-roles on the fresh database", tool("create-roles", FRESH).status === 0);
+    const fresh = migrate(FRESH, MIGRATOR, rehearsalPassword(MIGRATOR));
+    check("EVERY migration applies as vexa_migrator (no migration needs a superuser)", fresh.status === 0, tail(fresh.err || fresh.out));
+    const fo = asAdmin(FRESH);
+    const freshOwners = await ownersOf(fo);
+    check("everything the migrations created is owned by the migrator from the start", freshOwners.every((o) => o.owner === MIGRATOR), JSON.stringify([...new Set(freshOwners.filter((o) => o.owner !== MIGRATOR).map((o) => o.owner))]));
+    check("apply-grants on the fresh database", tool("apply-grants", FRESH).status === 0);
+    const vf = tool("verify", FRESH);
+    check("the target-model verifier passes on the fresh database", vf.status === 0, tail(vf.out));
+  } finally {
+    await Promise.all(clients.map((c) => c.$disconnect().catch(() => undefined)));
+    if (!KEEP) {
+      const a = new PrismaClient({ datasources: { db: { url: adminFor("postgres") } }, log: [] });
+      for (const db of [PRODLIKE, FRESH, RESTORED]) {
+        await a.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`).catch(() => undefined);
+      }
+      await a.$disconnect().catch(() => undefined);
+    }
+    fs.rmSync(workdir, { recursive: true, force: true });
+  }
+
+  const failed = results.filter((r) => !r.ok);
+  console.log(`\n${failed.length === 0 ? "REHEARSAL PASSED" : "REHEARSAL FAILED"}: ${results.length - failed.length}/${results.length} checks passed`);
+  if (failed.length > 0) {
+    for (const f of failed) {
+      console.log(`  failed: ${f.name}`);
+    }
+    process.exitCode = 1;
+  }
+}
+
+main().catch((error) => {
+  console.error(String(error && error.stack ? error.stack : error).split("\n").slice(0, 6).join("\n"));
+  process.exit(1);
+});

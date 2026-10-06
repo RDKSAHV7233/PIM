@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "purpose": "The ownership split observed in production on 2026-10-06 by the read-only SEC-DB-RLS-001 probe (names only). The rehearsal reproduces it, then proves the transfer to the target model from this starting state. Every other table, enum type and function was owned by the database owner (postgres).",
+  "observedAt": "2026-10-06",
+  "currentOwner": "vexa_app_v2",
+  "tables": [
+    "MarketplaceBulkPublishRun",
+    "MarketplaceBulkPublishRunItem",
+    "ai_executions",
+    "ai_platform_budget_periods",
+    "ai_platform_controls",
+    "ai_provider_budget_charges",
+    "ai_provider_budget_policies",
+    "ai_provider_budget_reservations",
+    "ai_suggestions",
+    "ai_tenant_policies",
+    "connector_tenant_entitlements",
+    "media_integrity_scan_checkpoints",
+    "media_integrity_scan_runs",
+    "ops_alert_states",
+    "stripe_webhook_events"
+  ],
+  "functions": [
+    "ai_suggestions_reject_generated_field_update",
+    "connector_tenant_entitlements_guard"
+  ],
+  "enumTypes": [
+    "AiDataClassification",
+    "AiExecutionCostSource",
+    "AiExecutionFailureClass",
+    "AiExecutionStatus",
+    "AiSuggestionReviewDecision",
+    "AiSuggestionStatus",
+    "AiTenantPolicyStatus",
+    "MarketplaceBulkPublishItemStatus",
+    "MarketplaceBulkPublishRunStatus"
+  ],
+  "expectedTotals": {
+    "tables": 77,
+    "tablesOwnedByCurrentOwner": 15,
+    "functionsOwnedByCurrentOwner": 2,
+    "enumTypesOwnedByCurrentOwner": 9
+  }
+}

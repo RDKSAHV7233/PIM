@@ -119,6 +119,7 @@ jobs:
           node scripts/validate-sec-db-call-sites.test.cjs
           node scripts/validate-sec-restricted-lane.cjs
           node scripts/validate-sec-restricted-lane.test.cjs
+          node scripts/db-identity/lib.test.cjs
 
       - name: AI governance validators and fixture tests
         shell: bash
@@ -488,6 +489,55 @@ jobs:
 
       - name: Run integration tests with the API on the restricted role
         run: node scripts/run-restricted-role-lane.cjs
+
+  # SEC-DB-RLS-001 I1: rehearses the database identity model (migrator, runtime, backup, ops) against a database that reproduces the
+  # production ownership split. Rehearsal only: it never touches production and never reads a production credential.
+  # PostgreSQL 16 and 18: production runs 18. The server runs as a plain container (not a service) so pg_dump and pg_restore run inside
+  # it at exactly the server's version; the job fails if they cannot run, it never skips the backup proof.
+  db-identity-rehearsal:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["16", "18"]
+    env:
+      NODE_VERSION: "22"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
+      REHEARSAL_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      REHEARSAL_DOCKER_CONTAINER: pg-rehearsal
+      # redis-memory-server (a root devDependency) otherwise compiles a Redis binary during npm ci; this rehearsal does not use Redis.
+      REDISMS_DISABLE_POSTINSTALL: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Start PostgreSQL ${{ matrix.postgres }}
+        run: |
+          docker run -d --name pg-rehearsal -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=pim1 -p 5432:5432 postgres:${{ matrix.postgres }}
+          for i in $(seq 1 30); do
+            docker exec pg-rehearsal pg_isready -U postgres -d pim1 && break
+            sleep 2
+          done
+          docker exec pg-rehearsal pg_isready -U postgres -d pim1
+          docker exec pg-rehearsal pg_dump --version
+          docker exec pg-rehearsal pg_restore --version
+
+      - name: Rehearse the database identity model
+        run: node scripts/db-identity/rehearse.cjs
 
   e2e:
     needs: [detect-changes, build]
