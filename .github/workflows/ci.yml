@@ -170,6 +170,7 @@ jobs:
           node scripts/validate-staging-deploy-config.test.cjs
           node scripts/migrate-legacy-auth-password-hashes.test.cjs
           node scripts/p1-woo-credential-ownership-proof.test.cjs
+          node scripts/sec-db-rls-001-probe.test.cjs
           node scripts/verify-auth-password-hash-coverage.test.cjs
           node scripts/sellable-sku-variantless-audit-report.test.cjs
           node scripts/validate-sellable-sku-variantless-production-audit-workflow.cjs
@@ -535,6 +536,15 @@ jobs:
           docker exec pg-rehearsal pg_isready -U postgres -d pim1
           docker exec pg-rehearsal pg_dump --version
           docker exec pg-rehearsal pg_restore --version
+
+      # The read-only production probe is run on production (PostgreSQL 18), so it is proved here on both 16 and 18 against a
+      # production-shaped database before it is trusted. It cleans up its own database and roles, so it runs first and leaves
+      # the cluster as the rehearsal expects it.
+      - name: Prove the SEC-DB-RLS-001 read-only probe on a production-shaped database
+        env:
+          PROBE_PROOF_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          CHECKPOINT_DISABLE: "1"
+        run: node scripts/sec-db-rls-001-probe-proof.cjs
 
       - name: Rehearse the database identity model
         run: node scripts/db-identity/rehearse.cjs
