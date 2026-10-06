@@ -2,9 +2,11 @@
 
 Companion to `docs/adr/0015-publication-targets-derived-from-readiness-evidence.md`. Status: accepted design. Implemented so
 far: the launch-policy fail-closed default (5.1a, #1182) and the pure registry and evaluator with their invariants
-(5.1b, `apps/api/src/publication-targets/`, no consumers, no endpoint). Not yet implemented: the evidence manifest and
-entitlement persistence (5.1c), the endpoint, the divergence comparison and the rotation metric (5.1d), and everything
-in 5.2 and later.
+(5.1b, `apps/api/src/publication-targets/`, no consumers, no endpoint), and the evidence manifest with its inventory
+and the Product Owner commercial-support records (5.1c-1, data only, no migration; inventory in
+`docs/connectors/PUBLICATION_EVIDENCE_INVENTORY_2026-10-06.md`). Not yet implemented: tenant entitlement persistence and
+provider-verification persistence (5.1c-2), fact derivation (5.1c-3), the endpoint, the divergence comparison and the
+rotation metric (5.1d), and everything in 5.2 and later.
 
 ## 1. Endpoint contract
 
