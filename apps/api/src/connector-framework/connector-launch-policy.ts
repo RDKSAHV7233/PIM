@@ -1,5 +1,8 @@
+import { Logger } from "@nestjs/common";
 import { ConnectorCap } from "./connector.interface";
 import { CONNECTOR_SLUGS } from "./connector.constants";
+
+const logger = new Logger("ConnectorLaunchPolicy");
 
 export type ConnectorLaunchStage =
   | "planned"
@@ -15,11 +18,41 @@ export type ConnectorLaunchStage =
   | "deprecated"
   | "internal_diagnostic";
 
-type ConnectorLaunchPolicy = {
+/**
+ * Why a policy is what it is, when that is not an intentional stage decision.
+ * CONNECTOR_POLICY_MISSING: the slug has no explicit entry in this file. It is unavailable, and is not
+ * the same thing as an intentional p1_blocker_hold or under_development decision.
+ */
+export type ConnectorLaunchPolicyReason = "CONNECTOR_POLICY_MISSING";
+
+export type ConnectorLaunchPolicy = {
   launchStage: ConnectorLaunchStage;
   launchNote: string | null;
   surfacedCapabilities: ConnectorCap[];
+  /** Set only when the policy is a fail-closed default rather than an explicit decision. */
+  reason?: ConnectorLaunchPolicyReason;
 };
+
+const warnedMissingPolicySlugs = new Set<string>();
+
+function failClosedPolicy(slug: string): ConnectorLaunchPolicy {
+  // Bounded, sanitized, once per slug: the value comes from a connector definition row.
+  const safeSlug = slug.replace(/[^a-z0-9._-]/g, "?").slice(0, 64);
+  if (!warnedMissingPolicySlugs.has(safeSlug)) {
+    warnedMissingPolicySlugs.add(safeSlug);
+    logger.warn(
+      `CONNECTOR_POLICY_MISSING: connector '${safeSlug}' has no explicit launch policy and is treated as unavailable (no capabilities, not installable, not customer visible).`,
+    );
+  }
+  // 'planned' is the most restrictive existing stage (not visible, not installable). It is only a
+  // compatibility representation; `reason` is what distinguishes a missing policy from an intentional stage.
+  return {
+    launchStage: "planned",
+    launchNote: "No launch policy is defined for this connector, so it is not available.",
+    surfacedCapabilities: [],
+    reason: "CONNECTOR_POLICY_MISSING",
+  };
+}
 
 export type ConnectorPipelineMetadata = {
   owner: string;
@@ -126,6 +159,18 @@ export function resolveConnectorLaunchPolicy(
       launchStage: "early_access",
       launchNote:
         "Etsy Open API v3 connector is in early access (OAuth2 authorization-code + PKCE). Auth, credential validation, and publish flow verified live. IMPORTANT: publishProduct() requires the installer's Etsy account to have an active shop — complete Etsy seller onboarding (open a shop) before use. Install requires client_id, shared_secret, and refresh_token. Note: Etsy's x-api-key header requires \"client_id:shared_secret\" (bare client_id returns 403).",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
+  if (slug === CONNECTOR_SLUGS.FLIPKART) {
+    // Explicit entry added in Sprint 5.1a when the unknown-slug default changed from `live` to fail-closed.
+    // Behavior-preserving: Flipkart previously reached `live` only through that fallback. The stage is the one
+    // documented in docs/execution/CURRENT_STATE.md, docs/pilot-scope.md and docs/connectors/README.md. It is not
+    // new evidence that Flipkart is certified; publication readiness is assessed separately (ADR-0015).
+    return {
+      launchStage: "live",
+      launchNote: null,
       surfacedCapabilities: capabilities,
     };
   }
@@ -272,11 +317,7 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
-  return {
-    launchStage: "live",
-    launchNote: null,
-    surfacedCapabilities: capabilities,
-  };
+  return failClosedPolicy(slug);
 }
 
 export function isCustomerVisibleStage(stage: ConnectorLaunchStage): boolean {

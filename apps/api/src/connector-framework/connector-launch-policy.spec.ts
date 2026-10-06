@@ -1,4 +1,5 @@
 import type { ConnectorCap } from "./connector.interface";
+import { CONNECTOR_SLUGS } from "./connector.constants";
 import {
   resolveConnectorLaunchPolicy,
   isCustomerVisibleStage,
@@ -81,27 +82,75 @@ describe("resolveConnectorLaunchPolicy", () => {
     });
   });
 
-  describe("unknown slug", () => {
-    it("defaults to live", () => {
-      const policy = resolveConnectorLaunchPolicy("some-future-connector", allCaps);
-      expect(policy.launchStage).toBe("live");
+  describe("unknown slug — fails closed (Sprint 5.1a)", () => {
+    const NEVER_SEEN = "never-seen-before-connector-7f3a9c";
+
+    it("a never-seen-before slug is not live", () => {
+      const policy = resolveConnectorLaunchPolicy(NEVER_SEEN, allCaps);
+      expect(policy.launchStage).not.toBe("live");
     });
 
-    it("surfaces all capabilities for unknown slugs", () => {
-      const policy = resolveConnectorLaunchPolicy("some-future-connector", allCaps);
-      expect(policy.surfacedCapabilities).toEqual(allCaps);
+    it("never gains PUBLISH, or any capability, even when the caller passes every capability", () => {
+      const policy = resolveConnectorLaunchPolicy(NEVER_SEEN, allCaps);
+      expect(policy.surfacedCapabilities).toEqual([]);
+      expect(policy.surfacedCapabilities).not.toContain("PUBLISH");
     });
 
-    it("has null launchNote", () => {
-      const policy = resolveConnectorLaunchPolicy("some-future-connector", allCaps);
-      expect(policy.launchNote).toBeNull();
+    it("is neither customer visible nor installable", () => {
+      const policy = resolveConnectorLaunchPolicy(NEVER_SEEN, allCaps);
+      expect(isCustomerVisibleStage(policy.launchStage)).toBe(false);
+      expect(isInstallableStage(policy.launchStage)).toBe(false);
+    });
+
+    it("carries a distinct CONNECTOR_POLICY_MISSING reason, so it is not confused with an intentional hold", () => {
+      const policy = resolveConnectorLaunchPolicy(NEVER_SEEN, allCaps);
+      expect(policy.reason).toBe("CONNECTOR_POLICY_MISSING");
+      expect(policy.launchNote).toMatch(/no launch policy/i);
+      const hold = resolveConnectorLaunchPolicy("woocommerce", allCaps);
+      expect(hold.reason).toBeUndefined();
+    });
+
+    it("an empty or missing slug also fails closed", () => {
+      for (const slug of ["", "   ", undefined as unknown as string, null as unknown as string]) {
+        const policy = resolveConnectorLaunchPolicy(slug, allCaps);
+        expect(policy.launchStage).not.toBe("live");
+        expect(policy.surfacedCapabilities).toEqual([]);
+        expect(policy.reason).toBe("CONNECTOR_POLICY_MISSING");
+      }
+    });
+
+    it("a near-miss spelling of a known slug does not inherit that connector's policy", () => {
+      for (const slug of ["shopify-", "shopify2", "woo-commerce", "flipkart.com"]) {
+        const policy = resolveConnectorLaunchPolicy(slug, allCaps);
+        expect(policy.launchStage).not.toBe("live");
+        expect(policy.surfacedCapabilities).toEqual([]);
+      }
+    });
+
+    it("slug matching still trims and lowercases a registered slug", () => {
+      expect(resolveConnectorLaunchPolicy("  Shopify ", allCaps).launchStage).toBe("live");
+    });
+
+    it("the diag- prefix keeps its own explicit internal_diagnostic policy, not the missing-policy default", () => {
+      const policy = resolveConnectorLaunchPolicy("diag-anything", allCaps);
+      expect(policy.launchStage).toBe("internal_diagnostic");
+      expect(policy.reason).toBeUndefined();
     });
   });
 
-  describe("flipkart (no explicit policy — falls through to default live)", () => {
-    it("is live", () => {
+  describe("every registered connector slug has an explicit policy (no registered slug relies on the missing-policy default)", () => {
+    const registered = Object.values(CONNECTOR_SLUGS);
+
+    it.each(registered)("%s resolves to an explicit policy", (slug) => {
+      const policy = resolveConnectorLaunchPolicy(slug, allCaps);
+      expect(policy.reason).toBeUndefined();
+    });
+  });
+
+  describe("flipkart (explicit policy, behavior-preserving since Sprint 5.1a)", () => {
+    it("is live, exactly as it was when it reached live through the old default", () => {
       const policy = resolveConnectorLaunchPolicy("flipkart", allCaps);
-      expect(policy.launchStage).toBe("live");
+      expect(policy).toEqual({ launchStage: "live", launchNote: null, surfacedCapabilities: allCaps });
     });
   });
 
