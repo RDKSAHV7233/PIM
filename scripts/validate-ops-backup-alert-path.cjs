@@ -38,6 +38,9 @@ function validateBackupAlertPath(transforms = {}) {
     if (!/\[ -z "\$\{API_INTERNAL_BASE_URL\}" \] \|\| \[ -z "\$\{INTERNAL_OPS_API_KEY\}" \]/.test(job) || !/::error[^\n]*nobody was alerted/.test(job)) {
       fail("must fail loudly when API_INTERNAL_BASE_URL or INTERNAL_OPS_API_KEY is not set");
     }
+    if (!/alert_url="https:\/\/\$\{base\}\/api\/v1\/internal\/ops\/alerts\/backup-job-failure"/.test(job) || !/"\$\{alert_url\}"/.test(job)) {
+      fail("must post to <host>/api/v1/internal/ops/alerts/backup-job-failure (the API's global prefix is api/v1; without it the alert is a 404)");
+    }
     if (!/-w '%\{http_code\}'/.test(job) || !/2\*\)/.test(job)) {
       fail("must check that the alert endpoint answered 2xx");
     }

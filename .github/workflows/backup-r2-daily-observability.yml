@@ -92,7 +92,13 @@ jobs:
             echo "::error title=Backup FAILED and nobody was alerted::API_INTERNAL_BASE_URL or INTERNAL_OPS_API_KEY is not set for this workflow, so the failure alert could not be sent. Fix the secrets and check the backup run."
             exit 1
           fi
-          status=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST             "https://${API_INTERNAL_BASE_URL}/internal/ops/alerts/backup-job-failure"             -H "Authorization: Bearer ${INTERNAL_OPS_API_KEY}"             -H "Content-Type: application/json"             -d '{"workflowName":"backup-r2-daily-observability","database":"observability-postgres","errorSummary":"GitHub Actions backup job failed — check run logs"}') || status="curl-failed"
+          # The API serves this route under its global /api/v1 prefix. Accept the secret as a bare host or as host/api/v1 (with or
+          # without https:// or a trailing slash) and build the one correct URL, so the alert cannot 404 on a secret-format difference.
+          base="${API_INTERNAL_BASE_URL#https://}"
+          base="${base%/}"
+          base="${base%/api/v1}"
+          alert_url="https://${base}/api/v1/internal/ops/alerts/backup-job-failure"
+          status=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST             "${alert_url}"             -H "Authorization: Bearer ${INTERNAL_OPS_API_KEY}"             -H "Content-Type: application/json"             -d '{"workflowName":"backup-r2-daily-observability","database":"observability-postgres","errorSummary":"GitHub Actions backup job failed — check run logs"}') || status="curl-failed"
           case "${status}" in
             2*) echo "Backup-failure alert accepted (HTTP ${status})." ;;
             *)

@@ -31,6 +31,8 @@ for (const target of ["database", "observability"]) {
     },
     target,
   );
+  expectFail(`${target}: alert URL loses the /api/v1 prefix`, { [target]: replace("/api/v1/internal/ops/alerts/backup-job-failure", "/internal/ops/alerts/backup-job-failure") }, target);
+  expectFail(`${target}: alert posts to the raw secret again`, { [target]: replace('"${alert_url}"', '"https://${API_INTERNAL_BASE_URL}/internal/ops/alerts/backup-job-failure"') }, target);
   expectFail(`${target}: job removed`, { [target]: replace("  notify-failure:", "  notify-failure-renamed:") }, target);
 }
 console.log("validate-ops-backup-alert-path tests passed.");
