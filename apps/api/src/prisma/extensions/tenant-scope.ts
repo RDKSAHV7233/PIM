@@ -28,6 +28,9 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   "MediaAsset",
   "ConnectorInstallation",
   "ConnectorCredential",
+  // Control-plane grants (ADR-0015 section 9). Tenant-client reads are isolated to the tenant; grants are written
+  // through the privileged client (or an explicit non-default tenant() call), never by the tenant itself.
+  "ConnectorTenantEntitlement",
   "ConnectorSubmission",
   "ConnectorMappingVersion",
   "ConnectorMappingEvent",

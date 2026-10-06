@@ -1049,11 +1049,46 @@ model ConnectorInstallation {
   lastValidationOutcome   String?   @map("last_validation_outcome")
   lastValidationReason    String?   @map("last_validation_reason")
 
+  // Provider-verification facts (ADR-0015 section 8). Set only when a credential was authenticated against the
+  // provider, never for a held or unexpired token (TOKEN_ONLY is rejected by constraint), and NOT overwritten by a
+  // later INDETERMINATE attempt. Nothing writes them yet. NULL = never provider-verified since this was recorded.
+  lastProviderVerifiedAt         DateTime? @map("last_provider_verified_at")
+  lastProviderVerificationKind   String?   @map("last_provider_verification_kind")
+  lastProviderVerificationReason String?   @map("last_provider_verification_reason")
+
   @@unique([tenantKey, connectorId, accountAlias], map: "connector_installations_tenant_connector_alias_unique")
   @@index([tenantKey, installedAt(sort: Desc), id(sort: Desc)], map: "idx_connector_installations_tenant_installed_at")
   @@index([tenantKey, connectorId], map: "idx_connector_installations_tenant_connector_id")
   @@index([status, lastValidationAttemptAt, id], map: "idx_connector_installations_status_validation_attempt")
   @@map("connector_installations")
+}
+
+// Control-plane record of which tenants a connector in a cohort release stage is released to (ADR-0015 section 9).
+// Append and revoke only: the one permitted update is recording the revocation, once. Controlled_pilot is an explicit
+// named-tenant grant; early_access needs the tenant's own opt-in as well. live has no cohort and no row.
+// Row-level security: a tenant may read only its own rows; there is no write policy (writes need a BYPASSRLS role).
+// Also in the migration but not expressible here: CHECK constraints, a partial unique index of one live grant per
+// (tenant, connector, stage), and the append-only trigger. Nothing reads or writes this model yet.
+model ConnectorTenantEntitlement {
+  id              String    @id
+  tenantKey       String    @map("tenant_key")
+  connectorSlug   String    @map("connector_slug")
+  releaseStage    String    @map("release_stage")
+  validFrom       DateTime  @default(now()) @map("valid_from")
+  validUntil      DateTime? @map("valid_until")
+  approvedBy      String    @map("approved_by")
+  approvedAt      DateTime  @default(now()) @map("approved_at")
+  reason          String
+  source          String
+  tenantOptedInAt DateTime? @map("tenant_opted_in_at")
+  tenantOptedInBy String?   @map("tenant_opted_in_by")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedBy       String?   @map("revoked_by")
+  revokeReason    String?   @map("revoke_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantKey, connectorSlug], map: "idx_connector_tenant_entitlements_tenant_connector")
+  @@map("connector_tenant_entitlements")
 }
 
 model ConnectorCredential {
