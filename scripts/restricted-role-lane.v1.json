@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "purpose": "SEC-DB-RLS-001: integration tests run with the API connected as a NOSUPERUSER NOBYPASSRLS non-owner role. The lane is required and ratcheting: a test that fails and is not listed in expectedFailing fails the lane, and a listed test that passes fails it until it is removed. Each expectedFailing entry names the migration PR (M1 to M6 in docs/qa/sec-db-rls-001-call-site-classification-2026-10-06.md) that fixes it.",
+  "tests": [
+    "auth-revocation.test.cjs",
+    "connector-idempotency-semantics.test.cjs",
+    "marketplace-worker-failure-visibility.test.cjs",
+    "worker-backpressure.test.cjs",
+    "connector-mapping-lifecycle.test.cjs",
+    "error-authority-api-filter-runtime.test.cjs",
+    "advisory-lock-mutual-exclusion.test.cjs",
+    "category-delete-soft-deleted-product-guard.test.cjs",
+    "bulk-publish-runs-installation-filter.test.cjs",
+    "rls-isolation.test.cjs",
+    "audit-tenant-boundary.test.cjs",
+    "auth-account-privacy.test.cjs",
+    "auth-mfa-login-contract.test.cjs",
+    "billing-commercial-control.test.cjs",
+    "bulk-import-tenant-boundary.test.cjs",
+    "bulk-import-retry-stuck.test.cjs",
+    "connector-webhook-lease-recovery.test.cjs",
+    "credential-rotation.test.cjs",
+    "dashboard-tenant-boundary.test.cjs",
+    "media-governance-contract.test.cjs",
+    "commercial-reminders-contract.test.cjs",
+    "issue-inbox-tenant-boundary.test.cjs",
+    "tenant-provisioning-default-pricing.test.cjs"
+  ],
+  "expectedFailing": [
+    {
+      "test": "bulk-publish-runs-installation-filter.test.cjs",
+      "tracks": "M1",
+      "reason": "credential-encryption.service upserts the connector credential through the context-free client: RLS violation, HTTP 500 on a Shopify install"
+    },
+    {
+      "test": "connector-idempotency-semantics.test.cjs",
+      "tracks": "M1",
+      "reason": "connector credential read and write through the context-free client (Flipkart path) fails under RLS"
+    },
+    {
+      "test": "tenant-provisioning-default-pricing.test.cjs",
+      "tracks": "M2",
+      "reason": "tenant provisioning seeds default pricing through the context-free client; the seed fails silently and is only logged as non-fatal"
+    }
+  ]
+}

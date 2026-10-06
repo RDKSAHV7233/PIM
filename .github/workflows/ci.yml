@@ -108,10 +108,12 @@ jobs:
 
       # VEXA-AI-001 governance validators and their fixture tests. These are DB-free and fast. A glob (not a
       # list) is used so a new validate-ai-* script is gated automatically instead of silently left out.
-      - name: SEC-DB-RLS-001 call-site ratchet (no new unclassified privileged database consumer)
+      - name: SEC-DB-RLS-001 call-site ratchet and restricted-role lane guard
         run: |
           node scripts/validate-sec-db-call-sites.cjs
           node scripts/validate-sec-db-call-sites.test.cjs
+          node scripts/validate-sec-restricted-lane.cjs
+          node scripts/validate-sec-restricted-lane.test.cjs
 
       - name: AI governance validators and fixture tests
         shell: bash
@@ -394,6 +396,94 @@ jobs:
 
   # ── E2E (Playwright) ──────────────────────────────────────────────────
   # Skipped when only non-app files change (scripts, workflows, docs).
+  # ── SEC-DB-RLS-001: integration tests with the API on a restricted database role ─────
+  # The API connects as a NOSUPERUSER, NOBYPASSRLS, non-owner role while every test keeps its admin connection for seeding and
+  # inspection. The lane is required and ratcheting: scripts/restricted-role-lane.v1.json lists the tests and the tracked
+  # expected failures (each names the migration PR M1..M6 that fixes it). A new failure, a listed test that now passes, or a lane
+  # that cannot prove the API used the restricted role all fail this job.
+  restricted-role-lane:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: "22"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
+      DATABASE_URL_POOLED: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
+      DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
+      JWT_SECRET: pim1-ci-jwt-secret-minimum-length-32
+      JWT_EXPIRY: 4h
+      CREDENTIAL_ENCRYPTION_KEY_V1: pim1-ci-encryption-key-v1-minimum-32
+      CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION: "1"
+      REDIS_URL: redis://localhost:6379
+      R2_ACCOUNT_ID: local-ci
+      R2_ACCESS_KEY_ID: local-ci
+      R2_SECRET_ACCESS_KEY: local-ci
+      R2_BUCKET_NAME: pim1-ci
+      R2_PUBLIC_URL: https://example.com/pim1-ci
+      APP_ENV: development
+      AUTH_MODE: local
+      FEATURE_REAL_SPAPI_VALIDATION: "false"
+      QUEUE_BACKEND: memory
+      QUEUE_WORKER_ENABLED: "true"
+      PIM_AUTH_PASSWORD: vexa-pim-demo-password
+      # redis-memory-server (a root devDependency, only used by
+      # apps/api/test/integration/queue-durability.test.cjs, which isn't wired into
+      # any step below) otherwise tries to download/compile a Redis Stack binary
+      # during npm ci's postinstall. This is its own documented skip flag — no
+      # system redis-server needed. The live redis:7 service below is unrelated:
+      # it's the real Redis this job's tests connect to via REDIS_URL.
+      REDISMS_DISABLE_POSTINSTALL: "true"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pim1
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pim1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Build API
+        run: npm run build --workspace @pim1/api
+
+      - name: Prisma migrate deploy (admin identity)
+        run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+
+      - name: Create the restricted runtime role (explicit grants, asserted)
+        run: node scripts/ci/create-restricted-runtime-role.cjs
+
+      - name: Run integration tests with the API on the restricted role
+        run: node scripts/run-restricted-role-lane.cjs
+
   e2e:
     needs: [detect-changes, build]
     if: needs.detect-changes.outputs.e2e-relevant == 'true' || github.event_name != 'pull_request'
