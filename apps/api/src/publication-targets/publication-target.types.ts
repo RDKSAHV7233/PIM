@@ -31,6 +31,14 @@ export const CERTIFICATION_LEVEL_ORDER: readonly CertificationLevel[] = [
   "certified",
 ];
 
+/**
+ * Who or what produced the evidence. `AI_RUN` is technical QA evidence executed by an AI agent; it never counts as
+ * a named human sign-off. `UNKNOWN` means the source does not say who executed it.
+ */
+export type EvidenceExecutionType = "AI_RUN" | "HUMAN_RUN" | "UNKNOWN";
+
+export type EvidenceEnvironment = "PRODUCTION" | "SANDBOX" | "LOCAL";
+
 export interface CapabilityEvidence {
   connector: string;
   capability: string;
@@ -41,6 +49,22 @@ export interface CapabilityEvidence {
   verifiedBy: string | null;
   /** Authoritative expiry. Past it, or when absent on verified evidence, the capability needs recertification. */
   reverifyBy: string | null;
+
+  // Provenance. Required on every entry above `untested` (enforced by validateEvidenceManifest); absent on untested.
+  /** The role the evidence counts for (for example QA). A role is not a person and not an approval. */
+  evidenceRole?: string;
+  executionType?: EvidenceExecutionType;
+  /**
+   * True only when a named human approved this evidence against the governance gate. Technical evidence, however
+   * good, leaves this false; `certified` requires it.
+   */
+  humanApproval?: boolean;
+  environment?: EvidenceEnvironment;
+  fixture?: string | null;
+  /** Provider-submission ids that trace the run (required for product_pipeline evidence). */
+  submissionIds?: readonly string[];
+  assertions?: Readonly<Record<string, boolean>>;
+  limitations?: readonly string[];
 }
 
 // ─── Facts ──────────────────────────────────────────────────────────────────────────────────────────────────

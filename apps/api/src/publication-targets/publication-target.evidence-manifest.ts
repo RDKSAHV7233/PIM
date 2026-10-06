@@ -2,6 +2,8 @@ import {
   CERTIFICATION_LEVEL_ORDER,
   type CapabilityEvidence,
   type CertificationLevel,
+  type EvidenceEnvironment,
+  type EvidenceExecutionType,
   type EvidencePath,
 } from "./publication-target.types";
 
@@ -74,7 +76,21 @@ interface RecordedEvidence {
   verifiedBy: string;
   /** Explicit shorter expiry from certification or security policy; omitted means the policy default. */
   reverifyByOverride?: string;
+  environment: EvidenceEnvironment;
+  /** Who executed it. AI_RUN and UNKNOWN never carry a human approval. */
+  executionType: EvidenceExecutionType;
+  /** Defaults to false: a named human approval is a separate act from producing evidence. */
+  humanApproval?: boolean;
+  fixture?: string;
+  submissionIds?: readonly string[];
+  assertions?: Readonly<Record<string, boolean>>;
+  limitations?: readonly string[];
 }
+
+/** The Tier-2 batteries record that they ran against a real provider instance, not who executed them. */
+const SANDBOX_BATTERY = { environment: "SANDBOX", executionType: "UNKNOWN" } as const;
+/** BigCommerce: the PIM1 port was only unit-tested. */
+const LOCAL_BATTERY = { environment: "LOCAL", executionType: "UNKNOWN" } as const;
 
 const BATTERY = "connector-launch-policy.ts E2E battery comment (2026-10-03)";
 const QA_RESULTS = "docs/test-plan/production-readiness-qa-results-2026-08-24.md";
@@ -89,6 +105,7 @@ function directAdapterBattery(connector: string, ledger: string, detail: string)
     evidenceRef: `${BATTERY}; ${ledger}; ${detail}`,
     verifiedAt: "2026-10-03",
     verifiedBy: "QA",
+    ...SANDBOX_BATTERY,
   }));
 }
 
@@ -109,23 +126,69 @@ const RECORDED: readonly RecordedEvidence[] = [
 
   // eBay is sandbox-only by design. Publish needs Business Policy IDs that were not configured on the test account,
   // so the offer flow was validated but not completed: PUBLISH is held at integration_tested.
-  { connector: "ebay", capability: "VALIDATE", path: "direct_adapter", level: "sandbox_verified", evidenceRef: `${BATTERY}; INC-90; T2 against the eBay sandbox`, verifiedAt: "2026-10-03", verifiedBy: "QA" },
-  { connector: "ebay", capability: "STATUS_SYNC", path: "direct_adapter", level: "sandbox_verified", evidenceRef: `${BATTERY}; INC-90; T4 against the eBay sandbox`, verifiedAt: "2026-10-03", verifiedBy: "QA" },
-  { connector: "ebay", capability: "PUBLISH", path: "direct_adapter", level: "integration_tested", evidenceRef: `${BATTERY}; INC-90; T3 offer flow validated, Business Policy IDs not configured`, verifiedAt: "2026-10-03", verifiedBy: "QA" },
+  { connector: "ebay", capability: "VALIDATE", path: "direct_adapter", level: "sandbox_verified", evidenceRef: `${BATTERY}; INC-90; T2 against the eBay sandbox`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...SANDBOX_BATTERY },
+  { connector: "ebay", capability: "STATUS_SYNC", path: "direct_adapter", level: "sandbox_verified", evidenceRef: `${BATTERY}; INC-90; T4 against the eBay sandbox`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...SANDBOX_BATTERY },
+  { connector: "ebay", capability: "PUBLISH", path: "direct_adapter", level: "integration_tested", evidenceRef: `${BATTERY}; INC-90; T3 offer flow validated, Business Policy IDs not configured`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...SANDBOX_BATTERY },
 
   // BigCommerce: the live verification was of the prototype; the PIM1 TypeScript port is unit-tested only.
-  ...["PUBLISH", "VALIDATE", "STATUS_SYNC"].map((capability) => ({ connector: "bigcommerce", capability, path: "direct_adapter" as const, level: "unit_tested" as const, evidenceRef: `${BATTERY}; INC-90; known limitation: live verification was prototype-based, PIM1 port unit-tested only`, verifiedAt: "2026-10-03", verifiedBy: "QA" })),
+  ...["PUBLISH", "VALIDATE", "STATUS_SYNC"].map((capability) => ({ connector: "bigcommerce", capability, path: "direct_adapter" as const, level: "unit_tested" as const, evidenceRef: `${BATTERY}; INC-90; known limitation: live verification was prototype-based, PIM1 port unit-tested only`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...LOCAL_BATTERY })),
 
   // Dynamics 365: Azure AD token exchange and reachability were live; the Business Central data plane (GET /items)
   // was not re-verified after the permission fix, so publish and status-sync are held at integration_tested.
-  { connector: "dynamics-365", capability: "VALIDATE", path: "direct_adapter", level: "sandbox_verified", evidenceRef: `${BATTERY}; INC-90; T1-T2 Azure AD token exchange and Business Central reachability`, verifiedAt: "2026-10-03", verifiedBy: "QA" },
-  { connector: "dynamics-365", capability: "PUBLISH", path: "direct_adapter", level: "integration_tested", evidenceRef: `${BATTERY}; INC-90; T3, data plane not re-verified`, verifiedAt: "2026-10-03", verifiedBy: "QA" },
-  { connector: "dynamics-365", capability: "STATUS_SYNC", path: "direct_adapter", level: "integration_tested", evidenceRef: `${BATTERY}; INC-90; T4, GET /items not re-verified`, verifiedAt: "2026-10-03", verifiedBy: "QA" },
+  { connector: "dynamics-365", capability: "VALIDATE", path: "direct_adapter", level: "sandbox_verified", evidenceRef: `${BATTERY}; INC-90; T1-T2 Azure AD token exchange and Business Central reachability`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...SANDBOX_BATTERY },
+  { connector: "dynamics-365", capability: "PUBLISH", path: "direct_adapter", level: "integration_tested", evidenceRef: `${BATTERY}; INC-90; T3, data plane not re-verified`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...SANDBOX_BATTERY },
+  { connector: "dynamics-365", capability: "STATUS_SYNC", path: "direct_adapter", level: "integration_tested", evidenceRef: `${BATTERY}; INC-90; T4, GET /items not re-verified`, verifiedAt: "2026-10-03", verifiedBy: "QA", ...SANDBOX_BATTERY },
 
   // Product-pipeline evidence: real publishes through the UI "Queue channel export" job on the live app against the
-  // real pilot stores, with submission ids recorded. Dated 2026-08-24; the policy default has therefore expired.
-  { connector: "shopify", capability: "PUBLISH", path: "product_pipeline", level: "production_verified", evidenceRef: `${QA_RESULTS}; PRQ-PUBF-SHF-001/002, PRQ-PUBV-SHF-001, PRQ-EDT-SHF-001 (real pilot store)`, verifiedAt: "2026-08-24", verifiedBy: "QA" },
-  { connector: "woocommerce", capability: "PUBLISH", path: "product_pipeline", level: "production_verified", evidenceRef: `${QA_RESULTS}; PRQ-PUBF-WOO-001/002 (real pilot store, external ref 212; wp-admin confirmation not completed)`, verifiedAt: "2026-08-24", verifiedBy: "QA" },
+  // real pilot stores. Both entries were executed by an AI agent acting in the QA role, so neither carries a human
+  // approval, and neither can stand in for the named QA sign-off the governance gate requires.
+  {
+    connector: "shopify",
+    capability: "PUBLISH",
+    path: "product_pipeline",
+    level: "production_verified",
+    evidenceRef: `AI-run QA 2026-10-06 on app.vexapim.com: UI publish and republish of the fixture to the real pilot store; supersedes the 2026-08-24 run (${QA_RESULTS}; PRQ-PUBF-SHF-001/002)`,
+    verifiedAt: "2026-10-06",
+    verifiedBy: "QA",
+    environment: "PRODUCTION",
+    executionType: "AI_RUN",
+    fixture: "QAPILOT-20260824-001",
+    submissionIds: ["6ae9670d-b62e-41dc-bb34-d649c62898b6", "0a103f48-b530-4639-b92e-5089adc38bf1"],
+    assertions: {
+      publishSucceeded: true,
+      republishSucceeded: true,
+      sameExternalReference: true,
+      duplicateObserved: false,
+      connectorHealthyBefore: true,
+      connectorHealthyAfter: true,
+    },
+    limitations: [
+      "Shopify admin / store-side inspection not performed (Vexa-side evidence only)",
+      "bulk publish not exercised",
+      "multi-variant publish not exercised",
+      "image diff never converges and the Shopify CDN image id changed between publishes (tracked defect)",
+      "executed by an AI agent: not a named human QA approval",
+    ],
+  },
+  {
+    connector: "woocommerce",
+    capability: "PUBLISH",
+    path: "product_pipeline",
+    level: "production_verified",
+    evidenceRef: `${QA_RESULTS}; PRQ-PUBF-WOO-001/002 (real pilot store, external ref 212; wp-admin confirmation not completed)`,
+    verifiedAt: "2026-08-24",
+    verifiedBy: "QA",
+    environment: "PRODUCTION",
+    executionType: "AI_RUN",
+    fixture: "QAPILOT-20260824-001",
+    submissionIds: ["4d9c4973-2974-4760-bb28-8211e43a1a42"],
+    limitations: [
+      "the cited submission remained PENDING in the submission history although external ref 212 persisted",
+      "wp-admin confirmation not completed",
+      "WooCommerce is on p1_blocker_hold; whether this evidence may stand is an open owner decision",
+      "executed by an AI agent: not a named human QA approval",
+    ],
+  },
 ];
 
 function toEvidence(entry: RecordedEvidence): CapabilityEvidence {
@@ -138,6 +201,14 @@ function toEvidence(entry: RecordedEvidence): CapabilityEvidence {
     verifiedAt: entry.verifiedAt,
     verifiedBy: entry.verifiedBy,
     reverifyBy: defaultReverifyBy(entry.level, entry.verifiedAt, entry.reverifyByOverride ?? null),
+    evidenceRole: entry.verifiedBy,
+    executionType: entry.executionType,
+    humanApproval: entry.humanApproval ?? false,
+    environment: entry.environment,
+    ...(entry.fixture !== undefined ? { fixture: entry.fixture } : {}),
+    ...(entry.submissionIds !== undefined ? { submissionIds: entry.submissionIds } : {}),
+    ...(entry.assertions !== undefined ? { assertions: entry.assertions } : {}),
+    ...(entry.limitations !== undefined ? { limitations: entry.limitations } : {}),
   };
 }
 
@@ -181,6 +252,38 @@ export function evidenceForConnector(slug: string, manifest: readonly Capability
 
 // ─── Validation (the ADR-0015 manifest invariants) ──────────────────────────────────────────────────────────
 
+const EXECUTION_TYPES: readonly string[] = ["AI_RUN", "HUMAN_RUN", "UNKNOWN"];
+const ENVIRONMENTS: readonly string[] = ["PRODUCTION", "SANDBOX", "LOCAL"];
+const SUBMISSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Provenance rules for an entry above untested: who ran it, where, and whether a named human approved it. */
+function validateProvenance(entry: CapabilityEvidence, key: string): string[] {
+  const problems: string[] = [];
+  if (!entry.evidenceRole) problems.push(`${key}: ${entry.level} without evidenceRole`);
+  if (!entry.executionType || !EXECUTION_TYPES.includes(entry.executionType)) problems.push(`${key}: missing or unknown executionType`);
+  if (typeof entry.humanApproval !== "boolean") problems.push(`${key}: humanApproval must be an explicit boolean`);
+  if (!entry.environment || !ENVIRONMENTS.includes(entry.environment)) problems.push(`${key}: missing or unknown environment`);
+
+  // Executing a test is not approving it: only a human-run entry can carry a human approval.
+  if (entry.humanApproval === true && entry.executionType !== "HUMAN_RUN") {
+    problems.push(`${key}: humanApproval is true but executionType is ${String(entry.executionType)}`);
+  }
+  // certified is a named human certification (ADR-0007: full QA cycle, security review, CTO/PO sign-off).
+  if (entry.level === "certified" && entry.humanApproval !== true) problems.push(`${key}: certified requires a named human approval`);
+  // production_verified means the provider's production environment.
+  if ((entry.level === "production_verified" || entry.level === "certified") && entry.environment !== "PRODUCTION") {
+    problems.push(`${key}: ${entry.level} requires a PRODUCTION environment`);
+  }
+  // A product-pipeline claim must be traceable to submissions.
+  if (entry.path === "product_pipeline") {
+    if (!entry.submissionIds || entry.submissionIds.length === 0) problems.push(`${key}: product_pipeline evidence without submissionIds`);
+  }
+  for (const id of entry.submissionIds ?? []) {
+    if (!SUBMISSION_ID.test(id)) problems.push(`${key}: malformed submission id ${id}`);
+  }
+  return problems;
+}
+
 /** Returns human-readable problems; an empty array means the manifest is valid. */
 export function validateEvidenceManifest(
   manifest: readonly CapabilityEvidence[],
@@ -205,11 +308,14 @@ export function validateEvidenceManifest(
       continue;
     }
     if (entry.level === "untested") {
-      if (entry.evidenceRef || entry.verifiedAt || entry.verifiedBy || entry.reverifyBy) problems.push(`${key}: untested entry carries evidence fields`);
+      if (entry.evidenceRef || entry.verifiedAt || entry.verifiedBy || entry.reverifyBy || entry.executionType || entry.humanApproval || entry.submissionIds) {
+        problems.push(`${key}: untested entry carries evidence fields`);
+      }
       continue;
     }
     if (!entry.evidenceRef) problems.push(`${key}: ${entry.level} without an evidenceRef`);
     if (!entry.verifiedBy) problems.push(`${key}: ${entry.level} without verifiedBy`);
+    problems.push(...validateProvenance(entry, key));
     const verifiedMs = entry.verifiedAt ? Date.parse(entry.verifiedAt) : Number.NaN;
     if (!Number.isFinite(verifiedMs)) {
       problems.push(`${key}: ${entry.level} without a parseable verifiedAt`);

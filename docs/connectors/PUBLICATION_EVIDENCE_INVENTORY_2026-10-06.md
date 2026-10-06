@@ -20,15 +20,24 @@ repository evidence, and the owners confirm or correct it in review.
 5. **Where evidence cannot be found the entry is `untested`.** Every declared capability on both paths has an
    explicit entry (86 in total across the 13 connectors that declare `PUBLISH`).
 6. **Export-only connectors (meesho, nykaa) are not publication targets** and have no entries.
+7. **Executing a test is not approving it.** Every entry above `untested` records who executed it
+   (`executionType`: `AI_RUN`, `HUMAN_RUN` or `UNKNOWN`), where (`environment`), the role it counts for
+   (`evidenceRole`) and an explicit `humanApproval`. `humanApproval` is true only when a named human approved the
+   evidence against the governance gate, and only a human-run entry can carry it; `certified` requires it.
+   `production_verified` requires a `PRODUCTION` environment, and a `product_pipeline` entry must trace to
+   provider-submission ids. **No entry carries a human approval today.** AI-run QA is technical evidence; it does not
+   satisfy the separate named QA sign-off.
 
 ## What is recorded
 
-`verifiedBy` is the role the source names (`QA`); it is not a person. Sources are in the manifest `evidenceRef`.
+`verifiedBy` is the role the source names (`QA`); it is not a person. Sources are in the manifest `evidenceRef`. The two
+product-pipeline entries are `AI_RUN` (the 2026-08-24 report names Claude as the tester; the 2026-10-06 run is described
+below). The Tier-2 batteries are `SANDBOX` with an unrecorded executor (`UNKNOWN`). BigCommerce is `LOCAL`.
 
 | Connector | Stage (policy) | PUBLISH `direct_adapter` | PUBLISH `product_pipeline` | VALIDATE / STATUS_SYNC `direct_adapter` | Source and reading |
 |---|---|---|---|---|---|
-| shopify | live | untested | **production_verified** (2026-08-24, expired 2026-09-23) | untested / untested | Real pilot store, UI "Queue channel export", submission ids recorded (`PRQ-PUBF-SHF-001/002`, `PRQ-PUBV-SHF-001`, `PRQ-EDT-SHF-001`). Webhooks, managed OAuth and multi-image sync are recorded as not production-verified |
-| woocommerce | p1_blocker_hold | untested | **production_verified** (2026-08-24, expired 2026-09-23) | untested / untested | Real pilot store, external ref 212; the record says wp-admin confirmation was not completed. The 2026-10-03 battery claims (#1059) are not used as the basis: see the governance record |
+| shopify | live | untested | **production_verified** (2026-10-06, `reverifyBy` 2026-11-05, AI-run QA) | untested / untested | Re-run on 2026-10-06 on the live app: UI "Queue channel export" publish and republish of `QAPILOT-20260824-001` to the real pilot store, both `SUCCESS`, same external reference, connector healthy before and after (see the run below). Supersedes the 2026-08-24 run (`PRQ-PUBF-SHF-001/002`). Webhooks, managed OAuth and multi-image sync are recorded as not production-verified |
+| woocommerce | p1_blocker_hold | untested | **production_verified** (2026-08-24, expired 2026-09-23, AI-run QA) | untested / untested | Real pilot store, external ref 212; the record says wp-admin confirmation was not completed and the cited submission stayed `PENDING` in the history. The 2026-10-03 battery claims (#1059) are not used as the basis: see the governance record. Whether this evidence may stand under the hold is an open owner decision |
 | odoo | early_access | sandbox_verified | untested | sandbox_verified / sandbox_verified | Battery 2026-10-03 (INC-89) against a real Odoo 17 instance. A real production tenant was not run |
 | prestashop | early_access | sandbox_verified | untested | sandbox_verified / sandbox_verified | Battery 2026-10-03 (INC-89), real PrestaShop 9.1.5 sandbox |
 | shopware | early_access | sandbox_verified | untested | sandbox_verified / sandbox_verified | Battery 2026-10-03 (INC-88), real dockware/dev sandbox. Multi-store, staged rollout and webhooks not verified |
@@ -42,6 +51,47 @@ repository evidence, and the owners confirm or correct it in review.
 | myntra | under_development | untested | untested | untested / untested | No event found; the connector is not registered in the runtime (`runtimeRegistered: false` in the generated inventory) |
 
 Nothing is `certified` anywhere. `WEBHOOK_RECEIVE` and `EXCEL_EXPORT` are `untested` on both paths for every connector.
+
+## Shopify product-pipeline run, 2026-10-06 (AI-run QA)
+
+Executed by an AI agent in the QA role on `app.vexapim.com` through the browser, signed in by the user, fixture
+`QAPILOT-20260824-001` (the existing fixture, reused), real Shopify pilot store `vpim-6hzarsxc.myshopify.com`.
+
+| Step | Result |
+|---|---|
+| Connector before | `ACTIVE`, Verified, last check 2026-10-06 09:37 |
+| UI "Queue channel export" (publish) | submission `6ae9670d-b62e-41dc-bb34-d649c62898b6`, 09:59:06 to 09:59:08, `SUCCESS`, ref `shopify:8082735956058` |
+| Republish, no content change | submission `0a103f48-b530-4639-b92e-5089adc38bf1`, 10:00:20 to 10:00:22, `SUCCESS`, the same ref |
+| Connector after | `ACTIVE`, Verified |
+
+One submission was created per confirmation, and the reference matches the August submissions: an update in place, not a
+duplicate create, as far as Vexa's own record shows.
+
+**Recorded as** `production_verified` on `PUBLISH` / `product_pipeline`, `reverifyBy` 2026-11-05 (the policy default),
+`executionType: AI_RUN`, `humanApproval: false`. **Not `certified`**: no provider-admin inspection, no broader scenario
+coverage and no named human certification.
+
+**Limitations (also in the manifest entry):** Shopify admin / store-side inspection not performed; bulk publish not
+exercised; multi-variant publish not exercised; the image-diff defect below; executed by an AI agent.
+
+**What this changes in the evaluator:** the `early_access` evidence bar (`production_verified` on the pipeline path) is
+satisfied while the entry is current, and it still does not satisfy `live`, which needs `certified`. It does not make
+Shopify publication-ready: commercial support, cohort entitlement, installation and credential facts, schema, mapping and
+product readiness all still decide, and commercial support has no Product Owner record.
+
+### Defects observed during the run
+1. **Image diff never converges (low, tracked).** Every publish previews "1 field will change" for the image
+   (Vexa's source URL against Shopify's CDN URL), and the Shopify CDN image id changed between the two publishes. Raise the
+   severity if store-side inspection shows duplicate media accumulating or measurable storage or API churn.
+2. **Submission table header** reads "Shopify / External Ref" on WooCommerce rows (low).
+3. **Export summary** said "Most recent channel: Woocommerce" next to "Shopify updated ..." before the run (low).
+4. WooCommerce submissions from 2026-08-24 remain `PENDING` (known, not retested).
+
+### Observations that are not certification evidence
+The Zoho Inventory account reads "Credentials rejected" (HTTP 401), a real `INVALID` credential fact for the shadow
+evaluator. WooCommerce is absent from the 10 catalog connector lanes but its installation is listed, it appears as an
+installed publish lane, and it is selectable for bulk publish: a current-versus-shadow comparison case for 5.1d. Flipkart
+is `live` with no accounts installed, a release-policy fact only.
 
 ## Where this differs from ADR-0007's Gate 0 baseline
 
@@ -57,7 +107,7 @@ Nothing is `certified` anywhere. `WEBHOOK_RECEIVE` and `EXCEL_EXPORT` are `untes
 
 ## What the evaluator makes of this today
 
-`capability_verified`, with the real launch policy, evaluated at 2026-10-06 (asserted by the manifest spec):
+`capability_verified`, with the real launch policy, evaluated at 2026-10-06 (asserted by the manifest spec). Shopify's evidence is current until 2026-11-05 but is `production_verified`, below the `certified` bar `live` needs:
 
 | Result | Connectors |
 |---|---|
@@ -74,10 +124,9 @@ Two facts the table does not show:
   `MARKETPLACE_CHANNELS`, so the product pipeline cannot reach any Tier-2 connector. Their batteries can only be
   `direct_adapter`. Producing pipeline evidence is part of 5.3 (per-connector, Product Owner approved), not something
   this manifest can fix.
-- **Shopify's pipeline evidence has expired under the 30-day default** (2026-08-24 + 30 days). At `early_access` it would
-  evaluate `RECERTIFICATION_REQUIRED`; at `live` the missing `certified` level is what blocks it. Re-running the
-  pipeline battery would restore a current `production_verified` record; reaching `certified` needs the full QA,
-  security and CTO/PO sign-off cycle.
+- **Shopify's pipeline evidence is current** (2026-10-06 + 30 days = 2026-11-05) and at `early_access` it would satisfy the
+  evidence condition; at `live` the missing `certified` level is what blocks it. Reaching `certified` needs the full QA,
+  security and CTO/PO sign-off cycle and a named human approval. WooCommerce's evidence (2026-08-24) has expired.
 
 ## Commercial support
 
@@ -92,14 +141,18 @@ not editing history.
 
 ## For owner review
 
+Decided on 2026-10-06 (Shopify run): Shopify `PUBLISH` on the pipeline is `production_verified`; the actor is recorded as
+AI-run QA with `humanApproval: false`; `reverifyBy` is 2026-11-05. The image-diff behavior is a tracked defect.
+
+Still open:
+
 1. **The conservative readings** (eBay and Dynamics 365 publish and status-sync, BigCommerce at `unit_tested`, Etsy at
    `sandbox_verified` with no real shop). Confirm or correct each level.
-2. **Whether the 2026-08-24 WooCommerce pipeline evidence may stand** while the connector is on `p1_blocker_hold`. It is a
-   factual record, but the same QA report scored the WooCommerce technical gate FAIL on the defects it recorded (#660 to #663).
-3. **Whether to re-run a pipeline battery for Shopify** so its `production_verified` evidence is current again.
-4. **Product Owner commercial-support records** for any connector the PO wants to count as supported.
-5. **`verifiedBy`**: the sources name `QA` and "required-team authorization" without naming a person. The manifest keeps
-   the role. If named verifiers are required, that is a process change, not an inventory fix.
+2. **Whether the 2026-08-24 WooCommerce pipeline evidence may stand** while the connector is on `p1_blocker_hold`. The live
+   submission history also shows later `SUCCESS` publishes (2026-08-26, 2026-09-05, 2026-09-10) that could replace it.
+3. **Product Owner commercial-support records** for any connector the PO wants counted as supported. None exist.
+4. **`verifiedBy`**: the sources name `QA` and "required-team authorization" without naming a person. The manifest keeps
+   the role. Named human approvals are a separate act and are not recorded.
 
 ## Findings outside this change
 

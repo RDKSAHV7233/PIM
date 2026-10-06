@@ -12,6 +12,7 @@ import {
   validateEvidenceManifest,
 } from "./publication-target.evidence-manifest";
 import type { CapabilityEvidence } from "./publication-target.types";
+import { resolveCommercialSupportFact } from "./publication-target.commercial-support";
 import { CONTEXT, NOW, condition, readyInput } from "./publication-target.test-fixtures";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
@@ -138,6 +139,68 @@ describe("evidence manifest", () => {
     });
   });
 
+  describe("provenance: executing a test is not approving it", () => {
+    const recorded = CONNECTOR_EVIDENCE_MANIFEST.filter((entry) => entry.level !== "untested");
+
+    it("every recorded entry carries a role, an execution type, an explicit humanApproval and an environment", () => {
+      for (const entry of recorded) {
+        expect(entry.evidenceRole).toBe("QA");
+        expect(["AI_RUN", "HUMAN_RUN", "UNKNOWN"]).toContain(entry.executionType);
+        expect(typeof entry.humanApproval).toBe("boolean");
+        expect(["PRODUCTION", "SANDBOX", "LOCAL"]).toContain(entry.environment);
+      }
+    });
+
+    it("no entry carries a human approval: none of the evidence has a named human sign-off", () => {
+      expect(recorded.filter((entry) => entry.humanApproval === true)).toEqual([]);
+    });
+
+    it("the two product-pipeline entries are AI-run (the 2026-08-24 report names Claude as the tester)", () => {
+      for (const entry of recorded.filter((e) => e.path === "product_pipeline")) expect(entry.executionType).toBe("AI_RUN");
+    });
+
+    it("production_verified entries are PRODUCTION; Tier-2 batteries are SANDBOX with an unrecorded executor; BigCommerce is LOCAL", () => {
+      for (const entry of recorded.filter((e) => e.level === "production_verified")) expect(entry.environment).toBe("PRODUCTION");
+      for (const entry of recorded.filter((e) => e.path === "direct_adapter" && e.level === "sandbox_verified")) {
+        expect(entry).toMatchObject({ environment: "SANDBOX", executionType: "UNKNOWN" });
+      }
+      for (const entry of recorded.filter((e) => e.connector === "bigcommerce")) expect(entry.environment).toBe("LOCAL");
+    });
+
+    it("every product-pipeline entry traces to well-formed submission ids", () => {
+      for (const entry of recorded.filter((e) => e.path === "product_pipeline")) {
+        expect(entry.submissionIds?.length).toBeGreaterThan(0);
+      }
+    });
+
+    it.each([
+      ["an AI-run entry that claims a human approval", { executionType: "AI_RUN" as const, humanApproval: true }, /humanApproval is true but executionType is AI_RUN/],
+      ["an entry of unknown executor that claims a human approval", { executionType: "UNKNOWN" as const, humanApproval: true }, /humanApproval is true but executionType is UNKNOWN/],
+      ["certified without a human approval", { level: "certified" as const, reverifyBy: "2026-12-31T00:00:00.000Z" }, /certified requires a named human approval/],
+      ["production_verified outside production", { environment: "SANDBOX" as const }, /requires a PRODUCTION environment/],
+      ["a missing execution type", { executionType: undefined }, /missing or unknown executionType/],
+      ["a missing humanApproval", { humanApproval: undefined }, /humanApproval must be an explicit boolean/],
+      ["a missing environment", { environment: undefined }, /missing or unknown environment/],
+      ["a missing evidence role", { evidenceRole: undefined }, /without evidenceRole/],
+      ["pipeline evidence without submissions", { submissionIds: [] }, /product_pipeline evidence without submissionIds/],
+      ["a malformed submission id", { submissionIds: ["not-a-uuid"] }, /malformed submission id/],
+    ])("the validator rejects %s", (_label, override, expected) => {
+      const manifest = CONNECTOR_EVIDENCE_MANIFEST.map((entry) =>
+        entry.connector === "shopify" && entry.capability === "PUBLISH" && entry.path === "product_pipeline" ? ({ ...entry, ...override } as CapabilityEvidence) : entry,
+      );
+      expect(validateEvidenceManifest(manifest).join("\n")).toMatch(expected);
+    });
+
+    it("an untested entry may not carry an execution type or a human approval", () => {
+      const manifest = CONNECTOR_EVIDENCE_MANIFEST.map((entry) =>
+        entry.connector === "amazon-in" && entry.capability === "PUBLISH" && entry.path === "direct_adapter"
+          ? ({ ...entry, executionType: "AI_RUN", humanApproval: true } as CapabilityEvidence)
+          : entry,
+      );
+      expect(validateEvidenceManifest(manifest).join("\n")).toMatch(/untested entry carries evidence fields/);
+    });
+  });
+
   describe("defaultReverifyBy", () => {
     it("applies the policy default by level", () => {
       expect(EVIDENCE_REVERIFY_DEFAULT_DAYS).toEqual({ sandbox_verified: 30, production_verified: 30, certified: 90 });
@@ -237,15 +300,69 @@ describe("evidence manifest", () => {
       }
     });
 
-    it("Shopify's August pipeline evidence would pass at early_access while it was current, and has expired since", () => {
+    describe("Shopify's pipeline evidence (AI-run QA, 2026-10-06)", () => {
       const evidence = evidenceForConnector("shopify");
-      const early = (now: Date) =>
-        condition(
-          evaluatePublicationTarget(readyInput({ slug: "shopify", launchPolicy: { launchStage: "early_access" }, evidence }), { ...CONTEXT, now }),
-          "capability_verified",
+      const at = (now: Date, launchStage: "early_access" | "live") =>
+        evaluatePublicationTarget(
+          readyInput({
+            slug: "shopify",
+            definition: { slug: "shopify", displayName: "Shopify", isActive: true, capabilities: [...PUBLISH_CONNECTOR_CAPABILITIES.shopify!] },
+            launchPolicy: { launchStage },
+            evidence,
+            // The commercial-support fact comes from the real (empty) records, never from a stage.
+            commercialSupport: resolveCommercialSupportFact("shopify", now),
+            tenantEntitlement: null,
+          }),
+          { ...CONTEXT, now },
         );
-      expect(early(new Date("2026-09-01T00:00:00Z")).status).toBe("pass");
-      expect(early(NOW).code).toBe("RECERTIFICATION_REQUIRED");
+
+      it("is production_verified on the product pipeline, verified 2026-10-06, reverifyBy 2026-11-05", () => {
+        const entry = evidence.find((e) => e.capability === "PUBLISH" && e.path === "product_pipeline")!;
+        expect(entry.level).toBe("production_verified");
+        expect(entry.verifiedAt).toBe("2026-10-06");
+        expect(entry.reverifyBy).toBe("2026-11-05T00:00:00.000Z");
+      });
+
+      it("is AI-run QA technical evidence, not a human approval", () => {
+        const entry = evidence.find((e) => e.capability === "PUBLISH" && e.path === "product_pipeline")!;
+        expect(entry).toMatchObject({ evidenceRole: "QA", executionType: "AI_RUN", humanApproval: false, environment: "PRODUCTION" });
+      });
+
+      it("traces to the two submissions and records the assertions and limitations", () => {
+        const entry = evidence.find((e) => e.capability === "PUBLISH" && e.path === "product_pipeline")!;
+        expect(entry.fixture).toBe("QAPILOT-20260824-001");
+        expect(entry.submissionIds).toEqual(["6ae9670d-b62e-41dc-bb34-d649c62898b6", "0a103f48-b530-4639-b92e-5089adc38bf1"]);
+        expect(entry.assertions).toEqual({
+          publishSucceeded: true,
+          republishSucceeded: true,
+          sameExternalReference: true,
+          duplicateObserved: false,
+          connectorHealthyBefore: true,
+          connectorHealthyAfter: true,
+        });
+        expect(entry.limitations?.join(" ")).toMatch(/store-side inspection not performed/);
+        expect(entry.limitations?.join(" ")).toMatch(/bulk publish not exercised/);
+        expect(entry.limitations?.join(" ")).toMatch(/multi-variant publish not exercised/);
+        expect(entry.limitations?.join(" ")).toMatch(/image diff never converges/);
+      });
+
+      it("satisfies the early_access evidence condition while current, and the day it expires needs recertification", () => {
+        const cap = (now: Date) => condition(at(now, "early_access"), "capability_verified");
+        expect(cap(new Date("2026-10-10T00:00:00Z")).status).toBe("pass");
+        expect(cap(new Date("2026-11-04T23:59:59Z")).status).toBe("pass");
+        expect(cap(new Date("2026-11-05T00:00:00Z")).code).toBe("RECERTIFICATION_REQUIRED");
+      });
+
+      it("does not satisfy the live bar: live requires certified", () => {
+        expect(condition(at(new Date("2026-10-10T00:00:00Z"), "live"), "capability_verified").code).toBe("CAPABILITY_NOT_VERIFIED");
+      });
+
+      it("does not make Shopify publication-ready by itself: the other conditions still decide", () => {
+        const result = at(new Date("2026-10-10T00:00:00Z"), "early_access");
+        expect(condition(result, "capability_verified").status).toBe("pass");
+        expect(result.available).toBe(false);
+        expect(result.reasonCodes).toEqual(expect.arrayContaining(["NOT_COMMERCIALLY_SUPPORTED", "RELEASE_RESTRICTED"]));
+      });
     });
   });
 });

@@ -392,10 +392,12 @@ export function evaluatePublicationTarget(
   };
 }
 
+/** Current means verified (not in the future, not undated) and not past its authoritative reverifyBy. */
 function isEvidenceCurrent(entry: CapabilityEvidence, nowMs: number): boolean {
-  if (typeof entry.reverifyBy !== "string") return false;
+  if (typeof entry.reverifyBy !== "string" || typeof entry.verifiedAt !== "string") return false;
   const reverifyMs = Date.parse(entry.reverifyBy);
-  return Number.isFinite(reverifyMs) && reverifyMs > nowMs;
+  const verifiedMs = Date.parse(entry.verifiedAt);
+  return Number.isFinite(reverifyMs) && Number.isFinite(verifiedMs) && verifiedMs <= nowMs && reverifyMs > nowMs;
 }
 
 function unique(codes: Array<PublicationReasonCode | null>): PublicationReasonCode[] {

@@ -263,6 +263,13 @@ describe("evaluatePublicationTarget", () => {
         expect(condition(evaluate({ evidence: [pipelineEvidence({ reverifyBy: null })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
       });
 
+      it("evidence dated in the future, or undated, is not current", () => {
+        const future = new Date(NOW.getTime() + DAY_MS).toISOString();
+        expect(condition(evaluate({ evidence: [pipelineEvidence({ verifiedAt: future })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+        expect(condition(evaluate({ evidence: [pipelineEvidence({ verifiedAt: null })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+        expect(condition(evaluate({ evidence: [pipelineEvidence({ verifiedAt: "sometime" })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+      });
+
       it("an unparseable reverifyBy needs recertification", () => {
         expect(condition(evaluate({ evidence: [pipelineEvidence({ reverifyBy: "soon" })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
       });
