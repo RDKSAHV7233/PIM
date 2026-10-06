@@ -1066,7 +1066,11 @@ model ConnectorInstallation {
 // Control-plane record of which tenants a connector in a cohort release stage is released to (ADR-0015 section 9).
 // Append and revoke only: the one permitted update is recording the revocation, once. Controlled_pilot is an explicit
 // named-tenant grant; early_access needs the tenant's own opt-in as well. live has no cohort and no row.
-// Row-level security: a tenant may read only its own rows; there is no write policy (writes need a BYPASSRLS role).
+// Row-level security is DEFINED (a tenant may read only its own rows; there is no write policy) but NOT ENFORCED by the
+// production runtime role: that role is a superuser and the table owner, so it bypasses RLS even when forced
+// (docs/qa/sec-db-rls-001-investigation-2026-10-06.md). Until SEC-DB-RLS-001 is remediated and verified, tenant isolation
+// for this table rests on the application's tenant-scope layer. The CHECK constraints, trigger and unique index below do
+// bind a superuser.
 // Also in the migration but not expressible here: CHECK constraints, a partial unique index of one live grant per
 // (tenant, connector, stage), and the append-only trigger. Nothing reads or writes this model yet.
 model ConnectorTenantEntitlement {

@@ -65,6 +65,14 @@ export interface CapabilityEvidence {
   submissionIds?: readonly string[];
   assertions?: Readonly<Record<string, boolean>>;
   limitations?: readonly string[];
+
+  /**
+   * Present only on evidence returned by applyRecertificationTriggers: a schema, API or version change after
+   * `verifiedAt`. The original record (`verifiedAt`, `reverifyBy`, references, provenance) is untouched; the evaluator
+   * treats the earlier of `reverifyBy` and `recertification.at` as the effective expiry and reports
+   * RECERTIFICATION_REQUIRED from then on. It is derived, never recorded in the manifest (the validator rejects it).
+   */
+  recertification?: { kind: string; at: string; ref: string | null };
 }
 
 // ─── Facts ──────────────────────────────────────────────────────────────────────────────────────────────────

@@ -392,12 +392,23 @@ export function evaluatePublicationTarget(
   };
 }
 
-/** Current means verified (not in the future, not undated) and not past its authoritative reverifyBy. */
+/**
+ * Current means verified (not in the future, not undated) and not past its effective expiry. The effective expiry is
+ * the authoritative reverifyBy, or the date of a later schema, API or version change if that comes first
+ * (`recertification.at`, derived by applyRecertificationTriggers). The recorded evidence itself is never rewritten.
+ */
 function isEvidenceCurrent(entry: CapabilityEvidence, nowMs: number): boolean {
   if (typeof entry.reverifyBy !== "string" || typeof entry.verifiedAt !== "string") return false;
   const reverifyMs = Date.parse(entry.reverifyBy);
   const verifiedMs = Date.parse(entry.verifiedAt);
-  return Number.isFinite(reverifyMs) && Number.isFinite(verifiedMs) && verifiedMs <= nowMs && reverifyMs > nowMs;
+  if (!Number.isFinite(reverifyMs) || !Number.isFinite(verifiedMs)) return false;
+  let expiryMs = reverifyMs;
+  if (entry.recertification !== undefined) {
+    const recertifyMs = Date.parse(entry.recertification.at);
+    // A recertification whose date cannot be read cannot be shown to be in the future: treat the evidence as due.
+    expiryMs = Number.isFinite(recertifyMs) ? Math.min(expiryMs, recertifyMs) : Number.NEGATIVE_INFINITY;
+  }
+  return verifiedMs <= nowMs && expiryMs > nowMs;
 }
 
 function unique(codes: Array<PublicationReasonCode | null>): PublicationReasonCode[] {

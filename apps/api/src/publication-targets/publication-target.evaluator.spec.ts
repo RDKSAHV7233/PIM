@@ -270,6 +270,21 @@ describe("evaluatePublicationTarget", () => {
         expect(condition(evaluate({ evidence: [pipelineEvidence({ verifiedAt: "sometime" })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
       });
 
+      it("a recertification date earlier than reverifyBy is the effective expiry; the recorded dates are untouched", () => {
+        const annotated = (at: string) => ({ ...pipelineEvidence(), recertification: { kind: "SCHEMA_REMAP_REQUIRED", at, ref: null } });
+        const past = new Date(NOW.getTime() - HOUR_MS).toISOString();
+        const future = new Date(NOW.getTime() + DAY_MS).toISOString();
+        expect(condition(evaluate({ evidence: [annotated(past)] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+        expect(condition(evaluate({ evidence: [annotated(NOW.toISOString())] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+        expect(condition(evaluate({ evidence: [annotated(future)] }), "capability_verified").status).toBe("pass");
+        expect(condition(evaluate({ evidence: [annotated("whenever")] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+      });
+
+      it("a recertification later than reverifyBy does not extend the evidence", () => {
+        const expired = { ...pipelineEvidence({ reverifyBy: new Date(NOW.getTime() - 1).toISOString() }), recertification: { kind: "SCHEMA_REMAP_REQUIRED", at: new Date(NOW.getTime() + DAY_MS).toISOString(), ref: null } };
+        expect(condition(evaluate({ evidence: [expired] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
+      });
+
       it("an unparseable reverifyBy needs recertification", () => {
         expect(condition(evaluate({ evidence: [pipelineEvidence({ reverifyBy: "soon" })] }), "capability_verified").code).toBe("RECERTIFICATION_REQUIRED");
       });

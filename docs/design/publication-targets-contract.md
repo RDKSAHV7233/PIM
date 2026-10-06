@@ -5,8 +5,9 @@ far: the launch-policy fail-closed default (5.1a, #1182) and the pure registry a
 (5.1b, `apps/api/src/publication-targets/`, no consumers, no endpoint), and the evidence manifest with its inventory
 and the Product Owner commercial-support records (5.1c-1, data only, no migration; inventory in
 `docs/connectors/PUBLICATION_EVIDENCE_INVENTORY_2026-10-06.md`). Tenant entitlement persistence and provider-verification persistence are migrations only (5.1c-2:
-`connector_tenant_entitlements` and three `connector_installations` columns, nothing reads or writes them). Not yet implemented: fact
-derivation (5.1c-3), the endpoint, the divergence comparison and the
+`connector_tenant_entitlements` and three `connector_installations` columns, nothing reads or writes them). The evaluator's facts are derived by pure
+functions in `publication-target.facts.ts` (5.1c-3: entitlement, provider-verified credential, recertification; no database access,
+no consumer). Not yet implemented: the assembler that reads the rows, the endpoint, the divergence comparison and the
 rotation metric (5.1d), and everything in 5.2 and later.
 
 ## 1. Endpoint contract
@@ -146,6 +147,13 @@ of the `path` dimension: Zoho Inventory would have `PUBLISH / direct_adapter / s
 `PUBLISH / product_pipeline / untested`, which evaluates as `CAPABILITY_NOT_VERIFIED`.
 
 ### Entities introduced by 5.1 (shape only)
+
+> **RLS status.** The `connector_tenant_entitlements` table defines row-level security (tenant read of its own rows, no write
+> policy, forced), but the production runtime database role is a superuser and the table owner, so that boundary is **defined,
+> not enforced** there (SEC-DB-RLS-001, `docs/qa/sec-db-rls-001-investigation-2026-10-06.md`). Its CHECK constraints, append-only
+> trigger and one-live-grant index do bind a superuser. Until the role is replaced and tenant isolation is proven with a
+> production-equivalent role, the shadow endpoint and any enforcement must not rely on RLS for this table, and must read it
+> through the tenant client.
 
 ```ts
 interface ConnectorTenantEntitlement {   // control plane; append and revoke, never edit in place

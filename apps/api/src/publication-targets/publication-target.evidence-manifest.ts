@@ -301,6 +301,8 @@ export function validateEvidenceManifest(
     if (!capabilities) problems.push(`${key}: connector is not a registered PUBLISH connector`);
     else if (!capabilities.includes(entry.capability)) problems.push(`${key}: capability is not declared by the connector`);
     if (!EVIDENCE_PATHS.includes(entry.path)) problems.push(`${key}: unknown path`);
+    // A recertification is derived from a later change (applyRecertificationTriggers); it is never recorded by hand.
+    if (entry.recertification !== undefined) problems.push(`${key}: recertification is derived and must not be recorded in the manifest`);
 
     const rank = CERTIFICATION_LEVEL_ORDER.indexOf(entry.level);
     if (rank < 0) {

@@ -170,7 +170,17 @@ describe("5.1c-2 migrations", () => {
         .filter((file) => pattern.test(fs.readFileSync(file, "utf8")))
         .map((file) => path.relative(REPO_ROOT, file).replace(/\\/g, "/"));
       // tenant-scope.ts only lists the model so the drift guard and the tenant client isolate reads.
-      expect(offenders).toEqual(["apps/api/src/prisma/extensions/tenant-scope.ts"]);
+      // publication-target.facts.ts (5.1c-3) derives evaluator facts from rows the caller passes in; it has no database
+      // access (the structure tests in the invariants spec pin that: pure imports only, no I/O).
+      expect(offenders).toEqual([
+        "apps/api/src/prisma/extensions/tenant-scope.ts",
+        "apps/api/src/publication-targets/publication-target.facts.ts",
+      ]);
+    });
+
+    it("the only non-listing reference is the pure fact derivation: it imports no database client", () => {
+      const source = fs.readFileSync(path.join(__dirname, "publication-target.facts.ts"), "utf8");
+      expect(source).not.toMatch(/prisma|@prisma|PrismaService|\$queryRaw|\$executeRaw|\bfetch\(/i);
     });
 
     it("the tenant-scope extension lists the new model", () => {
