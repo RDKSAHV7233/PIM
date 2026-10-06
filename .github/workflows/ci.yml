@@ -108,6 +108,11 @@ jobs:
 
       # VEXA-AI-001 governance validators and their fixture tests. These are DB-free and fast. A glob (not a
       # list) is used so a new validate-ai-* script is gated automatically instead of silently left out.
+      - name: SEC-DB-RLS-001 call-site ratchet (no new unclassified privileged database consumer)
+        run: |
+          node scripts/validate-sec-db-call-sites.cjs
+          node scripts/validate-sec-db-call-sites.test.cjs
+
       - name: AI governance validators and fixture tests
         shell: bash
         run: |

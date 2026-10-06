@@ -1,0 +1,617 @@
+{
+  "version": 1,
+  "baseline": "origin/main 1712c465",
+  "purpose": "SEC-DB-RLS-001 phase 2: every database call site that behaves differently under a non-superuser, non-owner, RLS-enforced runtime role. A ratchet validator (scripts/validate-sec-db-call-sites.cjs) fails when a new unclassified site appears.",
+  "classes": {
+    "A": "cross-tenant discovery or aggregation through a client with no tenant context: silently sees only the default tenant under RLS",
+    "A2": "cross-tenant raw scan that uses tenant() with no argument: silently default tenant only",
+    "B": "tenant is known but the direct (no-context) client is used: writes fail loudly under RLS, reads return empty",
+    "C": "pre-tenant bootstrap or platform lookups needing an explicit decision",
+    "D": "already uses an approved path",
+    "R": "request-scoped raw SQL through tenant() with no argument: correct only while the request tenant equals the filter tenant"
+  },
+  "remediations": {
+    "tenant-iteration": "default: iterate tenants from the authoritative directory and act inside each tenant's own context (runWithTenantContext or prisma.tenant(key))",
+    "maintenance-read": "narrow exception: a SELECT-only maintenance policy on specific tables, never a general cross-tenant runtime role",
+    "tenant-client": "use prisma.tenant(tenantKey) where the tenant is already known",
+    "approved-maintenance-path": "already implemented and proven",
+    "explicit-tenant-argument": "request-scoped call that relies on the implicit request tenant: pass the tenant explicitly",
+    "decision-needed": "owner decision recorded before implementation",
+    "split": "part stays, part moves to the tenant client",
+    "review": "read each use before choosing"
+  },
+  "directClientFiles": [
+    {
+      "file": "auth/auth.service.ts",
+      "class": "C",
+      "remediation": "review",
+      "plan": "mostly tenant(tenantId) already; the two direct uses are pre-tenant identity lookups on an unscoped table; review each",
+      "rlsProtectedModels": [
+        "accountConsentEvent",
+        "accountDeletionRequest",
+        "accountExportRequest",
+        "auditLog",
+        "authIdentity",
+        "authRecoveryToken",
+        "userMfaEnrollment",
+        "userNotification"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "login and MFA flows for a non-default tenant under a restricted role",
+      "status": "open"
+    },
+    {
+      "file": "billing/commercial-requests.service.ts",
+      "class": "C",
+      "remediation": "decision-needed",
+      "plan": "platform-admin cross-tenant listing of commercial requests plus tenant lookups: decide between iteration and a maintenance read; known-tenant writes move to the tenant client",
+      "rlsProtectedModels": [
+        "tenantCommercialRequest"
+      ],
+      "otherModels": [
+        "workspaceDirectory"
+      ],
+      "rawSqlSites": 2,
+      "positiveAssertion": "an admin listing includes a non-default tenant's request",
+      "status": "open"
+    },
+    {
+      "file": "billing/plan-usage.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "the nightly rollup iterates tenants from the directory and writes PlanUsage through each tenant's context; PlanLimits stays a global config table",
+      "rlsProtectedModels": [
+        "apiAccessKey",
+        "authIdentity",
+        "marketplaceExportJob",
+        "outboundWebhookEndpoint",
+        "planUsage",
+        "tenantPlanProfile",
+        "variant"
+      ],
+      "otherModels": [
+        "publicSignupRequest",
+        "workspaceDirectory"
+      ],
+      "rawSqlSites": 21,
+      "positiveAssertion": "a non-default tenant's PlanUsage is recomputed (non-empty)",
+      "status": "open"
+    },
+    {
+      "file": "bulk-edit/bulk-edit-stale-operation-recovery.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "discover stale operations per tenant from the authoritative tenant directory, then act inside that tenant's context",
+      "rlsProtectedModels": [
+        "bulkEditOperation"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a stale operation seeded for a non-default tenant is recovered",
+      "status": "open"
+    },
+    {
+      "file": "bulk-import/bulk-import-stale-row-recovery.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "iterate tenants; recover stale rows per tenant context",
+      "rlsProtectedModels": [
+        "bulkImportJob",
+        "bulkImportRow"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a stale row seeded for a non-default tenant is recovered",
+      "status": "open"
+    },
+    {
+      "file": "common/tenant/tenant-directory.service.ts",
+      "class": "C",
+      "remediation": "split",
+      "plan": "workspace directory lookups stay (unscoped table); tenant provisioning seeds (market, currency, price list, identity) move to the tenant client for the new tenant key",
+      "rlsProtectedModels": [
+        "authIdentity",
+        "currency",
+        "market",
+        "priceList"
+      ],
+      "otherModels": [
+        "workspaceDirectory"
+      ],
+      "rawSqlSites": 0,
+      "positiveAssertion": "provisioning a new tenant seeds default pricing (non-empty), no silent warning",
+      "status": "open"
+    },
+    {
+      "file": "connector-framework/connector-credential.service.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for credential reads and writes",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connector-framework/connector-heartbeat.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "iterate installations per tenant context",
+      "rlsProtectedModels": [
+        "connectorCredential",
+        "connectorInstallation"
+      ],
+      "otherModels": [
+        "connectorDefinition"
+      ],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a heartbeat is recorded for a non-default tenant installation",
+      "status": "open"
+    },
+    {
+      "file": "connector-framework/connector-webhook-lease-sweeper.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "iterate tenants; sweep expired leases per tenant context",
+      "rlsProtectedModels": [
+        "connectorWebhookEvent"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "an expired webhook lease for a non-default tenant is redriven",
+      "status": "open"
+    },
+    {
+      "file": "connector-installer/credential-encryption.service.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for the credential upsert (reproduced failure: RLS violation, HTTP 500 on Shopify install)",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a Shopify install for a non-default tenant stores its credential",
+      "status": "open"
+    },
+    {
+      "file": "connectors/amazon/amazon.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for amazon on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/bigcommerce/bigcommerce.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for bigcommerce on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/dynamics365/dynamics365.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for dynamics365 on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/ebay/ebay.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for ebay on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/etsy/etsy.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for etsy on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/flipkart/flipkart.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for flipkart on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/myntra/myntra.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for myntra on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/odoo/odoo.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for odoo on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/prestashop/prestashop.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for prestashop on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/shopify/shopify.connector.ts",
+      "class": "B",
+      "remediation": "review",
+      "plan": "transactions only; confirm which client is passed in",
+      "rlsProtectedModels": [],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "install and publish for a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/shopware/shopware.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for shopware on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/woocommerce/woocommerce-brownfield-import.service.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey)",
+      "rlsProtectedModels": [
+        "connectorSubmission",
+        "variant"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "brownfield import for a non-default tenant writes variants and submissions",
+      "status": "open"
+    },
+    {
+      "file": "connectors/woocommerce/woocommerce-bulk-publish.service.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey)",
+      "rlsProtectedModels": [
+        "connectorSubmission"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "bulk publish for a non-default tenant records submissions",
+      "status": "open"
+    },
+    {
+      "file": "connectors/woocommerce/woocommerce-reconciliation.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "iterate tenants; reconcile per tenant context",
+      "rlsProtectedModels": [
+        "connectorInstallation",
+        "connectorSubmission"
+      ],
+      "otherModels": [
+        "connectorDefinition"
+      ],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a stuck submission for a non-default tenant is reconciled",
+      "status": "open"
+    },
+    {
+      "file": "connectors/woocommerce/woocommerce.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey)",
+      "rlsProtectedModels": [
+        "connectorCredential",
+        "connectorSubmission",
+        "connectorWebhookEvent"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential, webhook and submission writes for a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "connectors/zoho-inventory/zoho-inventory.connector.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "rlsProtectedModels": [
+        "connectorCredential"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "credential store and read for zoho-inventory on a non-default tenant",
+      "status": "open"
+    },
+    {
+      "file": "intelligence/intelligence-reservation-maintenance.service.ts",
+      "class": "D",
+      "remediation": "approved-maintenance-path",
+      "plan": "already uses the SELECT-only app.ai_maintenance marker; state changes go through the tenant client (proven under a restricted role in #1181)",
+      "rlsProtectedModels": [
+        "aiProviderBudgetReservation"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 2,
+      "positiveAssertion": "covered by the 004b-i RLS scenario",
+      "status": "open"
+    },
+    {
+      "file": "internal-ops/internal-ops-alerts.service.ts",
+      "class": "A",
+      "remediation": "maintenance-read",
+      "plan": "platform-wide operator aggregates: a narrowly scoped SELECT-only maintenance policy on the specific tables, never a runtime bypass",
+      "rlsProtectedModels": [
+        "bulkImportJob",
+        "kpiMetricEvent",
+        "marketplaceExportJob"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 13,
+      "positiveAssertion": "alert counts include a non-default tenant's failed jobs",
+      "status": "open"
+    },
+    {
+      "file": "internal-ops/internal-ops-summary.service.ts",
+      "class": "A",
+      "remediation": "maintenance-read",
+      "plan": "platform-wide readiness counts: SELECT-only maintenance policy on the specific tables",
+      "rlsProtectedModels": [
+        "bulkImportJob",
+        "bulkImportRun",
+        "connectorInstallation",
+        "connectorMappingVersion",
+        "connectorSubmission",
+        "marketplaceExportJob",
+        "mediaAsset",
+        "validationIssue"
+      ],
+      "otherModels": [
+        "mediaIntegrityScanRun"
+      ],
+      "rawSqlSites": 4,
+      "positiveAssertion": "summary counts include a non-default tenant's products and jobs",
+      "status": "open"
+    },
+    {
+      "file": "marketplace/export-job-reconciliation.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "discovery moves to tenant iteration (the per-row step already uses runWithTenantContext)",
+      "rlsProtectedModels": [
+        "marketplaceExportJob"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a stuck export job for a non-default tenant is reconciled",
+      "status": "open"
+    },
+    {
+      "file": "media/media-integrity.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "scan per tenant context; keep the platform scan-run and checkpoint tables non-RLS",
+      "rlsProtectedModels": [
+        "mediaAsset"
+      ],
+      "otherModels": [
+        "mediaIntegrityScanCheckpoint",
+        "mediaIntegrityScanRun"
+      ],
+      "rawSqlSites": 0,
+      "positiveAssertion": "a media asset of a non-default tenant is scanned",
+      "status": "open"
+    },
+    {
+      "file": "media/media.service.ts",
+      "class": "B",
+      "remediation": "tenant-client",
+      "plan": "use tenant(tenantKey) (already also uses the tenant client elsewhere)",
+      "rlsProtectedModels": [
+        "mediaAsset",
+        "product",
+        "variant"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 0,
+      "positiveAssertion": "media upload for a non-default tenant",
+      "status": "open"
+    }
+  ],
+  "crossTenantRawSqlFiles": [
+    {
+      "file": "billing/commercial-reminders.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "trial-ending scan uses tenant() with no argument; iterate tenants",
+      "positiveAssertion": "a trial-ending reminder is produced for a non-default tenant",
+      "noArgTenantRawSites": 1,
+      "rawSqlSites": 1,
+      "status": "open"
+    },
+    {
+      "file": "billing/grace-period-escalation.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "grace-expired scan uses tenant() with no argument; billing enforcement would silently cover only default",
+      "positiveAssertion": "an expired grace period for a non-default tenant is escalated",
+      "noArgTenantRawSites": 1,
+      "rawSqlSites": 1,
+      "status": "open"
+    },
+    {
+      "file": "outbound-webhooks/outbound-webhooks.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "stuck-delivery recovery scan; iterate tenants",
+      "positiveAssertion": "a stuck delivery for a non-default tenant is recovered",
+      "noArgTenantRawSites": 1,
+      "rawSqlSites": 1,
+      "status": "open"
+    },
+    {
+      "file": "billing/stripe.service.ts",
+      "class": "C",
+      "remediation": "decision-needed",
+      "plan": "Stripe customer id to tenant resolution reads TenantPlanProfile with no tenant context (pre-tenant); stripe_webhook_events is a non-RLS global ledger",
+      "positiveAssertion": "a webhook for a non-default tenant's customer resolves to that tenant",
+      "noArgTenantRawSites": 3,
+      "rawSqlSites": 9,
+      "status": "open"
+    },
+    {
+      "file": "billing/plan-usage.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "tenant discovery scan inside the nightly rollup (counted above)",
+      "positiveAssertion": "see plan-usage entry",
+      "noArgTenantRawSites": 5,
+      "rawSqlSites": 21,
+      "status": "open"
+    },
+    {
+      "file": "internal-ops/internal-ops-summary.service.ts",
+      "class": "A",
+      "remediation": "maintenance-read",
+      "plan": "platform-wide readiness counts (counted above)",
+      "positiveAssertion": "see internal-ops-summary entry",
+      "noArgTenantRawSites": 0,
+      "rawSqlSites": 4,
+      "status": "open"
+    },
+    {
+      "file": "bulk-import/bulk-import.service.ts",
+      "class": "R",
+      "remediation": "explicit-tenant-argument",
+      "plan": "request-scoped raw SQL with a manual tenant filter through tenant() with no argument; pass tenant(tenantKey) so the context and the filter cannot disagree, and confirm queue workers restore tenant context",
+      "positiveAssertion": "template and version queries return rows for a non-default tenant",
+      "noArgTenantRawSites": 4,
+      "rawSqlSites": 4,
+      "status": "open"
+    },
+    {
+      "file": "catalog/catalog.service.ts",
+      "class": "R",
+      "remediation": "explicit-tenant-argument",
+      "plan": "request-scoped raw SQL with a manual tenant filter; pass tenant(tenantKey)",
+      "positiveAssertion": "the channel-product query returns rows for a non-default tenant",
+      "noArgTenantRawSites": 1,
+      "rawSqlSites": 1,
+      "status": "open"
+    },
+    {
+      "file": "connector-installer/connector-permission.service.ts",
+      "class": "R",
+      "remediation": "explicit-tenant-argument",
+      "plan": "request-scoped raw SQL with a manual tenant filter; pass tenant(tenantKey)",
+      "positiveAssertion": "the permission query returns rows for a non-default tenant",
+      "noArgTenantRawSites": 1,
+      "rawSqlSites": 9,
+      "status": "open"
+    }
+  ],
+  "rawSqlSitesByFile": {
+    "billing/commercial-reminders.service.ts": 1,
+    "billing/commercial-requests.service.ts": 2,
+    "billing/grace-period-escalation.service.ts": 1,
+    "billing/plan-usage.service.ts": 21,
+    "billing/stripe.service.ts": 9,
+    "bulk-import/bulk-import.service.ts": 4,
+    "catalog/catalog.service.ts": 1,
+    "common/scheduling/advisory-lock.ts": 2,
+    "common/tenant/tenant-raw.ts": 3,
+    "compliance/compliance.service.ts": 1,
+    "connector-framework/connector-webhook-ingestion.service.ts": 1,
+    "connector-installer/connector-permission.service.ts": 9,
+    "intelligence/intelligence-execution-control.service.ts": 2,
+    "intelligence/intelligence-reservation-maintenance.service.ts": 2,
+    "internal-ops/internal-ops-alerts.service.ts": 13,
+    "internal-ops/internal-ops-summary.service.ts": 4,
+    "marketplace/marketplace.service.ts": 1,
+    "outbound-webhooks/outbound-webhooks.service.ts": 1,
+    "prisma/prisma.service.ts": 1,
+    "workspace-users/workspace-users.service.ts": 2
+  },
+  "totals": {
+    "directClientFiles": 32,
+    "rawSqlSites": 81,
+    "rawSqlFiles": 20
+  },
+  "otherClients": [
+    {
+      "file": "common/scheduling/advisory-lock.ts",
+      "note": "its own PrismaClient on the lock URL; advisory locks need no table privileges"
+    },
+    {
+      "file": "error-authority/observability-db.service.ts",
+      "note": "separate observability database; no RLS and no tenant-keyed tables; accessed as the postgres superuser today (identity to be separated)"
+    }
+  ]
+}
