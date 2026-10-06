@@ -182,7 +182,7 @@
       "file": "connectors/amazon/amazon.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -195,7 +195,7 @@
       "file": "connectors/bigcommerce/bigcommerce.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -208,7 +208,7 @@
       "file": "connectors/dynamics365/dynamics365.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -221,7 +221,7 @@
       "file": "connectors/ebay/ebay.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -234,7 +234,7 @@
       "file": "connectors/etsy/etsy.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -247,7 +247,7 @@
       "file": "connectors/flipkart/flipkart.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -260,7 +260,7 @@
       "file": "connectors/myntra/myntra.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -273,7 +273,7 @@
       "file": "connectors/odoo/odoo.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -286,7 +286,7 @@
       "file": "connectors/prestashop/prestashop.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -298,9 +298,12 @@
     {
       "file": "connectors/shopify/shopify.connector.ts",
       "class": "B",
-      "remediation": "review",
-      "plan": "transactions only; confirm which client is passed in",
-      "rlsProtectedModels": [],
+      "remediation": "tenant-client",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "rlsProtectedModels": [
+        "connectorCredential",
+        "connectorInstallation"
+      ],
       "otherModels": [],
       "rawSqlSites": 0,
       "positiveAssertion": "install and publish for a non-default tenant",
@@ -310,7 +313,7 @@
       "file": "connectors/shopware/shopware.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -323,7 +326,7 @@
       "file": "connectors/woocommerce/woocommerce-brownfield-import.service.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey)",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorSubmission",
         "variant"
@@ -337,7 +340,7 @@
       "file": "connectors/woocommerce/woocommerce-bulk-publish.service.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey)",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorSubmission"
       ],
@@ -366,7 +369,7 @@
       "file": "connectors/woocommerce/woocommerce.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey)",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential",
         "connectorSubmission",
@@ -381,7 +384,7 @@
       "file": "connectors/zoho-inventory/zoho-inventory.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for connectorCredential access",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -471,9 +474,9 @@
     },
     {
       "file": "media/media.service.ts",
-      "class": "B",
-      "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) (already also uses the tenant client elsewhere)",
+      "class": "C",
+      "remediation": "decision-needed",
+      "plan": "the only direct-client use is getAssetFile(assetId): a public, unauthenticated route that serves an asset by id for external systems (for example Shopify fetching product images). No tenant is known there, so under RLS the lookup sees only the default tenant and every other tenant's images would 404. Not a mechanical swap: decide how the public URL carries its tenant (tenant in the path, a signed token, or a narrow lookup function) before the role cutover",
       "rlsProtectedModels": [
         "mediaAsset",
         "product",
@@ -481,7 +484,7 @@
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "media upload for a non-default tenant",
+      "positiveAssertion": "the public asset URL of a non-default tenant's media asset serves its bytes",
       "status": "open"
     }
   ],

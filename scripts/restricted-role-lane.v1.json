@@ -24,14 +24,14 @@
     "media-governance-contract.test.cjs",
     "commercial-reminders-contract.test.cjs",
     "issue-inbox-tenant-boundary.test.cjs",
-    "tenant-provisioning-default-pricing.test.cjs"
+    "tenant-provisioning-default-pricing.test.cjs",
+    "flipkart-install-credentials.test.cjs",
+    "flipkart-token-expiry-alerting.test.cjs",
+    "shopify-publication-webhook.test.cjs",
+    "shopify-runtime-foundation.test.cjs",
+    "woocommerce-credential-verification-endpoint.test.cjs"
   ],
   "expectedFailing": [
-    {
-      "test": "connector-idempotency-semantics.test.cjs",
-      "tracks": "M1",
-      "reason": "the Flipkart connector reads its stored credentials through the context-free client (flipkart.connector.ts, M1b), so the publish fails with missing credentials under RLS; the credential write path is fixed in M1a"
-    },
     {
       "test": "tenant-provisioning-default-pricing.test.cjs",
       "tracks": "M2",

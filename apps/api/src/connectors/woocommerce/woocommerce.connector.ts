@@ -29,6 +29,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { tenantDb } from '../../connector-framework/tenant-db';
 import {
   buildEncryptedCredential,
   decryptCredentialValue,
@@ -276,6 +278,8 @@ export class WooCommerceConnector implements ConnectorInterface {
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
     private readonly httpClient?: ConnectorHttpClient,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {}
 
   // ─── credential helpers ─────────────────────────────────────────────────────
@@ -289,7 +293,7 @@ export class WooCommerceConnector implements ConnectorInterface {
   }
 
   private async fetchCredentialPlaintext(tenantKey: string, installationId: string, type: string): Promise<string | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, tenantKey);
     const row = await db.connectorCredential.findFirst({
       where: { tenantKey, installationId, credentialType: type },
       select: { encryptedValue: true, keyVersion: true },
@@ -630,9 +634,9 @@ export class WooCommerceConnector implements ConnectorInterface {
 
   private static readonly WEBHOOK_HEALTH_THRESHOLD_MS = 12 * 60 * 60 * 1000; // 12 h
 
-  private async checkWebhookHealth(installationId: string): Promise<ConnectorIssue | null> {
+  private async checkWebhookHealth(tenantKey: string, installationId: string): Promise<ConnectorIssue | null> {
     try {
-      const db = this.prismaDirect.getClient();
+      const db = tenantDb(this.prisma, this.prismaDirect, tenantKey);
       const last = await db.connectorWebhookEvent.findFirst({
         where: { installationId },
         orderBy: { receivedAt: 'desc' },
@@ -674,8 +678,8 @@ export class WooCommerceConnector implements ConnectorInterface {
   }> {
     const [credentialsValid, webhookHealthIssue, recentSubmissions] = await Promise.all([
       this.validateCredentials(ctx).catch(() => false),
-      this.checkWebhookHealth(ctx.installationId).catch(() => null),
-      this.loadRecentSubmissionSummary(ctx.installationId).catch(() => ({
+      this.checkWebhookHealth(ctx.tenantId, ctx.installationId).catch(() => null),
+      this.loadRecentSubmissionSummary(ctx.tenantId, ctx.installationId).catch(() => ({
         success: 0, error: 0, pending: 0, lastSyncAt: null,
       })),
     ]);
@@ -683,9 +687,10 @@ export class WooCommerceConnector implements ConnectorInterface {
   }
 
   private async loadRecentSubmissionSummary(
+    tenantKey: string,
     installationId: string,
   ): Promise<{ success: number; error: number; pending: number; lastSyncAt: string | null }> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, tenantKey);
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const rows = await db.connectorSubmission.findMany({
       where: { installationId, submittedAt: { gte: cutoff } },
@@ -1319,7 +1324,7 @@ export class WooCommerceConnector implements ConnectorInterface {
       throw new MissingTenantContextError('WooCommerce app-auth callback missing tenant context.');
     }
 
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const keyVersion = this.currentKeyVersion;
     const key = this.keys.get(keyVersion);
     if (!key) {
@@ -1551,7 +1556,7 @@ export class WooCommerceConnector implements ConnectorInterface {
     // Skipped for non-SUCCESS outcomes — those have their own error signals.
     const channelErrors: ConnectorIssue[] = [];
     if (status === 'SUCCESS') {
-      const webhookHealthWarning = await this.checkWebhookHealth(ctx.installationId);
+      const webhookHealthWarning = await this.checkWebhookHealth(ctx.tenantId, ctx.installationId);
       if (webhookHealthWarning) channelErrors.push(webhookHealthWarning);
     }
 

@@ -57,6 +57,8 @@ import {
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { tenantDb } from "../../connector-framework/tenant-db";
 import { validateConnectorTargetUrl } from "../../common/security/url-safety";
 import { isConnectorTargetSecurityError, targetSecurityVerificationReason } from "../../common/security/connector-target-errors";
 import { configurationInvalid } from "../../connector-framework/credential-validation";
@@ -124,12 +126,14 @@ export class PrestaShopConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {}
 
   // ─── credential helpers ─────────────────────────────────────────────────
 
   private async getPlainCredential(ctx: ConnectorContext, credentialType: string): Promise<string | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const row = await db.connectorCredential.findFirst({
       where: { tenantKey: ctx.tenantId, installationId: ctx.installationId, credentialType },
       select: { encryptedValue: true, keyVersion: true },

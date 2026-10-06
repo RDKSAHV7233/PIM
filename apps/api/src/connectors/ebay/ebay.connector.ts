@@ -127,6 +127,8 @@ import {
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { tenantDb } from "../../connector-framework/tenant-db";
 
 type CredentialRow = {
   encryptedValue: string;
@@ -194,6 +196,8 @@ export class EbayConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {
     if (!this.keys.has(this.currentKeyVersion)) {
       throw new Error(`Missing credential encryption key for current version ${this.currentKeyVersion}.`);
@@ -666,7 +670,7 @@ export class EbayConnector implements ConnectorInterface {
   }
 
   private async getPlainCredential(ctx: ConnectorContext, credentialType: string): Promise<string | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const row: CredentialRow | null = await db.connectorCredential.findFirst({
       where: { tenantKey: ctx.tenantId, installationId: ctx.installationId, credentialType },
       select: { encryptedValue: true, keyVersion: true, status: true },
@@ -688,7 +692,7 @@ export class EbayConnector implements ConnectorInterface {
   private async storeCredential(ctx: ConnectorContext, credentialType: string, plainValue: string, expiresAt: Date | null): Promise<void> {
     const encrypted = buildEncryptedCredential(plainValue, this.currentKeyVersion, this.keys);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const id = `${ctx.installationId}:${credentialType}`;
     await db.connectorCredential.upsert({
       where: { id },

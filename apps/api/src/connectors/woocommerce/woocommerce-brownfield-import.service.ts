@@ -13,6 +13,8 @@ import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import type { ConnectorContext } from '../../connector-framework/connector.interface';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { tenantDb } from '../../connector-framework/tenant-db';
 import { WooCommerceConnector } from './woocommerce.connector';
 
 export type BrownfieldImportResult = {
@@ -32,6 +34,8 @@ export class WooCommerceBrownfieldImportService {
   constructor(
     private readonly connector: WooCommerceConnector,
     private readonly prismaDirect: PrismaDirectService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {}
 
   /**
@@ -47,7 +51,7 @@ export class WooCommerceBrownfieldImportService {
     installationId: string,
     tenantKey: string,
   ): Promise<BrownfieldImportResult> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, tenantKey);
     let linked = 0;
     let skuLinked = 0;
     let unmatched = 0;

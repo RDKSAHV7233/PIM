@@ -21,6 +21,8 @@ import {
 } from "../../connector-framework/connector.interface";
 import { noAutomaticRetry } from "../../connector-framework/connector-retry-policy";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { tenantDb } from "../../connector-framework/tenant-db";
 
 // Business Central Online API v2.0 (OData). Auth: Azure AD client_credentials
 // grant, scope https://api.businesscentral.dynamics.com/.default.
@@ -99,6 +101,8 @@ export class Dynamics365Connector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {
     if (!this.keys.has(this.currentKeyVersion)) {
       throw new Error(`Missing credential encryption key for current version ${this.currentKeyVersion}.`);
@@ -372,7 +376,7 @@ export class Dynamics365Connector implements ConnectorInterface {
   }
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await db.connectorCredential.updateMany({
       where: {
         tenantKey: ctx.tenantId,
@@ -395,7 +399,7 @@ export class Dynamics365Connector implements ConnectorInterface {
   }
 
   private async getCredentialRow(ctx: ConnectorContext, credentialType: string): Promise<CredentialRow | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const row = await db.connectorCredential.findFirst({
       where: { tenantKey: ctx.tenantId, installationId: ctx.installationId, credentialType },
       select: { id: true, encryptedValue: true, keyVersion: true, status: true, expiresAt: true, failureReason: true },
@@ -420,7 +424,7 @@ export class Dynamics365Connector implements ConnectorInterface {
   ): Promise<void> {
     const encrypted = buildEncryptedCredential(plainValue, this.currentKeyVersion, this.keys);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const id = `${ctx.installationId}:${credentialType}`;
     await db.connectorCredential.upsert({
       where: { id },

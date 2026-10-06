@@ -24,6 +24,8 @@ import {
 } from "../../connector-framework/connector.interface";
 import { getCategoryRule, ruleToProductTypeSchema } from "./shopify-category-rules";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { tenantDb } from "../../connector-framework/tenant-db";
 import { tenantRaw, tenantExecRaw } from "../../common/tenant/tenant-raw";
 import {
   ShopifyApiClient,
@@ -307,6 +309,8 @@ export class ShopifyConnector implements ConnectorInterface {
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
     private readonly apiClient: ShopifyApiClient,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {
     if (!this.keys.has(this.currentKeyVersion)) {
       throw new Error(
@@ -1096,7 +1100,7 @@ export class ShopifyConnector implements ConnectorInterface {
     // commit successfully while the installation's connectionStage update
     // failed or was skipped independently, leaving a partial-completion
     // state (valid credentials, never marked 'connected').
-    await this.prismaDirect.getClient().$transaction(async (tx) => {
+    await tenantDb(this.prisma, this.prismaDirect, ctx.tenantId).$transaction(async (tx) => {
       for (const store of credentialStores) {
         await this.storeCredential(tx, ctx, store.credentialType, store.value, store.options);
       }
@@ -1165,7 +1169,7 @@ export class ShopifyConnector implements ConnectorInterface {
    * the token was revoked server-side (e.g. app uninstall / Shopify Partner rotation).
    */
   private async expireAccessToken(ctx: ConnectorContext): Promise<void> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await tenantExecRaw(db, `
       UPDATE connector_credentials
       SET expires_at = NOW(), updated_at = NOW()
@@ -1176,7 +1180,7 @@ export class ShopifyConnector implements ConnectorInterface {
   }
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await tenantExecRaw(db, `
       UPDATE connector_credentials
       SET
@@ -1205,7 +1209,7 @@ export class ShopifyConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     credentialType: string,
   ): Promise<CredentialRow | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const rows = await tenantRaw<CredentialRow[]>(db, `
       SELECT
         id,
@@ -1617,7 +1621,7 @@ export class ShopifyConnector implements ConnectorInterface {
     };
 
     // Persist into installation metadata using JSONB merge (preserves existing keys)
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await tenantExecRaw(db, `
       UPDATE connector_installations
       SET
@@ -2213,7 +2217,7 @@ export class ShopifyConnector implements ConnectorInterface {
   }
 
   private async getInstallationMetadata(ctx: ConnectorContext): Promise<Record<string, unknown>> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const rows = await tenantRaw<InstallationMetadataRow[]>(db, `
       SELECT metadata
       FROM connector_installations

@@ -41,6 +41,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { tenantDb } from '../../connector-framework/tenant-db';
 import {
   decryptCredentialValue,
   parseCredentialKeyVersion,
@@ -173,6 +175,8 @@ export class OdooConnector implements ConnectorInterface {
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
     private readonly httpClient?: ConnectorHttpClient,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {}
 
   // ─── credential helpers ─────────────────────────────────────────────────────
@@ -186,7 +190,7 @@ export class OdooConnector implements ConnectorInterface {
   }
 
   private async fetchCredentialPlaintext(tenantKey: string, installationId: string, type: string): Promise<string | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, tenantKey);
     const row = await db.connectorCredential.findFirst({
       where: { tenantKey, installationId, credentialType: type },
       select: { encryptedValue: true, keyVersion: true },

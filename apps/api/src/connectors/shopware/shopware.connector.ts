@@ -58,6 +58,8 @@ import {
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { tenantDb } from "../../connector-framework/tenant-db";
 
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 // Shopware 6's well-known, universal default EUR currency id, present in
@@ -105,12 +107,14 @@ export class ShopwareConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {}
 
   // ─── credential helpers ─────────────────────────────────────────────────
 
   private async getPlainCredential(ctx: ConnectorContext, credentialType: string): Promise<string | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const row = await db.connectorCredential.findFirst({
       where: { tenantKey: ctx.tenantId, installationId: ctx.installationId, credentialType },
       select: { encryptedValue: true, keyVersion: true },
@@ -486,7 +490,7 @@ export class ShopwareConnector implements ConnectorInterface {
   private async storeCredential(ctx: ConnectorContext, credentialType: string, plainValue: string, expiresAt: Date | null): Promise<void> {
     const encrypted = buildEncryptedCredential(plainValue, this.currentKeyVersion, this.keys);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const id = `${ctx.installationId}:${credentialType}`;
     await db.connectorCredential.upsert({
       where: { id },

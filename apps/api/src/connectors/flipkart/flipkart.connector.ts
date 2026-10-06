@@ -22,6 +22,8 @@ import {
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { tenantDb } from "../../connector-framework/tenant-db";
 import {
   getCategoryRule,
   ruleToProductTypeSchema,
@@ -139,6 +141,8 @@ export class FlipkartConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {
     if (!this.keys.has(this.currentKeyVersion)) {
       throw new Error(
@@ -781,7 +785,7 @@ export class FlipkartConnector implements ConnectorInterface {
   }
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await db.connectorCredential.updateMany({
       where: {
         tenantKey: ctx.tenantId,
@@ -799,7 +803,7 @@ export class FlipkartConnector implements ConnectorInterface {
   }
 
   private async noteCredentialWarning(ctx: ConnectorContext, warningReason: string): Promise<void> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await db.connectorCredential.updateMany({
       where: {
         tenantKey: ctx.tenantId,
@@ -828,7 +832,7 @@ export class FlipkartConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     credentialType: string,
   ): Promise<CredentialRow | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const row = await db.connectorCredential.findFirst({
       where: {
         tenantKey: ctx.tenantId,
@@ -879,7 +883,7 @@ export class FlipkartConnector implements ConnectorInterface {
   ): Promise<void> {
     const encrypted = buildEncryptedCredential(plainValue, this.currentKeyVersion, this.keys);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const id = `${ctx.installationId}:${credentialType}`;
 
     await db.connectorCredential.upsert({
@@ -1023,7 +1027,7 @@ export class FlipkartConnector implements ConnectorInterface {
   }
 
   private async invalidateAccessToken(ctx: ConnectorContext): Promise<void> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     await db.connectorCredential.updateMany({
       where: {
         tenantKey: ctx.tenantId,

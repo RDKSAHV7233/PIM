@@ -19,6 +19,8 @@
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { tenantDb } from '../../connector-framework/tenant-db';
 import {
   decryptCredentialValue,
   loadCredentialEncryptionKeys,
@@ -125,6 +127,8 @@ export class MyntraConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1b: the tenant client for known-tenant reads and writes; optional only so tests that build this by hand are unchanged.
+    private readonly prisma?: PrismaService,
   ) {}
 
   private get apiBaseUrl(): string {
@@ -134,7 +138,7 @@ export class MyntraConnector implements ConnectorInterface {
   // ─── credential helpers ─────────────────────────────────────────────────────
 
   private async getPlainCredential(ctx: ConnectorContext, type: string): Promise<string | null> {
-    const db = this.prismaDirect.getClient();
+    const db = tenantDb(this.prisma, this.prismaDirect, ctx.tenantId);
     const row = await db.connectorCredential.findFirst({
       where: { installationId: ctx.installationId, credentialType: type },
       select: { encryptedValue: true, keyVersion: true },
