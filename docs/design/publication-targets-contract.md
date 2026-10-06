@@ -1,7 +1,10 @@
 # Publication targets: contract, reason codes, consumers and PR plan
 
-Companion to `docs/adr/0015-publication-targets-derived-from-readiness-evidence.md`. Status: proposed design,
-nothing here is implemented.
+Companion to `docs/adr/0015-publication-targets-derived-from-readiness-evidence.md`. Status: accepted design. Implemented so
+far: the launch-policy fail-closed default (5.1a, #1182) and the pure registry and evaluator with their invariants
+(5.1b, `apps/api/src/publication-targets/`, no consumers, no endpoint). Not yet implemented: the evidence manifest and
+entitlement persistence (5.1c), the endpoint, the divergence comparison and the rotation metric (5.1d), and everything
+in 5.2 and later.
 
 ## 1. Endpoint contract
 
@@ -61,7 +64,7 @@ Rules:
 | 2 | `runtime_registered` | platform | `ConnectorRegistry` | `CONNECTOR_NOT_REGISTERED` |
 | 3 | `publish_declared` | platform | connector `capabilities` | `PUBLISH_NOT_DECLARED` |
 | 4 | `capability_verified` | platform | evidence manifest (new), path `product_pipeline`, `reverifyBy` | `CAPABILITY_NOT_VERIFIED`, `RECERTIFICATION_REQUIRED` |
-| 5 | `release_allowed` | platform + tenant cohort | `resolveConnectorLaunchPolicy` stage; `ConnectorTenantEntitlement` record (`controlled_pilot` grant, `early_access` opt-in; none for `live`) | `P1_BLOCKER_HOLD`, `LAUNCH_STAGE_NOT_PUBLISHABLE`, `RELEASE_RESTRICTED` |
+| 5 | `release_allowed` | platform + tenant cohort | `resolveConnectorLaunchPolicy` stage and its `reason`; `ConnectorTenantEntitlement` record (`controlled_pilot` grant, `early_access` opt-in; none for `live`) | `CONNECTOR_POLICY_MISSING`, `P1_BLOCKER_HOLD`, `LAUNCH_STAGE_NOT_PUBLISHABLE`, `RELEASE_RESTRICTED` |
 | 6 | `commercially_supported` | platform | Product Owner approval record in the registry (new, default false) | `NOT_COMMERCIALLY_SUPPORTED` |
 | 7 | `target_schema_ready` | platform | `ProductTypeSchema` registry (ADR-0008) | `TARGET_SCHEMA_MISSING`, `TARGET_SCHEMA_STALE` |
 | 8 | `installation_eligible` | tenant | `connector_installations` (status, authorization metadata) | `NO_INSTALLATION`, `INSTALLATION_NOT_ACTIVE`, `INSTALLATION_AUTH_INCOMPLETE` |
@@ -87,6 +90,7 @@ condition into an error count.
 | `PUBLISH_NOT_DECLARED` | 3 | yes | platform | This channel does not support publishing. |
 | `CAPABILITY_NOT_VERIFIED` | 4 | yes | platform | Publishing to this channel has not been verified for use. |
 | `RECERTIFICATION_REQUIRED` | 4 | yes | platform | Verification for this channel is out of date or its schema changed and needs re-verification. |
+| `CONNECTOR_POLICY_MISSING` | 5 | yes | platform | This channel is not available. |
 | `P1_BLOCKER_HOLD` | 5 | yes | platform | Publishing to this channel is on hold. |
 | `LAUNCH_STAGE_NOT_PUBLISHABLE` | 5 | yes | platform | This channel is not open for publishing yet. |
 | `RELEASE_RESTRICTED` | 5 | yes | platform | This channel is limited to selected accounts and yours is not included. |
