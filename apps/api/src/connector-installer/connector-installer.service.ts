@@ -1375,7 +1375,7 @@ export class ConnectorInstallerService {
     this.throwOnUnverified("WOOCOMMERCE", verification);
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "site_url", plainValue: suppliedExternalAccountRef!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1446,7 +1446,7 @@ export class ConnectorInstallerService {
     this.throwOnUnverified("ODOO", verification);
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "odoo_url", plainValue: suppliedOdooUrl!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1509,7 +1509,7 @@ export class ConnectorInstallerService {
     this.throwOnUnverified("PRESTASHOP", verification);
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "store_url", plainValue: suppliedStoreUrl!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1561,7 +1561,7 @@ export class ConnectorInstallerService {
     this.throwOnUnverified("BIGCOMMERCE", verification);
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "store_hash", plainValue: suppliedStoreHash!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1626,7 +1626,7 @@ export class ConnectorInstallerService {
     const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "store_url", plainValue: storeUrl!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1702,7 +1702,7 @@ export class ConnectorInstallerService {
     const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "organization_id", plainValue: organizationId!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1780,7 +1780,7 @@ export class ConnectorInstallerService {
 
     const now = new Date();
     try {
-      await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
         await this.credentialEncryptionService.storeCredential(
           { tenantKey, installationId: installation.id, credentialType: "shop_id", plainValue: shopId!, metadata: { source: "credentials_update" } },
           tx, { lastValidatedAt: now, failureReason: null },
@@ -1866,7 +1866,7 @@ export class ConnectorInstallerService {
     const commitExtra = verification.outcome === "valid" ? verification.commitExtra : undefined;
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "aad_tenant", plainValue: aadTenant!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -1930,7 +1930,7 @@ export class ConnectorInstallerService {
     this.throwOnUnverified("MYNTRA", verification);
 
     const now = new Date();
-    await this.credentialEncryptionService.transaction(async (tx) => {
+    await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
       await this.credentialEncryptionService.storeCredential(
         { tenantKey, installationId: installation.id, credentialType: "merchant_id", plainValue: suppliedExternalAccountRef!, metadata: { source: "credentials_update" } },
         tx, { lastValidatedAt: now, failureReason: null },
@@ -2029,7 +2029,7 @@ export class ConnectorInstallerService {
 
     const now = new Date();
     try {
-      await this.credentialEncryptionService.transaction(async (tx) => {
+      await this.credentialEncryptionService.transaction(tenantKey, async (tx) => {
         await this.credentialEncryptionService.storeCredential(
           { tenantKey, installationId: installation.id, credentialType: "client_id", plainValue: clientId!, metadata: { source: "credentials_update" } },
           tx, { lastValidatedAt: now, failureReason: null },

@@ -125,15 +125,15 @@
     },
     {
       "file": "connector-framework/connector-credential.service.ts",
-      "class": "B",
-      "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for credential reads and writes",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "the tenant read path already uses tenant(); the direct client is only rotateAllCredentials, a cross-tenant sweep the heartbeat runs on a key-version change. Under RLS it would silently rotate only the default tenant; iterate tenants from the directory",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "credential store and read for a non-default tenant",
+      "positiveAssertion": "after a key version change the heartbeat rotation re-encrypts a non-default tenant's credentials",
       "status": "open"
     },
     {
@@ -167,15 +167,15 @@
     },
     {
       "file": "connector-installer/credential-encryption.service.ts",
-      "class": "B",
-      "remediation": "tenant-client",
-      "plan": "use tenant(tenantKey) for the credential upsert (reproduced failure: RLS violation, HTTP 500 on Shopify install)",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "M1a done (credential writes and the installer transactions use tenant(tenantKey)). Remaining: rotateKey scans every tenant through the context-free client and would silently rotate only the default tenant under RLS; iterate tenants (or run it under an operator identity) before the role cutover",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "a Shopify install for a non-default tenant stores its credential",
+      "positiveAssertion": "rotateKey re-encrypts a non-default tenant's credentials (credential-rotation integration test with a non-default tenant, run under the restricted role)",
       "status": "open"
     },
     {

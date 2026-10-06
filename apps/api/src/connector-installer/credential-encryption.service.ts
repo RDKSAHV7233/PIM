@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
+import { PrismaService } from "../prisma/prisma.service";
 import {
   buildEncryptedCredential,
   decryptCredentialValue,
@@ -65,12 +66,21 @@ export class ConnectorCredentialEncryptionService {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    // SEC-DB-RLS-001 M1a: credential reads and writes for a known tenant go through the tenant client, so they work when
+    // the runtime role is not a superuser. Optional only so that tests which build this service by hand (and run as the
+    // admin identity) keep working; Nest always injects it, and without it the old direct-client behaviour is kept.
+    private readonly prisma?: PrismaService,
   ) {
     if (!this.keys.has(this.currentVersion)) {
       throw new Error(
         `Missing credential encryption key for current version ${this.currentVersion}.`,
       );
     }
+  }
+
+  /** The client for a known tenant: the tenant client when available (RLS-safe), the direct client otherwise (tests). */
+  private clientForTenant(tenantKey: string): Prisma.TransactionClient {
+    return this.prisma ? (this.prisma.tenant(tenantKey) as unknown as Prisma.TransactionClient) : this.prismaDirect.getClient();
   }
 
   getCurrentVersion(): number {
@@ -105,7 +115,7 @@ export class ConnectorCredentialEncryptionService {
     const encrypted = this.encrypt(input.plainValue);
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
     const id = `${input.installationId}:${input.credentialType}`;
-    const db = tx ?? this.prismaDirect.getClient();
+    const db = tx ?? this.clientForTenant(input.tenantKey);
     const metadata: Prisma.InputJsonValue | typeof Prisma.DbNull = input.metadata
       ? (input.metadata as Prisma.InputJsonValue)
       : Prisma.DbNull;
@@ -151,16 +161,21 @@ export class ConnectorCredentialEncryptionService {
   }
 
   /**
-   * Opens a transaction on the SAME direct-client connection storeCredential()
-   * writes through. Callers that need to atomically combine one or more
-   * storeCredential() calls with another write against a model reachable from
-   * this connection (e.g. ConnectorInstallation) pass the yielded `tx` back
-   * into storeCredential()'s second argument.
+   * Opens a transaction on the SAME tenant-scoped connection storeCredential() writes through for that tenant. Callers that need
+   * to atomically combine one or more storeCredential() calls with another write for the same tenant (e.g. ConnectorInstallation)
+   * pass the yielded `tx` back into storeCredential()'s second argument. The tenant must be the tenant of every write inside `fn`.
    */
-  async transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    return this.prismaDirect.getClient().$transaction(fn);
+  async transaction<T>(tenantKey: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    const client = this.prisma ? this.prisma.tenant(tenantKey) : this.prismaDirect.getClient();
+    return client.$transaction(fn);
   }
 
+  /**
+   * CROSS-TENANT by design: scans every tenant's credentials. It still uses the context-free client, so under a restricted
+   * (non-superuser, RLS-enforced) runtime role it would silently see only the default tenant. It has no runtime caller today
+   * (an operator procedure); before the production role cutover it must either iterate tenants or run under an operator identity.
+   * Tracked in docs/qa/sec-db-rls-001-call-sites.v1.json (M3) and the secret-rotation work.
+   */
   async rotateKey(options: RotateCredentialKeyOptions): Promise<RotateCredentialKeyResult> {
     const fromVersion = parseCredentialKeyVersion(options.fromVersion);
     const toVersion = parseCredentialKeyVersion(options.toVersion);

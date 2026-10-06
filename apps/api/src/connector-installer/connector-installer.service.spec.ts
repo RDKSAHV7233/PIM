@@ -47,7 +47,7 @@ describe("ConnectorInstallerService", () => {
     };
     const credentialEncryptionService = {
       storeCredential: jest.fn().mockResolvedValue({ id: "cred_1", keyVersion: "v1" }),
-      transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
+      transaction: jest.fn().mockImplementation((_tenantKey: string, fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
     };
     const logger = {
       info: jest.fn(),

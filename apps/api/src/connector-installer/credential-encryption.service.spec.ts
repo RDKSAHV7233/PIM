@@ -10,6 +10,7 @@
 
 import { ConnectorCredentialEncryptionService } from "./credential-encryption.service";
 import type { PrismaDirectService } from "../prisma/prisma-direct.service";
+import type { PrismaService } from "../prisma/prisma.service";
 import type { LoggerService } from "../common/logging/logger.service";
 
 const ENV = {
@@ -163,5 +164,91 @@ describe("ConnectorCredentialEncryptionService — key rotation (no prior covera
     await expect(service.rotateKey({ fromVersion: 1, toVersion: 99 })).rejects.toThrow(
       "Missing configured key for toVersion=99.",
     );
+  });
+});
+
+describe("ConnectorCredentialEncryptionService — tenant-scoped credential writes (SEC-DB-RLS-001 M1a)", () => {
+  const originalEnv = process.env;
+  beforeEach(() => {
+    process.env = { ...originalEnv, ...ENV };
+  });
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  function makeTenantStubs() {
+    const directUpsert = jest.fn().mockResolvedValue(undefined);
+    const tenantUpserts = new Map<string, jest.Mock>();
+    const tenantTransactions: string[] = [];
+    const clientFor = (tenantKey: string) => {
+      const upsert = tenantUpserts.get(tenantKey) ?? jest.fn().mockResolvedValue(undefined);
+      tenantUpserts.set(tenantKey, upsert);
+      const client: any = {
+        connectorCredential: { upsert },
+        $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => {
+          tenantTransactions.push(tenantKey);
+          return fn(client);
+        }),
+      };
+      return client;
+    };
+    const prisma = { tenant: jest.fn().mockImplementation((key: string) => clientFor(key)) } as unknown as PrismaService;
+    const prismaDirect = {
+      getClient: jest.fn().mockReturnValue({ connectorCredential: { upsert: directUpsert }, $transaction: jest.fn() }),
+    } as unknown as PrismaDirectService;
+    const logger = { info: jest.fn(), warn: jest.fn() } as unknown as LoggerService;
+    return { prisma, prismaDirect, logger, directUpsert, tenantUpserts, tenantTransactions };
+  }
+
+  const input = (tenantKey: string) => ({
+    tenantKey,
+    installationId: "inst-1",
+    credentialType: "access_token",
+    plainValue: "token",
+  });
+
+  it("writes a credential through the tenant client of its own tenant, never the context-free client", async () => {
+    const stubs = makeTenantStubs();
+    const service = new ConnectorCredentialEncryptionService(stubs.prismaDirect, stubs.logger, stubs.prisma);
+
+    await service.storeCredential(input("tenant-b"));
+
+    expect(stubs.prisma.tenant).toHaveBeenCalledWith("tenant-b");
+    expect(stubs.tenantUpserts.get("tenant-b")).toHaveBeenCalledTimes(1);
+    expect(stubs.directUpsert).not.toHaveBeenCalled();
+  });
+
+  it("keeps two tenants' writes on two different tenant clients", async () => {
+    const stubs = makeTenantStubs();
+    const service = new ConnectorCredentialEncryptionService(stubs.prismaDirect, stubs.logger, stubs.prisma);
+
+    await service.storeCredential(input("tenant-a"));
+    await service.storeCredential(input("tenant-b"));
+
+    expect(stubs.tenantUpserts.get("tenant-a")).toHaveBeenCalledTimes(1);
+    expect(stubs.tenantUpserts.get("tenant-b")).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a transaction on the tenant client and lets storeCredential reuse that transaction", async () => {
+    const stubs = makeTenantStubs();
+    const service = new ConnectorCredentialEncryptionService(stubs.prismaDirect, stubs.logger, stubs.prisma);
+
+    await service.transaction("tenant-b", async (tx) => {
+      await service.storeCredential(input("tenant-b"), tx);
+    });
+
+    expect(stubs.tenantTransactions).toEqual(["tenant-b"]);
+    expect(stubs.tenantUpserts.get("tenant-b")).toHaveBeenCalledTimes(1);
+    expect(stubs.directUpsert).not.toHaveBeenCalled();
+  });
+
+  it("still works without the tenant client (tests that build the service by hand run as the admin identity)", async () => {
+    const stubs = makeTenantStubs();
+    const service = new ConnectorCredentialEncryptionService(stubs.prismaDirect, stubs.logger);
+
+    await service.storeCredential(input("tenant-b"));
+
+    expect(stubs.directUpsert).toHaveBeenCalledTimes(1);
+    expect(stubs.tenantUpserts.size).toBe(0);
   });
 });
