@@ -44,6 +44,7 @@ expectFail("restricted API loses its application name", { preload: replace("vexa
 expectFail("lane stops requiring proof of restricted sessions", { evaluate: replace("users.length > 0 && ", "") }, "evaluate");
 expectFail("lane stops being a ratchet", { evaluate: replace("UNEXPECTED_PASS", "UNEXPECTED_OK") }, "evaluate");
 expectFail("runner no longer uses the shared logic", { runner: replace("verdict.ok", "true") }, "runner");
+expectFail("runner no longer uses validated role configuration", { config: replace("RESTRICTED_ROLE_NAME", "V2_ROLE_NAME") }, "runner");
 expectFail("CI lets the lane fail silently", { ci: replace("  restricted-role-lane:\n    needs: detect-changes", "  restricted-role-lane:\n    continue-on-error: true\n    needs: detect-changes") }, "ci");
 expectFail("CI skips the migration", { ci: replace("      - name: Prisma migrate deploy (admin identity)\n        run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma\n\n      - name: Create the restricted runtime role", "      - name: Create the restricted runtime role") }, "ci");
 expectFail("CI lane job removed", { ci: replace("  restricted-role-lane:\n", "  restricted-role-lane-renamed:\n") }, "ci");

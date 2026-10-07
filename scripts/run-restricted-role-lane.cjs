@@ -24,23 +24,19 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { PrismaClient } = require("@prisma/client");
+const { resolveRestrictedRoleName, restrictedUrlFor } = require("./ci/restricted-lane-config.cjs");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const lane = JSON.parse(fs.readFileSync(process.env.LANE_CONFIG || path.join(__dirname, "restricted-role-lane.v1.json"), "utf8"));
 const { evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
-const ROLE = "vexa_runtime_ci";
+const ROLE = resolveRestrictedRoleName();
 const adminUrl = String(process.env.DATABASE_URL || "").trim();
 if (!adminUrl) {
   console.error("DATABASE_URL (admin) is required.");
   process.exit(2);
 }
 const rolePassword = String(process.env.RESTRICTED_ROLE_PASSWORD || "vexa_runtime_ci_password").replace(/[^A-Za-z0-9_]/g, "");
-const restrictedUrl = (() => {
-  const u = new URL(adminUrl);
-  u.username = ROLE;
-  u.password = rolePassword;
-  return u.toString();
-})();
+const restrictedUrl = restrictedUrlFor(adminUrl, ROLE, rolePassword);
 const preload = path.join(__dirname, "ci", "restricted-db-preload.cjs").split("\\").join("/");
 const only = String(process.env.LANE_ONLY || "").split(",").map((s) => s.trim()).filter(Boolean);
 const tests = lane.tests.filter((t) => only.length === 0 || only.includes(t));

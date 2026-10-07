@@ -22,6 +22,7 @@ const FILES = {
   preload: path.join(__dirname, "ci", "restricted-db-preload.cjs"),
   evaluate: path.join(__dirname, "ci", "restricted-lane-evaluate.cjs"),
   runner: path.join(__dirname, "run-restricted-role-lane.cjs"),
+  config: path.join(__dirname, "ci", "restricted-lane-config.cjs"),
   ci: path.join(ROOT, ".github", "workflows", "ci.yml"),
 };
 const TESTS_DIR = path.join(ROOT, "apps", "api", "test", "integration");
@@ -101,6 +102,9 @@ function validateLane(transforms = {}) {
   }
   if (!/require\("\.\/ci\/restricted-lane-evaluate\.cjs"\)/.test(src.runner) || !/verdict\.ok/.test(src.runner)) {
     fail("runner", "the runner must use the shared decision logic");
+  }
+  if (!/resolveRestrictedRoleName/.test(src.runner) || !/restrictedUrlFor/.test(src.runner) || !/RESTRICTED_ROLE_NAME/.test(src.config)) {
+    fail("runner", "the runner must resolve an explicit, validated restricted role name for production-shaped rehearsal reuse");
   }
   if (!/NODE_OPTIONS/.test(src.runner) || !/--require=/.test(src.runner)) {
     fail("runner", "the runner must inject the preload through NODE_OPTIONS");
