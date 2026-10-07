@@ -184,3 +184,43 @@ export async function forEachTenant(
 
   return summarizeTenantRuns(results, listed.directoryTenantCount);
 }
+
+export interface TenantDiscovery<T> {
+  /** Every row found, each tagged with the tenant whose iteration found it. De-duplicated by tenant. */
+  rows: Array<T & { tenantKey: string }>;
+  summary: TenantIterationSummary;
+}
+
+/**
+ * Discovery step of a scheduled job: find, per tenant, the rows the job must act on.
+ *
+ * Only the DISCOVERY runs inside the tenant transaction. The caller then acts on each discovered row through the services it already
+ * uses, which carry their own tenant client; this avoids holding a transaction open while other services open other connections.
+ *
+ * THE DISCOVERY QUERY MUST FILTER BY THE TENANT IT IS GIVEN (WHERE "tenantKey" = the iteration's tenant), in addition to the tenant
+ * context: while the runtime role still bypasses row level security (as the production role does today) a query with no tenant filter
+ * returns EVERY tenant's rows in EVERY iteration, so each row would be acted on once per tenant. Rows whose tenant is not the
+ * iteration's tenant are dropped and counted as an item failure, so that mistake is loud, never a silent duplicate.
+ */
+export async function discoverAcrossTenants<T extends { tenantKey?: string }>(
+  client: PrismaClient,
+  discover: (tx: Prisma.TransactionClient, tenantKey: string) => Promise<T[]>,
+  options: TenantIterationOptions = {},
+): Promise<TenantDiscovery<T>> {
+  const found: Array<T & { tenantKey: string }> = [];
+  const summary = await forEachTenant(
+    client,
+    async (tx, tenantKey) => {
+      const rows = await discover(tx, tenantKey);
+      const own = rows.filter((r) => r.tenantKey === undefined || r.tenantKey === tenantKey);
+      for (const row of own) {
+        found.push({ ...row, tenantKey });
+      }
+      return { examinedCount: rows.length, changedCount: 0, failedCount: rows.length - own.length };
+    },
+    options,
+  );
+  const seen = new Set<string>();
+  const rows = found.filter((row) => (seen.has(row.tenantKey) ? false : (seen.add(row.tenantKey), true)));
+  return { rows, summary };
+}

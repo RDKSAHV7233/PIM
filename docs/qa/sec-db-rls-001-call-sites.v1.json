@@ -493,21 +493,21 @@
       "file": "billing/commercial-reminders.service.ts",
       "class": "A2",
       "remediation": "tenant-iteration",
-      "plan": "trial-ending scan uses tenant() with no argument; iterate tenants",
-      "positiveAssertion": "a trial-ending reminder is produced for a non-default tenant",
-      "noArgTenantRawSites": 1,
+      "plan": "I-3 done: discovery runs per tenant through discoverAcrossTenants (transaction-local tenant context, bounded concurrency, the SQL ALSO filters by the tenant it is given so it is correct with or without RLS), and the job acts on each discovered tenant through services that carry their own tenant client. Failures are errors (never warnings) and the run reports PARTIAL_FAILURE; a tenant that could not be read is reported, not skipped.",
+      "positiveAssertion": "billing-jobs-tenant-iteration.test.cjs: a non-default tenant at 7 days gets its in-app trial-ending notification under the restricted role, a tenant at 4 days gets none; billing-jobs-tenant-iteration.spec.ts (mutation-checked)",
+      "noArgTenantRawSites": 0,
       "rawSqlSites": 1,
-      "status": "open"
+      "status": "migrated"
     },
     {
       "file": "billing/grace-period-escalation.service.ts",
       "class": "A2",
       "remediation": "tenant-iteration",
-      "plan": "grace-expired scan uses tenant() with no argument; billing enforcement would silently cover only default",
-      "positiveAssertion": "an expired grace period for a non-default tenant is escalated",
-      "noArgTenantRawSites": 1,
+      "plan": "I-3 done: discovery runs per tenant through discoverAcrossTenants (transaction-local tenant context, bounded concurrency, the SQL ALSO filters by the tenant it is given so it is correct with or without RLS), and the job acts on each discovered tenant through services that carry their own tenant client. Failures are errors (never warnings) and the run reports PARTIAL_FAILURE; a tenant that could not be read is reported, not skipped.",
+      "positiveAssertion": "billing-jobs-tenant-iteration.test.cjs: two expired non-default tenants are suspended under the restricted role with one audit row each; billing-jobs-tenant-iteration.spec.ts (fixture exists -> discovered -> suspended, both RLS modes, mutation-checked)",
+      "noArgTenantRawSites": 0,
       "rawSqlSites": 1,
-      "status": "open"
+      "status": "migrated"
     },
     {
       "file": "outbound-webhooks/outbound-webhooks.service.ts",
@@ -602,12 +602,13 @@
     "prisma/prisma.service.ts": 1,
     "workspace-users/workspace-users.service.ts": 2,
     "common/tenant/tenant-iteration.ts": 1,
-    "common/tenant/fake-rls-db-spec.ts": 2
+    "common/tenant/fake-rls-db-spec.ts": 2,
+    "billing/fake-plan-profile-db-spec.ts": 2
   },
   "totals": {
     "directClientFiles": 32,
-    "rawSqlSites": 84,
-    "rawSqlFiles": 22
+    "rawSqlSites": 86,
+    "rawSqlFiles": 23
   },
   "otherClients": [
     {
