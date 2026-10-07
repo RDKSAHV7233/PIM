@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { validateLane } = require("./validate-sec-restricted-lane.cjs");
-const { evaluate } = require("./ci/restricted-lane-evaluate.cjs");
+const { evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
 
 const clean = validateLane();
 assert.equal(clean.ok, true, clean.errors.join("\n"));
@@ -57,5 +57,15 @@ assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), ["postgr
 const detail = run(rows(["a.test.cjs", false], ["known.test.cjs", true]), [ROLE]);
 assert.deepEqual([detail.unexpectedFail, detail.unexpectedPass], [1, 1]);
 assert.equal(run([], [ROLE]).ok, true, "an empty run has nothing to fail but the runner always has tests");
+
+// ---- failure-message capture ---------------------------------------------------------------------------------------------------
+assert.equal(isFailureSignal("AssertionError [ERR_ASSERTION]: the credential must be v2"), true, "an assertion message is kept");
+assert.equal(isFailureSignal("credential-rotation integration test failed:"), true, "a test's own failure banner is kept");
+assert.equal(isFailureSignal("API did not become healthy at http://127.0.0.1:1/api/v1/health within 60000ms"), true, "a health timeout is kept");
+assert.equal(isFailureSignal("Expected dry-run failures=0, got 1"), true, "an Expected-style message is kept");
+assert.equal(isFailureSignal('{"timestamp":"2026-10-06T18:58:11.951Z","level":"error","message":"Marketplace export job failed during processing"}'), false, "the API's JSON log lines are not mistaken for the test's message");
+assert.equal(isFailureSignal("[Nest] 4535  - LOG [RouterExplorer] Mapped {/api/v1/x, GET} route Error: none"), false, "Nest log lines are not kept");
+assert.equal(isFailureSignal("    at Object.<anonymous> (file.cjs:10:5) Error: stack frame"), false, "stack frames are not kept");
+assert.equal(isFailureSignal("ok   worker-backpressure.test.cjs (3s)"), false, "a passing line is not a failure");
 
 console.log("validate-sec-restricted-lane tests passed.");

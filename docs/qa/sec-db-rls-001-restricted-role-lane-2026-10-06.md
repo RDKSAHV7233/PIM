@@ -45,6 +45,12 @@ The earlier dry run's other failures (audit, consent, plan usage, connector inst
 
 Each of M1 to M6 removes its tests from `expectedFailing` in the same change, which the ratchet forces: when the fix lands, the test passes, becomes UNEXPECTED_PASS, and the PR must delete the entry. The cross-tenant job migrations (M3, M4, M5) must add tests that seed a **non-default tenant** and assert a **non-empty** result, because under RLS those jobs fail silently; each inventory entry in `sec-db-rls-001-call-sites.v1.json` already records the assertion required.
 
+## 4a. Failure messages (added 2026-10-07)
+
+A test prints its assertion message, then the API's stderr tail, then exits. The runner used to keep only the last 60 captured lines and print the last 12, so the test's own message was usually pushed out by the API's log lines and a failed lane showed nothing but log noise. That is exactly what happened on the `main` run for `ef144449`: `credential-rotation.test.cjs` failed and the cause could not be read from CI.
+
+The runner now also keeps the first 12 lines that look like a failure message **printed by the test itself** (assertion errors, "integration test failed", "Expected ...", health timeouts, Prisma error codes), excluding the API's JSON and Nest log lines and stack frames, and prints them, with the exit code, ahead of the output tail. The matching logic is `isFailureSignal` in `scripts/ci/restricted-lane-evaluate.cjs` and is unit tested in `validate-sec-restricted-lane.test.cjs`. Demonstrated end to end with a stand-in test that prints an assertion and then 80 lines of API noise: the assertion is shown, where the old last-12-lines view showed only noise.
+
 ## 5. Limits
 
 - The lane's role models the production target; it is not the production role, and it does not prove production behaviour.

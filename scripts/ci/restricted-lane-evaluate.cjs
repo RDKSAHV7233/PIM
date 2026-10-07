@@ -20,4 +20,16 @@ function evaluate(rows, expectedFailing, apiUsers, role) {
   return { classified, count, sessionsOk, unexpectedFail, unexpectedPass, ok: unexpectedFail === 0 && unexpectedPass === 0 && sessionsOk };
 }
 
-module.exports = { evaluate };
+const FAILURE_SIGNAL = /(AssertionError|integration test failed|\bfailed:|Error:|Expected |did not become healthy|Unhandled|ECONNREFUSED|P20\d\d\b|timed out)/;
+const API_LOG_LINE = /^(\{"timestamp"|\[Nest\]|\s*at )/;
+
+/**
+ * A line that looks like a failure message printed by the TEST itself rather than one of the API's own log lines.
+ * A test prints its assertion message, then the API's stderr tail, then exits, so the message is usually pushed out of a
+ * last-N-lines window; the runner keeps the first few of these lines so a failure is diagnosable from CI output alone.
+ */
+function isFailureSignal(line) {
+  return FAILURE_SIGNAL.test(line) && !API_LOG_LINE.test(line);
+}
+
+module.exports = { evaluate, isFailureSignal };

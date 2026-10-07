@@ -27,7 +27,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const lane = JSON.parse(fs.readFileSync(process.env.LANE_CONFIG || path.join(__dirname, "restricted-role-lane.v1.json"), "utf8"));
-const { evaluate } = require("./ci/restricted-lane-evaluate.cjs");
+const { evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
 const ROLE = "vexa_runtime_ci";
 const adminUrl = String(process.env.DATABASE_URL || "").trim();
 if (!adminUrl) {
@@ -48,6 +48,8 @@ const expectedFailing = new Map(lane.expectedFailing.map((e) => [e.test, e]));
 const CONCURRENCY = Number(process.env.LANE_CONCURRENCY || 6);
 const TIMEOUT_MS = Number(process.env.LANE_TIMEOUT_SECONDS || 300) * 1000;
 
+const MAX_SIGNAL_LINES = 12;
+
 function runTest(test) {
   return new Promise((resolve) => {
     const started = Date.now();
@@ -61,12 +63,20 @@ function runTest(test) {
     };
     const child = spawn(process.execPath, [path.join(REPO_ROOT, "apps", "api", "test", "integration", test)], { cwd: REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
     const tail = [];
+    // A test prints its own assertion message, then the API's stderr tail, then exits: the message is usually pushed out of a
+    // last-N-lines window by the API's own log lines. Keep the first few lines that look like a failure message from the test itself
+    // (not the API's JSON/Nest log lines) so a failure is diagnosable from CI output alone.
+    const signals = [];
     const keep = (chunk) => {
       for (const line of String(chunk).split("\n")) {
         if (line.trim()) {
-          tail.push(line.replace(/\u001b\[[0-9;]*m/g, "").slice(0, 300));
+          const clean = line.replace(/\u001b\[[0-9;]*m/g, "").slice(0, 300);
+          tail.push(clean);
           if (tail.length > 60) {
             tail.shift();
+          }
+          if (signals.length < MAX_SIGNAL_LINES && isFailureSignal(clean) && !signals.includes(clean)) {
+            signals.push(clean);
           }
         }
       }
@@ -76,7 +86,7 @@ function runTest(test) {
     const timer = setTimeout(() => child.kill("SIGKILL"), TIMEOUT_MS);
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      resolve({ test, passed: code === 0, code, timedOut: signal === "SIGKILL", seconds: Math.round((Date.now() - started) / 1000), tail });
+      resolve({ test, passed: code === 0, code, timedOut: signal === "SIGKILL", seconds: Math.round((Date.now() - started) / 1000), tail, signals });
     });
   });
 }
@@ -130,7 +140,13 @@ async function main() {
   for (const r of rows.filter((x) => x.status === "UNEXPECTED_FAIL" || x.status === "UNEXPECTED_PASS")) {
     lines.push(`- **${r.status}** ${r.test}${r.timedOut ? " (timed out)" : ""}`);
     if (r.status === "UNEXPECTED_FAIL") {
-      lines.push("  ```", ...r.tail.slice(-12).map((l) => `  ${l}`), "  ```");
+      lines.push(`  exit code ${r.code === null ? "none" : r.code}${r.timedOut ? ", killed on timeout" : ""}, ${r.seconds}s`);
+      if (r.signals && r.signals.length > 0) {
+        lines.push("  failure message(s) from the test:", "  ```", ...r.signals.map((l) => `  ${l}`), "  ```");
+      } else {
+        lines.push("  (no failure message was printed by the test; see the output tail)");
+      }
+      lines.push("  output tail:", "  ```", ...r.tail.slice(-12).map((l) => `  ${l}`), "  ```");
     }
   }
   for (const r of rows.filter((x) => x.status === "EXPECTED_FAIL")) {
