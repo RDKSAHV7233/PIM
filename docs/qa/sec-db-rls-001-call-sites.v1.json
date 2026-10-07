@@ -475,8 +475,8 @@
     {
       "file": "media/media.service.ts",
       "class": "C",
-      "remediation": "decision-needed",
-      "plan": "the only direct-client use is getAssetFile(assetId): a public, unauthenticated route that serves an asset by id for external systems (for example Shopify fetching product images). No tenant is known there, so under RLS the lookup sees only the default tenant and every other tenant's images would 404. Not a mechanical swap: decide how the public URL carries its tenant (tenant in the path, a signed token, or a narrow lookup function) before the role cutover",
+      "remediation": "split",
+      "plan": "D1 implemented (decided: signed token). The public file route now reads the asset as the tenant named by a verified token (tenant, asset, purpose media-read, expiry; verified before any lookup), through prisma.tenant(<token tenant>). The context-free client remains ONLY for the route's unsigned rollout-compatibility mode, which applies until MEDIA_URL_SIGNING_KEY is configured; provisioning that key is a prerequisite of the role cutover, after which unsigned requests are refused. The file stays listed until that legacy branch can be removed.",
       "rlsProtectedModels": [
         "mediaAsset",
         "product",
@@ -484,7 +484,7 @@
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "the public asset URL of a non-default tenant's media asset serves its bytes",
+      "positiveAssertion": "media-public-file-token.test.cjs: under the restricted role a valid token serves a non-default tenant's image (bytes compared) while the same request without the key is a 404; no token, wrong asset, expired, garbage are 401 with no bytes; another tenant's token finds nothing",
       "status": "open"
     }
   ],

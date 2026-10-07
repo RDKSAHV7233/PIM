@@ -24,6 +24,7 @@ import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { UpdateMediaAssetGovernanceDto } from "./dto/update-media-asset-governance.dto";
 import { MediaStorageService } from "./media-storage.service";
+import { isMediaSigningConfigured, signMediaToken } from "./media-url-token";
 
 type Channel = MarketplaceChannel;
 
@@ -423,8 +424,12 @@ export class MediaService {
    * profile as a public R2 bucket URL. Never returns metadata beyond what's needed to serve
    * the file; use getAsset() for the governed, actor-scoped read path.
    */
-  async getAssetFile(assetId: string): Promise<{ buffer?: Buffer; redirectUrl?: string; mimeType: string; fileName: string }> {
-    const asset = await this.prismaDirect.getClient().mediaAsset.findUnique({
+  async getAssetFile(assetId: string, tenantKey?: string): Promise<{ buffer?: Buffer; redirectUrl?: string; mimeType: string; fileName: string }> {
+    // SEC-DB-RLS-001 D1: with a tenant (read from a verified signed token by the controller) the lookup runs as THAT tenant, so under
+    // row level security it finds the tenant's own asset and no other tenant's: an asset id belonging to another tenant is simply not
+    // found. Without a tenant (the route's unsigned rollout-compatibility mode) it uses the context-free client as before.
+    const client = tenantKey ? this.prisma.tenant(tenantKey) : this.prismaDirect.getClient();
+    const asset = await client.mediaAsset.findUnique({
       where: { id: assetId },
       select: { storagePath: true, mimeType: true, fileName: true },
     });
@@ -733,13 +738,17 @@ export class MediaService {
     await this.accessPolicy.assertProductAccess(actor, access, { id: assetId, categoryId: null, brand: null }, "MediaAsset");
   }
 
-  private presentAsset<T extends { metadata: Prisma.JsonValue; productId: string | null; variantId: string | null }>(
+  private presentAsset<T extends { id: string; tenantKey?: string; metadata: Prisma.JsonValue; productId: string | null; variantId: string | null }>(
     asset: T,
   ) {
     const metadata = asJsonObject(asset.metadata) as MediaMetadata;
     const governance = asJsonObject(metadata.governance);
+    const assetTenant = String(asset.tenantKey ?? "").trim();
     return {
       ...asset,
+      // SEC-DB-RLS-001 D1: the signed token the public file route requires once MEDIA_URL_SIGNING_KEY is configured. Only an
+      // authenticated read of the tenant's own asset produces one; null until the key is configured.
+      fileToken: assetTenant && isMediaSigningConfigured() ? signMediaToken({ tenantKey: assetTenant, assetId: asset.id }) : null,
       altText: typeof governance.altText === "string" ? governance.altText : null,
       isMain: governance.isMain === true,
       sortOrder: typeof governance.sortOrder === "number" ? governance.sortOrder : 0,

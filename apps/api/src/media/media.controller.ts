@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, StreamableFile, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Logger, Param, Patch, Post, Query, Req, Res, StreamableFile, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { resolveServeHeaders } from "./media-content-safety";
+import { MediaTokenError, isMediaSigningConfigured, verifyMediaToken } from "./media-url-token";
 import type { Request, Response } from "express";
 import { IsOptional, IsString, MaxLength } from "class-validator";
 import { PlanGuard } from "../billing/plan-guard.guard";
@@ -38,7 +39,20 @@ class ListMediaAssetsQueryDto extends CursorPaginationDto {
 @Controller("media")
 @DisallowApiClient()
 export class MediaController {
+  private readonly logger = new Logger(MediaController.name);
+  private warnedUnsigned = false;
+
   constructor(private readonly mediaService: MediaService) {}
+
+  /** One loud line per process while the public route is still unsigned, so the rollout state is visible and cannot be forgotten. */
+  private warnUnsignedOnce(): void {
+    if (!this.warnedUnsigned) {
+      this.warnedUnsigned = true;
+      this.logger.warn(
+        "MEDIA_URL_SIGNING_KEY is not configured: public media URLs are served UNSIGNED and resolve only the default tenant once row level security is enforced. Provision the key before the database role cutover.",
+      );
+    }
+  }
 
   private resolveActor(request: AuthenticatedRequest) {
     return {
@@ -89,8 +103,26 @@ export class MediaController {
    */
   @Get("assets/:id/file")
   @Public()
-  async getAssetFile(@Param("id") id: string, @Res({ passthrough: true }) response: Response) {
-    const file = await this.mediaService.getAssetFile(id);
+  async getAssetFile(@Param("id") id: string, @Query("t") token: string | undefined, @Res({ passthrough: true }) response: Response) {
+    // SEC-DB-RLS-001 D1: once MEDIA_URL_SIGNING_KEY is configured the route REQUIRES a valid, unexpired token bound to this asset and
+    // reads the tenant from it; the token is verified BEFORE any database access, every failure gets the same answer, and there is no
+    // unsigned tenant parameter. Until the key is configured the route keeps its previous unsigned behaviour (rollout compatibility;
+    // it can only resolve the default tenant under row level security, so setting the key is a prerequisite of the role cutover).
+    let tenantKey: string | undefined;
+    if (isMediaSigningConfigured()) {
+      try {
+        tenantKey = verifyMediaToken(token, { assetId: id }).tenantKey;
+      } catch (error) {
+        if (error instanceof MediaTokenError) {
+          this.logger.warn(`Public media request refused (${error.reason}).`);
+          throw new UnauthorizedException({ error: "MEDIA_TOKEN_INVALID" });
+        }
+        throw error;
+      }
+    } else {
+      this.warnUnsignedOnce();
+    }
+    const file = await this.mediaService.getAssetFile(id, tenantKey);
     if (file.redirectUrl) {
       response.redirect(302, file.redirectUrl);
       return undefined;

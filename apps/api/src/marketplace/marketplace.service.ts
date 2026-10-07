@@ -84,7 +84,8 @@ import { ErrorCaptureService } from "../error-authority/error-capture.service";
 import { isTerminalBullFailure } from "../error-authority/worker-error-classifier";
 import { MetricsService } from "../metrics/metrics.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
-import { runWithTenantContext } from "../common/tenant/tenant-context";
+import { getTenantKeyFromContext, runWithTenantContext } from "../common/tenant/tenant-context";
+import { buildPublicMediaFileUrl } from "../media/media-url-token";
 import { tenantExecRaw, tenantRaw } from "../common/tenant/tenant-raw";
 import { QueueService } from "../queue/queue.service";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
@@ -5421,7 +5422,9 @@ export class MarketplaceService implements OnModuleInit {
         });
         return "";
       }
-      return `${apiBase}/media/assets/${asset.id}/file`;
+      // SEC-DB-RLS-001 D1: the public file route requires a signed, tenant-bound token once MEDIA_URL_SIGNING_KEY is configured
+      // (empty query string until then, so nothing changes before the key is provisioned).
+      return buildPublicMediaFileUrl({ apiBase, assetId: asset.id, tenantKey: getTenantKeyFromContext() });
     }
 
     const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");

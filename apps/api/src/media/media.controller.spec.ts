@@ -21,7 +21,7 @@ function makeController(file: { buffer?: Buffer; redirectUrl?: string; mimeType:
 describe("MediaController.getAssetFile public delivery headers (prod-cert DEF-PC-002 / DEF-PC-014)", () => {
   it("serves an allowed image inline with a sandbox CSP", async () => {
     const { controller, response, headers } = makeController({ buffer: PNG, mimeType: "image/png", fileName: "shirt.png" });
-    await controller.getAssetFile("asset-1", response);
+    await controller.getAssetFile("asset-1", undefined, response);
     expect(headers["content-type"]).toBe("image/png");
     expect(headers["content-disposition"]).toMatch(/^inline; filename="shirt\.png"; filename\*=UTF-8''shirt\.png$/);
     expect(headers["content-security-policy"]).toBe("default-src 'none'; sandbox");
@@ -29,20 +29,20 @@ describe("MediaController.getAssetFile public delivery headers (prod-cert DEF-PC
 
   it("forces a legacy text/html asset to download as octet-stream (never rendered)", async () => {
     const { controller, response, headers } = makeController({ buffer: Buffer.from("<script>alert(1)</script>"), mimeType: "text/html", fileName: "probe.html" });
-    await controller.getAssetFile("asset-2", response);
+    await controller.getAssetFile("asset-2", undefined, response);
     expect(headers["content-type"]).toBe("application/octet-stream");
     expect(headers["content-disposition"]).toMatch(/^attachment;/);
   });
 
   it("does not throw for a non-Latin filename and emits a header Node accepts", async () => {
     const { controller, response, headers } = makeController({ buffer: PNG, mimeType: "image/png", fileName: "ファイル-日本語.png" });
-    await expect(controller.getAssetFile("asset-3", response)).resolves.toBeDefined();
+    await expect(controller.getAssetFile("asset-3", undefined, response)).resolves.toBeDefined();
     expect(/[^\x20-\x7e]/.test(headers["content-disposition"])).toBe(false);
   });
 
   it("leaves the production R2 redirect path untouched (no local headers set)", async () => {
     const { controller, response, headers, redirect } = makeController({ redirectUrl: "https://pub.example.r2.dev/media/t/a.png", mimeType: "image/png", fileName: "a.png" });
-    await controller.getAssetFile("asset-4", response);
+    await controller.getAssetFile("asset-4", undefined, response);
     expect(redirect).toHaveBeenCalledWith(302, "https://pub.example.r2.dev/media/t/a.png");
     expect(headers["content-security-policy"]).toBeUndefined();
   });
