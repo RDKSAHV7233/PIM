@@ -507,7 +507,7 @@ export class ConnectorPermissionService {
 
     if (this.isDbAuthMode()) {
       // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below.
-      const rows = await this.prisma.tenant().$queryRaw<Array<{ userId: string; isActive: boolean }>>(Prisma.sql`
+      const rows = await this.prisma.tenant(tenantKey).$queryRaw<Array<{ userId: string; isActive: boolean }>>(Prisma.sql`
         SELECT
           "userId" AS "userId",
           "isActive" AS "isActive"

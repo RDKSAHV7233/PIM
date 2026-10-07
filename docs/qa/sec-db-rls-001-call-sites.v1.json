@@ -553,31 +553,31 @@
       "file": "bulk-import/bulk-import.service.ts",
       "class": "R",
       "remediation": "explicit-tenant-argument",
-      "plan": "request-scoped raw SQL with a manual tenant filter through tenant() with no argument; pass tenant(tenantKey) so the context and the filter cannot disagree, and confirm queue workers restore tenant context",
+      "plan": "I-5a done: every raw statement here now runs on prisma.tenant(<the tenant it filters by>), so the connection's tenant and the filter's tenant cannot drift apart. Proven by explicit-tenant-raw-sql.spec.ts (the stub's context-free client throws on raw SQL) with a mutation check; the validator now fails if a no-argument raw site returns.",
       "positiveAssertion": "template and version queries return rows for a non-default tenant",
-      "noArgTenantRawSites": 4,
+      "noArgTenantRawSites": 0,
       "rawSqlSites": 4,
-      "status": "open"
+      "status": "migrated"
     },
     {
       "file": "catalog/catalog.service.ts",
       "class": "R",
       "remediation": "explicit-tenant-argument",
-      "plan": "request-scoped raw SQL with a manual tenant filter; pass tenant(tenantKey)",
+      "plan": "I-5a done: every raw statement here now runs on prisma.tenant(<the tenant it filters by>), so the connection's tenant and the filter's tenant cannot drift apart. Proven by explicit-tenant-raw-sql.spec.ts (the stub's context-free client throws on raw SQL) with a mutation check; the validator now fails if a no-argument raw site returns.",
       "positiveAssertion": "the channel-product query returns rows for a non-default tenant",
-      "noArgTenantRawSites": 1,
+      "noArgTenantRawSites": 0,
       "rawSqlSites": 1,
-      "status": "open"
+      "status": "migrated"
     },
     {
       "file": "connector-installer/connector-permission.service.ts",
       "class": "R",
       "remediation": "explicit-tenant-argument",
-      "plan": "request-scoped raw SQL with a manual tenant filter; pass tenant(tenantKey)",
+      "plan": "I-5a done: every raw statement here now runs on prisma.tenant(<the tenant it filters by>), so the connection's tenant and the filter's tenant cannot drift apart. Proven by explicit-tenant-raw-sql.spec.ts (the stub's context-free client throws on raw SQL) with a mutation check; the validator now fails if a no-argument raw site returns.",
       "positiveAssertion": "the permission query returns rows for a non-default tenant",
-      "noArgTenantRawSites": 1,
+      "noArgTenantRawSites": 0,
       "rawSqlSites": 9,
-      "status": "open"
+      "status": "migrated"
     }
   ],
   "rawSqlSitesByFile": {

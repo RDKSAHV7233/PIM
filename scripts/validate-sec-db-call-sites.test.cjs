@@ -35,6 +35,20 @@ expectFail("no-arg raw scan grew", (inv) => {
   const e = inv.crossTenantRawSqlFiles.find((x) => x.noArgTenantRawSites > 0);
   e.noArgTenantRawSites -= 1;
 }, null, "noArgTenant.grew");
+// a migrated raw-SQL file regresses to tenant() with no argument (the extra source replaces the file's text in the scan)
+expectFail("migrated raw-SQL file regresses", null, { "catalog/catalog.service.ts": "await this.prisma.tenant().$queryRaw`SELECT 1`;" }, "noArgTenant.regressed");
+// an open raw-SQL entry whose no-argument sites are gone must be marked migrated
+expectFail("stale open raw-SQL entry", (inv) => {
+  const entry = inv.crossTenantRawSqlFiles.find((x) => x.file === "catalog/catalog.service.ts");
+  entry.status = "open";
+  entry.noArgTenantRawSites = 1; // recorded as still having one no-argument site, but the code has none
+}, null, "noArgTenant.stale");
+// the I-5a files are recorded as migrated with zero no-argument sites
+for (const file of ["bulk-import/bulk-import.service.ts", "catalog/catalog.service.ts", "connector-installer/connector-permission.service.ts"]) {
+  const entry = require("../docs/qa/sec-db-rls-001-call-sites.v1.json").crossTenantRawSqlFiles.find((x) => x.file === file);
+  assert.ok(entry && entry.status === "migrated" && entry.noArgTenantRawSites === 0, `${file} must be recorded as migrated with 0 no-argument raw sites`);
+}
+
 // a new database identity
 expectFail("new PrismaClient", null, { "x/own-client.ts": "const c = new PrismaClient({});" }, "prismaClient.new");
 // inventory discipline: every entry needs a class, remediation, plan, and a positive-result assertion

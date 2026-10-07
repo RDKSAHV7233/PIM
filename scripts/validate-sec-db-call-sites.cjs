@@ -132,6 +132,18 @@ function validateCallSites(transform, extra) {
     }
   }
 
+  // A raw-SQL file marked migrated must have NO tenant()-without-argument raw SQL left, and an open entry whose no-argument sites are
+  // all gone must be marked migrated, so the migration cannot silently regress and the inventory cannot go stale.
+  for (const entry of inventory.crossTenantRawSqlFiles || []) {
+    const actual = noArgByFile[entry.file] || 0;
+    if (entry.status === "migrated" && actual > 0) {
+      fail("noArgTenant.regressed", `${entry.file} is marked migrated but has ${actual} tenant()-no-argument raw SQL site(s) again`);
+    }
+    if (entry.status === "open" && entry.noArgTenantRawSites > 0 && actual === 0) {
+      fail("noArgTenant.stale", `${entry.file} no longer has tenant()-no-argument raw SQL: mark it migrated`);
+    }
+  }
+
   for (const file of clients) {
     if (!KNOWN_PRISMA_CLIENTS.has(file)) {
       fail("prismaClient.new", `${file} constructs its own PrismaClient: a new database identity must be classified first`);
