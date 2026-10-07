@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
+import { MEDIA_FILE_TOKEN_PATTERN } from "@/lib/media-file-url";
 
 const ASSET_ID_PATTERN = /^[a-z0-9-]{20,50}$/;
 
@@ -23,7 +24,11 @@ export async function GET(
   }
 
   const apiBase = getApiBaseUrl();
-  const upstream = `${apiBase}/media/assets/${encodeURIComponent(id)}/file`;
+  // SEC-DB-RLS-001 D1: forward the signed token the API's public file route requires once its signing key is configured. Only a
+  // well-formed token is forwarded; anything else is dropped rather than passed upstream.
+  const rawToken = request.nextUrl.searchParams.get("t") ?? "";
+  const token = MEDIA_FILE_TOKEN_PATTERN.test(rawToken) ? rawToken : "";
+  const upstream = `${apiBase}/media/assets/${encodeURIComponent(id)}/file${token ? `?t=${encodeURIComponent(token)}` : ""}`;
 
   const fetchHeaders: Record<string, string> = {};
   const accessToken = request.cookies.get("pim_access_token")?.value;

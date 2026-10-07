@@ -28,6 +28,7 @@ import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
 import { filterTestData } from "@/lib/test-data-filter";
+import { mediaFileUrl } from "@/lib/media-file-url";
 
 export const dynamic = "force-dynamic";
 
@@ -229,7 +230,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
               {isImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={`/api/media/assets/${encodeURIComponent(asset.id)}/file`}
+                  src={mediaFileUrl(asset)}
                   alt={asset.altText ?? asset.fileName}
                   loading="lazy"
                   className="h-full w-full object-cover"

@@ -1441,6 +1441,8 @@ export interface MediaAsset {
   lastCheckedAt: string | null;
   channelEligibility: string[];
   usageCount: number;
+  /** Signed token for the public file route (null until the API signing key is configured). */
+  fileToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -16,6 +16,22 @@ function assert(condition, message) {
   }
 }
 
+const MEDIA_FILE_URL_HELPER = path.join(REPO_ROOT, "apps", "web", "src", "lib", "media-file-url.ts");
+
+/** True when the component source builds its thumbnail URL from the same-origin proxy: directly, or through mediaFileUrl (whose helper builds that path). */
+function usesSameOriginProxy(source) {
+  if (source.includes("/api/media/assets/") && source.includes("/file")) {
+    return true;
+  }
+  const helper = fs.readFileSync(MEDIA_FILE_URL_HELPER, "utf8");
+  return (
+    source.includes('import { mediaFileUrl } from "@/lib/media-file-url";') &&
+    source.includes("src={mediaFileUrl(asset)}") &&
+    helper.includes("/api/media/assets/") &&
+    helper.includes("/file")
+  );
+}
+
 function run() {
   // --- A1: Same-origin media proxy route ---
   const proxy = fs.readFileSync(PROXY_ROUTE, "utf8");
@@ -55,7 +71,7 @@ function run() {
   const mediaTab = fs.readFileSync(MEDIA_TAB, "utf8");
 
   assert(
-    mediaTab.includes("/api/media/assets/") && mediaTab.includes("/file"),
+    usesSameOriginProxy(mediaTab),
     "Media tab must render <img> tags sourced from the same-origin proxy route.",
   );
   assert(
@@ -79,7 +95,7 @@ function run() {
   const mediaPage = fs.readFileSync(MEDIA_PAGE, "utf8");
 
   assert(
-    mediaPage.includes("/api/media/assets/") && mediaPage.includes("/file"),
+    usesSameOriginProxy(mediaPage),
     "Media library page must render <img> tags sourced from the same-origin proxy route.",
   );
   assert(

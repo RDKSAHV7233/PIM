@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { mediaFileUrl } from "@/lib/media-file-url";
 import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { formatMarketplaceChannelLabel } from "@/lib/marketplace-channels";
 import type { ProductDetailPageData } from "./product-detail-types";
@@ -19,7 +20,7 @@ function MediaThumbnail({ asset }: { asset: ProductDetailPageData["mediaAssets"]
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/api/media/assets/${encodeURIComponent(asset.id)}/file`}
+            src={mediaFileUrl(asset)}
             alt={asset.altText ?? asset.fileName}
             loading="lazy"
             className="h-full w-full object-cover"
