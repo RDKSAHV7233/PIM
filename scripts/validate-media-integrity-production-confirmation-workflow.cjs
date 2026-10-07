@@ -59,6 +59,14 @@ function main() {
   assertBefore(steps, "Install system redis-server (for redis-memory-server)", "Install dependencies");
 
   const reportStep = requireStep(steps, "Run read-only media integrity report");
+  assert(
+    reportStep.env?.REPORTER_DATABASE_URL === "${{ secrets.PRODUCTION_REPORTER_DATABASE_URL }}",
+    "REPORTER_DATABASE_URL must map ONLY the PRODUCTION_REPORTER_DATABASE_URL secret (7.9c opt-in); a blank secret keeps the script on DATABASE_URL",
+  );
+  assert(
+    /\[ -z "\$\{DATABASE_URL\}" \] && \[ -z "\$\{REPORTER_DATABASE_URL\}" \]/.test(String(reportStep.run ?? "")),
+    "The missing-secret guard must fail closed only when BOTH the fallback and the dedicated credential are absent",
+  );
   assert(reportStep.env?.DATABASE_URL === "${{ secrets.STAGE3_DATABASE_URL }}", "Report must use protected STAGE3_DATABASE_URL secret");
   assert(reportStep.env?.MEDIA_INTEGRITY_VERIFY_LOCAL_FILES === "false", "Production workflow must not probe local runner files");
   const reportRun = String(reportStep.run ?? "");

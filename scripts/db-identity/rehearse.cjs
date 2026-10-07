@@ -201,6 +201,7 @@ async function main() {
     // expects), two connector submissions and two media assets. Referentially valid on purpose: the dump of this database is restored
     // in R7, and a restore rejects orphan rows.
     await pl.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`INSERT INTO "WorkspaceDirectory" (id, "tenantKey", "workspaceSlug", "displayName", "updatedAt") VALUES ('ws-a','tenant-a','tenant-a','Tenant A', now()), ('ws-b','tenant-b','tenant-b','Tenant B', now())`);
       await tx.$executeRawUnsafe(`INSERT INTO "Category" (id, name, slug, path, "tenantKey", "updatedAt") VALUES ('cat-a','A','cat-a','/cat-a','tenant-a', now()), ('cat-b','B','cat-b','/cat-b','tenant-b', now()), ('cat-d','D','cat-d','/cat-d','default', now())`);
       await tx.$executeRawUnsafe(`INSERT INTO "Product" (id, title, "categoryId", "tenantKey", "updatedAt") VALUES ('prod-a','A','cat-a','tenant-a', now()), ('prod-b','B','cat-b','tenant-b', now()), ('prod-d','D','cat-d','default', now())`);
       await tx.$executeRawUnsafe(`INSERT INTO "Variant" (id, "productId", "skuCode", "tenantKey", "updatedAt") VALUES ('var-a','prod-a','SKU-A','tenant-a', now())`);
@@ -416,6 +417,10 @@ async function main() {
       }
     })();
     check("under tenant-a ops cannot create a variant for tenant-b (row level security)", opCross.ok, opCross.why);
+    check("ops reads the tenant directory (that is where the backfill lists tenants)", (await rows(op, `SELECT count(*)::int AS n FROM "WorkspaceDirectory"`))[0].n === 2);
+    await expectDenied("ops cannot INSERT into the tenant directory", op, `INSERT INTO "WorkspaceDirectory" (id, "tenantKey", "workspaceSlug", "displayName", "updatedAt") VALUES ('ws-x','tenant-x','tenant-x','X', now())`);
+    await expectDenied("ops cannot UPDATE the tenant directory", op, `UPDATE "WorkspaceDirectory" SET "displayName" = 'x'`);
+    await expectDenied("ops cannot DELETE from the tenant directory", op, `DELETE FROM "WorkspaceDirectory"`);
     await expectDenied("ops cannot UPDATE a product", op, `UPDATE "Product" SET title = 'x'`);
     await expectDenied("ops cannot DELETE a product", op, `DELETE FROM "Product"`);
     await expectDenied("ops cannot UPDATE a variant", op, `UPDATE "Variant" SET "skuCode" = 'x'`);
@@ -424,6 +429,67 @@ async function main() {
     await expectDenied("ops cannot read the media assets", op, `SELECT * FROM media_assets`);
     await pl.$executeRawUnsafe(`DELETE FROM "Variant" WHERE id = 'var-b'`);
     check("ops proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R8c the real operator scripts with the real roles: the backfill iterates tenants as vexa_ops, the reports run as vexa_reporter, anything else is refused");
+    const runScript = (script, env, args = []) => {
+      const r = cp.spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], {
+        cwd: ROOT,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, ...env },
+        encoding: "utf8",
+        maxBuffer: 32 * 1024 * 1024,
+      });
+      return { status: r.status, out: r.stdout || "", err: r.stderr || "" };
+    };
+    const noPassword = (r, role) => !(r.out + r.err).includes(rehearsalPassword(role));
+    const jsonOf = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+    const urlAs = (role) => urlFor(PRODLIKE, role, rehearsalPassword(role));
+    const outFile = (name) => path.join(workdir, name);
+    // Two of the seeded products become sellable: prod-b (tenant-b) and prod-d (default). prod-a already has its variant.
+    await pl.$executeRawUnsafe(`UPDATE "Product" SET status = 'approved' WHERE id IN ('prod-b','prod-d')`);
+    const variantCount = async () => (await rows(pl, `SELECT count(*)::int AS n FROM "Variant"`))[0].n;
+
+    // the failure mode this item exists to prevent: the original single pass, run as the restricted role
+    const single = runScript("sellable-sku-variantless-backfill.cjs", { DATABASE_URL: urlAs(OPS) }, ["--output", outFile("bf-single.json")]);
+    check("the ORIGINAL single pass as vexa_ops reports success but sees only the default tenant (1 of the 2 candidates): this is why ops mode iterates", single.status === 0 && jsonOf(outFile("bf-single.json")).candidateCount === 1, tail(single.err));
+
+    const dry = runScript("sellable-sku-variantless-backfill.cjs", { OPS_DATABASE_URL: urlAs(OPS) }, ["--output", outFile("bf-dry.json")]);
+    const dryReport = dry.status === 0 ? jsonOf(outFile("bf-dry.json")) : {};
+    check("OPS_DATABASE_URL dry run: iterates the directory plus the default tenant (3 tenants) and finds BOTH candidates across tenants", dry.status === 0 && dryReport.mode === "dry_run" && dryReport.tenantIteration.tenantsEvaluated === 3 && dryReport.candidateCount === 2, tail(dry.err));
+    check("the dry run says what it cannot prove (orphan tenants are invisible to a restricted role) and failed no tenant", !!dryReport.tenantIteration && dryReport.tenantIteration.orphanDetection === "UNVERIFIED_BY_OPS_ROLE" && dryReport.tenantIteration.tenantsFailed === 0);
+    check("the dry run created nothing", (await variantCount()) === 1);
+
+    const write = runScript("sellable-sku-variantless-backfill.cjs", { OPS_DATABASE_URL: urlAs(OPS), CONFIRM_SELLABLE_SKU_BACKFILL: "true" }, ["--confirm", "--output", outFile("bf-write.json")]);
+    const writeReport = write.status === 0 ? jsonOf(outFile("bf-write.json")) : {};
+    check("the write run as vexa_ops creates both variants (summary created = 2, no errors)", write.status === 0 && writeReport.summary.created === 2 && writeReport.summary.error === 0, tail(write.err));
+    const made = await rows(pl, `SELECT "productId", "tenantKey" FROM "Variant" WHERE "productId" IN ('prod-b','prod-d') ORDER BY "productId"`);
+    check("each created variant carries its own product's tenant (tenant-b and default), written under that tenant's context", made.length === 2 && made[0].tenantKey === "tenant-b" && made[1].tenantKey === "default", JSON.stringify(made));
+    const again = runScript("sellable-sku-variantless-backfill.cjs", { OPS_DATABASE_URL: urlAs(OPS), CONFIRM_SELLABLE_SKU_BACKFILL: "true" }, ["--confirm", "--output", outFile("bf-again.json")]);
+    check("a second write run finds nothing to do (idempotent)", again.status === 0 && jsonOf(outFile("bf-again.json")).candidateCount === 0);
+    check("no run printed the ops password", [single, dry, write, again].every((r) => noPassword(r, OPS)));
+
+    // a wrong credential is refused before any read or write
+    await pl.$executeRawUnsafe(`DELETE FROM "Variant" WHERE "productId" IN ('prod-b','prod-d')`);
+    for (const [label, role] of [["the runtime", RUNTIME], ["the reporter", REPORTER], ["the backup role", BACKUP]]) {
+      const bad = runScript("sellable-sku-variantless-backfill.cjs", { OPS_DATABASE_URL: urlAs(role), CONFIRM_SELLABLE_SKU_BACKFILL: "true" }, ["--confirm", "--output", outFile("bf-bad.json")]);
+      check(`OPS_DATABASE_URL pointing at ${label} is refused by the identity check and writes nothing`, bad.status !== 0 && /operator identity check failed/.test(bad.err) && noPassword(bad, role) && (await variantCount()) === 1, tail(bad.err));
+    }
+
+    // the reports
+    const aud = runScript("sellable-sku-variantless-audit-report.cjs", { REPORTER_DATABASE_URL: urlAs(REPORTER) }, ["--output", outFile("audit.json")]);
+    const audReport = aud.status === 0 ? jsonOf(outFile("audit.json")) : {};
+    check("the audit report as vexa_reporter spans tenants (2 variant-less sellable products, in 2 tenants)", aud.status === 0 && !!audReport.totals && audReport.totals.sellableVariantlessProducts === 2 && Object.keys(audReport.variantlessProductsByTenant || {}).length === 2, tail(aud.err));
+    const med = runScript("media-integrity-readonly-report.cjs", { REPORTER_DATABASE_URL: urlAs(REPORTER) }, ["--output", outFile("media.json")]);
+    check("the media-integrity report as vexa_reporter reads media assets across tenants (2 rows examined)", med.status === 0 && jsonOf(outFile("media.json")).totals.rowsExamined === 2, tail(med.err));
+    for (const [script, label] of [["sellable-sku-variantless-audit-report.cjs", "audit report"], ["media-integrity-readonly-report.cjs", "media report"]]) {
+      for (const [who, role] of [["the runtime", RUNTIME], ["ops", OPS], ["the backup role", BACKUP]]) {
+        const bad = runScript(script, { REPORTER_DATABASE_URL: urlAs(role) }, ["--output", outFile("rep-bad.json")]);
+        check(`REPORTER_DATABASE_URL pointing at ${who} is refused for the ${label}`, bad.status !== 0 && /operator identity check failed/.test(bad.err) && noPassword(bad, role), tail(bad.err));
+      }
+    }
+    check("no report printed the reporter password", [aud, med].every((r) => noPassword(r, REPORTER)));
+    await pl.$executeRawUnsafe(`UPDATE "Product" SET status = 'draft' WHERE id IN ('prod-b','prod-d')`);
+    check("the operator-script proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R7c the backup in its production format (plain SQL, gzipped), restored the way the runbook says, and the identity pre-flight");

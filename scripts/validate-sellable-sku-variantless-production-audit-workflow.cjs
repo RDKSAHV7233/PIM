@@ -48,6 +48,14 @@ function main() {
   requireStep(steps, "Generate Prisma client");
 
   const reportStep = requireStep(steps, "Run read-only sellable-SKU variant-less audit report");
+  assert(
+    reportStep.env?.REPORTER_DATABASE_URL === "${{ secrets.PRODUCTION_REPORTER_DATABASE_URL }}",
+    "REPORTER_DATABASE_URL must map ONLY the PRODUCTION_REPORTER_DATABASE_URL secret (7.9c opt-in); a blank secret keeps the script on DATABASE_URL",
+  );
+  assert(
+    /\[ -z "\$\{DATABASE_URL\}" \] && \[ -z "\$\{REPORTER_DATABASE_URL\}" \]/.test(String(reportStep.run ?? "")),
+    "The missing-secret guard must fail closed only when BOTH the fallback and the dedicated credential are absent",
+  );
   assert(reportStep.env?.DATABASE_URL === "${{ secrets.STAGE3_DATABASE_URL }}", "Report must use protected STAGE3_DATABASE_URL secret");
   const reportRun = String(reportStep.run ?? "");
   assert(reportRun.includes("Missing STAGE3_DATABASE_URL secret"), "Report step must fail closed when production DB secret is absent");

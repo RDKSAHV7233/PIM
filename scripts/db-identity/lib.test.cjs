@@ -59,7 +59,8 @@ assert.ok(manifest.runtime.excluded.includes("_prisma_migrations"));
 assert.equal(Object.keys(manifest.runtime.tables).length, fixture.expectedTotals.tables, "manifest covers exactly the production table count");
 assert.equal(manifest.runtime.tables.ai_platform_controls, "select", "the runtime may only read the kill switch row");
 assert.equal(manifest.runtime.tables.ai_platform_budget_periods, "select-update");
-assert.deepEqual(Object.keys(manifest.ops.tables).sort(), ["Product", "Variant", "ai_platform_budget_periods", "ai_platform_controls"], "ops is confined to the platform control tables and the two tables the sellable-SKU backfill uses");
+assert.deepEqual(Object.keys(manifest.ops.tables).sort(), ["Product", "Variant", "WorkspaceDirectory", "ai_platform_budget_periods", "ai_platform_controls"], "ops is confined to the platform control tables, the two tables the sellable-SKU backfill uses, and the tenant directory it lists tenants from");
+assert.equal(manifest.ops.tables.WorkspaceDirectory, "select", "the backfill only reads the tenant directory");
 assert.equal(manifest.ops.tables.Product, "select", "the backfill reads products");
 assert.equal(manifest.ops.tables.Variant, "select-insert", "the backfill reads and creates variants, and nothing more");
 assert.deepEqual(Object.keys(manifest.reporter.tables).sort(), ["Product", "Variant", "connector_submissions", "media_assets"], "the reporter reads exactly the tables the two reports read");
@@ -93,6 +94,7 @@ assert.equal(lib.expectedPrivileges(manifest, "runtime", "a_table_nobody_listed"
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Product"), ["SELECT"], "the backfill reads products and cannot change them");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Variant"), ["INSERT", "SELECT"], "the backfill creates variants and cannot update or delete them");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "ai_executions"), [], "ops holds nothing on ordinary tables");
+assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "WorkspaceDirectory"), ["SELECT"], "the backfill lists tenants from the directory and cannot change it");
 assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "Product"), ["SELECT"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "media_assets"), ["SELECT"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "ai_executions"), [], "the reporter holds nothing beyond its report tables");

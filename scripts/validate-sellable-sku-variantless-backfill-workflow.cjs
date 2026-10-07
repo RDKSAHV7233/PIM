@@ -57,6 +57,14 @@ function main() {
   requireStep(steps, "Generate Prisma client");
 
   const backfillStep = requireStep(steps, "Run sellable-SKU variant-less backfill");
+  assert(
+    backfillStep.env?.OPS_DATABASE_URL === "${{ secrets.PRODUCTION_OPS_DATABASE_URL }}",
+    "OPS_DATABASE_URL must map ONLY the PRODUCTION_OPS_DATABASE_URL secret (7.9c opt-in); a blank secret keeps the script on DATABASE_URL",
+  );
+  assert(
+    /\[ -z "\$\{DATABASE_URL\}" \] && \[ -z "\$\{OPS_DATABASE_URL\}" \]/.test(String(backfillStep.run ?? "")),
+    "The missing-secret guard must fail closed only when BOTH the fallback and the dedicated credential are absent",
+  );
   assert(backfillStep.env?.DATABASE_URL === "${{ secrets.STAGE3_DATABASE_URL }}", "Backfill must use protected STAGE3_DATABASE_URL secret");
   const backfillRun = String(backfillStep.run ?? "");
   assert(backfillRun.includes("Missing STAGE3_DATABASE_URL secret"), "Backfill step must fail closed when production DB secret is absent");

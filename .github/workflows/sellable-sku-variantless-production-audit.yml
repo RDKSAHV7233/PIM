@@ -47,10 +47,14 @@ jobs:
       - name: Run read-only sellable-SKU variant-less audit report
         shell: bash
         env:
+          # SEC-DB-RLS-001 7.9c, opt-in: while PRODUCTION_REPORTER_DATABASE_URL is unset REPORTER_DATABASE_URL is empty and the script keeps using DATABASE_URL, exactly as before.
+          # When a person stores the vexa_reporter credential there, the script uses it and first checks that the connection really is that role.
+          # The DATABASE_URL line below is the existing fallback; the cutover removes it (docs/qa/sec-db-rls-001-7-9c-operator-wiring-2026-10-07.md).
           DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
+          REPORTER_DATABASE_URL: ${{ secrets.PRODUCTION_REPORTER_DATABASE_URL }}
         run: |
-          if [ -z "${DATABASE_URL}" ]; then
-            echo "Missing STAGE3_DATABASE_URL secret for production sellable-SKU audit."
+          if [ -z "${DATABASE_URL}" ] && [ -z "${REPORTER_DATABASE_URL}" ]; then
+            echo "Missing STAGE3_DATABASE_URL secret for production sellable-SKU audit (and PRODUCTION_REPORTER_DATABASE_URL is not set)."
             exit 1
           fi
           node scripts/sellable-sku-variantless-audit-report.cjs \

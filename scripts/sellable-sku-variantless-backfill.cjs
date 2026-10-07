@@ -43,6 +43,7 @@
 
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { resolveOperatorDatabaseUrl, assertOperatorIdentity, createOperatorPrisma } = require("./operator-db-identity.cjs");
 
 const DEFAULT_OUTPUT = ".run-logs/sellable-sku-variantless-backfill-report.json";
 const ROW_FETCH_CAP = 5000;
@@ -51,6 +52,24 @@ const ROW_FETCH_CAP = 5000;
 // and the trigger condition in CatalogService.ensureCanonicalVariant — duplicated
 // here because this script runs standalone, outside the NestJS app.
 const SELLABLE_STATUSES = ["approved", "active"];
+
+// SEC-DB-RLS-001 7.9c. OPS_DATABASE_URL is the opt-in. Unset or blank = DATABASE_URL and the original single-pass behaviour, unchanged.
+// When it is set, the connection must really be vexa_ops (NOBYPASSRLS, not a superuser). That role sees only the tenant whose context it
+// sets, so the backfill lists the tenants from the directory (plus the default tenant) and, for each tenant, reads and writes inside a
+// transaction that first sets app.tenant_key. A pass with no tenant context would see the default tenant only and report success.
+function defaultTenantKey() {
+  return normalizeText(process.env.PIM_DEFAULT_TENANT_KEY) || "default";
+}
+
+async function listTenantKeys(prisma) {
+  const rows = await prisma.workspaceDirectory.findMany({ select: { tenantKey: true } });
+  const keys = new Set([defaultTenantKey()]);
+  for (const row of rows) {
+    const key = normalizeText(row.tenantKey);
+    if (key) keys.add(key);
+  }
+  return { tenantKeys: [...keys].sort(), directoryTenantCount: rows.length };
+}
 
 function loadPrismaClient() {
   return require("@prisma/client").PrismaClient;
@@ -106,7 +125,7 @@ function isWriteAuthorized({ confirmFlag, confirmEnv }) {
   return confirmFlag === true && normalizeText(confirmEnv).toLowerCase() === "true";
 }
 
-async function backfillProduct(prisma, product, { dryRun }) {
+async function backfillProduct(prisma, product, { dryRun, setTenantContext = false }) {
   const fields = deriveCanonicalVariantFields(product);
   if (dryRun) {
     return { productId: product.id, tenantKey: product.tenantKey, outcome: "would_create", ...fields };
@@ -115,6 +134,9 @@ async function backfillProduct(prisma, product, { dryRun }) {
   // a product that gained a variant since the population was read (e.g. a
   // concurrent normal approval) must be skipped, not duplicated.
   return prisma.$transaction(async (tx) => {
+    if (setTenantContext) {
+      await tx.$queryRaw`SELECT set_config('app.tenant_key', ${product.tenantKey}, true)`;
+    }
     const existingVariant = await tx.variant.findFirst({
       where: { productId: product.id, tenantKey: product.tenantKey },
       select: { id: true },
@@ -180,6 +202,58 @@ function assertNotTruncated(fetchedRowCount, cap) {
   }
 }
 
+// The original single-pass read (DATABASE_URL, no opt-in), unchanged apart from living in its own function.
+async function loadCandidatesSinglePass(prisma) {
+  const candidates = await prisma.product.count({ where: sellableVariantlessWhere() });
+  if (candidates > ROW_FETCH_CAP) {
+    throw new Error(
+      `Candidate population (${candidates}) exceeds ROW_FETCH_CAP (${ROW_FETCH_CAP}) — refusing to run ` +
+        `unbounded. Raise the cap deliberately after re-confirming the eligibility predicate still matches ` +
+        `expectations at this scale.`,
+    );
+  }
+
+  // This count() and the findMany() below are two independent, non-atomic
+  // reads of a live table — the population can grow past ROW_FETCH_CAP in
+  // between, so the upfront count alone is a best-effort proxy, not a
+  // guarantee. assertNotTruncated re-checks the actual fetched row count,
+  // which is the real enforcement point.
+  const products = await loadCandidateProducts(prisma);
+  assertNotTruncated(products.length, ROW_FETCH_CAP);
+  return products;
+}
+
+// Ops mode: candidates per tenant, each read inside that tenant's own context. A tenant whose read fails is recorded and the others
+// continue. The cap is enforced across the whole run, as in the single-pass mode, and fails closed.
+async function loadCandidatesByTenant(prisma, tenantKeys) {
+  const products = [];
+  const tenants = [];
+  for (const tenantKey of tenantKeys) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const rows = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT set_config('app.tenant_key', ${tenantKey}, true)`;
+        return tx.product.findMany({
+          where: sellableVariantlessWhere(),
+          select: { id: true, tenantKey: true, status: true, attributes: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: ROW_FETCH_CAP + 1,
+        });
+      });
+      assertNotTruncated(rows.length, ROW_FETCH_CAP);
+      products.push(...rows);
+      assertNotTruncated(products.length, ROW_FETCH_CAP);
+      tenants.push({ tenantKey, status: "ok", candidateCount: rows.length });
+    } catch (error) {
+      if (error && /ROW_FETCH_CAP/.test(String(error.message))) {
+        throw error;
+      }
+      tenants.push({ tenantKey, status: "failed", candidateCount: 0, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { products, tenants };
+}
+
 function summarize(results) {
   // Fixed shape covering every possible outcome, including "error" — never a
   // sparse object that silently omits a category with zero occurrences, and
@@ -195,10 +269,11 @@ async function main() {
   const args = parseArgs(process.argv);
   const output = normalizeText(args.output) || DEFAULT_OUTPUT;
   const targetEnvironment = normalizeText(args.targetEnvironment) || normalizeText(process.env.SELLABLE_SKU_BACKFILL_TARGET_ENV);
-  const databaseUrl = normalizeText(process.env.DATABASE_URL);
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required for the sellable-SKU backfill.");
+  const resolvedDb = resolveOperatorDatabaseUrl(process.env, "OPS_DATABASE_URL");
+  if (!resolvedDb.url) {
+    throw new Error("DATABASE_URL (or OPS_DATABASE_URL) is required for the sellable-SKU backfill.");
   }
+  const tenantMode = resolvedDb.optIn;
 
   const writeAuthorized = isWriteAuthorized({
     confirmFlag: args.confirm,
@@ -207,24 +282,26 @@ async function main() {
   const dryRun = !writeAuthorized;
 
   const PrismaClient = loadPrismaClient();
-  const prisma = new PrismaClient();
+  const prisma = createOperatorPrisma(PrismaClient, resolvedDb);
   try {
-    const candidates = await prisma.product.count({ where: sellableVariantlessWhere() });
-    if (candidates > ROW_FETCH_CAP) {
-      throw new Error(
-        `Candidate population (${candidates}) exceeds ROW_FETCH_CAP (${ROW_FETCH_CAP}) — refusing to run ` +
-          `unbounded. Raise the cap deliberately after re-confirming the eligibility predicate still matches ` +
-          `expectations at this scale.`,
-      );
+    let tenantIteration = null;
+    let products;
+    if (tenantMode) {
+      await assertOperatorIdentity(prisma, "vexa_ops", { requireBypassRls: false });
+      const listed = await listTenantKeys(prisma);
+      const loaded = await loadCandidatesByTenant(prisma, listed.tenantKeys);
+      products = loaded.products;
+      tenantIteration = {
+        directoryTenantCount: listed.directoryTenantCount,
+        tenantsEvaluated: loaded.tenants.length,
+        tenantsFailed: loaded.tenants.filter((t) => t.status === "failed").length,
+        // A restricted role cannot see rows whose tenant is not in the directory, so it cannot prove there are none.
+        orphanDetection: "UNVERIFIED_BY_OPS_ROLE",
+        tenants: loaded.tenants,
+      };
+    } else {
+      products = await loadCandidatesSinglePass(prisma);
     }
-
-    // This count() and the findMany() below are two independent, non-atomic
-    // reads of a live table — the population can grow past ROW_FETCH_CAP in
-    // between, so the upfront count alone is a best-effort proxy, not a
-    // guarantee. assertNotTruncated re-checks the actual fetched row count,
-    // which is the real enforcement point.
-    const products = await loadCandidateProducts(prisma);
-    assertNotTruncated(products.length, ROW_FETCH_CAP);
     const results = [];
     // Sequential, not Promise.all — this performs real writes when write-
     // authorized; deliberately trades speed for a report where a mid-run
@@ -236,7 +313,7 @@ async function main() {
     for (const product of products) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        const result = await backfillProduct(prisma, product, { dryRun });
+        const result = await backfillProduct(prisma, product, { dryRun, setTenantContext: tenantMode });
         results.push(result);
       } catch (error) {
         results.push({
@@ -252,6 +329,7 @@ async function main() {
       status: "ok",
       suite: "sellable-sku-variantless-backfill",
       mode: dryRun ? "dry_run" : "write",
+      identity: tenantMode ? "vexa_ops (tenant iteration)" : "DATABASE_URL (single pass)",
       safety: {
         databaseMutations: !dryRun,
         storageMutations: false,
@@ -260,6 +338,7 @@ async function main() {
       appEnv: process.env.APP_ENV || "(unspecified)",
       sellableStatuses: SELLABLE_STATUSES,
       candidateCount: products.length,
+      ...(tenantIteration ? { tenantIteration } : {}),
       summary: summarize(results),
       results,
       checkedAt: new Date().toISOString(),
@@ -299,6 +378,9 @@ module.exports = {
   isWriteAuthorized,
   assertNotTruncated,
   summarize,
+  listTenantKeys,
+  loadCandidatesByTenant,
+  backfillProduct,
   SELLABLE_STATUSES,
   ROW_FETCH_CAP,
 };

@@ -3,6 +3,7 @@
 
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { resolveOperatorDatabaseUrl, assertOperatorIdentity, createOperatorPrisma } = require("./operator-db-identity.cjs");
 
 const DEFAULT_OUTPUT = ".run-logs/media-integrity-readonly-report.json";
 
@@ -306,16 +307,21 @@ async function main() {
   const args = parseArgs(process.argv);
   const output = normalizeText(args.output) || DEFAULT_OUTPUT;
   const targetEnvironment = normalizeText(args.targetEnvironment) || normalizeText(process.env.MEDIA_INTEGRITY_TARGET_ENV);
-  const databaseUrl = normalizeText(process.env.DATABASE_URL);
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required for the read-only media integrity report.");
+  // SEC-DB-RLS-001 7.9c: REPORTER_DATABASE_URL is the opt-in. Unset or blank = DATABASE_URL, exactly as before. When it is set the
+  // connection must really be vexa_reporter (read-only, bypasses RLS because a report spans tenants, not a superuser) before any read.
+  const resolvedDb = resolveOperatorDatabaseUrl(process.env, "REPORTER_DATABASE_URL");
+  if (!resolvedDb.url) {
+    throw new Error("DATABASE_URL (or REPORTER_DATABASE_URL) is required for the read-only media integrity report.");
   }
 
   const localFileProbeEnabled = normalizeText(process.env.MEDIA_INTEGRITY_VERIFY_LOCAL_FILES).toLowerCase() === "true";
   const s3Info = createS3ClientFromEnv();
   const PrismaClient = loadPrismaClient();
-  const prisma = new PrismaClient();
+  const prisma = createOperatorPrisma(PrismaClient, resolvedDb);
   try {
+    if (resolvedDb.optIn) {
+      await assertOperatorIdentity(prisma, "vexa_reporter", { requireBypassRls: true });
+    }
     const rows = await loadRows(prisma);
     const probeResults = await probeRows(rows, { s3Info, localFileProbeEnabled });
     const report = buildSafeSummary(rows, probeResults, {

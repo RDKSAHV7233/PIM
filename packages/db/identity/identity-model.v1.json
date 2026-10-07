@@ -109,9 +109,10 @@
       "ai_platform_controls": "crud",
       "ai_platform_budget_periods": "crud",
       "Product": "select",
-      "Variant": "select-insert"
+      "Variant": "select-insert",
+      "WorkspaceDirectory": "select"
     },
-    "note": "Product and Variant serve the sellable-SKU backfill (scripts/sellable-sku-variantless-backfill.cjs reads products, reads and creates variants). Both are forced-RLS tables and vexa_ops is NOBYPASSRLS, so the backfill must set the tenant context for each tenant."
+    "note": "Product and Variant serve the sellable-SKU backfill (scripts/sellable-sku-variantless-backfill.cjs reads products, reads and creates variants). Both are forced-RLS tables and vexa_ops is NOBYPASSRLS, so the backfill must set the tenant context for each tenant. WorkspaceDirectory (SELECT only, no RLS) is where it lists those tenants; without it a restricted role would have to guess the tenant list, or see only the default tenant."
   },
   "reporter": {
     "tables": {

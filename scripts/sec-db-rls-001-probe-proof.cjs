@@ -174,8 +174,8 @@ async function main() {
   console.error("\n== as vexa_ops");
   const ops = probeAs("vexa_ops", pw("vexa_ops"), "ops");
   check(
-    "the operator identity writes only the two platform control tables, plus INSERT of variants for the backfill, and does not bypass RLS",
-    ops.status === 0 && sec(ops, S.eff).tables_select === 4 && sec(ops, S.eff).tables_insert === 3 && sec(ops, S.eff).tables_update === 2 && sec(ops, S.eff).tables_delete === 2 && sec(ops, S.me).rolbypassrls === false,
+    "the operator identity writes only the two platform control tables, plus INSERT of variants for the backfill, reads the tenant directory it lists tenants from, and does not bypass RLS",
+    ops.status === 0 && sec(ops, S.eff).tables_select === 5 && sec(ops, S.eff).tables_insert === 3 && sec(ops, S.eff).tables_update === 2 && sec(ops, S.eff).tables_delete === 2 && sec(ops, S.me).rolbypassrls === false,
   );
 
   console.error("\n== as vexa_migrator");

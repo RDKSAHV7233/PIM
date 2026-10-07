@@ -41,7 +41,11 @@ jobs:
       - name: Run read-only media integrity report
         shell: bash
         env:
+          # SEC-DB-RLS-001 7.9c, opt-in: while PRODUCTION_REPORTER_DATABASE_URL is unset REPORTER_DATABASE_URL is empty and the script keeps using DATABASE_URL, exactly as before.
+          # When a person stores the vexa_reporter credential there, the script uses it and first checks that the connection really is that role.
+          # The DATABASE_URL line below is the existing fallback; the cutover removes it (docs/qa/sec-db-rls-001-7-9c-operator-wiring-2026-10-07.md).
           DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
+          REPORTER_DATABASE_URL: ${{ secrets.PRODUCTION_REPORTER_DATABASE_URL }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.STAGE3_R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.STAGE3_R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.STAGE3_R2_SECRET_ACCESS_KEY }}
@@ -51,8 +55,8 @@ jobs:
           MEDIA_STORAGE_MODE: ${{ vars.MEDIA_STORAGE_MODE }}
           MEDIA_INTEGRITY_VERIFY_LOCAL_FILES: "false"
         run: |
-          if [ -z "${DATABASE_URL}" ]; then
-            echo "Missing STAGE3_DATABASE_URL secret for production media integrity confirmation."
+          if [ -z "${DATABASE_URL}" ] && [ -z "${REPORTER_DATABASE_URL}" ]; then
+            echo "Missing STAGE3_DATABASE_URL secret for production media integrity confirmation (and PRODUCTION_REPORTER_DATABASE_URL is not set)."
             exit 1
           fi
           node scripts/media-integrity-readonly-report.cjs \
