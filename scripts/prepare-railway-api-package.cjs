@@ -89,6 +89,26 @@ function main() {
     .replaceAll("packages/db/prisma/schema.prisma", "prisma/schema.prisma");
   const migrateScriptPath = path.join(outputScriptsDir, "prisma-migrate-deploy.cjs");
   fs.writeFileSync(migrateScriptPath, migrateScriptContents, "utf8");
+
+  // SEC-DB-RLS-001 7.9a: when MIGRATION_DATABASE_URL is set, the runner applies the explicit grants right after the migrations, with the
+  // identity tool and the grants manifest. They must travel with the runner, at the paths the tool resolves, or the opt-in deploy fails
+  // closed (it never skips the grants).
+  const identityToolDir = path.join(outputScriptsDir, "db-identity");
+  ensureDir(identityToolDir);
+  for (const file of ["lib.cjs", "tool.cjs"]) {
+    const source = path.join(repoRoot, "scripts", "db-identity", file);
+    if (!fs.existsSync(source)) {
+      throw new Error(`Database identity tool file not found: ${source}`);
+    }
+    fs.copyFileSync(source, path.join(identityToolDir, file));
+  }
+  const identityModelSource = path.join(repoRoot, "packages", "db", "identity", "identity-model.v1.json");
+  if (!fs.existsSync(identityModelSource)) {
+    throw new Error(`Database identity model not found: ${identityModelSource}`);
+  }
+  const identityModelTarget = path.join(outputDir, "packages", "db", "identity");
+  ensureDir(identityModelTarget);
+  fs.copyFileSync(identityModelSource, path.join(identityModelTarget, "identity-model.v1.json"));
   const syncObservabilityClientScript = [
     "#!/usr/bin/env node",
     "/* eslint-disable no-console */",

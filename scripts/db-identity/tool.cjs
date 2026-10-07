@@ -16,6 +16,15 @@
  * DB_IDENTITY_ADMIN_URL is required and explicit. **Every write mode refuses any host that is not local**: I1 is rehearsal and
  * foundation only, and a production ownership transfer, credential rotation or cutover is out of scope until separately authorised
  * (and until GitHub branch protection is in place). The read-only modes never print a URL, user or password.
+ *
+ * One narrow exception (SEC-DB-RLS-001 7.9a): `apply-grants` may run on a non-local host, and only when the deploy runner asks for it by
+ * setting DB_IDENTITY_ALLOW_REMOTE_APPLY_GRANTS=1 (the runner does that only when MIGRATION_DATABASE_URL is configured). That flag also
+ * switches on STRICT checks, on every host, so the same code is what the local rehearsal exercises. Strict mode refuses, before changing
+ * a single grant, unless: the connection is `vexa_migrator` and not a superuser; every table, enum type and function in `public` is
+ * already owned by the migrator (the ownership transfer is done); the other four identities exist; and every table is classified in
+ * the manifest (an unclassified table would otherwise be skipped by the revoke-then-grant, leaving the still-running application
+ * without access). After the grants it re-verifies the parts of the model the grants are responsible for and fails if any is wrong.
+ * It still never creates a role, changes an owner, or prints a URL, user or password.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -24,6 +33,9 @@ const lib = require("./lib.cjs");
 const MODEL_DIR = path.resolve(__dirname, "..", "..", "packages", "db", "identity");
 const WRITE_MODES = new Set(["create-roles", "apply-ownership", "rollback-ownership", "apply-grants"]);
 const READ_MODES = new Set(["snapshot", "plan-ownership", "verify"]);
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
+/** The verifier checks the strict grants step is accountable for: privileges, classification, ownership, PUBLIC. Role attributes are the cutover's concern. */
+const GRANTS_RESPONSIBILITY = /classified in the runtime grants manifest|lists no table that does not exist|ops and reporter grants|holds exactly the manifest privileges|no table privilege is granted to PUBLIC|owned by the migrator|owns nothing|only the migrator can create/;
 
 function loadManifest() {
   // DB_IDENTITY_MANIFEST lets the rehearsal evaluate a candidate manifest (for example one that classifies a table a new migration added).
@@ -85,6 +97,36 @@ async function gatherState(db) {
   return { roles, objects, tables, effective, publicTableGrants: pub.n, memberships, schemaCreate };
 }
 
+/**
+ * Everything strict apply-grants requires before it may change a grant. Returns the reasons it must refuse (empty when it may proceed).
+ * Names and counts only: nothing here prints a URL, a user other than the two role names, or a password.
+ */
+async function strictGrantsRefusals(db, manifest) {
+  const migrator = lib.ROLES.migrator.name;
+  const reasons = [];
+  const [me] = await db.$queryRawUnsafe("SELECT current_user AS name, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS super");
+  if (me.name !== migrator || me.super === true) {
+    reasons.push(`apply-grants on this path runs only as ${migrator}, not as ${me.name}${me.super === true ? " (a superuser)" : ""}`);
+  }
+  const objects = await gatherObjects(db);
+  const notMigrator = objects.filter((o) => o.owner !== migrator);
+  if (notMigrator.length > 0) {
+    reasons.push(`the ownership transfer is not complete: ${notMigrator.length} object(s) are not owned by ${migrator} (for example ${notMigrator.slice(0, 3).map((o) => `${o.kind}:${o.name}`).join(", ")})`);
+  }
+  const others = Object.values(lib.ROLES).map((r) => r.name).filter((n) => n !== migrator);
+  const found = new Set((await db.$queryRawUnsafe(`SELECT rolname FROM pg_roles WHERE rolname IN (${others.map(quoteLiteral).join(",")})`)).map((r) => r.rolname));
+  const missing = others.filter((n) => !found.has(n));
+  if (missing.length > 0) {
+    reasons.push(`these identities do not exist yet: ${missing.join(", ")} (they are created at the cutover, not by a deploy)`);
+  }
+  const classified = new Set([...Object.keys(manifest.runtime.tables), ...(manifest.runtime.excluded || [])]);
+  const unclassified = objects.filter((o) => o.kind === "table" && !classified.has(o.name)).map((o) => o.name);
+  if (unclassified.length > 0) {
+    reasons.push(`${unclassified.length} table(s) are not classified in the grants manifest: ${unclassified.slice(0, 5).join(", ")}. Classify them in packages/db/identity/identity-model.v1.json in the same change as the migration`);
+  }
+  return reasons;
+}
+
 function hostOf(url) {
   return new URL(url).hostname;
 }
@@ -102,7 +144,9 @@ async function main() {
     process.exit(2);
   }
   const host = hostOf(adminUrl);
-  if (WRITE_MODES.has(mode) && !["localhost", "127.0.0.1", "::1"].includes(host)) {
+  // Strict apply-grants: asked for by the deploy runner (never by default), and then checked the same way on every host.
+  const strictGrants = mode === "apply-grants" && String(process.env.DB_IDENTITY_ALLOW_REMOTE_APPLY_GRANTS || "").trim() === "1";
+  if (WRITE_MODES.has(mode) && !LOCAL_HOSTS.includes(host) && !strictGrants) {
     console.error(`${mode} refused: it writes, and I1 only ever writes to a local rehearsal database. Production ownership transfer, credential rotation and cutover are out of scope and need separate authorisation.`);
     process.exit(3);
   }
@@ -176,6 +220,17 @@ async function main() {
       });
       console.log(JSON.stringify({ statements: plan.length, restored: lib.sameOwnership(before, await gatherObjects(db)) }));
     } else if (mode === "apply-grants") {
+      if (strictGrants) {
+        const refusals = await strictGrantsRefusals(db, manifest);
+        if (refusals.length > 0) {
+          console.error("apply-grants refused (strict mode); no grant was changed:");
+          for (const reason of refusals) {
+            console.error(`  - ${reason}`);
+          }
+          await db.$disconnect().catch(() => undefined);
+          process.exit(3);
+        }
+      }
       const objects = await gatherObjects(db);
       const tables = objects.filter((o) => o.kind === "table").map((o) => o.name);
       const excluded = new Set(manifest.runtime.excluded || []);
@@ -195,6 +250,22 @@ async function main() {
         }
       });
       console.log(`grants applied for runtime, ops, backup and reporter over ${tables.length} tables`);
+      if (strictGrants) {
+        const findings = lib.evaluateModel(await gatherState(db), manifest);
+        const responsible = findings.filter((f) => GRANTS_RESPONSIBILITY.test(f.check));
+        const failed = responsible.filter((f) => !f.ok);
+        for (const f of findings.filter((x) => !x.ok && !GRANTS_RESPONSIBILITY.test(x.check))) {
+          console.warn(`WARN ${f.check}`);
+        }
+        if (failed.length > 0) {
+          for (const f of failed) {
+            console.error(`FAIL ${f.check}${f.detail === undefined ? "" : `  ${JSON.stringify(f.detail)}`}`);
+          }
+          process.exitCode = 1;
+        } else {
+          console.log(`strict verify: ${responsible.length} grant checks passed`);
+        }
+      }
     }
   } finally {
     await db.$disconnect().catch(() => undefined);

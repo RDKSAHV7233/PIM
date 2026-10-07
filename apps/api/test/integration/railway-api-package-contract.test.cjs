@@ -126,6 +126,14 @@ function main() {
     "Packaged migrate helper must not reference the monorepo schema path",
   );
 
+  // SEC-DB-RLS-001 7.9a: the packaged runner can find the grants tool and the manifest it needs when MIGRATION_DATABASE_URL is set.
+  const packagedRunner = require(path.join(outputDir, "scripts", "prisma-migrate-deploy.cjs"));
+  assert.ok(fs.existsSync(packagedRunner.GRANTS_TOOL), "the packaged runner's grants tool must exist at the path the runner resolves");
+  assert.ok(fs.existsSync(path.join(outputDir, "scripts", "db-identity", "lib.cjs")), "the grants tool's library must travel with it");
+  const packagedModelPath = path.join(outputDir, "packages", "db", "identity", "identity-model.v1.json");
+  assert.ok(fs.existsSync(packagedModelPath), "the grants manifest must be where the packaged tool resolves it");
+  assert.ok(JSON.parse(fs.readFileSync(packagedModelPath, "utf8")).runtime.tables, "the packaged manifest must be the real manifest");
+
   console.log("railway api package contract OK");
 }
 

@@ -450,6 +450,55 @@ async function main() {
     const dOk = pg("pg_dump", ["-Fc", "-d", PRODLIKE], { user: BACKUP, pass: rehearsalPassword(BACKUP) });
     check("the backup succeeds again once the new table is granted (apply-grants must run right after migrate in the deploy)", dOk.status === 0, `${dOk.status} ${dOk.stderr.slice(0, 200)}`);
 
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R9c the deploy runner in its opt-in mode: migrate as the migrator, then grant as the migrator, and refuse before changing a grant");
+    const runRunner = (extraEnv) => {
+      const r = cp.spawnSync(process.execPath, [path.join(ROOT, "scripts", "prisma-migrate-deploy.cjs")], {
+        cwd: ROOT,
+        env: { ...process.env, MIGRATION_DATABASE_URL: "", DATABASE_URL_DIRECT: "", DATABASE_URL: "", DB_IDENTITY_MANIFEST: "", ...extraEnv },
+        encoding: "utf8",
+        maxBuffer: 32 * 1024 * 1024,
+      });
+      return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
+    };
+    const toolAs = (db, user, pass, extraEnv) =>
+      cp.spawnSync(process.execPath, [path.join(__dirname, "tool.cjs"), "apply-grants"], {
+        cwd: ROOT,
+        env: { ...process.env, DB_IDENTITY_ADMIN_URL: urlFor(db, user, pass), DB_IDENTITY_ALLOW_REMOTE_APPLY_GRANTS: "1", ...extraEnv },
+        encoding: "utf8",
+      });
+    const migratorUrl = urlFor(PRODLIKE, MIGRATOR, rehearsalPassword(MIGRATOR));
+    const runtimeUrl = urlFor(PRODLIKE, RUNTIME, rehearsalPassword(RUNTIME));
+    const reachesNewTable = async () => (await inTenant(rt, "tenant-a", (tx) => tx.$queryRawUnsafe(`SELECT id FROM rehearsal_new_table`))).length === 1;
+
+    const asRuntime = runRunner({ DATABASE_URL_DIRECT: runtimeUrl });
+    check("a deploy that still migrates with the runtime credential FAILS after the transfer (the runtime cannot run migrations)", asRuntime.status !== 0, tail(asRuntime.out));
+
+    const okRun = runRunner({ MIGRATION_DATABASE_URL: migratorUrl, DATABASE_URL_DIRECT: runtimeUrl, DB_IDENTITY_MANIFEST: candidateFile });
+    check("the opt-in deploy succeeds as the migrator even though a runtime URL is also present", okRun.status === 0 && okRun.out.includes("using MIGRATION_DATABASE_URL") && okRun.out.includes("strict verify"), tail(okRun.out));
+    check("the deploy output never contains a password", !okRun.out.includes(rehearsalPassword(MIGRATOR)) && !okRun.out.includes(rehearsalPassword(RUNTIME)));
+    check("the runtime still reaches the classified new table after the deploy's grants", await reachesNewTable());
+
+    const unclassified = runRunner({ MIGRATION_DATABASE_URL: migratorUrl });
+    check("a deploy whose migrations added a table the manifest does not classify FAILS (loudly, in the deploy)", unclassified.status !== 0 && /not classified in the grants manifest/.test(unclassified.out), tail(unclassified.out));
+    check("and it refused BEFORE changing any grant: the running application still reaches the table", await reachesNewTable());
+
+    const strictOnly = { DB_IDENTITY_MANIFEST: candidateFile };
+    const asRt = toolAs(PRODLIKE, RUNTIME, rehearsalPassword(RUNTIME), strictOnly);
+    check("strict apply-grants refuses to run as the runtime role", asRt.status === 3 && /only as vexa_migrator/.test(asRt.stderr), tail(asRt.stderr));
+    const asSuper = toolAs(PRODLIKE, ADMIN_USER, ADMIN_PASS, strictOnly);
+    check("strict apply-grants refuses to run as a superuser", asSuper.status === 3 && /only as vexa_migrator/.test(asSuper.stderr), tail(asSuper.stderr));
+    const beforeOwnership = toolAs(RESTORED, MIGRATOR, rehearsalPassword(MIGRATOR), strictOnly);
+    check("strict apply-grants refuses before the ownership transfer is complete", beforeOwnership.status === 3 && /ownership transfer is not complete/.test(beforeOwnership.stderr), tail(beforeOwnership.stderr));
+    check("none of those refusals changed a grant", await reachesNewTable());
+    const localNoFlag = cp.spawnSync(process.execPath, [path.join(__dirname, "tool.cjs"), "apply-grants"], {
+      cwd: ROOT,
+      env: { ...process.env, DB_IDENTITY_ADMIN_URL: adminFor(PRODLIKE), DB_IDENTITY_ALLOW_REMOTE_APPLY_GRANTS: "", DB_IDENTITY_MANIFEST: candidateFile },
+      encoding: "utf8",
+    });
+    check("without the runner's flag the tool behaves exactly as before (local, no strict checks)", localNoFlag.status === 0 && !/strict verify/.test(localNoFlag.stdout || ""), tail(localNoFlag.stderr));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
     section("R9b data-fixing migrations: why the migrator has BYPASSRLS");
     const fixAll = await mg.$executeRawUnsafe(`UPDATE workflow_sla SET review_target_days = 5`);
     check("a data-fixing migration run as the migrator reaches every tenant (3 rows)", fixAll === 3, `rows ${fixAll}`);

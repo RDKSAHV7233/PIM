@@ -82,6 +82,9 @@ jobs:
         env:
           DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          # SEC-DB-RLS-001 7.9a, opt-in: while this secret is unset the value is empty and nothing changes. When a person creates the
+          # vexa_migrator credential and stores it, the migrations run as that identity and the explicit grants follow immediately.
+          MIGRATION_DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
         run: |
           if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
             echo "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for migrations."

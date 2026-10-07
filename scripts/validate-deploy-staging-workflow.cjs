@@ -101,6 +101,8 @@ function main() {
   const migrationsStep = requireStep(steps, "Apply migrations");
   requireEnvVar(migrationsStep, "DATABASE_URL_DIRECT", "Apply migrations");
   requireEnvVar(migrationsStep, "DATABASE_URL", "Apply migrations");
+  // SEC-DB-RLS-001 7.9a: the opt-in migration identity is mapped from its own secret, so an unset secret is empty and changes nothing.
+  requireEnvVar(migrationsStep, "MIGRATION_DATABASE_URL", "Apply migrations");
   requireRunContains(
     migrationsStep,
     "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for migrations.",

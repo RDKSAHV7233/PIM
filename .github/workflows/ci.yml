@@ -120,6 +120,8 @@ jobs:
           node scripts/validate-sec-restricted-lane.cjs
           node scripts/validate-sec-restricted-lane.test.cjs
           node scripts/db-identity/lib.test.cjs
+          node scripts/db-identity/tool.test.cjs
+          node scripts/prisma-migrate-deploy.test.cjs
 
       - name: AI governance validators and fixture tests
         shell: bash
