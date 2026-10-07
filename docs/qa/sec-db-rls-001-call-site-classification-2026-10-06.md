@@ -48,8 +48,8 @@ Type: **classification and tooling. No production access, no application behavio
 
 ## 5. Shared pieces to build once
 
-- **A tenant iteration helper**: list tenants from the authoritative directory (`WorkspaceDirectory`, an unscoped table by design, plus the default tenant), run a callback per tenant inside its own context, isolate failures per tenant, and emit per-tenant counts so a job that processes zero tenants is visible. Backend decides the exact shape; the A and A2 PRs share it.
-- **A restricted-role test lane** (next step): CI creates the restricted role with explicit repo-defined grants, seeds through a separate admin identity, and runs the tenant-boundary suites plus the positive assertions in section 3.
+- **The tenant iteration helper** (`TenantIterationService.forEachTenant`, `apps/api/src/common/tenant/tenant-iteration.service.ts`): lists tenants from the authoritative directory (`WorkspaceDirectory`, an unscoped table by design, read through the default tenant's client in keyset pages) plus the default tenant, runs a callback per tenant inside its own `runWithTenantContext`, with bounded concurrency (default 4, cap 16), a per-tenant timeout and abort signal, a deadline, per-tenant failure isolation and aggregate accounting (processed, failed, timed out, skipped, per-tenant duration). A run that lists zero tenants, or whose directory is empty, is logged and reported as incomplete; a failure to list tenants throws with the partial result. Error messages are never logged or returned, only the class name and a safe code. The A and A2 PRs share it. Limit: a tenant key that holds data but is absent from `WorkspaceDirectory` is not visited, so each job's PR must confirm the directory covers its tenants.
+- **A restricted-role test lane**: CI creates the restricted role with explicit repo-defined grants, seeds through a separate admin identity, and runs the tenant-boundary suites plus the positive assertions in section 3.
 
 ## 6. Migration PR slicing (each independently releasable, each with its positive-result assertions)
 
