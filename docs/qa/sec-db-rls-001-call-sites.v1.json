@@ -60,7 +60,7 @@
       "file": "billing/plan-usage.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "the nightly rollup iterates tenants from the directory and writes PlanUsage through each tenant's context; PlanLimits stays a global config table",
+      "plan": "P2.1a (nightly rollup tenant discovery) is implemented: tenants now come from the workspace directory plus the default tenant, each recomputed through its own tenant context, with a per-tenant result summary; the legacy cross-table scan is retained only as a best-effort addition for a superuser deployment. Remaining (P2.1b): the operator listings and usage-overview reads still use the direct client and must move to tenant iteration with application-side aggregation. PlanLimits stays a global config table. The file stays open until P2.1b removes the direct-client references",
       "rlsProtectedModels": [
         "apiAccessKey",
         "authIdentity",
@@ -75,7 +75,7 @@
         "workspaceDirectory"
       ],
       "rawSqlSites": 21,
-      "positiveAssertion": "a non-default tenant's PlanUsage is recomputed (non-empty)",
+      "positiveAssertion": "a non-default tenant's PlanUsage is recomputed (non-empty); proven for the nightly rollup by apps/api/test/integration/plan-usage-rollup-tenant-iteration.test.cjs under the restricted role",
       "status": "open"
     },
     {

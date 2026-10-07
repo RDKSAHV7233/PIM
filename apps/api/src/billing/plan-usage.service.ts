@@ -3,6 +3,7 @@ import { Prisma, RecordStatus } from "@prisma/client";
 import { CacheService } from "../common/cache/cache.service";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { listTenantKeys } from "../common/tenant/tenant-iteration";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -395,6 +396,32 @@ export interface UpdateCommercialStateInput {
   cancelledAt?: string | null;
   suspendedAt?: string | null;
   billingContactEmail?: string | null;
+}
+
+/**
+ * SEC-DB-RLS-001 P2.1a: the outcome of one nightly usage rollup. Every field is a count or a stable code, never a message or a row.
+ * `orphanDetection` is a fixed statement of a limit: a runtime role cannot see tenants that have data but no directory row, so
+ * "no orphans" is never claimed.
+ */
+export interface UsageRollupResult {
+  directoryTenantCount: number;
+  tenantsEvaluated: number;
+  tenantsSucceeded: number;
+  tenantsFailed: number;
+  /** Tenants found only by the legacy cross-table scan (non-zero only for a role that bypasses row level security). */
+  discoveredOutsideDirectory: number;
+  failures: Array<{ tenantKey: string; errorCode: string }>;
+  orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE";
+}
+
+/** A stable, non-sensitive code for a failed tenant: the error's own short code or name, never its message (which can carry values). */
+function usageRollupErrorCode(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && /^[A-Za-z0-9_.-]{1,40}$/.test(code)) {
+    return code;
+  }
+  const name = (error as { name?: unknown } | null)?.name;
+  return typeof name === "string" && /^[A-Za-z0-9_.-]{1,60}$/.test(name) ? name : "UNKNOWN_ERROR";
 }
 
 @Injectable()
@@ -1554,42 +1581,73 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     return row;
   }
 
-  async rollupAllTenantsUsage(): Promise<void> {
-    // RLS-BYPASS: intentional cross-tenant scan — this is the scheduled nightly
-    // rollup itself; it must discover every tenant with any usage-relevant data
-    // across all six tables to recompute PlanUsage for each of them below.
-    const rows = await this.prisma.tenant().$queryRaw<Array<{ tenantKey: string }>>(Prisma.sql`
-      SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "Product"
-      UNION
-      SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "MarketplaceExportJob"
-      UNION
-      SELECT DISTINCT tenant_key AS "tenantKey" FROM media_assets
-      UNION
-      SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "PlanUsage"
-      UNION
-      SELECT DISTINCT tenant_key AS "tenantKey" FROM connector_installations
-      UNION
-      SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "TenantPlanProfile"
-      ORDER BY "tenantKey"
-    `);
+  async rollupAllTenantsUsage(): Promise<UsageRollupResult> {
+    // SEC-DB-RLS-001 P2.1a: tenants come from the workspace directory (a table with no row level security and no tenant key) plus
+    // the default tenant. recomputeUsage already runs every statement on prisma.tenant(<that tenant>), so only discovery needed to
+    // change: the old no-argument DISTINCT scan sees only the default tenant under a restricted role and reported success anyway.
+    // A directory read failure rejects the run: it must never degrade to "only the default tenant".
+    const { tenantKeys: directoryKeys, directoryTenantCount } = await listTenantKeys(this.prismaDirect.getClient() as never);
+
+    // The legacy scan is kept ONLY to add tenants that have data but no directory row, which a role that bypasses row level security
+    // (today's deployment) still returns. Under a restricted role it sees the default tenant only and adds nothing. Its failure must
+    // not stop directory tenants from being rolled up.
+    let legacyKeys: string[] = [];
+    try {
+      // RLS-BYPASS: best-effort cross-tenant scan; correctness for directory tenants does not depend on it.
+      const rows = await this.prisma.tenant().$queryRaw<Array<{ tenantKey: string }>>(Prisma.sql`
+        SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "Product"
+        UNION
+        SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "MarketplaceExportJob"
+        UNION
+        SELECT DISTINCT tenant_key AS "tenantKey" FROM media_assets
+        UNION
+        SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "PlanUsage"
+        UNION
+        SELECT DISTINCT tenant_key AS "tenantKey" FROM connector_installations
+        UNION
+        SELECT DISTINCT "tenantKey" AS "tenantKey" FROM "TenantPlanProfile"
+        ORDER BY "tenantKey"
+      `);
+      legacyKeys = rows.map((row) => String(row.tenantKey ?? "").trim()).filter(Boolean);
+    } catch (error: unknown) {
+      this.logger.warn(`rollupAllTenantsUsage: legacy cross-table scan failed (${usageRollupErrorCode(error)}); directory tenants are still rolled up.`);
+    }
+
+    const inDirectory = new Set(directoryKeys);
+    const outsideDirectory = [...new Set(legacyKeys)].filter((key) => !inDirectory.has(key));
+    const tenantKeys = [...new Set([...directoryKeys, ...outsideDirectory])].sort();
 
     // Process tenants in parallel chunks to avoid starving the DB connection pool
-    // while still being ~10× faster than purely sequential processing.
+    // while still being ~10x faster than purely sequential processing.
     // CHUNK_SIZE = 10 keeps peak parallelism bounded regardless of tenant count.
     const CHUNK_SIZE = 10;
-    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-      const chunk = rows.slice(i, i + CHUNK_SIZE);
+    const failures: UsageRollupResult["failures"] = [];
+    let succeeded = 0;
+    for (let i = 0; i < tenantKeys.length; i += CHUNK_SIZE) {
+      const chunk = tenantKeys.slice(i, i + CHUNK_SIZE);
       // allSettled: a single tenant failure must not abort the rest of the batch.
-      const results = await Promise.allSettled(
-        chunk.map((row) => this.recomputeUsage(normalizeTenantKey(row.tenantKey))),
-      );
+      const results = await Promise.allSettled(chunk.map((key) => this.recomputeUsage(normalizeTenantKey(key))));
       for (const [j, result] of results.entries()) {
         if (result.status === "rejected") {
-          const tenantKey = chunk[j]?.tenantKey ?? "unknown";
-          this.logger.error(`rollupAllTenantsUsage: failed for tenant ${tenantKey}`, result.reason);
+          const tenantKey = chunk[j] ?? "unknown";
+          const errorCode = usageRollupErrorCode(result.reason);
+          failures.push({ tenantKey, errorCode });
+          this.logger.error(`rollupAllTenantsUsage: failed for tenant ${tenantKey} (${errorCode})`);
+        } else {
+          succeeded += 1;
         }
       }
     }
+
+    return {
+      directoryTenantCount,
+      tenantsEvaluated: tenantKeys.length,
+      tenantsSucceeded: succeeded,
+      tenantsFailed: failures.length,
+      discoveredOutsideDirectory: outsideDirectory.length,
+      failures,
+      orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE",
+    };
   }
 
   private async getPlanLimits(planTierInput: string): Promise<PlanLimitsRow> {
@@ -2098,7 +2156,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     if (next <= now) {
       next.setUTCDate(next.getUTCDate() + 1);
     }
-    const delayMs = Math.max(1000, next.getTime() - now.getTime());
+    // PLAN_USAGE_ROLLUP_INITIAL_DELAY_MS shortens only the FIRST run (a real-process test needs it); unset means the 02:00 IST schedule.
+    const override = Number(String(process.env.PLAN_USAGE_ROLLUP_INITIAL_DELAY_MS ?? "").trim());
+    const delayMs =
+      Number.isFinite(override) && override >= 100 ? Math.floor(override) : Math.max(1000, next.getTime() - now.getTime());
     this.rollupTimeout = setTimeout(() => {
       void this.runScheduledUsageRollup();
       this.rollupInterval = setInterval(() => {
@@ -2112,7 +2173,13 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     try {
       ran = await runWithAdvisoryLock("plan-usage-rollup", async () => {
         try {
-          await this.rollupAllTenantsUsage();
+          const result = await this.rollupAllTenantsUsage();
+          const summary = `directory=${result.directoryTenantCount} evaluated=${result.tenantsEvaluated} succeeded=${result.tenantsSucceeded} failed=${result.tenantsFailed} outsideDirectory=${result.discoveredOutsideDirectory}`;
+          if (result.tenantsFailed > 0) {
+            this.logger.error(`Nightly usage rollup degraded: ${summary}`);
+          } else {
+            this.logger.log(`Nightly usage rollup complete: ${summary}`);
+          }
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           this.logger.warn(`Nightly usage rollup failed: ${message}`);
