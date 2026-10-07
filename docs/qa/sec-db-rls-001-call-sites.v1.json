@@ -395,15 +395,15 @@
     },
     {
       "file": "intelligence/intelligence-reservation-maintenance.service.ts",
-      "class": "D",
-      "remediation": "approved-maintenance-path",
-      "plan": "already uses the SELECT-only app.ai_maintenance marker; state changes go through the tenant client (proven under a restricted role in #1181)",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "The scheduled sweeper and the counter audit reach every tenant by explicit tenant iteration (forEachTenant: one transaction per tenant, tenant context set inside it, every query on that transaction, explicit tenant-key filters). The former app.ai_maintenance marker is no longer set or read here; the three SELECT policies that honour it are dropped in plan item 7.2b, after this change is deployed and runtime-verified. The service still holds the base client the helper runs on.",
       "rlsProtectedModels": [
         "aiProviderBudgetReservation"
       ],
       "otherModels": [],
       "rawSqlSites": 2,
-      "positiveAssertion": "covered by the 004b-i RLS scenario",
+      "positiveAssertion": "intelligence-reservation-maintenance.service.spec.ts (a non-default tenant's expired reservation is found and swept; a tenant that cannot be read is counted, not treated as clean; the audit adds every tenant's share and throws when a tenant cannot be read) and the 004b-i RLS scenario in ai-provider-budget-lifecycle.test.cjs under a restricted role",
       "status": "open"
     },
     {

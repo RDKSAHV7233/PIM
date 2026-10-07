@@ -33,7 +33,9 @@ const mutations = [
   ["result carries a number", { types: append("export interface X { requestedEstimatedCostMicros: number; }") }, "types.money"],
   ["maintenance writes directly", { maintenance: append('const q = "UPDATE ai_provider_budget_policies";') }, "maintenance.audit"],
   ["maintenance policy can write", { migration004b: replace("FOR SELECT USING (current_setting(''app.ai_maintenance''", "FOR ALL USING (current_setting(''app.ai_maintenance''") }, "migration004b.maintenance"],
-  ["maintenance marker becomes session scoped", { maintenance: replace("'on', true)", "'on', false)") }, "maintenance.marker"],
+  ["sweeper sets the retired maintenance marker again", { maintenance: append("await tx.$queryRaw`SELECT set_config('app.ai_maintenance', 'on', true)`;") }, "maintenance.marker"],
+  ["sweeper reads through a maintenance read again", { maintenance: append("const read = this.withMaintenanceRead(async () => 1);") }, "maintenance.marker"],
+  ["sweeper stops iterating tenants", { maintenance: replace("forEachTenant(", "readEveryTenantAtOnce(") }, "maintenance.iteration"],
   ["integration test stops using a restricted role", { integration: replace("NOSUPERUSER NOBYPASSRLS", "SUPERUSER") }, "integration.role"],
   ["CI stops running the real-PostgreSQL test", { ci: replace("npm run test:integration:ai-provider-budget-lifecycle", "echo skipped") }, "ci"],
 ];
@@ -46,6 +48,14 @@ for (const [name, transforms, expectedLabel] of mutations) {
     `mutation "${name}" was reported, but not under ${expectedLabel}:\n${mutated.errors.join("\n")}`,
   );
 }
+
+// A comment that explains the retired marker is not a use of it, and a URL before it does not hide a real use.
+const commentOnly = validateProviderExecutionEligibility({ maintenance: append("// the retired app.ai_maintenance marker, see SEC-DB-RLS-001") });
+assert.equal(commentOnly.ok, true, `a comment about the retired marker must not fail:\n${commentOnly.errors.join("\n")}`);
+const hiddenAfterUrl = validateProviderExecutionEligibility({
+  maintenance: append("const u = \"https://x.invalid\"; await tx.$queryRaw`SELECT set_config('app.ai_maintenance', 'on', true)`;"),
+});
+assert.equal(hiddenAfterUrl.ok, false, "a use of the retired marker after a URL on the same line must still be detected");
 
 // Governed-source rules, proved with an extra synthetic source file.
 const extras = [

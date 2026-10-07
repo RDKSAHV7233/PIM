@@ -48,6 +48,11 @@ function fail(errors, label, message) {
   errors.push(`${label}: ${message}`);
 }
 
+/** Source without comments, so a comment that explains a retired mechanism is not mistaken for using it. */
+function stripComments(text) {
+  return String(text).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 function listSourceFiles(rootDir, { includeSpecs = false } = {}) {
   const files = [];
   function visit(current) {
@@ -170,14 +175,19 @@ function validateProviderExecutionEligibility(transforms = {}, extraGoverned = "
       fail(errors, "migration004b.maintenance", `the read-only maintenance policy must cover ${table}`);
     }
   }
-  if (!/set_config\('app[.]ai_maintenance', 'on', true\)/.test(src.maintenance)) {
-    fail(errors, "maintenance.marker", "the sweeper and audit must set the maintenance marker transaction-locally (set_config third argument true)");
+  // SEC-DB-RLS-001 (evidence record D-022): the ordinary runtime can set any session setting, so a policy that opens on a
+  // setting is not a separately governed path. The sweeper and the audit reach every tenant by explicit tenant iteration
+  // (forEachTenant: one transaction per tenant, tenant context set inside it) and never set or read the marker. The policies
+  // are dropped by a later migration, after this code is deployed; until then this only forbids USING them.
+  const maintenanceCode = stripComments(src.maintenance);
+  if (/app[.]ai_maintenance|set_config\s*\(|withMaintenanceRead/.test(maintenanceCode)) {
+    fail(errors, "maintenance.marker", "the sweeper and audit must not set or read the maintenance marker: cross-tenant reads go through explicit tenant iteration (forEachTenant)");
   }
-  if (/set_config\('app[.]ai_maintenance'[^)]*false\)|SET\s+(SESSION\s+)?app[.]ai_maintenance/i.test(src.maintenance)) {
-    fail(errors, "maintenance.marker", "the maintenance marker must never be set at session scope");
+  if (!/forEachTenant\s*\(/.test(maintenanceCode)) {
+    fail(errors, "maintenance.iteration", "the sweeper and audit must reach every tenant through forEachTenant (explicit tenant iteration)");
   }
   for (const file of governedFiles) {
-    if (file !== FILES.maintenance && /app[.]ai_maintenance/.test(read(file))) {
+    if (/app[.]ai_maintenance/.test(stripComments(read(file)))) {
       fail(errors, "maintenance.marker", `${path.relative(REPO_ROOT, file)} must not set or read the maintenance marker`);
     }
   }

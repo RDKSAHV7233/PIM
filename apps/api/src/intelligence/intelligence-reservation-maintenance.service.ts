@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { IntelligenceExecutionControlService } from "./intelligence-execution-control.service";
 import type { ProviderCounterAuditRow, ProviderReservationSweepSummary } from "./intelligence.types";
@@ -15,8 +16,12 @@ import type { ProviderCounterAuditRow, ProviderReservationSweepSummary } from ".
  * Lifecycle mirrors the other recovery sweepers: OnModuleInit/OnModuleDestroy, an initial delay, an unref'd
  * interval, an advisory lock so only one replica runs a tick, and a public method that tests can call directly.
  *
- * Discovery of which tenants have expired work uses the direct client, because it must look across tenants. The
- * transitions themselves always go through the tenant-scoped client, one tenant at a time.
+ * SEC-DB-RLS-001: both the sweeper and the audit look across tenants, and they do it by explicit tenant iteration
+ * (forEachTenant: one transaction per tenant, tenant context set inside it, every query on that transaction). They
+ * no longer read through a session setting. A setting that the ordinary runtime can set is not a separately governed
+ * path, so the former `app.ai_maintenance` marker is retired. Every query here also filters by the tenant key
+ * explicitly, so the result is the same whether or not the role in use is subject to row level security. The
+ * transitions themselves go through the tenant-scoped client, one tenant at a time, as before.
  */
 
 const SWEEP_INTERVAL_MS = 60 * 1000;
@@ -24,7 +29,30 @@ const SWEEP_INITIAL_DELAY_MS = 60 * 1000;
 const SWEEP_LOCK_NAME = "ai-provider-reservation-sweeper";
 const TENANT_BATCH = 50;
 
-export type ReservationMaintenanceSummary = ProviderReservationSweepSummary & { tenants: number };
+export type ReservationMaintenanceSummary = ProviderReservationSweepSummary & {
+  /** Tenants that had expired work and were swept this tick. */
+  tenants: number;
+  /** Tenants whose expired work was looked for. */
+  tenantsEvaluated: number;
+  /** Tenants that could not be read or could not be swept. Non-zero means the tick was degraded. */
+  tenantsFailed: number;
+};
+
+type ExpectedCounter = { reserved: bigint; spent: bigint; requests: bigint; scope: string | null };
+
+type DriftRow = {
+  id: string;
+  scope: string | null;
+  recorded_reserved: bigint;
+  expected_reserved: bigint;
+  recorded_spent: bigint;
+  expected_spent: bigint;
+  recorded_requests: number;
+  expected_requests: bigint;
+};
+
+const TENANT_SCOPES = ["tenant_day", "tenant_month"] as const;
+const PLATFORM_SCOPES = ["platform_day", "platform_month"] as const;
 
 @Injectable()
 export class IntelligenceReservationMaintenanceService implements OnModuleInit, OnModuleDestroy {
@@ -74,37 +102,66 @@ export class IntelligenceReservationMaintenanceService implements OnModuleInit, 
 
   /** Sweeps every tenant that has an expired non-terminal reservation. Returns summed counts. */
   async runSweep(options: { now?: Date } = {}): Promise<ReservationMaintenanceSummary> {
-    const total: ReservationMaintenanceSummary = { scanned: 0, cancelledUnclaimed: 0, expiredDispatching: 0, skipped: 0, tenants: 0 };
+    const total: ReservationMaintenanceSummary = {
+      scanned: 0,
+      cancelledUnclaimed: 0,
+      expiredDispatching: 0,
+      skipped: 0,
+      tenants: 0,
+      tenantsEvaluated: 0,
+      tenantsFailed: 0,
+    };
     if (this.running) {
       return total;
     }
     this.running = true;
     try {
       const now = options.now ?? new Date();
-      const [unclaimed, dispatching] = await this.withMaintenanceRead((client) => Promise.all([
-        client.aiProviderBudgetReservation.findMany({
-          where: { status: "reserved", expiresAt: { lt: now } },
-          distinct: ["tenantKey"],
-          select: { tenantKey: true },
-          take: TENANT_BATCH,
-        }),
-        client.aiProviderBudgetReservation.findMany({
-          where: { status: "dispatching", leaseExpiresAt: { lt: now } },
-          distinct: ["tenantKey"],
-          select: { tenantKey: true },
-          take: TENANT_BATCH,
-        }),
-      ]));
-      const tenants = [...new Set([...unclaimed, ...dispatching].map((row) => row.tenantKey))];
+      const withWork: string[] = [];
+      const discovery = await forEachTenant(this.prismaDirect.getClient(), async (tx, tenantKey) => {
+        const unclaimed = await tx.aiProviderBudgetReservation.count({
+          where: { tenantKey, status: "reserved", expiresAt: { lt: now } },
+        });
+        const dispatching = await tx.aiProviderBudgetReservation.count({
+          where: { tenantKey, status: "dispatching", leaseExpiresAt: { lt: now } },
+        });
+        if (unclaimed + dispatching > 0) {
+          withWork.push(tenantKey);
+        }
+        return { examinedCount: unclaimed + dispatching, changedCount: 0 };
+      });
+      total.tenantsEvaluated = discovery.tenantsEvaluated;
+      total.tenantsFailed = discovery.tenantsFailed;
+      if (discovery.overall !== "SUCCESS") {
+        // A tenant that could not be read is not treated as "nothing expired": it is counted, logged, and retried next tick.
+        this.logger.warn(
+          JSON.stringify({
+            event: "ai.provider.sweep.discovery_degraded",
+            overall: discovery.overall,
+            tenantsEvaluated: discovery.tenantsEvaluated,
+            tenantsFailed: discovery.tenantsFailed,
+            errorCodes: [...new Set(discovery.results.filter((r) => r.status === "failed").map((r) => r.errorCode ?? "UNKNOWN_ERROR"))],
+          }),
+        );
+      }
+      const tenants = withWork.sort().slice(0, TENANT_BATCH);
       total.tenants = tenants.length;
       for (const tenantKey of tenants) {
-        const summary = await this.control.sweepExpired({ tenantKey });
-        total.scanned += summary.scanned;
-        total.cancelledUnclaimed += summary.cancelledUnclaimed;
-        total.expiredDispatching += summary.expiredDispatching;
-        total.skipped += summary.skipped;
+        try {
+          const summary = await this.control.sweepExpired({ tenantKey });
+          total.scanned += summary.scanned;
+          total.cancelledUnclaimed += summary.cancelledUnclaimed;
+          total.expiredDispatching += summary.expiredDispatching;
+          total.skipped += summary.skipped;
+        } catch (error) {
+          // One tenant failing must not stop the others; it is counted and the next tick retries it.
+          total.tenantsFailed += 1;
+          this.logger.warn(
+            JSON.stringify({ event: "ai.provider.sweep.tenant_failed", tenantKey, errorName: error instanceof Error ? error.name : "unknown_error" }),
+          );
+        }
       }
-      if (total.scanned > 0) {
+      if (total.scanned > 0 || total.tenantsFailed > 0) {
         this.logger.log(JSON.stringify({ event: "ai.provider.sweep", ...total }));
       }
       return total;
@@ -118,74 +175,122 @@ export class IntelligenceReservationMaintenanceService implements OnModuleInit, 
    * reservations that are `reserved` or `dispatching`, `spent` equals the settled amounts of `reconciled` and `expired`
    * reservations, and `request_count` equals the number of charges that were admitted and not cancelled. It reports
    * drift and never repairs it.
+   *
+   * Tenant counters are audited tenant by tenant. A platform counter aggregates the charges of every tenant, so each
+   * tenant contributes its own sums and the totals are compared once, after all tenants have been read. If any tenant
+   * cannot be read the audit throws: a partial audit that reported "clean" would be the silent failure this avoids.
    */
   async auditCounters(): Promise<ProviderCounterAuditRow[]> {
-    return this.withMaintenanceRead((client) => this.auditCountersIn(client));
-  }
+    const client = this.prismaDirect.getClient();
+    const rows: ProviderCounterAuditRow[] = [];
+    const platformExpected = new Map<string, ExpectedCounter>();
+    const iteration = await forEachTenant(client, async (tx, tenantKey) => {
+      const drift = await this.auditTenantCounters(tx, tenantKey);
+      for (const row of drift.rows) {
+        rows.push(row);
+      }
+      await this.addPlatformContribution(tx, tenantKey, platformExpected);
+      return { examinedCount: drift.examined, changedCount: 0 };
+    });
+    if (iteration.overall !== "SUCCESS") {
+      throw new Error(
+        `AI counter audit incomplete: ${iteration.tenantsFailed} of ${iteration.tenantsEvaluated} tenants could not be read.`,
+      );
+    }
 
-  /**
-   * The explicit, read-only maintenance path. These tables force row level security, so a connection with no tenant
-   * context sees only the default tenant. The marker below is transaction-local and is honoured only by SELECT policies
-   * (see the migration): it cannot insert, update or delete, and it does not depend on owner or BYPASSRLS behaviour.
-   */
-  private async withMaintenanceRead<T>(work: (client: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    return this.prismaDirect.getClient().$transaction(
-      async (tx) => {
-        // RLS-BYPASS: sets the transaction-local, SELECT-only maintenance marker; it reads no tenant data itself.
-        await tx.$queryRaw`SELECT set_config('app.ai_maintenance', 'on', true)`;
-        return work(tx);
-      },
-      { maxWait: 5000, timeout: 30000 },
+    // ai_platform_budget_periods is a platform table with no row level security and no tenant key, so it is read once.
+    const periods = await client.aiPlatformBudgetPeriod.findMany({
+      select: { id: true, reservedSpendMicros: true, spentSpendMicros: true, requestCount: true },
+    });
+    for (const period of periods) {
+      const expected = platformExpected.get(period.id) ?? { reserved: 0n, spent: 0n, requests: 0n, scope: null };
+      const scope = (expected.scope ?? PLATFORM_SCOPES[0]) as ProviderCounterAuditRow["scope"];
+      if (period.reservedSpendMicros !== expected.reserved) {
+        rows.push({ scope, counterRowId: period.id, field: "reserved", recorded: period.reservedSpendMicros.toString(), expected: expected.reserved.toString() });
+      }
+      if (period.spentSpendMicros !== expected.spent) {
+        rows.push({ scope, counterRowId: period.id, field: "spent", recorded: period.spentSpendMicros.toString(), expected: expected.spent.toString() });
+      }
+      if (BigInt(period.requestCount) !== expected.requests) {
+        rows.push({ scope, counterRowId: period.id, field: "requests", recorded: String(period.requestCount), expected: expected.requests.toString() });
+      }
+    }
+    return rows.sort(
+      (a, b) => a.scope.localeCompare(b.scope) || a.counterRowId.localeCompare(b.counterRowId) || a.field.localeCompare(b.field),
     );
   }
 
-  private async auditCountersIn(client: Prisma.TransactionClient): Promise<ProviderCounterAuditRow[]> {
+  /** One tenant's budget-policy counters against that tenant's own charges and reservations. */
+  private async auditTenantCounters(
+    tx: Prisma.TransactionClient,
+    tenantKey: string,
+  ): Promise<{ rows: ProviderCounterAuditRow[]; examined: number }> {
+    // RLS-BYPASS: runs on the per-tenant transaction (tenant context already set) and filters by the tenant key explicitly. Read-only aggregate.
+    const drift = await tx.$queryRaw<DriftRow[]>(Prisma.sql`
+      SELECT
+        p."id" AS "id",
+        p."reserved_spend_micros" AS "recorded_reserved",
+        COALESCE(SUM(c."amount_micros") FILTER (WHERE r."status" IN ('reserved', 'dispatching')), 0)::bigint AS "expected_reserved",
+        p."spent_spend_micros" AS "recorded_spent",
+        COALESCE(SUM(c."settled_amount_micros") FILTER (WHERE r."status" IN ('reconciled', 'expired')), 0)::bigint AS "expected_spent",
+        p."request_count" AS "recorded_requests",
+        COUNT(c."id") FILTER (WHERE r."status" IN ('reserved', 'dispatching', 'reconciled', 'expired')) AS "expected_requests",
+        MIN(c."scope") AS "scope"
+      FROM "ai_provider_budget_policies" p
+      LEFT JOIN "ai_provider_budget_charges" c
+        ON c."counter_row_id" = p."id" AND c."scope" IN (${Prisma.join([...TENANT_SCOPES])}) AND c."tenant_key" = ${tenantKey}
+      LEFT JOIN "ai_provider_budget_reservations" r
+        ON r."id" = c."reservation_id" AND r."tenant_key" = ${tenantKey}
+      WHERE p."tenant_key" = ${tenantKey}
+      GROUP BY p."id", p."reserved_spend_micros", p."spent_spend_micros", p."request_count"
+    `);
     const rows: ProviderCounterAuditRow[] = [];
-    const tables: Array<{ table: "ai_provider_budget_policies" | "ai_platform_budget_periods"; scopes: string[] }> = [
-      { table: "ai_provider_budget_policies", scopes: ["tenant_day", "tenant_month"] },
-      { table: "ai_platform_budget_periods", scopes: ["platform_day", "platform_month"] },
-    ];
-    for (const { table, scopes } of tables) {
-      // RLS-BYPASS: operator audit across tenants by design. Read-only aggregate, no writes, table names are fixed constants.
-      const drift = await client.$queryRaw<
-        Array<{
-          id: string;
-          scope: string | null;
-          recorded_reserved: bigint;
-          expected_reserved: bigint;
-          recorded_spent: bigint;
-          expected_spent: bigint;
-          recorded_requests: number;
-          expected_requests: bigint;
-        }>
-      >(Prisma.sql`
-        SELECT
-          p."id" AS "id",
-          p."reserved_spend_micros" AS "recorded_reserved",
-          COALESCE(SUM(c."amount_micros") FILTER (WHERE r."status" IN ('reserved', 'dispatching')), 0)::bigint AS "expected_reserved",
-          p."spent_spend_micros" AS "recorded_spent",
-          COALESCE(SUM(c."settled_amount_micros") FILTER (WHERE r."status" IN ('reconciled', 'expired')), 0)::bigint AS "expected_spent",
-          p."request_count" AS "recorded_requests",
-          COUNT(c."id") FILTER (WHERE r."status" IN ('reserved', 'dispatching', 'reconciled', 'expired')) AS "expected_requests",
-          MIN(c."scope") AS "scope"
-        FROM ${Prisma.raw(`"${table}"`)} p
-        LEFT JOIN "ai_provider_budget_charges" c ON c."counter_row_id" = p."id" AND c."scope" IN (${Prisma.join(scopes)})
-        LEFT JOIN "ai_provider_budget_reservations" r ON r."id" = c."reservation_id"
-        GROUP BY p."id", p."reserved_spend_micros", p."spent_spend_micros", p."request_count"
-      `);
-      for (const row of drift) {
-        const scope = (row.scope ?? scopes[0]) as ProviderCounterAuditRow["scope"];
-        if (row.recorded_reserved !== row.expected_reserved) {
-          rows.push({ scope, counterRowId: row.id, field: "reserved", recorded: row.recorded_reserved.toString(), expected: row.expected_reserved.toString() });
-        }
-        if (row.recorded_spent !== row.expected_spent) {
-          rows.push({ scope, counterRowId: row.id, field: "spent", recorded: row.recorded_spent.toString(), expected: row.expected_spent.toString() });
-        }
-        if (BigInt(row.recorded_requests) !== row.expected_requests) {
-          rows.push({ scope, counterRowId: row.id, field: "requests", recorded: String(row.recorded_requests), expected: row.expected_requests.toString() });
-        }
+    for (const row of drift) {
+      const scope = (row.scope ?? TENANT_SCOPES[0]) as ProviderCounterAuditRow["scope"];
+      if (row.recorded_reserved !== row.expected_reserved) {
+        rows.push({ scope, counterRowId: row.id, field: "reserved", recorded: row.recorded_reserved.toString(), expected: row.expected_reserved.toString() });
+      }
+      if (row.recorded_spent !== row.expected_spent) {
+        rows.push({ scope, counterRowId: row.id, field: "spent", recorded: row.recorded_spent.toString(), expected: row.expected_spent.toString() });
+      }
+      if (BigInt(row.recorded_requests) !== row.expected_requests) {
+        rows.push({ scope, counterRowId: row.id, field: "requests", recorded: String(row.recorded_requests), expected: row.expected_requests.toString() });
       }
     }
-    return rows;
+    return { rows, examined: drift.length };
+  }
+
+  /** This tenant's share of every platform counter, added into the running totals. */
+  private async addPlatformContribution(
+    tx: Prisma.TransactionClient,
+    tenantKey: string,
+    totals: Map<string, ExpectedCounter>,
+  ): Promise<void> {
+    // RLS-BYPASS: runs on the per-tenant transaction (tenant context already set) and filters by the tenant key explicitly. Read-only aggregate.
+    const sums = await tx.$queryRaw<
+      Array<{ id: string; expected_reserved: bigint; expected_spent: bigint; expected_requests: bigint; scope: string | null }>
+    >(Prisma.sql`
+      SELECT
+        c."counter_row_id" AS "id",
+        COALESCE(SUM(c."amount_micros") FILTER (WHERE r."status" IN ('reserved', 'dispatching')), 0)::bigint AS "expected_reserved",
+        COALESCE(SUM(c."settled_amount_micros") FILTER (WHERE r."status" IN ('reconciled', 'expired')), 0)::bigint AS "expected_spent",
+        COUNT(c."id") FILTER (WHERE r."status" IN ('reserved', 'dispatching', 'reconciled', 'expired')) AS "expected_requests",
+        MIN(c."scope") AS "scope"
+      FROM "ai_provider_budget_charges" c
+      LEFT JOIN "ai_provider_budget_reservations" r
+        ON r."id" = c."reservation_id" AND r."tenant_key" = ${tenantKey}
+      WHERE c."tenant_key" = ${tenantKey} AND c."scope" IN (${Prisma.join([...PLATFORM_SCOPES])})
+      GROUP BY c."counter_row_id"
+    `);
+    for (const row of sums) {
+      const current = totals.get(row.id) ?? { reserved: 0n, spent: 0n, requests: 0n, scope: null };
+      current.reserved += row.expected_reserved;
+      current.spent += row.expected_spent;
+      current.requests += row.expected_requests;
+      if (row.scope !== null && (current.scope === null || row.scope < current.scope)) {
+        current.scope = row.scope;
+      }
+      totals.set(row.id, current);
+    }
   }
 }

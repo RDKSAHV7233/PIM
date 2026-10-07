@@ -107,6 +107,7 @@ async function cleanup() {
   await admin.$executeRawUnsafe(`DELETE FROM ai_provider_budget_reservations WHERE tenant_key LIKE '${PREFIX}%'`);
   await admin.$executeRawUnsafe(`DELETE FROM ai_provider_budget_policies WHERE tenant_key LIKE '${PREFIX}%'`);
   await admin.$executeRawUnsafe(`DELETE FROM ai_tenant_policies WHERE tenant_key LIKE '${PREFIX}%'`);
+  await admin.workspaceDirectory.deleteMany({ where: { tenantKey: { startsWith: PREFIX } } });
 }
 
 async function fullReset() {
@@ -160,6 +161,13 @@ async function provisionTenant(tenantKey, opts = {}) {
   if (!tenants.includes(tenantKey)) {
     tenants.push(tenantKey);
   }
+  // The sweeper and the audit reach tenants through the workspace directory (explicit tenant iteration), as they do for a
+  // provisioned tenant in production. A tenant that is not in the directory is not visited.
+  await admin.workspaceDirectory.upsert({
+    where: { tenantKey },
+    update: { isActive: true },
+    create: { tenantKey, workspaceSlug: tenantKey.toLowerCase(), displayName: tenantKey },
+  });
   const policyVersion = "v1";
   const existingPolicy = await admin.aiTenantPolicy.findFirst({ where: { tenantKey, capability: CAP, providerKey: PROVIDER, policyVersion } });
   const policyData = {
@@ -745,7 +753,7 @@ scenario("isolation: another tenant cannot claim, settle or affect a reservation
   await control.settle({ tenantKey: a, reservationId: r.reservationId }, { kind: "cancel", reason: "cleanup" });
 });
 
-scenario("rls: the services run as a role subject to forced RLS, and the sweeper uses an explicit read-only maintenance path", async () => {
+scenario("rls: the services run as a role subject to forced RLS, and the sweeper and the audit reach every tenant by explicit tenant iteration", async () => {
   const [flags] = await prisma.tenant("default").$queryRaw`SELECT rolsuper, rolbypassrls, current_user AS name FROM pg_roles WHERE rolname = current_user`;
   eq([flags.rolsuper, flags.rolbypassrls, flags.name], [false, false, APP_ROLE], "the application role is neither superuser nor BYPASSRLS");
   const [owner] = await admin.$queryRaw`SELECT tableowner FROM pg_tables WHERE tablename = 'ai_provider_budget_reservations'`;
@@ -761,26 +769,16 @@ scenario("rls: the services run as a role subject to forced RLS, and the sweeper
   assert(ra.allowed && rb.allowed, "both tenants admitted under the restricted role");
   clock.offsetMs += gates.UNCLAIMED_RESERVATION_TTL_MS + 1000;
 
-  // Without the maintenance path a role with no tenant context cannot see another tenant's reservations at all.
-  eq(await roleDirect.aiProviderBudgetReservation.count({ where: { tenantKey: { startsWith: PREFIX } } }), 0, "without a tenant or the maintenance path, no tenant's reservations are visible");
+  // A role with no tenant context cannot see another tenant's reservations at all; this is why a global scan is silent.
+  eq(await roleDirect.aiProviderBudgetReservation.count({ where: { tenantKey: { startsWith: PREFIX } } }), 0, "with no tenant context, no tenant's reservations are visible");
 
-  // The maintenance path is transaction-local and read-only: it can see across tenants and cannot change anything.
-  const inspected = await roleDirect.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.ai_maintenance', 'on', true)`;
-    const visible = await tx.aiProviderBudgetReservation.count({ where: { tenantKey: { startsWith: PREFIX } } });
-    const updated = await tx.aiProviderBudgetReservation.updateMany({ where: { tenantKey: a }, data: { status: "cancelled" } });
-    const deleted = await tx.aiProviderBudgetReservation.deleteMany({ where: { tenantKey: a } });
-    const charges = await tx.aiProviderBudgetCharge.deleteMany({ where: { tenantKey: a } });
-    return { visible, updated: updated.count, deleted: deleted.count, charges: charges.count };
-  });
-  assert(inspected.visible >= 2, "the maintenance path sees reservations across tenants");
-  eq([inspected.updated, inspected.deleted, inspected.charges], [0, 0, 0], "the maintenance path cannot update or delete anything");
-  eq(await statusOf(ra.reservationId), "reserved", "reservation untouched by the maintenance path");
-  eq(await roleDirect.aiProviderBudgetReservation.count({ where: { tenantKey: { startsWith: PREFIX } } }), 0, "the marker does not leak past its transaction");
-
-  // The scheduled sweeper finds work across tenants and settles it through each tenant's own scoped client.
+  // The scheduled sweeper reaches every tenant by explicit tenant iteration and settles each tenant's work through that
+  // tenant's own scoped client. A non-default tenant must produce a non-empty result: a sweeper that visited only the
+  // default tenant would report no error and sweep nothing.
   const summary = await maintenance.runSweep({ now: control.now() });
   assert(summary.tenants >= 2 && summary.cancelledUnclaimed >= 2, `the scheduled sweeper processed both tenants under RLS (${JSON.stringify(summary)})`);
+  eq(summary.tenantsFailed, 0, "no tenant failed to be read or swept");
+  assert(summary.tenantsEvaluated >= 3, `every directory tenant plus the default tenant was evaluated (${JSON.stringify(summary)})`);
   eq(await statusOf(ra.reservationId), "cancelled", "tenant A swept");
   eq(await statusOf(rb.reservationId), "cancelled", "tenant B swept");
   eq(await maintenance.auditCounters(), [], "the audit works under RLS and is clean");
@@ -836,6 +834,17 @@ scenario("integrity: the counter audit is clean after a randomised concurrent wo
   assert(drift.some((d) => d.counterRowId === rows.tm.id && d.field === "reserved" && d.recorded !== d.expected), "injected drift is reported");
   await admin.aiProviderBudgetPolicy.update({ where: { id: rows.tm.id }, data: { reservedSpendMicros: { decrement: 7 } } });
   eq(await maintenance.auditCounters(), [], "clean again after the fix");
+
+  // A platform counter is the sum of EVERY tenant's charges, so the audit adds each tenant's share. Drift on the platform
+  // counter must be reported, and so must a platform counter that is correct for one tenant but not for the sum.
+  await admin.aiPlatformBudgetPeriod.update({ where: { id: rows.pm.id }, data: { reservedSpendMicros: { increment: 11 } } });
+  const platformDrift = await maintenance.auditCounters();
+  assert(
+    platformDrift.some((d) => d.counterRowId === rows.pm.id && d.field === "reserved" && d.recorded !== d.expected),
+    "injected platform counter drift is reported",
+  );
+  await admin.aiPlatformBudgetPeriod.update({ where: { id: rows.pm.id }, data: { reservedSpendMicros: { decrement: 11 } } });
+  eq(await maintenance.auditCounters(), [], "clean again after the platform fix");
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -864,6 +873,8 @@ async function main() {
   await admin.$executeRawUnsafe(
     `GRANT SELECT, INSERT, UPDATE, DELETE ON ai_provider_budget_policies, ai_provider_budget_reservations, ai_provider_budget_charges, ai_tenant_policies, ai_platform_controls, ai_platform_budget_periods TO ${APP_ROLE}`,
   );
+  // Tenant iteration lists tenants from the workspace directory; the production runtime role holds this table in the I1 manifest.
+  await admin.$executeRawUnsafe(`GRANT SELECT ON "WorkspaceDirectory" TO ${APP_ROLE}`);
   process.env.DATABASE_URL_POOLED = roleUrl();
   process.env.DATABASE_URL_DIRECT = roleUrl();
   prisma = new PrismaService();
