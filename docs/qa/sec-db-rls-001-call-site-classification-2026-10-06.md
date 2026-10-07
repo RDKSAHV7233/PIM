@@ -22,17 +22,17 @@ Type: **classification and tooling. No production access, no application behavio
 | **R** | request-scoped raw SQL through `tenant()` with no argument | correct only while the request tenant equals the filter tenant | 3 |
 | **D** | already on an approved path | works | 1 |
 
-## 3. Remediation rule (decided by the required-team review)
+## 3. Remediation rule (owner decision, 2026-10-07, on the production evidence D-022)
 
-- **Default: tenant iteration.** Iterate tenants from the authoritative directory and act inside each tenant's own context (`runWithTenantContext`, already used by the export-job reconciliation, or `prisma.tenant(key)`).
-- **Narrow exception: a SELECT-only maintenance policy** on specific tables, only where iteration is operationally inappropriate. In this inventory that is the two platform-wide operator dashboards (`internal-ops-alerts`, `internal-ops-summary`), which aggregate across all tenants. The AI control plane already uses this pattern and it is proven under a restricted role.
-- **No general-purpose cross-tenant runtime role.**
+- **Tenant iteration.** Iterate tenants from the authoritative directory and act inside each tenant's own context (`runWithTenantContext`, already used by the export-job reconciliation, or `prisma.tenant(key)`). This is the only remediation for a cross-tenant job that runs inside the API process.
+- **No policy may grant cross-tenant access on the strength of a session setting that the ordinary runtime can set.** The ordinary runtime identity can activate any custom setting, so such a policy is a privilege path inside the ordinary runtime and not a separately governed one. This includes the two platform-wide operator dashboards (`internal-ops-alerts`, `internal-ops-summary`) and the AI control plane (`app.ai_maintenance`), which iterate tenants instead.
+- **No general-purpose cross-tenant runtime role, and no BYPASSRLS maintenance role created to preserve a shortcut.** A cross-tenant read that cannot iterate runs outside the API as an operator script under a separately governed read-only identity (`vexa_reporter`).
 - **Every migrated job must prove a positive result**: seed data for a non-default tenant and assert the job produced a non-empty outcome. "No error" is not a pass, because the dominant failure under RLS is silence. The assertion is recorded per entry as `positiveAssertion` and the ratchet requires it.
 
 ## 4. Inventory by class
 
-**A: cross-tenant discovery (tenant iteration unless noted)**
-`bulk-edit-stale-operation-recovery`, `bulk-import-stale-row-recovery`, `connector-webhook-lease-sweeper`, `connector-heartbeat`, `woocommerce-reconciliation`, `export-job-reconciliation` (the per-row step already iterates; discovery does not), `media-integrity.service`, `plan-usage` (the nightly rollup discovers tenants across six tables), and the two operator dashboards (**maintenance-read**).
+**A: cross-tenant discovery (tenant iteration)**
+`bulk-edit-stale-operation-recovery`, `bulk-import-stale-row-recovery`, `connector-webhook-lease-sweeper`, `connector-heartbeat`, `woocommerce-reconciliation`, `export-job-reconciliation` (the per-row step already iterates; discovery does not), `media-integrity.service`, `plan-usage` (the nightly rollup discovers tenants across six tables), the two operator dashboards, and `intelligence-reservation-maintenance` (the AI reservation sweeper and counter audit).
 
 **A2: `tenant()` with no argument in scheduled scans**
 `grace-period-escalation` (billing enforcement would silently cover only `default`), `commercial-reminders`, `outbound-webhooks` stuck-delivery recovery.
@@ -41,7 +41,7 @@ Type: **classification and tooling. No production access, no application behavio
 `credential-encryption.service` (the reproduced failure: RLS violation, HTTP 500 on a Shopify install), `connector-credential.service`, the connector classes (`amazon`, `bigcommerce`, `dynamics365`, `ebay`, `etsy`, `flipkart`, `myntra`, `odoo`, `prestashop`, `shopware`, `zoho-inventory`, `woocommerce`), `shopify.connector` (needs a read to confirm which client it receives), the two WooCommerce services, `media.service`.
 
 **C: decisions**
-`auth.service` (mostly `tenant(tenantId)` already; two direct uses are pre-tenant lookups on an unscoped table; review each), `tenant-directory.service` (directory lookups stay; **provisioning seeds move to the tenant client**, reproduced as a silent failure), `commercial-requests.service` (platform-admin cross-tenant listing: iteration or a maintenance read), and **Stripe** (customer id to tenant resolution reads `TenantPlanProfile` with no tenant context before the tenant is known; `stripe_webhook_events` is a non-RLS global ledger).
+`auth.service` (mostly `tenant(tenantId)` already; two direct uses are pre-tenant lookups on an unscoped table; review each), `tenant-directory.service` (directory lookups stay; **provisioning seeds move to the tenant client**, reproduced as a silent failure), `commercial-requests.service` (platform-admin cross-tenant listing: tenant iteration), and **Stripe** (customer id to tenant resolution reads `TenantPlanProfile` with no tenant context before the tenant is known; `stripe_webhook_events` is a non-RLS global ledger).
 
 **R: pass the tenant explicitly**
 `bulk-import.service`, `catalog.service`, `connector-permission.service`: request-scoped raw SQL with a manual tenant filter. Correct today; passing `tenant(tenantKey)` removes the chance that context and filter disagree, and queue workers must restore tenant context.
@@ -59,7 +59,7 @@ Type: **classification and tooling. No production access, no application behavio
 | M2 | tenant provisioning seeds to the tenant client; auth review (C) | medium |
 | M3 | cross-tenant sweepers and reconciliation to tenant iteration (A), built on the shared helper | medium; **silent** failure mode, hence the assertions |
 | M4 | billing: `plan-usage`, `grace-period-escalation`, `commercial-reminders`, `outbound-webhooks` (A, A2) | high impact, silent; ships behind the restricted-role lane |
-| M5 | operator dashboards via a SELECT-only maintenance policy (A, maintenance-read) | medium |
+| M5 | operator dashboards via tenant iteration (A) | medium |
 | M6 | R: explicit tenant arguments; Stripe and commercial-requests decisions | low to medium |
 
 Every PR runs under the restricted-role lane before merging; none changes production privileges.
