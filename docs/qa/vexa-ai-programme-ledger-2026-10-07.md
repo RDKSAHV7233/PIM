@@ -3,7 +3,7 @@
 Date: 2026-10-07
 Baseline: `origin/main` at `a475cc0f` (updated after #1214 merged; first written at `ec9b166c`)
 Type: **documentation only.** No runtime code, no production access, no provider path, no credential.
-Status of this document: **proposal / awaiting human review.** It records state; it approves nothing.
+Status of this document: **SUPERSEDED by `vexa-ai-programme-ledger-2026-10-07-r2.md`**, which is the single current status source. This file is kept as history; its status rows are out of date. It records state; it approves nothing.
 
 ## 1. Two streams, one boundary
 
