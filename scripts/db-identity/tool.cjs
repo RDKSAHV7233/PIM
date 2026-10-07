@@ -8,7 +8,7 @@
  *   node scripts/db-identity/tool.cjs snapshot            [--out file]    read-only: owners of every table, enum type and function
  *   node scripts/db-identity/tool.cjs plan-ownership                      read-only: the exact SQL the ownership transfer would run
  *   node scripts/db-identity/tool.cjs verify              [--json]        read-only: evaluates the target model, exits non-zero on any failure
- *   node scripts/db-identity/tool.cjs create-roles                        idempotent: creates the four identities
+ *   node scripts/db-identity/tool.cjs create-roles                        idempotent: creates the five identities
  *   node scripts/db-identity/tool.cjs apply-ownership                     transfers ownership of public objects to vexa_migrator (one transaction)
  *   node scripts/db-identity/tool.cjs rollback-ownership --snapshot file  restores the owners recorded in a before-snapshot
  *   node scripts/db-identity/tool.cjs apply-grants                        applies the grants manifest (revoke everything, then grant explicitly)
@@ -180,7 +180,7 @@ async function main() {
       const tables = objects.filter((o) => o.kind === "table").map((o) => o.name);
       const excluded = new Set(manifest.runtime.excluded || []);
       await db.$transaction(async (tx) => {
-        for (const key of ["runtime", "ops", "backup"]) {
+        for (const key of ["runtime", "ops", "backup", "reporter"]) {
           const role = quoteIdent(lib.ROLES[key].name);
           await tx.$executeRawUnsafe(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${role}`);
           for (const table of tables) {
@@ -194,7 +194,7 @@ async function main() {
           }
         }
       });
-      console.log(`grants applied for runtime, ops and backup over ${tables.length} tables`);
+      console.log(`grants applied for runtime, ops, backup and reporter over ${tables.length} tables`);
     }
   } finally {
     await db.$disconnect().catch(() => undefined);

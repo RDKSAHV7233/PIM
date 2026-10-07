@@ -5,14 +5,16 @@
     "vexa_migrator": "owns every object in the public schema and runs migrations (deploy time only); NOSUPERUSER, BYPASSRLS because tables are FORCE ROW LEVEL SECURITY and data-fixing migrations must see every tenant; an owner can disable RLS regardless, so this adds no isolation risk; never held by the runtime path",
     "vexa_runtime": "the API; table-level privileges from runtime.tables; owns nothing; no DDL; NOSUPERUSER NOBYPASSRLS",
     "vexa_backup": "read-only; BYPASSRLS is its only extra attribute, justified solely because pg_dump must read forced-RLS tables; SELECT only",
-    "vexa_ops": "operator path for the platform control tables only (the kill switch and the platform budget periods)"
+    "vexa_reporter": "read-only operator reports that span tenants (the sellable-SKU audit report and the media-integrity report); NOSUPERUSER; BYPASSRLS only because a report spans tenants; SELECT on the report tables only; owns nothing, no DDL, no writes; its credential must never be reachable by the API process",
+    "vexa_ops": "operator path: the platform control tables (the kill switch and the platform budget periods) and the sellable-SKU backfill; NOSUPERUSER NOBYPASSRLS, so the backfill sets the tenant context itself and iterates tenants; it is never a general cross-tenant writer"
   },
-  "noCrossTenantMaintenanceRole": "Deliberately not provisioned. Known cross-tenant jobs use tenant iteration, or a SELECT-only maintenance policy on specific tables (see docs/qa/sec-db-rls-001-call-site-classification-2026-10-06.md). A maintenance role is added only when a named job needs it and cannot iterate.",
+  "noCrossTenantMaintenanceRole": "Deliberately not provisioned, and no policy may open on a session setting that the ordinary runtime can set. Cross-tenant jobs that run inside the API use tenant iteration (docs/qa/sec-db-rls-001-call-site-classification-2026-10-06.md section 3, owner decision 2026-10-07 on D-022). A cross-tenant read that cannot iterate runs outside the API as an operator script under the read-only vexa_reporter; a cross-tenant write iterates tenants under vexa_ops. No BYPASSRLS maintenance role is created to preserve a shortcut.",
   "runtime": {
     "levels": {
       "crud": "SELECT INSERT UPDATE DELETE",
       "select": "SELECT",
       "select-update": "SELECT UPDATE",
+      "select-insert": "SELECT INSERT",
       "none": "no access"
     },
     "excluded": [
@@ -105,8 +107,20 @@
   "ops": {
     "tables": {
       "ai_platform_controls": "crud",
-      "ai_platform_budget_periods": "crud"
-    }
+      "ai_platform_budget_periods": "crud",
+      "Product": "select",
+      "Variant": "select-insert"
+    },
+    "note": "Product and Variant serve the sellable-SKU backfill (scripts/sellable-sku-variantless-backfill.cjs reads products, reads and creates variants). Both are forced-RLS tables and vexa_ops is NOBYPASSRLS, so the backfill must set the tenant context for each tenant."
+  },
+  "reporter": {
+    "tables": {
+      "connector_submissions": "select",
+      "Product": "select",
+      "Variant": "select",
+      "media_assets": "select"
+    },
+    "note": "The audit report reads connectorSubmission, product and variant (scripts/sellable-sku-variantless-audit-report.cjs); the media-integrity report reads mediaAsset (scripts/media-integrity-readonly-report.cjs). Read-only, across tenants by design."
   },
   "backup": {
     "tables": "select-all"

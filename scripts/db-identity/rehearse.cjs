@@ -50,6 +50,7 @@ const OLD_OWNER = fixture.currentOwner;
 const MIGRATOR = lib.ROLES.migrator.name;
 const RUNTIME = lib.ROLES.runtime.name;
 const BACKUP = lib.ROLES.backup.name;
+const REPORTER = lib.ROLES.reporter.name;
 const OPS = lib.ROLES.ops.name;
 const rehearsalPassword = (role) => `${role}_rehearsal_password`;
 
@@ -146,7 +147,7 @@ async function recreate(db) {
   await a.$executeRawUnsafe(`CREATE DATABASE "${db}"`);
 }
 
-const SEEDED = ["workflow_sla", "ai_platform_controls", "ai_platform_budget_periods", "ops_alert_states"];
+const SEEDED = ["workflow_sla", "ai_platform_controls", "ai_platform_budget_periods", "ops_alert_states", "Product", "Variant", "connector_submissions", "media_assets"];
 async function fingerprint(client) {
   const out = {};
   for (const t of SEEDED) {
@@ -194,8 +195,18 @@ async function main() {
     // the singleton control row ('global') is created by its own migration
     await pl.$executeRawUnsafe(`INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p1','2026-10', now(), now() + interval '30 days')`);
     await pl.$executeRawUnsafe(`INSERT INTO ops_alert_states (id, alert_key, alert_type, first_observed_at, last_observed_at, updated_at) VALUES ('o1','k','t', now(), now(), now())`);
+    // Rows for the reporter and the backfill: three tenants of products, one variant (so two products are variant-less, as the backfill
+    // expects), two connector submissions and two media assets. Referentially valid on purpose: the dump of this database is restored
+    // in R7, and a restore rejects orphan rows.
+    await pl.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`INSERT INTO "Category" (id, name, slug, path, "tenantKey", "updatedAt") VALUES ('cat-a','A','cat-a','/cat-a','tenant-a', now()), ('cat-b','B','cat-b','/cat-b','tenant-b', now()), ('cat-d','D','cat-d','/cat-d','default', now())`);
+      await tx.$executeRawUnsafe(`INSERT INTO "Product" (id, title, "categoryId", "tenantKey", "updatedAt") VALUES ('prod-a','A','cat-a','tenant-a', now()), ('prod-b','B','cat-b','tenant-b', now()), ('prod-d','D','cat-d','default', now())`);
+      await tx.$executeRawUnsafe(`INSERT INTO "Variant" (id, "productId", "skuCode", "tenantKey", "updatedAt") VALUES ('var-a','prod-a','SKU-A','tenant-a', now())`);
+      await tx.$executeRawUnsafe(`INSERT INTO connector_submissions (id, installation_id, product_id, idempotency_key, submission_type, source, status, payload_snapshot, tenant_key) VALUES ('sub-a','inst-a','prod-a','idem-a','PUBLISH','manual','SUCCESS','{}','tenant-a'), ('sub-b','inst-b','prod-b','idem-b','PUBLISH','manual','SUCCESS','{}','tenant-b')`);
+      await tx.$executeRawUnsafe(`INSERT INTO media_assets (id, file_name, mime_type, storage_path, size_bytes, checksum, tenant_key) VALUES ('med-a','a.png','image/png','a/a.png',1,'c-a','tenant-a'), ('med-b','b.png','image/png','b/b.png',1,'c-b','tenant-b')`);
+    });
     const seeded = await fingerprint(pl);
-    check("seed rows written (3 tenants of workflow_sla, the control row, one budget period, one alert state)", seeded.workflow_sla.startsWith("3:") && seeded.ai_platform_controls.startsWith("1:"));
+    check("seed rows written (3 tenants of workflow_sla and of products, the control row, one budget period, one alert state)", seeded.workflow_sla.startsWith("3:") && seeded.ai_platform_controls.startsWith("1:"));
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R2 the starting state matches the observed production split, and is not yet the target");
@@ -350,6 +361,26 @@ async function main() {
     check("the restored database has every table", rt1.n === rt2.n, `${rt1.n} vs ${rt2.n}`);
 
     // ---------------------------------------------------------------------------------------------------------------------------
+    section("R7b the reporter role: reads the report tables across every tenant, writes nothing, reaches nothing else");
+    const rp = asRole(PRODLIKE, REPORTER);
+    const [rpAttr] = await rows(rp, `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`);
+    check("the reporter is not a superuser and bypasses RLS (a report spans tenants), and nothing else about it is privileged", rpAttr.rolsuper === false && rpAttr.rolbypassrls === true);
+    const count = async (client, table) => (await rows(client, `SELECT count(*)::int AS n FROM public."${table}"`))[0].n;
+    check("the reporter sees ALL tenants' products (3 rows) where a tenant-bound role sees one", (await count(rp, "Product")) === 3);
+    check("the reporter reads the variants, the connector submissions and the media assets across tenants", (await count(rp, "Variant")) === 1 && (await count(rp, "connector_submissions")) === 2 && (await count(rp, "media_assets")) === 2);
+    await expectDenied("reporter cannot INSERT a product", rp, `INSERT INTO "Product" (id, title, "categoryId", "updatedAt") VALUES ('rp-x','x','c', now())`);
+    await expectDenied("reporter cannot UPDATE a product", rp, `UPDATE "Product" SET title = 'x'`);
+    await expectDenied("reporter cannot DELETE a variant", rp, `DELETE FROM "Variant"`);
+    await expectDenied("reporter cannot TRUNCATE a report table", rp, `TRUNCATE "Product" CASCADE`);
+    await expectDenied("reporter cannot CREATE TABLE", rp, `CREATE TABLE public.rp_ddl (id int)`);
+    await expectDenied("reporter cannot read an ordinary table outside its reports", rp, `SELECT * FROM workflow_sla`);
+    await expectDenied("reporter cannot read the kill switch", rp, `SELECT * FROM ai_platform_controls`);
+    await expectDenied("reporter cannot read _prisma_migrations", rp, `SELECT count(*) FROM public._prisma_migrations`);
+    await expectDenied("reporter cannot SET ROLE to the migrator", rp, `SET ROLE "${MIGRATOR}"`);
+    await expectDenied("reporter cannot SET ROLE to the backup role", rp, `SET ROLE "${BACKUP}"`);
+    check("reporter proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
     section("R8 the ops role: the platform control tables and nothing else");
     const op = asRole(PRODLIKE, OPS);
     await expectAllowed("ops can write the kill switch row", op, `UPDATE ai_platform_controls SET kill_switch = true, updated_by = 'rehearsal'`);
@@ -359,6 +390,38 @@ async function main() {
     await expectDenied("ops cannot write an ordinary table", op, `UPDATE workflow_sla SET review_target_days = 1`);
     await expectDenied("ops cannot CREATE TABLE", op, `CREATE TABLE public.ops_ddl (id int)`);
     await pl.$executeRawUnsafe(`UPDATE ai_platform_controls SET updated_by = NULL`);
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R8b the ops role as the sellable-SKU backfill uses it: one tenant at a time, read products, create variants, nothing more");
+    const [opAttr] = await rows(op, `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`);
+    check("ops is not a superuser and does NOT bypass RLS (so a backfill must iterate tenants)", opAttr.rolsuper === false && opAttr.rolbypassrls === false);
+    const opB = await inTenant(op, "tenant-b", (tx) => tx.$queryRawUnsafe(`SELECT id FROM "Product" ORDER BY id`));
+    check("under tenant-b the backfill reads only tenant-b's product", opB.length === 1 && opB[0].id === "prod-b", JSON.stringify(opB));
+    const opNone = await inTenant(op, null, (tx) => tx.$queryRawUnsafe(`SELECT id FROM "Product" ORDER BY id`));
+    check("with no tenant context a backfill would see only the default tenant, so iterating tenants is mandatory, not optional", opNone.length === 1 && opNone[0].id === "prod-d", JSON.stringify(opNone));
+    try {
+      await inTenant(op, "tenant-b", (tx) => tx.$executeRawUnsafe(`INSERT INTO "Variant" (id, "productId", "skuCode", "tenantKey", "updatedAt") VALUES ('var-b','prod-b','SKU-B','tenant-b', now())`));
+      check("under tenant-b ops can create tenant-b's missing variant", true);
+    } catch (error) {
+      check("under tenant-b ops can create tenant-b's missing variant", false, String(error.message).split("\n").slice(-1)[0]);
+    }
+    const opCross = await (async () => {
+      try {
+        await inTenant(op, "tenant-a", (tx) => tx.$executeRawUnsafe(`INSERT INTO "Variant" (id, "productId", "skuCode", "tenantKey", "updatedAt") VALUES ('var-x','prod-b','SKU-X','tenant-b', now())`));
+        return { ok: false, why: "a cross-tenant variant insert succeeded" };
+      } catch (error) {
+        return DENIED.test(String(error.message)) ? { ok: true } : { ok: false, why: String(error.message).split("\n").slice(-1)[0] };
+      }
+    })();
+    check("under tenant-a ops cannot create a variant for tenant-b (row level security)", opCross.ok, opCross.why);
+    await expectDenied("ops cannot UPDATE a product", op, `UPDATE "Product" SET title = 'x'`);
+    await expectDenied("ops cannot DELETE a product", op, `DELETE FROM "Product"`);
+    await expectDenied("ops cannot UPDATE a variant", op, `UPDATE "Variant" SET "skuCode" = 'x'`);
+    await expectDenied("ops cannot DELETE a variant", op, `DELETE FROM "Variant"`);
+    await expectDenied("ops cannot read the connector submissions", op, `SELECT * FROM connector_submissions`);
+    await expectDenied("ops cannot read the media assets", op, `SELECT * FROM media_assets`);
+    await pl.$executeRawUnsafe(`DELETE FROM "Variant" WHERE id = 'var-b'`);
+    check("ops proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R9 a new migration as the migrator on the transferred database");

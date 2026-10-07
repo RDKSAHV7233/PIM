@@ -29,7 +29,7 @@ function goodState() {
     { kind: "function", name: "connector_tenant_entitlements_guard", args: "", owner: MIGRATOR },
   ];
   const effective = {};
-  for (const key of ["runtime", "ops", "backup"]) {
+  for (const key of ["runtime", "ops", "backup", "reporter"]) {
     const name = lib.ROLES[key].name;
     effective[name] = {};
     for (const t of tables) {
@@ -47,7 +47,7 @@ function goodState() {
     effective,
     publicTableGrants: 0,
     memberships: [],
-    schemaCreate: { [MIGRATOR]: true, vexa_runtime: false, vexa_backup: false, vexa_ops: false },
+    schemaCreate: { [MIGRATOR]: true, vexa_runtime: false, vexa_backup: false, vexa_reporter: false, vexa_ops: false },
   };
 }
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -59,9 +59,15 @@ assert.ok(manifest.runtime.excluded.includes("_prisma_migrations"));
 assert.equal(Object.keys(manifest.runtime.tables).length, fixture.expectedTotals.tables, "manifest covers exactly the production table count");
 assert.equal(manifest.runtime.tables.ai_platform_controls, "select", "the runtime may only read the kill switch row");
 assert.equal(manifest.runtime.tables.ai_platform_budget_periods, "select-update");
-assert.deepEqual(Object.keys(manifest.ops.tables).sort(), ["ai_platform_budget_periods", "ai_platform_controls"], "ops is confined to the platform control tables");
+assert.deepEqual(Object.keys(manifest.ops.tables).sort(), ["Product", "Variant", "ai_platform_budget_periods", "ai_platform_controls"], "ops is confined to the platform control tables and the two tables the sellable-SKU backfill uses");
+assert.equal(manifest.ops.tables.Product, "select", "the backfill reads products");
+assert.equal(manifest.ops.tables.Variant, "select-insert", "the backfill reads and creates variants, and nothing more");
+assert.deepEqual(Object.keys(manifest.reporter.tables).sort(), ["Product", "Variant", "connector_submissions", "media_assets"], "the reporter reads exactly the tables the two reports read");
+assert.ok(Object.values(manifest.reporter.tables).every((level) => level === "select"), "the reporter never writes");
 assert.equal(manifest.backup.tables, "select-all");
 assert.match(manifest.noCrossTenantMaintenanceRole, /Deliberately not provisioned/);
+assert.doesNotMatch(manifest.noCrossTenantMaintenanceRole, /or a SELECT-only maintenance policy/, "the maintenance-policy path is retired (D-022)");
+assert.match(manifest.noCrossTenantMaintenanceRole, /no policy may open on a session setting/);
 assert.equal(fixture.tables.length, fixture.expectedTotals.tablesOwnedByCurrentOwner);
 assert.equal(fixture.functions.length, fixture.expectedTotals.functionsOwnedByCurrentOwner);
 assert.equal(fixture.enumTypes.length, fixture.expectedTotals.enumTypesOwnedByCurrentOwner);
@@ -75,15 +81,22 @@ for (const r of Object.values(lib.ROLES)) {
   assert.equal(r.createrole, false);
   assert.equal(r.createdb, false);
 }
-assert.deepEqual(Object.values(lib.ROLES).filter((r) => r.bypassrls).map((r) => r.name).sort(), ["vexa_backup", "vexa_migrator"], "only the deploy-time migrator and the backup role bypass RLS; the runtime and ops never do");
-assert.equal(Object.keys(lib.ROLES).length, 4, "no fifth, cross-tenant maintenance, role is defined");
+assert.deepEqual(Object.values(lib.ROLES).filter((r) => r.bypassrls).map((r) => r.name).sort(), ["vexa_backup", "vexa_migrator", "vexa_reporter"], "only the deploy-time migrator, the backup role and the read-only reporter bypass RLS; the runtime and ops never do");
+assert.equal(Object.keys(lib.ROLES).length, 5, "no sixth, cross-tenant maintenance, role is defined");
+assert.deepEqual(Object.values(lib.ROLES).map((r) => r.name).sort(), ["vexa_backup", "vexa_migrator", "vexa_ops", "vexa_reporter", "vexa_runtime"]);
 
 // ---- expected privileges -----------------------------------------------------------------------------------------------------
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "Product"), ["DELETE", "INSERT", "SELECT", "UPDATE"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "ai_platform_controls"), ["SELECT"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "ai_platform_budget_periods"), ["SELECT", "UPDATE"]);
 assert.equal(lib.expectedPrivileges(manifest, "runtime", "a_table_nobody_listed"), null, "an unlisted table is unknown, not granted");
-assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Product"), [], "ops holds nothing on ordinary tables");
+assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Product"), ["SELECT"], "the backfill reads products and cannot change them");
+assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Variant"), ["INSERT", "SELECT"], "the backfill creates variants and cannot update or delete them");
+assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "ai_executions"), [], "ops holds nothing on ordinary tables");
+assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "Product"), ["SELECT"]);
+assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "media_assets"), ["SELECT"]);
+assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "ai_executions"), [], "the reporter holds nothing beyond its report tables");
+assert.deepEqual(lib.expectedPrivileges(manifest, "reporter", "ai_platform_controls"), [], "the reporter cannot read the kill switch");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "ai_platform_controls"), ["DELETE", "INSERT", "SELECT", "UPDATE"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "backup", "Product"), ["SELECT"]);
 
@@ -159,12 +172,39 @@ mutate("runtime can TRUNCATE", (s) => { s.effective.vexa_runtime.ai_executions =
 mutate("runtime loses access to a normal table", (s) => { delete s.effective.vexa_runtime.ai_executions; }, "vexa_runtime holds exactly");
 mutate("ops reaches an ordinary table", (s) => { s.effective.vexa_ops.ai_executions = ["SELECT"]; }, "vexa_ops holds exactly");
 mutate("backup can write", (s) => { s.effective.vexa_backup.ai_executions = ["INSERT", "SELECT"]; }, "vexa_backup holds exactly");
+mutate("the reporter loses BYPASSRLS (a report would silently cover one tenant)", (s) => { role(s, "vexa_reporter").rolbypassrls = false; }, "vexa_reporter BYPASSRLS is true");
+mutate("the reporter is a superuser", (s) => { role(s, "vexa_reporter").rolsuper = true; }, "vexa_reporter is not a superuser");
+mutate("the reporter is missing", (s) => { s.roles = s.roles.filter((r) => r.rolname !== "vexa_reporter"); }, "vexa_reporter exists");
+mutate("the reporter can write a report table", (s) => { s.effective.vexa_reporter.Product = ["INSERT", "SELECT"]; }, "vexa_reporter holds exactly");
+mutate("the reporter reaches an ordinary table", (s) => { s.effective.vexa_reporter.ai_executions = ["SELECT"]; }, "vexa_reporter holds exactly");
+mutate("the reporter reads the kill switch", (s) => { s.effective.vexa_reporter.ai_platform_controls = ["SELECT"]; }, "vexa_reporter holds exactly");
+mutate("the reporter loses a report table", (s) => { delete s.effective.vexa_reporter.media_assets; }, "vexa_reporter holds exactly");
+mutate("the reporter owns a table", (s) => { s.objects.find((o) => o.kind === "table").owner = "vexa_reporter"; }, "vexa_reporter owns nothing");
+mutate("the reporter can create objects in public", (s) => { s.schemaCreate.vexa_reporter = true; }, "only the migrator can create");
+mutate("the reporter is a member of the migrator", (s) => { s.memberships.push({ role: "vexa_migrator", member: "vexa_reporter" }); }, "member of another role");
+mutate("ops can update products (the backfill would be a general writer)", (s) => { s.effective.vexa_ops.Product = ["SELECT", "UPDATE"]; }, "vexa_ops holds exactly");
+mutate("ops can delete variants", (s) => { s.effective.vexa_ops.Variant = ["DELETE", "INSERT", "SELECT"]; }, "vexa_ops holds exactly");
+mutate("ops loses the variant insert the backfill needs", (s) => { s.effective.vexa_ops.Variant = ["SELECT"]; }, "vexa_ops holds exactly");
+mutate("ops bypasses RLS (the backfill would reach every tenant at once)", (s) => { role(s, "vexa_ops").rolbypassrls = true; }, "vexa_ops BYPASSRLS is false");
 mutate("a privilege is granted to PUBLIC", (s) => { s.publicTableGrants = 3; }, "PUBLIC");
 mutate("runtime inherits the old owner role", (s) => { s.memberships.push({ role: "vexa_app_v2", member: "vexa_runtime" }); }, "member of another role");
 mutate("runtime can create objects in public", (s) => { s.schemaCreate.vexa_runtime = true; }, "only the migrator can create");
 mutate("migrator cannot create objects in public", (s) => { s.schemaCreate.vexa_migrator = false; }, "only the migrator can create");
 
-// A membership held by a role that is not one of the four identities is not this model's concern.
+// A manifest that lists a table the schema does not have, or lets the reporter write, is caught by the evaluation too.
+{
+  const staleOps = clone(manifest);
+  staleOps.ops.tables.table_that_was_dropped = "select";
+  assert.ok(failures(goodState(), staleOps).some((c) => c.includes("ops and reporter grants list no table that does not exist")), "a stale ops entry is detected");
+  const staleReporter = clone(manifest);
+  staleReporter.reporter.tables.table_that_was_dropped = "select";
+  assert.ok(failures(goodState(), staleReporter).some((c) => c.includes("ops and reporter grants list no table that does not exist")), "a stale reporter entry is detected");
+  const writingReporter = clone(manifest);
+  writingReporter.reporter.tables.Product = "crud";
+  assert.ok(failures(goodState(), writingReporter).some((c) => c.includes("the reporter is read-only in the manifest")), "a reporter that may write is detected");
+}
+
+// A membership held by a role that is not one of the five identities is not this model's concern.
 {
   const s = clone(goodState());
   s.memberships.push({ role: "postgres", member: "some_other_role" });

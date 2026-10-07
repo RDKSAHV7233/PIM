@@ -40,7 +40,7 @@ const DB = "probe_proof_prodlike";
 const OLD_OWNER = fixture.currentOwner;
 const pw = (role) => `${role}_rehearsal_password`;
 // Roles are cluster-level: a failed earlier run can leave them behind, and they must not outlive this proof on a shared server.
-const ROLES_MADE = [OLD_OWNER, "vexa_runtime", "vexa_backup", "vexa_ops", "vexa_migrator", "probe_nobody"];
+const ROLES_MADE = [OLD_OWNER, "vexa_runtime", "vexa_backup", "vexa_reporter", "vexa_ops", "vexa_migrator", "probe_nobody"];
 const urlFor = (db, user, pass) => `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${HOST}:${PORT}/${db}?schema=public`;
 
 const checks = [];
@@ -163,9 +163,20 @@ async function main() {
   const bk = probeAs("vexa_backup", pw("vexa_backup"), "backup");
   check("the backup identity bypasses RLS, reads every table and writes nothing", bk.status === 0 && sec(bk, S.me).rolbypassrls === true && sec(bk, S.me).rolsuper === false && sec(bk, S.eff).tables_select === tableCount && sec(bk, S.eff).tables_insert === 0 && sec(bk, S.eff).tables_update === 0 && sec(bk, S.eff).tables_delete === 0);
 
+  console.error("\n== as vexa_reporter");
+  const rp = probeAs("vexa_reporter", pw("vexa_reporter"), "reporter");
+  check(
+    "the reporter bypasses RLS because a report spans tenants, reads exactly its four report tables, and writes nothing",
+    rp.status === 0 && sec(rp, S.me).rolbypassrls === true && sec(rp, S.me).rolsuper === false && sec(rp, S.eff).tables_select === 4 && sec(rp, S.eff).tables_insert === 0 && sec(rp, S.eff).tables_update === 0 && sec(rp, S.eff).tables_delete === 0 && sec(rp, S.eff).tables_truncate === 0,
+  );
+  check("the reporter owns nothing and cannot create in the schema or the database", sec(rp, S.eff).tables_owned_or_inherited === 0 && sec(rp, S.eff).public_schema_create === false && sec(rp, S.eff).database_create === false);
+
   console.error("\n== as vexa_ops");
   const ops = probeAs("vexa_ops", pw("vexa_ops"), "ops");
-  check("the operator identity can write only the two platform control tables", ops.status === 0 && sec(ops, S.eff).tables_insert === 2 && sec(ops, S.eff).tables_delete === 2 && sec(ops, S.me).rolbypassrls === false);
+  check(
+    "the operator identity writes only the two platform control tables, plus INSERT of variants for the backfill, and does not bypass RLS",
+    ops.status === 0 && sec(ops, S.eff).tables_select === 4 && sec(ops, S.eff).tables_insert === 3 && sec(ops, S.eff).tables_update === 2 && sec(ops, S.eff).tables_delete === 2 && sec(ops, S.me).rolbypassrls === false,
+  );
 
   console.error("\n== as vexa_migrator");
   const mg = probeAs("vexa_migrator", pw("vexa_migrator"), "migrator");
@@ -178,8 +189,8 @@ async function main() {
   check("a role with no grants still gets a complete probe (catalogs are readable) and reports it can read nothing", nobody.status === 0 && sec(nobody, S.eff).tables_select === 0 && sec(nobody, S.eff).tables_insert === 0);
 
   // The probe wrote nothing: ownership and ACLs are exactly what the tool left
-  const [{ n: stillRoles }] = await q(`SELECT count(*)::int AS n FROM pg_roles WHERE rolname IN ('vexa_runtime','vexa_backup','vexa_ops','vexa_migrator')`);
-  check("the probe created and changed nothing (the four identities are still the only ones the tool made)", stillRoles === 4);
+  const [{ n: stillRoles }] = await q(`SELECT count(*)::int AS n FROM pg_roles WHERE rolname IN ('vexa_runtime','vexa_backup','vexa_reporter','vexa_ops','vexa_migrator')`);
+  check("the probe created and changed nothing (the five identities are still the only ones the tool made)", stillRoles === 5);
 
   await a.$disconnect();
   const cleanup = new PrismaClient({ datasources: { db: { url: urlFor("postgres", ADMIN_USER, ADMIN_PASS) } } });
