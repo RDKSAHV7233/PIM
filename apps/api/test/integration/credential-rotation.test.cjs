@@ -81,11 +81,52 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
+/**
+ * SEC-DB-RLS-001: this test rotates EVERY credential on the old key version that it can see, and gives only ITS OWN API process the
+ * second key. Run against a database shared with other tests (the restricted-role lane runs six at once), it rewrites credentials
+ * that other tests have just stored to v2, and their API processes, which have no v2 key, then fail with "Missing credential
+ * encryption key for version 2" (seen on a Shopify lane test). So it runs in its own throwaway database, migrated here and dropped
+ * afterwards, and nothing it rotates can belong to another test.
+ */
+async function createIsolatedDatabase(sharedUrl) {
+  const { PrismaClient } = require(path.join(REPO_ROOT, "node_modules", "@prisma", "client"));
+  const name = `credrot_${Date.now()}`;
+  const main = new PrismaClient({ datasources: { db: { url: sharedUrl } } });
+  await main.$executeRawUnsafe(`CREATE DATABASE "${name}"`);
+  const url = new URL(sharedUrl);
+  url.pathname = `/${name}`;
+  const isolatedUrl = url.toString();
+  const prismaCli = require.resolve("prisma/build/index.js", { paths: [REPO_ROOT] });
+  const migrate = require("node:child_process").spawnSync(
+    process.execPath,
+    [prismaCli, "migrate", "deploy", "--schema", path.join(REPO_ROOT, "packages", "db", "prisma", "schema.prisma")],
+    { cwd: REPO_ROOT, env: { ...process.env, DATABASE_URL: isolatedUrl, DATABASE_URL_POOLED: isolatedUrl, DATABASE_URL_DIRECT: isolatedUrl }, encoding: "utf8" },
+  );
+  if (migrate.status !== 0) {
+    await main.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => undefined);
+    await main.$disconnect().catch(() => undefined);
+    throw new Error(`migrations failed in the isolated database: ${String(migrate.stderr || migrate.stdout).slice(-300)}`);
+  }
+  return {
+    url: isolatedUrl,
+    async drop() {
+      await main.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => undefined);
+      await main.$disconnect().catch(() => undefined);
+    },
+  };
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
+  const isolated = await createIsolatedDatabase(process.env.DATABASE_URL);
+  process.env.DATABASE_URL = isolated.url;
+  process.env.DATABASE_URL_POOLED = isolated.url;
+  process.env.DATABASE_URL_DIRECT = isolated.url;
+  // The restricted-role lane would repoint the API at the SHARED database; this test's API belongs to its own database.
+  process.env.VEXA_RESTRICTED_DATABASE_URL = "";
 
   const runId = Date.now().toString();
   const port = 5400 + Math.floor(Math.random() * 100);
@@ -346,6 +387,8 @@ async function run() {
         }
       }
     }
+    await sleep(500);
+    await isolated.drop();
   }
 }
 

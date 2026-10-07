@@ -29,7 +29,9 @@
     "flipkart-token-expiry-alerting.test.cjs",
     "shopify-publication-webhook.test.cjs",
     "shopify-runtime-foundation.test.cjs",
-    "woocommerce-credential-verification-endpoint.test.cjs"
+    "woocommerce-credential-verification-endpoint.test.cjs",
+    "tenant-iteration.test.cjs",
+    "credential-rotation-tenant-iteration.test.cjs"
   ],
   "expectedFailing": []
 }
