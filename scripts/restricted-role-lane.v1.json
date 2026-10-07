@@ -31,11 +31,5 @@
     "shopify-runtime-foundation.test.cjs",
     "woocommerce-credential-verification-endpoint.test.cjs"
   ],
-  "expectedFailing": [
-    {
-      "test": "tenant-provisioning-default-pricing.test.cjs",
-      "tracks": "M2",
-      "reason": "tenant provisioning seeds default pricing through the context-free client; the seed fails silently and is only logged as non-fatal"
-    }
-  ]
+  "expectedFailing": []
 }

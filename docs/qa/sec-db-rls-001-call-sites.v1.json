@@ -109,18 +109,18 @@
       "file": "common/tenant/tenant-directory.service.ts",
       "class": "C",
       "remediation": "split",
-      "plan": "workspace directory lookups stay (unscoped table); tenant provisioning seeds (market, currency, price list, identity) move to the tenant client for the new tenant key",
+      "plan": "I-2 done: the default pricing seed (market, currency, price list) now runs through prisma.tenant(<provisioned tenant>) and a failed seed is logged as an ERROR (TENANT_DEFAULT_PRICING_SEED_FAILED), never a quiet warning. Remaining direct-client use is WorkspaceDirectory and AuthIdentity, which have no row level security (checked in the production probe and in the lane database), so it stays; the file stays listed until the direct client can be dropped from it.",
       "rlsProtectedModels": [
-        "authIdentity",
         "currency",
         "market",
         "priceList"
       ],
       "otherModels": [
-        "workspaceDirectory"
+        "workspaceDirectory",
+        "authIdentity"
       ],
       "rawSqlSites": 0,
-      "positiveAssertion": "provisioning a new tenant seeds default pricing (non-empty), no silent warning",
+      "positiveAssertion": "tenant-provisioning-default-pricing.test.cjs: provisioning a non-default tenant under the restricted role leaves a default market, currency and price list (non-empty), and tenant-directory.service.spec.ts mutation check",
       "status": "open"
     },
     {

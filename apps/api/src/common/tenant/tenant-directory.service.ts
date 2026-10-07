@@ -210,11 +210,12 @@ export class TenantDirectoryService {
       });
     }
 
-    // Best-effort: seed default pricing data (India market, INR currency, default price list).
-    // Non-fatal — a failure here must not block tenant provisioning.
-    await this.seedDefaultPricing(prisma, tenantKey).catch((err) => {
-      this.logger.warn(
-        `Default pricing seed failed for tenant "${tenantKey}" (non-fatal): ` +
+    // Seed default pricing data (India market, INR currency, default price list). A failure must not block tenant provisioning,
+    // but it must never be silent either: a tenant left without pricing is a broken tenant, so it is logged as an ERROR with a
+    // stable code that an alert can match (SEC-DB-RLS-001: under row level security this seed used to fail silently).
+    await this.seedDefaultPricing(tenantKey).catch((err) => {
+      this.logger.error(
+        `TENANT_DEFAULT_PRICING_SEED_FAILED tenant="${tenantKey}": the tenant was provisioned WITHOUT default pricing: ` +
           (err instanceof Error ? err.message : String(err)),
       );
     });
@@ -229,13 +230,14 @@ export class TenantDirectoryService {
   /**
    * Creates a default India market, INR currency, and default price list for
    * newly-provisioned tenants. Idempotent — skips if any market already exists.
-   * Uses the raw PrismaClient to bypass tenant-scope extension (which would
-   * restamp tenantKey = "default" for this tenant's new records).
+   *
+   * SEC-DB-RLS-001: this runs through the tenant client OF THE TENANT BEING PROVISIONED (`prisma.tenant(tenantKey)`), not the
+   * context-free direct client. Market, Currency and PriceList are row-level-security tables: through the direct client the
+   * inserts are rejected under an RLS-enforced runtime role. The earlier concern that `tenant()` "restamps tenantKey = default"
+   * applies only to `tenant()` with no argument; with an explicit tenant the extension stamps the tenant being provisioned.
    */
-  private async seedDefaultPricing(
-    prisma: ReturnType<PrismaDirectService["getClient"]>,
-    tenantKey: string,
-  ): Promise<void> {
+  private async seedDefaultPricing(tenantKey: string): Promise<void> {
+    const prisma = this.prisma.tenant(tenantKey);
     const existing = await prisma.market.findFirst({
       where: { tenantKey },
       select: { id: true },

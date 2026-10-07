@@ -17,6 +17,12 @@ const replace = (from, to) => (text) => {
   assert.ok(text.includes(from), `mutation target missing: ${from}`);
   return text.split(from).join(to);
 };
+const withEntry = (j) => {
+  if (!j.expectedFailing[0]) {
+    j.expectedFailing.push({ test: j.tests[0], tracks: "M1", reason: "a sufficiently long reason for the test entry" });
+  }
+  return j.expectedFailing[0];
+};
 const lane = (mutate) => (text) => {
   const j = JSON.parse(text);
   mutate(j);
@@ -26,8 +32,8 @@ const lane = (mutate) => (text) => {
 expectFail("lane lists a missing test", { lane: lane((j) => j.tests.push("does-not-exist.test.cjs")) }, "lane.tests");
 expectFail("lane too small", { lane: lane((j) => { j.tests = j.tests.slice(0, 3); j.expectedFailing = []; }) }, "lane.tests");
 expectFail("expected failure not in the lane", { lane: lane((j) => j.expectedFailing.push({ test: "other.test.cjs", tracks: "M1", reason: "this is a sufficiently long reason" })) }, "lane.expectedFailing");
-expectFail("expected failure without a tracking PR", { lane: lane((j) => { j.expectedFailing[0].tracks = "later"; }) }, "lane.expectedFailing");
-expectFail("expected failure without a reason", { lane: lane((j) => { j.expectedFailing[0].reason = "x"; }) }, "lane.expectedFailing");
+expectFail("expected failure without a tracking PR", { lane: lane((j) => { withEntry(j).tracks = "later"; }) }, "lane.expectedFailing");
+expectFail("expected failure without a reason", { lane: lane((j) => { withEntry(j).reason = "x"; }) }, "lane.expectedFailing");
 expectFail("role loses NOBYPASSRLS", { role: replace("NOSUPERUSER NOBYPASSRLS NOCREATEDB", "NOSUPERUSER BYPASSRLS NOCREATEDB") }, "role");
 expectFail("role granted ALL", { role: replace("GRANT SELECT, INSERT, UPDATE, DELETE ON", "GRANT ALL ON") }, "role");
 expectFail("role may create roles", { role: replace("NOCREATEROLE NOREPLICATION`);\n    } else", "CREATEROLE NOREPLICATION`);\n    } else") }, "role");
