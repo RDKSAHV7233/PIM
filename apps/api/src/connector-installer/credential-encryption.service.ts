@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
+import { forEachTenant, type TenantIterationOverall, type TenantIterationSummary } from "../common/tenant/tenant-iteration";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -32,6 +33,9 @@ export interface RotateCredentialKeyResult {
   rotated: number;
   failed: number;
   errors: string[];
+  /** SUCCESS only when every tenant and every credential succeeded; otherwise PARTIAL_FAILURE or FAILED. */
+  status: TenantIterationOverall;
+  tenants: TenantIterationSummary;
 }
 
 export interface StoreCredentialInput {
@@ -171,10 +175,16 @@ export class ConnectorCredentialEncryptionService {
   }
 
   /**
-   * CROSS-TENANT by design: scans every tenant's credentials. It still uses the context-free client, so under a restricted
-   * (non-superuser, RLS-enforced) runtime role it would silently see only the default tenant. It has no runtime caller today
-   * (an operator procedure); before the production role cutover it must either iterate tenants or run under an operator identity.
-   * Tracked in docs/qa/sec-db-rls-001-call-sites.v1.json (M3) and the secret-rotation work.
+   * Re-encrypts every tenant's credentials from one key version to another (operator procedure: scripts/rotate-credentials.ts).
+   *
+   * SEC-DB-RLS-001: this scans `connector_credentials` for rows on the old key version. It used to do that through the context-free
+   * client, which under row level security sees only the default tenant, so a rotation would have covered one tenant and reported
+   * success. It now iterates the tenants from the directory and rotates inside each tenant's own transaction (forEachTenant). A
+   * failure for one tenant rolls back only that tenant; the result is then PARTIAL_FAILURE and `failed` is non-zero, never success.
+   * Credentials whose tenant is missing from the directory are invisible to a restricted role: `tenants.orphanDetection` is
+   * UNVERIFIED_BY_RUNTIME_ROLE, never zero.
+   *
+   * A dry run reports what would rotate for each tenant and writes nothing.
    */
   async rotateKey(options: RotateCredentialKeyOptions): Promise<RotateCredentialKeyResult> {
     const fromVersion = parseCredentialKeyVersion(options.fromVersion);
@@ -195,69 +205,87 @@ export class ConnectorCredentialEncryptionService {
       MAX_BATCH_SIZE,
     );
     const dryRun = options.dryRun ?? false;
-    const db = this.prismaDirect.getClient();
-
-    const result: RotateCredentialKeyResult = {
-      rotated: 0,
-      failed: 0,
-      errors: [],
-    };
-
-    let lastId = "";
     const fromTag = formatCredentialKeyVersion(fromVersion);
     const fromLegacyTag = String(fromVersion);
     const toTag = formatCredentialKeyVersion(toVersion);
+    const errors: string[] = [];
 
-    while (true) {
-      const rows = await db.connectorCredential.findMany({
-        where: {
-          id: { gt: lastId },
-          keyVersion: { in: [fromTag, fromLegacyTag] },
-        },
-        orderBy: [{ id: "asc" }],
-        take: batchSize,
-        select: {
-          id: true,
-          encryptedValue: true,
-          keyVersion: true,
-        },
-      });
+    const summary = await forEachTenant(this.prismaDirect.getClient(), async (tx, tenantKey) => {
+      let examined = 0;
+      let rotated = 0;
+      let failed = 0;
+      let lastId = "";
 
-      if (rows.length === 0) {
-        break;
-      }
+      while (true) {
+        const rows = await tx.connectorCredential.findMany({
+          where: {
+            id: { gt: lastId },
+            keyVersion: { in: [fromTag, fromLegacyTag] },
+          },
+          orderBy: [{ id: "asc" }],
+          take: batchSize,
+          select: {
+            id: true,
+            encryptedValue: true,
+            keyVersion: true,
+          },
+        });
 
-      for (const row of rows) {
-        lastId = row.id;
-        try {
-          const rowVersion = parseCredentialKeyVersion(row.keyVersion);
-          const plain = this.decrypt(row.encryptedValue, rowVersion);
-          const rotated = buildEncryptedCredential(plain, toVersion, this.keys);
+        if (rows.length === 0) {
+          break;
+        }
+        examined += rows.length;
 
-          if (!dryRun) {
-            await db.connectorCredential.update({
-              where: { id: row.id },
-              data: {
-                encryptedValue: rotated.cipher,
-                keyVersion: toTag,
-                updatedAt: new Date(),
-              },
+        for (const row of rows) {
+          lastId = row.id;
+          try {
+            const rowVersion = parseCredentialKeyVersion(row.keyVersion);
+            const plain = this.decrypt(row.encryptedValue, rowVersion);
+            const rotatedValue = buildEncryptedCredential(plain, toVersion, this.keys);
+
+            if (!dryRun) {
+              await tx.connectorCredential.update({
+                where: { id: row.id },
+                data: {
+                  encryptedValue: rotatedValue.cipher,
+                  keyVersion: toTag,
+                  updatedAt: new Date(),
+                },
+              });
+            }
+
+            rotated += 1;
+          } catch (error) {
+            failed += 1;
+            const message = error instanceof Error ? error.message : String(error);
+            errors.push(`${row.id}: ${message}`);
+            this.logger.warn("Credential key rotation failed", {
+              tenantKey,
+              credentialId: row.id,
+              fromVersion,
+              toVersion,
+              dryRun,
+              error: message,
             });
           }
-
-          result.rotated += 1;
-        } catch (error) {
-          result.failed += 1;
-          const message = error instanceof Error ? error.message : String(error);
-          result.errors.push(`${row.id}: ${message}`);
-          this.logger.warn("Credential key rotation failed", {
-            credentialId: row.id,
-            fromVersion,
-            toVersion,
-            dryRun,
-            error: message,
-          });
         }
+      }
+
+      return { examinedCount: examined, changedCount: rotated, failedCount: failed };
+    });
+
+    // A tenant whose whole transaction failed committed nothing; report it as a failure so the run cannot look successful.
+    const result: RotateCredentialKeyResult = {
+      rotated: summary.changedTotal,
+      failed: summary.failedTotal,
+      errors,
+      status: summary.overall,
+      tenants: summary,
+    };
+    for (const run of summary.results) {
+      if (run.status === "failed" && run.errorCode !== "ITEM_FAILURES") {
+        result.failed += 1;
+        result.errors.push(`tenant ${run.tenantKey}: ${run.errorCode ?? "UNKNOWN_ERROR"}`);
       }
     }
 
@@ -267,6 +295,9 @@ export class ConnectorCredentialEncryptionService {
       dryRun,
       rotated: result.rotated,
       failed: result.failed,
+      tenantsEvaluated: summary.tenantsEvaluated,
+      tenantsFailed: summary.tenantsFailed,
+      status: result.status,
     });
 
     return result;

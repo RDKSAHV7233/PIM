@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
+import { forEachTenant, type TenantIterationOverall, type TenantIterationSummary } from "../common/tenant/tenant-iteration";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -19,7 +21,11 @@ const ROTATION_BATCH_SIZE = 100;
 export type CredentialRotationResult = {
   rotated: number;
   skipped: number;
+  /** Credentials that could not be rotated (bad ciphertext, failed write). */
   errors: number;
+  /** SUCCESS only when every tenant and every credential succeeded; otherwise PARTIAL_FAILURE or FAILED. */
+  status: TenantIterationOverall;
+  tenants: TenantIterationSummary;
 };
 
 @Injectable()
@@ -67,21 +73,25 @@ export class ConnectorCredentialService {
   }
 
   /**
-   * Re-encrypt all credentials not yet on the current key version.
+   * Re-encrypt all credentials not yet on the current key version, for EVERY tenant.
    *
    * Safe to run multiple times (idempotent — skips credentials already on current version).
    * Run this after rotating CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION in env.
    * Called automatically by the heartbeat on startup when a version change is detected.
    *
-   * Loops in ROTATION_BATCH_SIZE batches, ordered by id with a `gt` cursor, until every
-   * stale row is drained. The cursor (not just the shrinking keyVersion filter) matters:
-   * a row that fails to rotate (bad ciphertext, missing key) never changes keyVersion, so
-   * without a cursor it would be re-fetched and re-fail forever. Previously took exactly
-   * one bounded batch and returned, silently leaving a tenant with >ROTATION_BATCH_SIZE
-   * stale credentials only partially rotated until the next app restart.
+   * SEC-DB-RLS-001: this used to scan `connector_credentials` through the context-free client. Under row level security that client
+   * sees only the default tenant, so a key rotation would have re-encrypted one tenant's credentials and reported success. It now
+   * iterates the tenants from the directory and rotates inside each tenant's own transaction (see forEachTenant). A failure for one
+   * tenant rolls back only that tenant; the others keep their committed rotation, and the result is PARTIAL_FAILURE, never SUCCESS.
+   * `tenants.orphanDetection` is UNVERIFIED_BY_RUNTIME_ROLE: credentials whose tenant is not in the directory cannot be seen by a
+   * restricted role, so this cannot prove there are none.
+   *
+   * Within a tenant it loops in ROTATION_BATCH_SIZE batches ordered by id with a `gt` cursor until every stale row is drained. The
+   * cursor (not just the shrinking keyVersion filter) matters: a row that fails to rotate (bad ciphertext, missing key) never
+   * changes keyVersion, so without a cursor it would be re-fetched and re-fail forever. A credential that cannot be rotated counts as
+   * an item failure: the tenant is reported failed while its other rotations stay committed.
    */
   async rotateAllCredentials(): Promise<CredentialRotationResult> {
-    const db = this.prismaDirect.getClient();
     const currentVersion = formatCredentialKeyVersion(this.currentKeyVersion);
     const currentKey = this.keys.get(this.currentKeyVersion);
 
@@ -92,6 +102,42 @@ export class ConnectorCredentialService {
       );
     }
 
+    const skippedByTenant = new Map<string, number>();
+    const summary = await forEachTenant(this.prismaDirect.getClient(), async (tx, tenantKey) => {
+      const counts = await this.rotateTenantCredentials(tx, tenantKey, currentVersion, currentKey);
+      skippedByTenant.set(tenantKey, counts.skipped);
+      return { examinedCount: counts.examined, changedCount: counts.rotated, failedCount: counts.errors };
+    });
+
+    // Totals come from the per-tenant results, so a tenant whose transaction failed contributes nothing it did not commit.
+    const committed = summary.results.filter((r) => r.status === "success" || r.errorCode === "ITEM_FAILURES");
+    const result: CredentialRotationResult = {
+      rotated: summary.changedTotal,
+      skipped: committed.reduce((sum, r) => sum + (skippedByTenant.get(r.tenantKey) ?? 0), 0),
+      errors: summary.failedTotal,
+      status: summary.overall,
+      tenants: summary,
+    };
+
+    this.logger.info("connector.credential.rotation_completed", {
+      tenantsEvaluated: summary.tenantsEvaluated,
+      tenantsFailed: summary.tenantsFailed,
+      rotated: result.rotated,
+      skipped: result.skipped,
+      errors: result.errors,
+      status: result.status,
+      targetVersion: currentVersion,
+    });
+    return result;
+  }
+
+  private async rotateTenantCredentials(
+    tx: Prisma.TransactionClient,
+    tenantKey: string,
+    currentVersion: string,
+    currentKey: Buffer,
+  ): Promise<{ examined: number; rotated: number; skipped: number; errors: number }> {
+    let examined = 0;
     let rotated = 0;
     let skipped = 0;
     let errors = 0;
@@ -99,7 +145,7 @@ export class ConnectorCredentialService {
     let lastId = "";
 
     while (true) {
-      const staleRows = await db.connectorCredential.findMany({
+      const staleRows = await tx.connectorCredential.findMany({
         where: { id: { gt: lastId }, keyVersion: { not: currentVersion } },
         orderBy: [{ id: "asc" }],
         take: ROTATION_BATCH_SIZE,
@@ -111,7 +157,9 @@ export class ConnectorCredentialService {
       }
 
       batchNumber++;
+      examined += staleRows.length;
       this.logger.info("connector.credential.rotation_batch_started", {
+        tenantKey,
         batchNumber,
         batchCount: staleRows.length,
         targetVersion: currentVersion,
@@ -124,6 +172,7 @@ export class ConnectorCredentialService {
           const oldKey = this.keys.get(oldVersion);
           if (!oldKey) {
             this.logger.warn("connector.credential.rotation_skipped_missing_key", {
+              tenantKey,
               credentialId: row.id,
               keyVersion: row.keyVersion,
             });
@@ -134,7 +183,7 @@ export class ConnectorCredentialService {
           const plaintext = decryptCredentialValue(row.encryptedValue, oldKey);
           const newCipher = encryptCredentialValue(plaintext, currentKey, this.currentKeyVersion);
 
-          await db.connectorCredential.updateMany({
+          const updated = await tx.connectorCredential.updateMany({
             where: { id: row.id, keyVersion: row.keyVersion },
             data: {
               encryptedValue: newCipher,
@@ -142,10 +191,16 @@ export class ConnectorCredentialService {
               updatedAt: new Date(),
             },
           });
-          rotated++;
+          // A row that matched the read but not the write was changed or removed meanwhile: that is not a rotation.
+          if (updated.count === 1) {
+            rotated++;
+          } else {
+            skipped++;
+          }
         } catch (err) {
           errors++;
           this.logger.warn("connector.credential.rotation_error", {
+            tenantKey,
             credentialId: row.id,
             error: err instanceof Error ? err.message : String(err),
           });
@@ -153,15 +208,7 @@ export class ConnectorCredentialService {
       }
     }
 
-    this.logger.info("connector.credential.rotation_completed", {
-      batches: batchNumber,
-      rotated,
-      skipped,
-      errors,
-      targetVersion: currentVersion,
-    });
-
-    return { rotated, skipped, errors };
+    return { examined, rotated, skipped, errors };
   }
 
   private isTokenFresh(expiresAt: Date | null): boolean {

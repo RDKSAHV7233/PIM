@@ -2,6 +2,7 @@ import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nest
 import { resolveCurrentCredentialKeyVersion } from "../connector-installer/credential-encryption.util";
 import { LoggerService } from "../common/logging/logger.service";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorCredentialService } from "./connector-credential.service";
@@ -16,7 +17,13 @@ import {
 } from "./credential-validation";
 
 const HEARTBEAT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const INITIAL_DELAY_MS = 30 * 1000;                // 30 seconds after boot
+const DEFAULT_INITIAL_DELAY_MS = 30 * 1000;        // 30 seconds after boot
+
+/** CONNECTOR_HEARTBEAT_INITIAL_DELAY_MS lets tests and operators shorten the boot delay; anything invalid keeps the default. */
+function resolveInitialDelayMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(String(env.CONNECTOR_HEARTBEAT_INITIAL_DELAY_MS ?? "").trim());
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : DEFAULT_INITIAL_DELAY_MS;
+}
 const HEARTBEAT_BATCH_SIZE = 50;                   // process at most 50 installations per tick
 
 type InstallationRow = {
@@ -49,7 +56,7 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
     this.timer = setTimeout(() => {
       void this.runScheduledStartupTasks();
       this.intervalId = setInterval(() => void this.runScheduledHeartbeat(), HEARTBEAT_INTERVAL_MS);
-    }, INITIAL_DELAY_MS);
+    }, resolveInitialDelayMs());
   }
 
   private async runScheduledStartupTasks(): Promise<void> {
@@ -92,25 +99,48 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
 
   private async runKeyRotationIfNeeded(): Promise<void> {
     const currentVersion = resolveCurrentCredentialKeyVersion(process.env);
-    const db = this.prismaDirect.getClient();
+    const targetVersion = `v${currentVersion}`;
 
-    // Check if any credentials are on a stale key version
-    const staleCount = await db.connectorCredential.count({
-      where: { keyVersion: { not: `v${currentVersion}` } },
+    // Check, per tenant, whether any credentials are on a stale key version. SEC-DB-RLS-001: this used to be one count through the
+    // context-free client, which under row level security sees only the default tenant, so a stale credential of any other tenant
+    // would never trigger a rotation. A tenant whose count could not be read is NOT treated as "nothing stale".
+    const check = await forEachTenant(this.prismaDirect.getClient(), async (tx) => {
+      const stale = await tx.connectorCredential.count({
+        where: { keyVersion: { not: targetVersion } },
+      });
+      return { examinedCount: stale, changedCount: 0 };
     });
+    const staleCount = check.examinedTotal;
 
-    if (staleCount === 0) {
+    if (check.tenantsFailed > 0) {
+      this.logger.warn("connector.credential.rotation_check_incomplete", {
+        tenantsEvaluated: check.tenantsEvaluated,
+        tenantsFailed: check.tenantsFailed,
+        staleCountFromReadableTenants: staleCount,
+      });
+    }
+
+    if (staleCount === 0 && check.tenantsFailed === 0) {
       return;
     }
 
     this.logger.info("connector.credential.rotation_triggered", {
       staleCount,
-      currentVersion: `v${currentVersion}`,
+      tenantsEvaluated: check.tenantsEvaluated,
+      tenantsUnchecked: check.tenantsFailed,
+      currentVersion: targetVersion,
     });
 
     try {
       const result = await this.credentialService.rotateAllCredentials();
       this.logger.info("connector.credential.rotation_result", result);
+      if (result.status !== undefined && result.status !== "SUCCESS") {
+        this.logger.warn("connector.credential.rotation_degraded", {
+          status: result.status,
+          tenantsFailed: result.tenants?.tenantsFailed,
+          errors: result.errors,
+        });
+      }
     } catch (err) {
       this.logger.warn("connector.credential.rotation_failed", {
         error: err instanceof Error ? err.message : String(err),

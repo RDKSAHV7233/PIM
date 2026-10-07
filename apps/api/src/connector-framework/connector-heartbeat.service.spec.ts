@@ -16,6 +16,7 @@ import { ConnectorHeartbeatService } from "./connector-heartbeat.service";
 import { BOOLEAN_FALSE_MEANS_REJECTION } from "./credential-validation";
 import type { CredentialVerificationResult } from "./connector.interface";
 import type { PrismaDirectService } from "../prisma/prisma-direct.service";
+import { makeFakeRlsDb } from "../common/tenant/fake-rls-db-spec";
 import type { ConnectorRegistry } from "./connector.registry";
 import type { ConnectorCredentialService } from "./connector-credential.service";
 import type { ConnectorHttpClient } from "./connector-http-client.service";
@@ -82,8 +83,11 @@ function makeStubs(installations: Row[] = [], definitions: any[] = []) {
   };
   const connectorDefinition = { findMany: jest.fn().mockResolvedValue(definitions) };
   const connectorCredential = { count: jest.fn().mockResolvedValue(0) };
+  // The same object is the base client and every tenant transaction client here: these tests are about heartbeat behaviour, not RLS.
+  const baseClient: any = { connectorInstallation, connectorDefinition, connectorCredential, workspaceDirectory: { findMany: jest.fn().mockResolvedValue([]) }, $queryRaw: jest.fn().mockResolvedValue([]) };
+  baseClient.$transaction = jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(baseClient));
   const prismaDirect = {
-    getClient: jest.fn().mockReturnValue({ connectorInstallation, connectorDefinition, connectorCredential }),
+    getClient: jest.fn().mockReturnValue(baseClient),
   } as unknown as PrismaDirectService;
 
   // By default every slug resolves to one connector with both verifiers.
@@ -425,5 +429,68 @@ describe("ConnectorHeartbeatService.runKeyRotationIfNeeded — startup rotation 
     const service = new ConnectorHeartbeatService(stubs.prismaDirect, stubs.registry, stubs.credentialService, stubs.httpClient, stubs.logger);
 
     await expect((service as any).runKeyRotationIfNeeded()).resolves.toBeUndefined();
+  });
+});
+
+describe("ConnectorHeartbeatService.runKeyRotationIfNeeded — stale credentials of any tenant (SEC-DB-RLS-001)", () => {
+  const originalEnv = process.env;
+  beforeEach(() => { process.env = { ...originalEnv, CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION: "1" }; });
+  afterEach(() => { process.env = originalEnv; });
+
+  const credential = (id: string, tenantKey: string, keyVersion: string) => ({ id, tenantKey, encryptedValue: `cipher-${id}`, keyVersion });
+  const build = (rows: ReturnType<typeof credential>[], directory: string[]) => {
+    const stubs = makeStubs();
+    const db = makeFakeRlsDb(rows, directory);
+    const prismaDirect = { getClient: jest.fn().mockReturnValue(db.base) } as unknown as PrismaDirectService;
+    (stubs.credentialService.rotateAllCredentials as jest.Mock).mockResolvedValue({ rotated: 1, skipped: 0, errors: 0, status: "SUCCESS" });
+    const service = new ConnectorHeartbeatService(prismaDirect, stubs.registry, stubs.credentialService, stubs.httpClient, stubs.logger);
+    return { stubs, db, service };
+  };
+
+  it("triggers rotation when ONLY a non-default tenant has a stale credential (the default tenant is fully current)", async () => {
+    const { stubs, service } = build([credential("d1", "default", "v1"), credential("a1", "tenant-a", "v0")], ["tenant-a"]);
+
+    await (service as any).runKeyRotationIfNeeded();
+
+    expect(stubs.credentialService.rotateAllCredentials).toHaveBeenCalledTimes(1);
+    expect(stubs.logger.info).toHaveBeenCalledWith("connector.credential.rotation_triggered", expect.objectContaining({ staleCount: 1, tenantsEvaluated: 2 }));
+  });
+
+  it("MUTATION: the old single count through the context-free client would have seen zero and never rotated", async () => {
+    const { db } = build([credential("d1", "default", "v1"), credential("a1", "tenant-a", "v0")], ["tenant-a"]);
+    expect(await db.base.connectorCredential.count({ where: { keyVersion: { not: "v1" } } })).toBe(0);
+  });
+
+  it("does not rotate when every tenant is current", async () => {
+    const { stubs, service } = build([credential("d1", "default", "v1"), credential("a1", "tenant-a", "v1")], ["tenant-a"]);
+    await (service as any).runKeyRotationIfNeeded();
+    expect(stubs.credentialService.rotateAllCredentials).not.toHaveBeenCalled();
+  });
+
+  it("does not read credentials through the context-free client", async () => {
+    const { db, service } = build([credential("a1", "tenant-a", "v0")], ["tenant-a"]);
+    await (service as any).runKeyRotationIfNeeded();
+    expect(db.baseCredentialReads).toBe(0);
+  });
+
+  it("a tenant whose stale count could not be read is not treated as 'nothing stale': rotation still runs and the gap is logged", async () => {
+    const { stubs, db, service } = build([credential("d1", "default", "v1"), credential("a1", "tenant-a", "v1")], ["tenant-a"]);
+    db.failCommitFor.add("tenant-a");
+
+    await (service as any).runKeyRotationIfNeeded();
+
+    expect(stubs.credentialService.rotateAllCredentials).toHaveBeenCalledTimes(1);
+    expect(stubs.logger.warn).toHaveBeenCalledWith("connector.credential.rotation_check_incomplete", expect.objectContaining({ tenantsFailed: 1 }));
+  });
+
+  it("surfaces a PARTIAL_FAILURE rotation as degraded instead of logging only success", async () => {
+    const { stubs, service } = build([credential("a1", "tenant-a", "v0")], ["tenant-a"]);
+    (stubs.credentialService.rotateAllCredentials as jest.Mock).mockResolvedValue({
+      rotated: 1, skipped: 0, errors: 1, status: "PARTIAL_FAILURE", tenants: { tenantsFailed: 1 },
+    });
+
+    await (service as any).runKeyRotationIfNeeded();
+
+    expect(stubs.logger.warn).toHaveBeenCalledWith("connector.credential.rotation_degraded", expect.objectContaining({ status: "PARTIAL_FAILURE", tenantsFailed: 1 }));
   });
 });

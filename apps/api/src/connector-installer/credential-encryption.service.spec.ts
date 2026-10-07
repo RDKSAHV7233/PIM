@@ -11,6 +11,7 @@
 import { ConnectorCredentialEncryptionService } from "./credential-encryption.service";
 import type { PrismaDirectService } from "../prisma/prisma-direct.service";
 import type { PrismaService } from "../prisma/prisma.service";
+import { makeFakeRlsDb } from "../common/tenant/fake-rls-db-spec";
 import type { LoggerService } from "../common/logging/logger.service";
 
 const ENV = {
@@ -19,38 +20,11 @@ const ENV = {
   CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION: "1",
 };
 
-function makeStubs(rows: Array<{ id: string; encryptedValue: string; keyVersion: string }>) {
-  const remaining = [...rows];
-  const updated: Array<{ id: string; data: Record<string, unknown> }> = [];
-
-  const connectorCredential = {
-    findMany: jest.fn().mockImplementation(({ where, take }: any) => {
-      const cursor = where.id.gt as string;
-      const versions: string[] = where.keyVersion.in;
-      const page = remaining
-        .filter((r) => r.id > cursor && versions.includes(r.keyVersion))
-        .sort((a, b) => (a.id < b.id ? -1 : 1))
-        .slice(0, take);
-      return Promise.resolve(page.map((r) => ({ id: r.id, encryptedValue: r.encryptedValue, keyVersion: r.keyVersion })));
-    }),
-    update: jest.fn().mockImplementation(({ where, data }: any) => {
-      updated.push({ id: where.id, data });
-      const row = remaining.find((r) => r.id === where.id);
-      if (row) {
-        row.encryptedValue = data.encryptedValue;
-        row.keyVersion = data.keyVersion;
-      }
-      return Promise.resolve(undefined);
-    }),
-  };
-
-  const prismaDirect = {
-    getClient: jest.fn().mockReturnValue({ connectorCredential }),
-  } as unknown as PrismaDirectService;
-
+function makeStubs(rows: Array<{ id: string; encryptedValue: string; keyVersion: string; tenantKey?: string }>, directory: string[] = []) {
+  const db = makeFakeRlsDb(rows.map((r) => ({ ...r, tenantKey: r.tenantKey ?? "default" })), directory);
+  const prismaDirect = { getClient: jest.fn().mockReturnValue(db.base) } as unknown as PrismaDirectService;
   const logger = { info: jest.fn(), warn: jest.fn() } as unknown as LoggerService;
-
-  return { prismaDirect, logger, connectorCredential, updated, remaining };
+  return { prismaDirect, logger, db, remaining: db.rows };
 }
 
 function makeService(stubs: ReturnType<typeof makeStubs>) {
@@ -86,12 +60,13 @@ describe("ConnectorCredentialEncryptionService — key rotation (no prior covera
         id: `cred-${String(i).padStart(2, "0")}`,
         encryptedValue: service.encrypt(plain).cipher,
         keyVersion: "v1",
+      tenantKey: "default",
       })),
     );
 
     const result = await service.rotateKey({ fromVersion: 1, toVersion: 2, batchSize: 3 });
 
-    expect(result).toEqual({ rotated: 7, failed: 0, errors: [] });
+    expect(result).toMatchObject({ rotated: 7, failed: 0, errors: [] });
     expect(stubs.remaining.every((r) => r.keyVersion === "v2")).toBe(true);
     // Re-decrypt every rotated row under the new version to prove the plaintext survived rotation.
     stubs.remaining.forEach((row, i) => {
@@ -100,17 +75,17 @@ describe("ConnectorCredentialEncryptionService — key rotation (no prior covera
     // 7 rows at batchSize 3: pages of 3+3+1, plus one final empty page to confirm the
     // cursor has drained the table — 4 calls total, proving the cursor actually advances
     // (a stuck cursor would either loop forever or stop short of all 7 rows).
-    expect(stubs.connectorCredential.findMany).toHaveBeenCalledTimes(4);
+    expect(stubs.db.findManyCalls).toBe(4);
   });
 
   it("also picks up rows tagged with the legacy unprefixed keyVersion format", async () => {
     const stubs = makeStubs([]);
     const service = makeService(stubs);
-    stubs.remaining.push({ id: "cred-legacy", encryptedValue: service.encrypt("legacy-secret").cipher, keyVersion: "1" });
+    stubs.remaining.push({ id: "cred-legacy", encryptedValue: service.encrypt("legacy-secret").cipher, keyVersion: "1", tenantKey: "default" });
 
     const result = await service.rotateKey({ fromVersion: 1, toVersion: 2 });
 
-    expect(result).toEqual({ rotated: 1, failed: 0, errors: [] });
+    expect(result).toMatchObject({ rotated: 1, failed: 0, errors: [] });
     expect(stubs.remaining[0].keyVersion).toBe("v2");
   });
 
@@ -118,12 +93,12 @@ describe("ConnectorCredentialEncryptionService — key rotation (no prior covera
     const stubs = makeStubs([]);
     const service = makeService(stubs);
     const cipher = service.encrypt("untouched-secret").cipher;
-    stubs.remaining.push({ id: "cred-00", encryptedValue: cipher, keyVersion: "v1" });
+    stubs.remaining.push({ id: "cred-00", encryptedValue: cipher, keyVersion: "v1", tenantKey: "default" });
 
     const result = await service.rotateKey({ fromVersion: 1, toVersion: 2, dryRun: true });
 
-    expect(result).toEqual({ rotated: 1, failed: 0, errors: [] });
-    expect(stubs.connectorCredential.update).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ rotated: 1, failed: 0, errors: [] });
+    expect(stubs.db.updateCalls).toBe(0);
     expect(stubs.remaining[0].keyVersion).toBe("v1");
     expect(stubs.remaining[0].encryptedValue).toBe(cipher);
   });
@@ -132,9 +107,9 @@ describe("ConnectorCredentialEncryptionService — key rotation (no prior covera
     const stubs = makeStubs([]);
     const service = makeService(stubs);
     stubs.remaining.push(
-      { id: "cred-00", encryptedValue: service.encrypt("good-secret").cipher, keyVersion: "v1" },
-      { id: "cred-01", encryptedValue: "enc::v1:not-valid-ciphertext", keyVersion: "v1" },
-      { id: "cred-02", encryptedValue: service.encrypt("another-good-secret").cipher, keyVersion: "v1" },
+      { id: "cred-00", encryptedValue: service.encrypt("good-secret").cipher, keyVersion: "v1", tenantKey: "default" },
+      { id: "cred-01", encryptedValue: "enc::v1:not-valid-ciphertext", keyVersion: "v1", tenantKey: "default" },
+      { id: "cred-02", encryptedValue: service.encrypt("another-good-secret").cipher, keyVersion: "v1", tenantKey: "default" },
     );
 
     const result = await service.rotateKey({ fromVersion: 1, toVersion: 2 });
@@ -250,5 +225,83 @@ describe("ConnectorCredentialEncryptionService — tenant-scoped credential writ
 
     expect(stubs.directUpsert).toHaveBeenCalledTimes(1);
     expect(stubs.tenantUpserts.size).toBe(0);
+  });
+});
+
+describe("ConnectorCredentialEncryptionService.rotateKey — every tenant, not just the default (SEC-DB-RLS-001)", () => {
+  const originalEnv = process.env;
+  beforeEach(() => {
+    process.env = { ...originalEnv, ...ENV };
+  });
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  const rowFor = (service: ConnectorCredentialEncryptionService, id: string, tenantKey: string, plain: string) => ({
+    id,
+    tenantKey,
+    encryptedValue: service.encrypt(plain).cipher,
+    keyVersion: "v1",
+  });
+
+  it("rotates a NON-DEFAULT tenant's credential from v1 to v2 and the plaintext survives; the default tenant's already-current row is untouched", async () => {
+    const stubs = makeStubs([], ["tenant-a"]);
+    const service = makeService(stubs);
+    stubs.remaining.push(rowFor(service, "a1", "tenant-a", "secret-a"), { id: "d1", tenantKey: "default", encryptedValue: "already-v2-ciphertext", keyVersion: "v2" });
+
+    const result = await service.rotateKey({ fromVersion: 1, toVersion: 2 });
+
+    expect(result).toMatchObject({ rotated: 1, failed: 0, status: "SUCCESS" });
+    const a1 = stubs.remaining.find((r) => r.id === "a1")!;
+    expect(a1.keyVersion).toBe("v2");
+    expect(service.decrypt(a1.encryptedValue, a1.keyVersion)).toBe("secret-a");
+    expect(stubs.remaining.find((r) => r.id === "d1")).toMatchObject({ encryptedValue: "already-v2-ciphertext", keyVersion: "v2" });
+    expect(result.tenants.results.find((r) => r.tenantKey === "tenant-a")).toMatchObject({ status: "success", changedCount: 1 });
+  });
+
+  it("MUTATION: an unscoped scan of the same data would see none of the non-default tenant's credentials", async () => {
+    const stubs = makeStubs([], ["tenant-a"]);
+    const service = makeService(stubs);
+    stubs.remaining.push(rowFor(service, "a1", "tenant-a", "secret-a"));
+    const seenByOldScan = await stubs.db.base.connectorCredential.findMany({ where: { keyVersion: { in: ["v1", "1"] } } });
+    expect(seenByOldScan).toEqual([]);
+    expect((await service.rotateKey({ fromVersion: 1, toVersion: 2 })).rotated).toBe(1);
+  });
+
+  it("a dry run counts the non-default tenant's credentials and writes nothing", async () => {
+    const stubs = makeStubs([], ["tenant-a"]);
+    const service = makeService(stubs);
+    stubs.remaining.push(rowFor(service, "a1", "tenant-a", "secret-a"));
+    const before = { ...stubs.remaining[0] };
+
+    const result = await service.rotateKey({ fromVersion: 1, toVersion: 2, dryRun: true });
+
+    expect(result.rotated).toBe(1);
+    expect(stubs.db.updateCalls).toBe(0);
+    expect(stubs.remaining[0]).toEqual(before);
+  });
+
+  it("a tenant that fails does not undo another's rotation: PARTIAL_FAILURE with a non-zero failed count (so the CLI exits non-zero)", async () => {
+    const stubs = makeStubs([], ["tenant-a", "tenant-b"]);
+    const service = makeService(stubs);
+    stubs.remaining.push(rowFor(service, "a1", "tenant-a", "secret-a"), rowFor(service, "b1", "tenant-b", "secret-b"));
+    stubs.db.failCommitFor.add("tenant-b");
+
+    const result = await service.rotateKey({ fromVersion: 1, toVersion: 2 });
+
+    expect(result.status).toBe("PARTIAL_FAILURE");
+    expect(result.failed).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.includes("tenant-b"))).toBe(true);
+    expect(stubs.remaining.find((r) => r.id === "a1")?.keyVersion).toBe("v2");
+    expect(stubs.remaining.find((r) => r.id === "b1")?.keyVersion).toBe("v1");
+  });
+
+  it("never reads through the context-free client and does not claim zero orphans", async () => {
+    const stubs = makeStubs([], ["tenant-a"]);
+    const service = makeService(stubs);
+    stubs.remaining.push(rowFor(service, "a1", "tenant-a", "secret-a"));
+    const result = await service.rotateKey({ fromVersion: 1, toVersion: 2 });
+    expect(stubs.db.baseCredentialReads).toBe(0);
+    expect(result.tenants.orphanDetection).toBe("UNVERIFIED_BY_RUNTIME_ROLE");
   });
 });

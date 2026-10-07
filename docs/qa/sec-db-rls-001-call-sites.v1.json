@@ -127,20 +127,20 @@
       "file": "connector-framework/connector-credential.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "the tenant read path already uses tenant(); the direct client is only rotateAllCredentials, a cross-tenant sweep the heartbeat runs on a key-version change. Under RLS it would silently rotate only the default tenant; iterate tenants from the directory",
+      "plan": "rotateAllCredentials now iterates every tenant through forEachTenant (transaction-local tenant context, bounded concurrency, per-tenant results, PARTIAL_FAILURE surfaced). The file still holds the base client that forEachTenant runs on, so it stays listed; the tenant read path already used tenant().",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "after a key version change the heartbeat rotation re-encrypts a non-default tenant's credentials",
+      "positiveAssertion": "credential-rotation-tenant-iteration.test.cjs: a non-default tenant's credential goes v1 to v2 under the restricted role and still decrypts; connector-credential.service.spec.ts mutation check",
       "status": "open"
     },
     {
       "file": "connector-framework/connector-heartbeat.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "iterate installations per tenant context",
+      "plan": "The key-rotation trigger (stale-credential count) now iterates tenants; a tenant whose count cannot be read is not treated as nothing stale. STILL OPEN: runHeartbeat scans installations across tenants through the context-free client (I-4).",
       "rlsProtectedModels": [
         "connectorCredential",
         "connectorInstallation"
@@ -149,7 +149,7 @@
         "connectorDefinition"
       ],
       "rawSqlSites": 0,
-      "positiveAssertion": "a heartbeat is recorded for a non-default tenant installation",
+      "positiveAssertion": "rotation trigger: credential-rotation-tenant-iteration.test.cjs (API startup path); runHeartbeat: an expired credential of a non-default tenant is detected and marked",
       "status": "open"
     },
     {
@@ -169,13 +169,13 @@
       "file": "connector-installer/credential-encryption.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "M1a done (credential writes and the installer transactions use tenant(tenantKey)). Remaining: rotateKey scans every tenant through the context-free client and would silently rotate only the default tenant under RLS; iterate tenants (or run it under an operator identity) before the role cutover",
+      "plan": "M1a done (writes use tenant(tenantKey)); rotateKey now iterates every tenant through forEachTenant, dry run included, and reports PARTIAL_FAILURE with a non-zero failed count. The file still holds the base client that forEachTenant runs on, so it stays listed.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "rotateKey re-encrypts a non-default tenant's credentials (credential-rotation integration test with a non-default tenant, run under the restricted role)",
+      "positiveAssertion": "credential-rotation-tenant-iteration.test.cjs (operator path as the restricted role); credential-encryption.service.spec.ts mutation check",
       "status": "open"
     },
     {
@@ -600,12 +600,14 @@
     "marketplace/marketplace.service.ts": 1,
     "outbound-webhooks/outbound-webhooks.service.ts": 1,
     "prisma/prisma.service.ts": 1,
-    "workspace-users/workspace-users.service.ts": 2
+    "workspace-users/workspace-users.service.ts": 2,
+    "common/tenant/tenant-iteration.ts": 1,
+    "common/tenant/fake-rls-db-spec.ts": 2
   },
   "totals": {
     "directClientFiles": 32,
-    "rawSqlSites": 81,
-    "rawSqlFiles": 20
+    "rawSqlSites": 84,
+    "rawSqlFiles": 22
   },
   "otherClients": [
     {
