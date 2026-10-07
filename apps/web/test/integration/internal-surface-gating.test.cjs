@@ -35,9 +35,15 @@ function run() {
     internalSource.includes("notFound();") && internalSource.includes('actorRole !== "admin"'),
     "Developer page must be hard-gated away from seller-facing access.",
   );
+  // QA-AI-01 (#1236): the AI Lab is hidden by an explicit, fail-closed flag (and the admin role), never by the environment name:
+  // the one deployment that serves production is named "Staging", so APP_ENV === "production" never fired there.
   assert(
-    aiSource.includes("notFound();") && aiSource.includes('process.env.APP_ENV === "production"'),
-    "AI page must be hidden from production and non-admin access.",
+    aiSource.includes("notFound();") && aiSource.includes("!isInternalAiLabEnabled()") && aiSource.includes('actorRole !== "admin"'),
+    "AI page must be hidden unless the explicit internal AI Lab flag is on, and from non-admin access.",
+  );
+  assert(
+    !aiSource.includes("APP_ENV"),
+    "AI page availability must not depend on the environment name (see #1236).",
   );
   assert(
     ondcSource.includes("notFound();") &&

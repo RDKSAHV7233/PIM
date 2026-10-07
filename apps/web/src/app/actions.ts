@@ -2,7 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
   addApprovalComment as addApprovalCommentRequest,
@@ -21,6 +21,7 @@ import {
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
+import { isInternalAiLabEnabled } from "@/lib/internal-ai-lab";
 import { getServerSession } from "@/lib/server-session";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import {
@@ -2400,6 +2401,15 @@ export async function runOndcSimulationAction(formData: FormData) {
 }
 
 export async function applyAiRepairAction(formData: FormData) {
+  // QA-AI-01 (#1236): a server action is a directly callable endpoint, so it is gated here as well as on the page. The repair writes
+  // the product directly (legacy auto-suggestions), so it needs the explicit internal AI Lab flag and an admin session.
+  if (!isInternalAiLabEnabled()) {
+    notFound();
+  }
+  const { actorRole } = await getServerSession();
+  if (actorRole !== "admin") {
+    notFound();
+  }
   const productId = String(formData.get("productId") ?? "").trim();
   if (!productId) {
     throw new Error("Product id is required.");

@@ -16,6 +16,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { isInternalAiLabEnabled } from "@/lib/internal-ai-lab";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,9 @@ interface AiPageProps {
 export default async function AiPage({ searchParams }: AiPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole } = await getServerSession();
-  if (actorRole !== "admin" || process.env.APP_ENV === "production") {
+  // QA-AI-01 (#1236): availability is an explicit, fail-closed flag, not the environment name (the one deployment that serves
+  // production is named "Staging"). Without the flag this route is a 404 for everyone.
+  if (!isInternalAiLabEnabled() || actorRole !== "admin") {
     notFound();
   }
 
