@@ -3,7 +3,9 @@
 Date: 2026-10-07
 Baseline: `origin/main` at `ecbce248` (#1231)
 Type: **documentation only.** A status synchronisation. No runtime code, no production access, no provider path, no credential, no approval.
-Status: **this is the single current status source for the AI programme and supersedes `vexa-ai-programme-ledger-2026-10-07.md` (the B0 snapshot, written at `ec9b166c` and updated at `a475cc0f`).** The B0 document stays as history; its rows are out of date.
+Status: **SUPERSEDED by `docs/execution/PROGRAMME_RECONCILIATION_2026-10-08.md`**, which is now the single current programme-state index. This file is kept as historical evidence; its rows are out of date and do not override current `origin/main`.
+
+(Original status line: this was the single current status source for the AI programme and superseded `vexa-ai-programme-ledger-2026-10-07.md`, the B0 snapshot written at `ec9b166c` and updated at `a475cc0f`.)
 
 ## 1. How to read this ledger
 

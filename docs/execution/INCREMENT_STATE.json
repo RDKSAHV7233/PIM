@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-10-05T00:00",
+    "lastUpdated": "2026-10-08T00:00",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -6382,6 +6382,386 @@
             "INC-85, #1052, #1059 and the dated 2026-09-03 to 2026-09-05 records preserved unchanged"
           ],
           "decision_record": "docs/decisions/DR-2026-10-05-woocommerce-p1-governance.md"
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-96",
+      "name": "SEC-DB-RLS-001: remove the privileged runtime database identity and certify tenant isolation (issue #1189)",
+      "status": "in_progress",
+      "locked": false,
+      "scope": [
+        "packages/db/identity/",
+        "scripts/db-identity/",
+        "scripts/ci/",
+        "scripts/run-restricted-role-lane.cjs",
+        "apps/api/src/common/tenant/",
+        "docs/qa/sec-db-rls-001-*"
+      ],
+      "evidence": [
+        "docs/qa/sec-db-rls-001-stage1-reconciliation-2026-10-07.md",
+        "docs/execution/PROGRAMME_RECONCILIATION_2026-10-08.md"
+      ],
+      "note": "Recorded retrospectively on 2026-10-08 from merged history; no story is locked because no PO acceptance or CTO approval is on record. PRODUCTION STILL RUNS AS A SUPERUSER as far as evidence shows (last read-only probe 2026-10-06: only postgres and vexa_app_v2 exist, both superusers). Merged tooling has NO production effect: the new identities have no credentials provisioned (no MIGRATION_, BACKUP_, REPORTER_ or OPS_DATABASE_URL secret exists in GitHub as of 2026-10-07) and the deploy-path wiring is opt-in. Restricted-runtime cutover is HOLD (owner decision 2026-10-08).",
+      "blockedBy": "branch protection or an owner-accepted equivalent; identity credentials (human); restore and rollback proof; remaining RLS call-site work; Security and SRE sign-off",
+      "pendingReleaseItems": [
+        "ten class-A jobs still default-tenant-only under a restricted role: plan-usage, bulk-edit-stale-operation-recovery, bulk-import-stale-row-recovery, connector-webhook-lease-sweeper, export-job-reconciliation, woocommerce-reconciliation, media-integrity, outbound-webhooks recovery, internal-ops-alerts, internal-ops-summary",
+        "class C: auth.service review, commercial-requests (D2), stripe.service (D3), tenant-directory split, media.service unsigned branch",
+        "M1c: remove the optional direct-client fallback (15 connectors, 3 services)",
+        "7.2a runtime positive-result verification, then 7.2b (drop the three ai_maintenance_read_* policies)",
+        "provision migrator, runtime, backup and (as required) reporter and ops credentials; real backup restore; rollback rehearsal; final restricted-runtime rehearsal",
+        "MEDIA_URL_SIGNING_KEY activation and non-default-tenant media proof under the restricted role",
+        "restricted-runtime production cutover (HOLD)"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-96-S1",
+          "title": "Evidence, probe, call-site inventory and ratchet, required restricted-role CI lane, diagnostics and lane isolation (#1188, #1190, #1193, #1199, #1203, #1205, #1213)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1195",
+          "commit": "5a2c325c",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "tests_passed": [
+            "restricted-role lane at exact head 96b60ff3 and 731c4ec4: 30 pass, 0 expected fail, 0 unexpected fail, 0 unexpected pass"
+          ],
+          "notes": [
+            "Related merged PRs: #1188 821c6948, #1190 1712c465, #1193 731afa94, #1199 09d8ed52, #1203 ef144449, #1205 4dc700a3, #1213 7e74a8e9"
+          ]
+        },
+        {
+          "storyId": "INC-96-S2",
+          "title": "Database identity foundation, rehearsal and rollback; identity model gains vexa_reporter and vexa_ops (#1198, #1217)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1198",
+          "commit": "37299a6b",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "tests_passed": [
+            "db-identity-rehearsal at exact head 731c4ec4: 163/163 checks passed on PostgreSQL 16 and 163/163 on PostgreSQL 18"
+          ],
+          "notes": [
+            "#1217 7.8 merge 9a9241d0. NO production effect: tooling and rehearsal only."
+          ]
+        },
+        {
+          "storyId": "INC-96-S3",
+          "title": "Connector credential writes and connectors use the tenant client (M1a #1200, M1b #1202)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1202",
+          "commit": "a71fc6d1",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "M1a #1200 merge 47f31c98. The 15 connectors use tenantDb() with an optional direct-client fallback; removing it (M1c) is open."
+          ]
+        },
+        {
+          "storyId": "INC-96-S4",
+          "title": "Tenant-iteration helpers and credential-rotation sweeps (#1204; #1209 service, no consumers)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1204",
+          "commit": "772fd2c5",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1209 7.1 TenantIterationService merge 5d141a8e is registered with ZERO consumers; the transaction helper has six. No third abstraction is authorised."
+          ]
+        },
+        {
+          "storyId": "INC-96-S5",
+          "title": "Provisioning seed, billing jobs and explicit-tenant raw SQL through the tenant client (#1206, #1210, #1208)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1210",
+          "commit": "73a4af06",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1206 b2d61b87, #1208 03f26bd2."
+          ]
+        },
+        {
+          "storyId": "INC-96-S6",
+          "title": "Signed public media route and web token forwarding (#1211, #1212)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1211",
+          "commit": "2aa5d430",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1212 fee87db5. DEPLOYED with MEDIA_URL_SIGNING_KEY UNSET (live probe 2026-10-07: unsigned request returns 404, garbage token ignored). Activation is HUMAN_GATED; runbook docs/runbooks/media-signing-activation-runbook.md."
+          ]
+        },
+        {
+          "storyId": "INC-96-S7",
+          "title": "AI sweeper and counter audit iterate tenants, 7.2a (#1214)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1214",
+          "commit": "a475cc0f",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7); runtime positive-result verification (a non-default tenant's expired reservation found and swept) is NOT done; 7.2b is blocked on it"
+        },
+        {
+          "storyId": "INC-96-S8",
+          "title": "Opt-in migrator, backup with a real restore test, reporter and ops wiring, 7.9a/b/c (#1232, #1234, #1237)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1237",
+          "commit": "96b60ff3",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "tests_passed": [
+            "exact head 96b60ff3: CI green on all jobs including e2e; db-identity-rehearsal 163/163 on PG16 and PG18"
+          ],
+          "notes": [
+            "#1232 b98da256, #1234 44536e46. NO production effect until credentials are provisioned (human). Restore against a real backup is UNVERIFIED."
+          ]
+        },
+        {
+          "storyId": "INC-96-S9",
+          "title": "Production-shaped rehearsal v2: plan and lane configuration, 7.10 (#1240)",
+          "status": "in_progress",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1240",
+          "commit": "731c4ec4",
+          "tests_passed": [
+            "exact head 731c4ec4: CI green on all nine jobs including e2e; db-identity-rehearsal 163/163 on PG16 and PG18; restricted-role lane 30 pass, 0 unexpected"
+          ],
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7); full API/worker runtime-role orchestration with positive-result assertions across AI, billing, rotation and sweepers is not yet implemented"
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-97",
+      "name": "VEXA-AI-001 governed AI foundation: evaluation, policy, provenance, provider boundary and cost controls (no live provider)",
+      "status": "completed",
+      "locked": false,
+      "scope": [
+        "apps/api/src/intelligence/",
+        "test-fixtures/ai-eval/",
+        "test-fixtures/ai-policy/",
+        "apps/api/test/ai-eval/",
+        "scripts/validate-ai-*.cjs",
+        "packages/db/prisma/migrations/2026100*_ai_*"
+      ],
+      "evidence": [
+        "docs/qa/ai-surface-census-2026-10-07.md",
+        "docs/qa/ai-prov-004b-control-plane-proofs-2026-10-06.md",
+        "docs/execution/GATE_A_RETROSPECTIVE_DISPOSITION_2026-10-08.md"
+      ],
+      "gate": "A",
+      "gateRequirement": "Gate A formal record is REWORK (2026-10-04 04:36 UTC, all four lanes); this work merged afterward, from 2026-10-04 12:50 UTC; the retrospective disposition is a named-owner decision and is blank",
+      "note": "Recorded retrospectively on 2026-10-08. IMPLEMENTATION ONLY: no provider adapter, no network path, no provider SDK, no provider key; every AI control defaults to deny. Production dormant proof 2026-10-06 was taken as a superuser. FAST evaluation is machinery evidence; no FULL evaluation has ever run; the Golden Catalog is 64 DRAFT and 0 authoritative. Not locked: no PO acceptance or CTO approval on record and Gate A is unresolved.",
+      "pendingReleaseItems": [
+        "Gate A retrospective disposition (named human owner)",
+        "Security, Privacy, FinOps and provider/model decisions (decision packets are DECISION_READY, unsigned)",
+        "64 Golden Catalog approvals (PIM SME, QA, Security)",
+        "004b-ii adapter zone (HOLD, after the restricted-runtime cutover), dormant proof refresh, kill-switch drill, provider key and cap, first provider request, FULL evaluation, Gate B"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-97-S1",
+          "title": "AI-SEC-001 direct Product write guard",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1133",
+          "commit": "6d7e27ca",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)"
+        },
+        {
+          "storyId": "INC-97-S2",
+          "title": "AI-EVAL: Golden Catalog foundation, v2 fixtures, FAST harness and approval packet (#1132, #1161, #1163, #1171)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1163",
+          "commit": "22905574",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "tests_passed": [
+            "FAST baseline 1.0 on structural, factual recall and precision, evidence coverage and validity (machinery evidence only; Golden Catalog 64 DRAFT)"
+          ],
+          "notes": [
+            "#1132 fe636bb2, #1161 99a97c40, #1171 7d109d0d"
+          ]
+        },
+        {
+          "storyId": "INC-97-S3",
+          "title": "AI-POL payload classification, tenant policy enforcement, path semantics and credential detection (#1135, #1145, #1167, #1173)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1173",
+          "commit": "d833b403",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1135 3922b8b0, #1145 4b42ea3e, #1167 17e51916. Security confirmation of AI-POL-003 is not on file."
+          ]
+        },
+        {
+          "storyId": "INC-97-S4",
+          "title": "AI-CORE execution telemetry, suggestion provenance and capability registry, AI-GOV review workflow, AI-SRE runbook (#1139, #1140, #1142, #1143, #1147, #1136, #1137)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1147",
+          "commit": "094883c4",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1142 6cc667cb, #1143 b2bb4c75, #1136 a700b9e2, #1137 74f83bea"
+          ]
+        },
+        {
+          "storyId": "INC-97-S5",
+          "title": "AI-PROV payload preflight, structured-output validation and the provider-neutral adapter contract (#1150, #1153, #1155, #1158)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1158",
+          "commit": "0dd732b9",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1150 f0384739, #1153 570f1ea3, #1155 db0d66db"
+          ]
+        },
+        {
+          "storyId": "INC-97-S6",
+          "title": "AI-PROV-004a fail-closed provider execution controls and 004b-i budget lifecycle, platform controls and BIGINT money (#1175, #1181)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1181",
+          "commit": "60da60fc",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1175 cb77bbdf. Default deny-all, zero budgets, kill switch on."
+          ]
+        },
+        {
+          "storyId": "INC-97-S7",
+          "title": "AI control-plane proof tooling and validator CI gate (#1183, #1185, #1164)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1185",
+          "commit": "b18e5279",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1183 8185643c, #1164 674873c9. The 2026-10-06 production dormant proof DORMANT_PROVEN_WITH_UNVERIFIED was taken as a superuser; a refresh is required after any role change."
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-98",
+      "name": "Vexa AI Stream B governance packs, runbooks and AI Surface Census (decision-ready; nothing approved)",
+      "status": "completed",
+      "locked": false,
+      "scope": [
+        "docs/qa/ai-*",
+        "docs/runbooks/ai-*",
+        "docs/runbooks/media-signing-activation-runbook.md",
+        "scripts/render-ai-eval-review-packets.cjs",
+        "scripts/validate-ai-eval-review-packets.cjs"
+      ],
+      "evidence": [
+        "docs/qa/vexa-ai-programme-ledger-2026-10-07-r2.md",
+        "docs/execution/PROGRAMME_RECONCILIATION_2026-10-08.md"
+      ],
+      "note": "Artifacts DONE. Decision packets are DECISION_READY and every sign-off box is blank: Security, Privacy, FinOps, provider/model and Golden Catalog approvals are PENDING; provider authorization is NOT GRANTED. Anthropic / claude-sonnet-5-5 / US-pinned is a recommendation only. A merged packet is never an approval.",
+      "pendingReleaseItems": [
+        "human sign-offs on the Security (15 topics), Privacy (P1 to P11), FinOps, provider/model and Gate B packs",
+        "64 Golden Catalog case approvals",
+        "key-location decision for FULL evaluation runs"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-98-S1",
+          "title": "Programme ledger, Golden Catalog review packets and status matrix with generator and validator (#1216, #1218, #1219)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1218",
+          "commit": "ddae0724",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1216 24730b58, #1219 1725a2f8. 0 of 64 cases authoritative."
+          ]
+        },
+        {
+          "storyId": "INC-98-S2",
+          "title": "Security, Privacy, provider/model and FinOps decision packs (#1220, #1221, #1222, #1223)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1223",
+          "commit": "55603939",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1220 e67f7947, #1221 e100a16b, #1222 d1733a31. The APPROVE-style values inside the packs are the author's proposals."
+          ]
+        },
+        {
+          "storyId": "INC-98-S3",
+          "title": "Credential, dormant-proof and kill-switch drill runbooks; 004b-ii design; network-guard transition plan; FULL evaluation specification; Gate B pack (#1224 to #1230)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1230",
+          "commit": "e377520f",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1224 ad322a53, #1225 f9e06fdf, #1226 24bf1451, #1227 1bcd8b5f, #1228 12590ddf, #1229 9a125148. Drill runbook is held; two script defects recorded."
+          ]
+        },
+        {
+          "storyId": "INC-98-S4",
+          "title": "Signed-media activation runbook, ledger r2 and AI Surface Census (#1231, #1233, #1239)",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1239",
+          "commit": "707fd0d2",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)",
+          "notes": [
+            "#1231 ecbce248, #1233 e7209405. Census register docs/qa/ai-surface-census.v1.json (16 surfaces)."
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-99",
+      "name": "QA Acceptance Lane and QA-AI-01 (internal AI Lab exposure, issue #1236)",
+      "status": "in_progress",
+      "locked": false,
+      "scope": [
+        "docs/qa/qa-acceptance-lane-2026-10-07.md",
+        "apps/web/src/app/ai/",
+        "apps/web/src/lib/internal-ai-lab.ts",
+        "apps/api/src/auto-suggestions/"
+      ],
+      "evidence": [
+        "docs/qa/qa-acceptance-lane-2026-10-07.md",
+        "docs/qa/ai-lab-gate-fix-2026-10-07.md"
+      ],
+      "note": "Execution is PARTIAL on tenant admin (the staging E2E tenant): PROD-01, PROD-08, BILL-01, OPS-04 PASS; tenant-isolation (TEN-*) and role-boundary (PERM-*) scenarios are BLOCKED (one tenant, one role); the rest NOT_RUN. Open observations: O-1 (HTTP 503 on server-action and RSC requests while the UI succeeds; probably related to INC-93-S9 and DEF-PC-022, unproven) and O-2 (audit-log noise). QA test product 'QA Flow PROD-01 Cotton Tee' still exists as a draft.",
+      "blockedBy": "a second QA tenant and non-operator role accounts for TEN-* and PERM-*",
+      "pendingReleaseItems": [
+        "GAF-014 (#1098, #1090) accept/edit/reject governance for the AI Labs repair: OPEN",
+        "runtime check of the API apply gate and the server-action gate",
+        "retest O-1 and O-2; QA record cleanup (archive, then human permanent delete)",
+        "remaining QA scenarios (AUTH, MED, IMP, CONN, ADV, PROD-02 to PROD-07)"
+      ],
+      "stories": [
+        {
+          "storyId": "INC-99-S1",
+          "title": "QA Acceptance Lane plan",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1235",
+          "commit": "0a454ed7",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7)"
+        },
+        {
+          "storyId": "INC-99-S2",
+          "title": "QA-AI-01: /ai, the repair server action and apply=true repair behind FEATURE_INTERNAL_AI_LAB_ENABLED, fail-closed",
+          "status": "completed",
+          "locked": false,
+          "pr": "https://github.com/Mixwage/PIM/pull/1238",
+          "commit": "9b24167e",
+          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7); GAF-014 remains open",
+          "tests_passed": [
+            "exact head 9b24167e: CI completed success (all jobs including e2e); Deploy Staging success",
+            "live 2026-10-07: /ai shows 'Page not found' for an Admin session (page only; API and server-action gates not exercised live)"
+          ]
         }
       ]
     }
