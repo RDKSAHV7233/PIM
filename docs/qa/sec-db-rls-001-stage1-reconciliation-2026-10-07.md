@@ -61,9 +61,17 @@ Verified against `git log origin/main` at `7e74a8e9`, not against the design.
 | M1a / M1b | connector credential writes and connectors on the tenant client | **DONE** (before the design) | #1200, #1202 |
 | 7.8 | identity delta against the I1 model | **NOT DONE** | `noCrossTenantMaintenanceRole` wording still to be changed |
 | 7.9a-c | migrator, backup and reporter wiring | **NOT STARTED** (opt-in, nothing in production until a human provisions credentials) | none |
-| 7.10 | production-shaped rehearsal v2 | **NOT STARTED** | none |
+| 7.10 | production-shaped rehearsal v2 | **PARTIAL / INCOMPLETE** | #1240 merged the plan, restricted-role configuration seam, and shared role-name validation only. It did not merge an accepted v2 runner or prove PG16/PG18 evidence artifacts and exact-head v2 CI. |
 
 Restricted-role lane: 30 tests, empty expected-failure baseline. Two tests that are on `main` are not yet registered in it (`billing-jobs-tenant-iteration.test.cjs`, `media-public-file-token.test.cjs`); that is a small follow-up, not a regression.
+
+### 7.10 status correction
+
+PR #1240 is permanently a **PARTIAL DELIVERY**. Its merged configuration seam is useful and remains credited, but it is not evidence that the production-shaped rehearsal completed. The following remain required for 7.10: an accepted v2 runner, independent PostgreSQL 16 and 18 rehearsal execution, one valid redacted evidence artifact per version, and exact-head CI that runs that implementation.
+
+> Execution without valid evidence is **INCOMPLETE**. Evidence without successful execution is **FAIL**. 7.10 passes only when both execution and evidence pass on both PostgreSQL versions.
+
+The eventual 7.10 closure record must cite both #1240 and the corrective implementation PR. No production role, credential, ownership, RLS, deployment, or database action follows from this correction.
 
 ## 5. Signed media URLs: a cutover prerequisite
 

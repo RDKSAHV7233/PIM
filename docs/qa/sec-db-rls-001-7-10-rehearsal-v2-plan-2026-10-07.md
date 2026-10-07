@@ -1,12 +1,28 @@
 # SEC-DB-RLS-001 7.10: Production-Shaped Rehearsal v2
 
-Status: implementation draft
+Status: **PARTIAL / INCOMPLETE**
 
 Date: 2026-10-07
 
-Baseline: `origin/main` at `96b60ff3` (7.9c merged)
+Baseline: `origin/main` at `731c4ec4` (#1240 merged)
 
 Issue: #1189. Stage 1 design: `sec-db-rls-001-stage1-remediation-design-2026-10-07.md` section 9.
+
+## Status Correction
+
+PR #1240 merged the plan and restricted-role configuration seam, but did not
+merge the v2 orchestration or produce PostgreSQL 16/18 evidence artifacts.
+It is permanently a **PARTIAL DELIVERY**, not completion evidence for this
+rehearsal. The corrective 7.10R implementation must start from fresh
+`origin/main`; the unmerged `0c54d904` branch is reference material only.
+
+> Execution without valid evidence is **INCOMPLETE**. Evidence without
+> successful execution is **FAIL**. 7.10 passes only when both execution and
+> evidence pass on both PostgreSQL versions.
+
+The eventual closure record must repeat this invariant and cite both #1240 and
+the corrective implementation PR. This correction authorizes no production
+role, credential, ownership, RLS, deployment, or database change.
 
 ## Purpose
 
