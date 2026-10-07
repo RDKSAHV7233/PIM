@@ -6,7 +6,71 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { backupKey, selectKeysToPrune, resolveBackupPrefix, RETENTION_DAYS, MIN_BACKUPS_TO_KEEP, BACKUP_PREFIX } = require("./r2-backup-run.cjs");
+const {
+  backupKey,
+  selectKeysToPrune,
+  resolveBackupPrefix,
+  evaluateBackupIdentity,
+  parseBackupIdentity,
+  BACKUP_IDENTITY_SQL,
+  RETENTION_DAYS,
+  MIN_BACKUPS_TO_KEEP,
+  BACKUP_PREFIX,
+} = require("./r2-backup-run.cjs");
+
+// ---- SEC-DB-RLS-001 7.9b: the backup identity pre-flight ----------------------------------------------------------------------------
+const GOOD = { name: "vexa_backup", super: false, bypassrls: true };
+
+test("with no expected role the identity check is skipped, exactly the old behaviour", () => {
+  assert.deepEqual(evaluateBackupIdentity(GOOD, ""), { ok: true, skipped: true });
+  assert.deepEqual(evaluateBackupIdentity(null, undefined), { ok: true, skipped: true });
+  assert.deepEqual(evaluateBackupIdentity({ name: "postgres", super: true, bypassrls: true }, "   "), { ok: true, skipped: true });
+});
+
+test("the real backup identity passes: right name, not a superuser, bypasses RLS", () => {
+  assert.deepEqual(evaluateBackupIdentity(GOOD, "vexa_backup"), { ok: true });
+});
+
+test("every wrong identity is refused with a reason that names no credential", () => {
+  const cases = [
+    [{ name: "vexa_runtime", super: false, bypassrls: false }, /connected as vexa_runtime, expected vexa_backup/],
+    [{ name: "vexa_app_v2", super: true, bypassrls: false }, /connected as vexa_app_v2, expected vexa_backup/],
+    [{ name: "vexa_backup", super: true, bypassrls: true }, /is a superuser/],
+    [{ name: "vexa_backup", super: false, bypassrls: false }, /does not bypass row level security/],
+    [{ name: "vexa_migrator", super: false, bypassrls: true }, /connected as vexa_migrator/],
+    [null, /could not read the connected role/],
+  ];
+  for (const [row, pattern] of cases) {
+    const verdict = evaluateBackupIdentity(row, "vexa_backup");
+    assert.equal(verdict.ok, false, JSON.stringify(row));
+    assert.match(verdict.reason, pattern);
+  }
+});
+
+test("psql output is parsed strictly", () => {
+  assert.deepEqual(parseBackupIdentity("vexa_backup|f|t\n"), GOOD);
+  assert.deepEqual(parseBackupIdentity("postgres|t|t"), { name: "postgres", super: true, bypassrls: true });
+  for (const bad of ["", "vexa_backup|f", "|f|t", "a|b|c|d", null, undefined]) {
+    assert.equal(parseBackupIdentity(bad), null, `not parsed: ${String(bad)}`);
+  }
+});
+
+test("run() verifies the identity BEFORE it dumps or contacts R2, and a failed check throws", () => {
+  // run() needs R2 and a database, so its order is pinned statically: the check must come before the client and the dump.
+  const code = require("node:fs").readFileSync(require("node:path").join(__dirname, "r2-backup-run.cjs"), "utf8");
+  const check = code.indexOf("evaluateBackupIdentity(identity, expectedRole)");
+  const client = code.indexOf("new S3Client");
+  const dump = code.indexOf("await pgDumpGzipToFile(databaseUrl, localFile)");
+  assert.ok(check > 0 && client > check && dump > check, "the identity check precedes the R2 client and the dump");
+  assert.match(code, /if \(!verdict\.ok\) \{\s*throw new Error\(`backup identity check failed: \$\{verdict\.reason\}`\);/, "a failed check fails the job, which fires the failure alert");
+  assert.match(code, /const expectedRole = String\(process\.env\.BACKUP_EXPECT_ROLE \?\? ""\)\.trim\(\);\s*if \(expectedRole\) \{/, "the check runs only when the workflow asks for it");
+  assert.ok(!/console\.(log|error)\([^)]*databaseUrl/.test(code), "the connection string is never logged");
+});
+
+test("the identity statement is one read-only SELECT of the connected role's own flags", () => {
+  assert.match(BACKUP_IDENTITY_SQL, /^SELECT current_user AS name, r\.rolsuper AS super, r\.rolbypassrls AS bypassrls FROM pg_roles r WHERE r\.rolname = current_user$/);
+  assert.ok(!/;|insert|update|delete|drop|alter|create|grant|pg_authid|password/i.test(BACKUP_IDENTITY_SQL), "no write, no second statement, no password column");
+});
 
 test("backupKey produces a sortable, prefixed, filesystem-safe key", () => {
   const key = backupKey(new Date("2026-08-27T02:00:00.000Z"));

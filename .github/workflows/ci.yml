@@ -112,6 +112,8 @@ jobs:
         run: |
           node scripts/validate-ops-backup-alert-path.cjs
           node scripts/validate-ops-backup-alert-path.test.cjs
+          node scripts/r2-backup-run.test.cjs
+          node scripts/r2-restore-test.test.cjs
 
       - name: SEC-DB-RLS-001 call-site ratchet and restricted-role lane guard
         run: |

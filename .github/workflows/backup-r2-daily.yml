@@ -48,14 +48,18 @@ jobs:
       - name: Run daily backup
         shell: bash
         env:
-          DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          # SEC-DB-RLS-001 7.9b, opt-in: while STAGING_BACKUP_DATABASE_URL is unset the line below resolves to the existing secret and
+          # nothing changes. When a person creates the read-only vexa_backup credential and stores it there, the dump runs as that
+          # identity, and the runner first checks that it really is vexa_backup (not a superuser, bypasses RLS) before it dumps.
+          DATABASE_URL_DIRECT: ${{ secrets.STAGING_BACKUP_DATABASE_URL || secrets.STAGING_DATABASE_URL_DIRECT }}
+          BACKUP_EXPECT_ROLE: ${{ secrets.STAGING_BACKUP_DATABASE_URL != '' && 'vexa_backup' || '' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_PRIVATE_BUCKET_NAME: ${{ secrets.R2_PRIVATE_BUCKET_NAME }}
         run: |
           if [ -z "${DATABASE_URL_DIRECT}" ]; then
-            echo "Missing STAGING_DATABASE_URL_DIRECT secret — cannot run backup."
+            echo "Missing STAGING_BACKUP_DATABASE_URL or STAGING_DATABASE_URL_DIRECT secret — cannot run backup."
             exit 1
           fi
           if [ -z "${R2_ACCOUNT_ID}" ] || [ -z "${R2_ACCESS_KEY_ID}" ] || [ -z "${R2_SECRET_ACCESS_KEY}" ] || [ -z "${R2_PRIVATE_BUCKET_NAME}" ]; then

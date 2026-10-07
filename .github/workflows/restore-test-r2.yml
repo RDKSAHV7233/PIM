@@ -1,0 +1,77 @@
+name: R2 Backup Restore Test
+
+# SEC-DB-RLS-001 7.9b. A backup that has never been restored is not a backup. This restores the NEWEST backup in R2 into a throwaway
+# PostgreSQL 18 container that exists only for this job, with the runbook's own procedure (`gunzip | psql`), and checks what came back
+# (docs/runbooks/backup-restore.md, "Restore test"). It runs by hand: a restore test belongs in the cutover checklist and after any
+# backup change, not on a schedule nobody reads.
+#
+# What it must never be given: any production database credential. It uses only the R2 secrets that the backup job already uses, plus a
+# literal password for the service container, which listens only inside this job. scripts/r2-restore-test.test.cjs pins all of that.
+# The log carries counts and verdicts only: no row values, no URL, and a failed restore is reported as its SQLSTATE code.
+on:
+  workflow_dispatch:
+
+jobs:
+  restore-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    permissions:
+      contents: read
+    concurrency:
+      group: r2-restore-test
+      cancel-in-progress: false
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: restore-test-throwaway
+          POSTGRES_DB: restore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restore_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install PostgreSQL 18 client (psql, matching the staging server major version)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        # --ignore-scripts: only @aws-sdk/client-s3 (pure JS) is needed, as in the backup job.
+        run: npm ci --ignore-scripts
+
+      - name: Restore the newest backup and check it
+        shell: bash
+        env:
+          RESTORE_TEST_DATABASE_URL: postgresql://postgres:restore-test-throwaway@localhost:5432/restore_test
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PRIVATE_BUCKET_NAME: ${{ secrets.R2_PRIVATE_BUCKET_NAME }}
+        run: |
+          if [ -z "${R2_ACCOUNT_ID}" ] || [ -z "${R2_ACCESS_KEY_ID}" ] || [ -z "${R2_SECRET_ACCESS_KEY}" ] || [ -z "${R2_PRIVATE_BUCKET_NAME}" ]; then
+            echo "Missing one or more R2_* secrets — cannot run the restore test."
+            echo "Required: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PRIVATE_BUCKET_NAME."
+            exit 1
+          fi
+          node scripts/r2-restore-test.cjs

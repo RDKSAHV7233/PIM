@@ -35,4 +35,12 @@ for (const target of ["database", "observability"]) {
   expectFail(`${target}: alert posts to the raw secret again`, { [target]: replace('"${alert_url}"', '"https://${API_INTERNAL_BASE_URL}/internal/ops/alerts/backup-job-failure"') }, target);
   expectFail(`${target}: job removed`, { [target]: replace("  notify-failure:", "  notify-failure-renamed:") }, target);
 }
+// SEC-DB-RLS-001 7.9b: the dedicated backup identity is opt-in, main-database only, and verified before the dump.
+expectFail("database: the fallback to the existing secret is lost (the opt-in would no longer be opt-in)", { database: replace(" || secrets.STAGING_DATABASE_URL_DIRECT", "") }, "database");
+expectFail("database: the backup credential is no longer preferred", { database: replace("secrets.STAGING_BACKUP_DATABASE_URL || secrets.STAGING_DATABASE_URL_DIRECT }}\n          BACKUP_EXPECT_ROLE", "secrets.STAGING_DATABASE_URL_DIRECT }}\n          BACKUP_EXPECT_ROLE") }, "database");
+expectFail("database: the role expectation is removed", { database: replace("BACKUP_EXPECT_ROLE: ${{ secrets.STAGING_BACKUP_DATABASE_URL != '' && 'vexa_backup' || '' }}", "BACKUP_EXPECT_ROLE: ''") }, "database");
+expectFail("database: the role expectation names the wrong role", { database: replace("&& 'vexa_backup' ||", "&& 'postgres' ||") }, "database");
+expectFail("database: the expectation applies even when the secret is unset", { database: replace("secrets.STAGING_BACKUP_DATABASE_URL != '' && 'vexa_backup' || ''", "'vexa_backup'") }, "database");
+expectFail("observability: the main database's backup credential leaks into the observability backup", { observability: (t) => `${t}\n# STAGING_BACKUP_DATABASE_URL\n` }, "observability");
+expectFail("observability: a role expectation for the main database is applied to the observability database", { observability: (t) => `${t}\n# BACKUP_EXPECT_ROLE: vexa_backup\n` }, "observability");
 console.log("validate-ops-backup-alert-path tests passed.");

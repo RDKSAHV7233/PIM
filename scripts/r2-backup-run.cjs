@@ -68,6 +68,65 @@ function selectKeysToPrune(objects, now = new Date(), retentionDays = RETENTION_
   return toPrune.map((o) => o.key);
 }
 
+/**
+ * SEC-DB-RLS-001 7.9b: when the workflow gives this job the dedicated backup credential it also sets BACKUP_EXPECT_ROLE=vexa_backup,
+ * and the dump does not start unless the connection really is that role: not a superuser, and with BYPASSRLS (the tables are forced
+ * row level security, so a role without it is refused by pg_dump or sees only one tenant). A wrong credential therefore fails the backup
+ * job, and the existing failure alert fires, instead of producing a backup nobody has checked. Unset = no check = exactly the old
+ * behaviour. The statement is exported so the rehearsal runs this very text against the real roles.
+ */
+const BACKUP_IDENTITY_SQL =
+  "SELECT current_user AS name, r.rolsuper AS super, r.rolbypassrls AS bypassrls FROM pg_roles r WHERE r.rolname = current_user";
+
+/** psql -At -F'|' prints `name|t|f`; the same shape, parsed. */
+function parseBackupIdentity(line) {
+  const parts = String(line ?? "").trim().split("|");
+  if (parts.length !== 3 || !parts[0]) {
+    return null;
+  }
+  return { name: parts[0], super: parts[1] === "t", bypassrls: parts[2] === "t" };
+}
+
+/** Pure verdict: { ok, skipped?, reason? }. `row` is { name, super, bypassrls } or null when it could not be read. */
+function evaluateBackupIdentity(row, expectedRole) {
+  const expected = String(expectedRole ?? "").trim();
+  if (!expected) {
+    return { ok: true, skipped: true };
+  }
+  if (!row) {
+    return { ok: false, reason: "could not read the connected role, so the backup identity cannot be verified" };
+  }
+  if (row.name !== expected) {
+    return { ok: false, reason: `connected as ${row.name}, expected ${expected}` };
+  }
+  if (row.super) {
+    return { ok: false, reason: `${row.name} is a superuser; the backup identity must not be` };
+  }
+  if (!row.bypassrls) {
+    return { ok: false, reason: `${row.name} does not bypass row level security, so the dump would be refused or partial` };
+  }
+  return { ok: true };
+}
+
+function readBackupIdentity(databaseUrl) {
+  return new Promise((resolve, reject) => {
+    const psql = spawn("psql", ["-X", "-A", "-t", "-F", "|", "-c", BACKUP_IDENTITY_SQL, databaseUrl], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    psql.stdout.on("data", (chunk) => (out += chunk.toString()));
+    psql.stderr.on("data", (chunk) => (err += chunk.toString()));
+    psql.on("error", (e) => reject(new Error(`psql failed to start: ${e.message}`)));
+    psql.on("close", (code) => {
+      if (code !== 0) {
+        // The message is psql's own diagnostic; it does not contain the connection string.
+        reject(new Error(`could not read the backup identity (psql exit ${code}): ${err.trim().split("\n")[0].slice(0, 200)}`));
+        return;
+      }
+      resolve(parseBackupIdentity(out));
+    });
+  });
+}
+
 async function pgDumpGzipToFile(databaseUrl, outFile) {
   await new Promise((resolve, reject) => {
     const dump = spawn("pg_dump", ["--format=plain", "--no-owner", "--no-privileges", databaseUrl], {
@@ -101,6 +160,16 @@ async function run() {
   const bucket = String(process.env.R2_PRIVATE_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "").trim();
   if (!bucket) {
     throw new Error("Missing required environment variable: R2_PRIVATE_BUCKET_NAME (or R2_BUCKET_NAME)");
+  }
+
+  const expectedRole = String(process.env.BACKUP_EXPECT_ROLE ?? "").trim();
+  if (expectedRole) {
+    const identity = await readBackupIdentity(databaseUrl);
+    const verdict = evaluateBackupIdentity(identity, expectedRole);
+    if (!verdict.ok) {
+      throw new Error(`backup identity check failed: ${verdict.reason}`);
+    }
+    console.log(`[r2-backup] connected as ${identity.name}: read-only backup identity verified (not a superuser, bypasses RLS)`);
   }
 
   const client = new S3Client({
@@ -177,4 +246,14 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { backupKey, selectKeysToPrune, resolveBackupPrefix, RETENTION_DAYS, MIN_BACKUPS_TO_KEEP, BACKUP_PREFIX };
+module.exports = {
+  backupKey,
+  selectKeysToPrune,
+  resolveBackupPrefix,
+  evaluateBackupIdentity,
+  parseBackupIdentity,
+  BACKUP_IDENTITY_SQL,
+  RETENTION_DAYS,
+  MIN_BACKUPS_TO_KEEP,
+  BACKUP_PREFIX,
+};

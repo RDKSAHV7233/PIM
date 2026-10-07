@@ -18,6 +18,7 @@
 const cp = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
+const zlib = require("node:zlib");
 const path = require("node:path");
 const lib = require("./lib.cjs");
 
@@ -46,6 +47,7 @@ const ADMIN_PASS = decodeURIComponent(adminUrl.password);
 const PRODLIKE = "rehearsal_prodlike";
 const FRESH = "rehearsal_fresh";
 const RESTORED = "rehearsal_restored";
+const RESTORED_PLAIN = "rehearsal_restored_plain";
 const OLD_OWNER = fixture.currentOwner;
 const MIGRATOR = lib.ROLES.migrator.name;
 const RUNTIME = lib.ROLES.runtime.name;
@@ -422,6 +424,44 @@ async function main() {
     await expectDenied("ops cannot read the media assets", op, `SELECT * FROM media_assets`);
     await pl.$executeRawUnsafe(`DELETE FROM "Variant" WHERE id = 'var-b'`);
     check("ops proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R7c the backup in its production format (plain SQL, gzipped), restored the way the runbook says, and the identity pre-flight");
+    const backupRunner = require("../r2-backup-run.cjs");
+    const restoreTest = require("../r2-restore-test.cjs");
+    // The daily backup runs `pg_dump --format=plain --no-owner --no-privileges`; the restore is `gunzip | psql`. R7 used the custom format,
+    // which is not what production writes, so this is the proof that matters.
+    const plainDump = pg("pg_dump", ["--format=plain", "--no-owner", "--no-privileges", "-d", PRODLIKE], { user: BACKUP, pass: rehearsalPassword(BACKUP) });
+    check("pg_dump as vexa_backup with the daily backup's own flags (plain SQL) succeeds", plainDump.status === 0 && plainDump.stdout.length > 1000, `${plainDump.status} ${plainDump.stderr.slice(0, 200)}`);
+    const gzipped = zlib.gzipSync(plainDump.stdout);
+    const sqlText = zlib.gunzipSync(gzipped);
+    check("the dump ends with pg_dump's completion trailer, which the restore test looks for", sqlText.toString("utf8").slice(-4096).includes(restoreTest.TRAILER));
+    await recreate(RESTORED_PLAIN);
+    const plainRestore = pg("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate", "--single-transaction", "-d", RESTORED_PLAIN], { user: ADMIN_USER, pass: ADMIN_PASS, input: sqlText });
+    check("gunzip | psql restores the plain-SQL backup in one transaction with no error", plainRestore.status === 0, `${plainRestore.status} ${plainRestore.stderr.slice(0, 200)}`);
+    const restoredPlain = asAdmin(RESTORED_PLAIN);
+    check("the restored database matches the source: same row counts and content hashes, including products, variants, submissions and media", sameFingerprint(seeded, await fingerprint(restoredPlain)));
+    const factsRows = await rows(restoredPlain, restoreTest.FACTS_SQL);
+    const facts = JSON.parse(factsRows[0].facts);
+    const ctxOk = { restoreExit: plainRestore.status, trailerSeen: sqlText.toString("utf8").slice(-4096).includes(restoreTest.TRAILER), ageHours: 0, maxAgeHours: 36 };
+    const verdicts = restoreTest.evaluateRestore(facts, ctxOk, manifest);
+    check(`the restore test's own verdicts all pass on this restore (${verdicts.length} checks)`, verdicts.every((v) => v.ok), JSON.stringify(verdicts.filter((v) => !v.ok)));
+    check("and they fail when the restore is wrong: a truncated dump, a failed psql, and a restore with no policies", !restoreTest.evaluateRestore(facts, { ...ctxOk, trailerSeen: false }, manifest).every((v) => v.ok) && !restoreTest.evaluateRestore(facts, { ...ctxOk, restoreExit: 3 }, manifest).every((v) => v.ok) && !restoreTest.evaluateRestore({ ...facts, policies: 0, rlsTables: 0 }, ctxOk, manifest).every((v) => v.ok));
+    const [restoredCount] = await rows(restoredPlain, `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'public'`);
+    const [sourceCount] = await rows(pl, `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'public'`);
+    check("every row level security policy came back (the dump kept them although it dropped owners and privileges)", restoredCount.n === sourceCount.n && sourceCount.n > 0, `${restoredCount.n} vs ${sourceCount.n}`);
+
+    // The identity pre-flight the backup job runs when it is given the dedicated credential: this exact statement, against the real roles.
+    const identityOf = async (client) => {
+      const r = await rows(client, backupRunner.BACKUP_IDENTITY_SQL);
+      return r[0] ? { name: r[0].name, super: r[0].super, bypassrls: r[0].bypassrls } : null;
+    };
+    const asBackup = await identityOf(bk);
+    check("the identity statement returns vexa_backup, not a superuser, bypassing RLS, and the pre-flight accepts it", backupRunner.evaluateBackupIdentity(asBackup, "vexa_backup").ok === true, JSON.stringify(asBackup));
+    for (const [label, client] of [["the runtime role", rt], ["the reporter", rp], ["ops", op], ["the migrator", asRole(PRODLIKE, MIGRATOR)], ["a superuser (the old application role)", asAdmin(PRODLIKE)]]) {
+      const verdict = backupRunner.evaluateBackupIdentity(await identityOf(client), "vexa_backup");
+      check(`the pre-flight REFUSES ${label} as the backup credential`, verdict.ok === false, JSON.stringify(verdict));
+    }
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R9 a new migration as the migrator on the transferred database");

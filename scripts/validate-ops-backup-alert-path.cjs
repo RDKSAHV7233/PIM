@@ -26,6 +26,19 @@ function validateBackupAlertPath(transforms = {}) {
       text = transforms[name](text);
     }
     const fail = (message) => errors.push(`${name}: ${message}`);
+    // SEC-DB-RLS-001 7.9b: the main database's backup may use the dedicated read-only identity, opt-in, and must say which role it expects
+    // so a wrong credential fails the job (and the alert) before it dumps. That credential belongs to the MAIN database only: the
+    // observability database has its own server and its own roles, so its workflow must never reference it.
+    if (name === "database") {
+      if (!/DATABASE_URL_DIRECT:\s*\$\{\{\s*secrets\.STAGING_BACKUP_DATABASE_URL\s*\|\|\s*secrets\.STAGING_DATABASE_URL_DIRECT\s*\}\}/.test(text)) {
+        fail("DATABASE_URL_DIRECT must prefer STAGING_BACKUP_DATABASE_URL and fall back to STAGING_DATABASE_URL_DIRECT, so the opt-in changes nothing while the secret is unset");
+      }
+      if (!/BACKUP_EXPECT_ROLE:\s*\$\{\{\s*secrets\.STAGING_BACKUP_DATABASE_URL\s*!=\s*''\s*&&\s*'vexa_backup'\s*\|\|\s*''\s*\}\}/.test(text)) {
+        fail("BACKUP_EXPECT_ROLE must be vexa_backup exactly when STAGING_BACKUP_DATABASE_URL is set, so a wrong credential fails before the dump");
+      }
+    } else if (/STAGING_BACKUP_DATABASE_URL|BACKUP_EXPECT_ROLE/.test(text)) {
+      fail("must not reference the main database's backup credential or role expectation: it is a different database with different roles");
+    }
     const at = text.indexOf("  notify-failure:");
     if (at < 0) {
       fail("has no notify-failure job");

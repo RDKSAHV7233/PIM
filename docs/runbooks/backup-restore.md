@@ -103,14 +103,23 @@ aws s3 cp "s3://${R2_PRIVATE_BUCKET_NAME}/backups/<YYYY-MM-DD>.sql.gz" - \
 
 # 4. Verify row counts
 psql "${DATABASE_URL_DIRECT}" -c "SELECT COUNT(*) FROM \"Product\";"
-psql "${DATABASE_URL_DIRECT}" -c "SELECT COUNT(*) FROM \"Tenant\";"
 psql "${DATABASE_URL_DIRECT}" -c "SELECT COUNT(*) FROM \"WorkspaceDirectory\";"
+psql "${DATABASE_URL_DIRECT}" -c "SELECT COUNT(*) FROM \"connector_definitions\";"   # seeded by migrations: expect at least 10
 
 # 5. Run RLS isolation check
 npm run test:integration:rls-isolation
 
 # 6. Re-enable API traffic (set replicas back to 1)
 ```
+
+### Restore test: prove the backup restores before you need it
+
+A backup that has never been restored is not a backup. The **R2 Backup Restore Test** workflow (`.github/workflows/restore-test-r2.yml`, run by hand from the Actions tab) restores the newest R2 backup into a **throwaway PostgreSQL 18 container that exists only for that job**, using the procedure above (`gunzip | psql`), then checks what came back. Run it once before any database role cutover, after any change to the backup job or its credential, and whenever the backup is in doubt.
+
+- It never touches a production database. It receives only the R2 secrets the backup job already uses, never a database credential, and it refuses any restore target that is not local and empty.
+- It checks: the newest backup is recent (36 hours by default); the dump ended with `pg_dump`'s completion trailer; `psql` restored it in one transaction without an error; every restored table is classified in `packages/db/identity/identity-model.v1.json`; at most 10% of that list is missing (a table added after the backup is expected); the migrations table came back with no unfinished migration; the migration-seeded platform control row and connector definitions came back; and row level security and its policies came back.
+- The log carries counts and verdicts only. A failed restore is reported as its SQLSTATE code, never its message, because a message can contain a row value. A `FAIL` line names the check that failed.
+- **`scripts/db-restore.sh` does not restore these backups.** It runs `pg_restore`, which reads custom-format dumps, while the daily backup writes plain SQL gzipped. Use the `gunzip | psql` command in the section above (or the restore test).
 
 ---
 
