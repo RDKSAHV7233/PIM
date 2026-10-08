@@ -385,7 +385,7 @@
       "file": "internal-ops/internal-ops-summary.service.ts",
       "class": "A",
       "remediation": "maintenance-read",
-      "plan": "platform-wide readiness counts: SELECT-only maintenance policy on the specific tables",
+      "plan": "P2.6a done: every RLS-backed card (jobs, imports, publishing, connectors, the three readiness sources, media totals) reads per tenant through forEachTenant (one short transaction per tenant, every query filtered by that tenant) and the figures are merged in the application: status counts and sums are added, affected-tenant counts are the number of tenants that have the condition, and the platform-wide top rule families are taken after the tenants are merged. A tenant that cannot be read fails the card it belongs to (shown as unavailable, logged by tenant and error code), never a silent undercount. Cards keep their own isolation. The media latest-run and the error-authority card read non-tenant stores. The four platform-wide DISTINCT queries are gone; one per-tenant DISTINCT remains. The file keeps the context-free client only as the carrier of the tenant transactions and for the platform scan table, so the direct-client entry stays open under the ratchet's definition. No generic bypass and no new policy were added.",
       "rlsProtectedModels": [
         "bulkImportJob",
         "bulkImportRun",
@@ -399,8 +399,8 @@
       "otherModels": [
         "mediaIntegrityScanRun"
       ],
-      "rawSqlSites": 4,
-      "positiveAssertion": "summary counts include a non-default tenant's products and jobs",
+      "rawSqlSites": 1,
+      "positiveAssertion": "internal-ops-summary-restricted-role.test.cjs: under the restricted role the summary sums jobs, imports, publishing, connectors, readiness connector counts and media over two non-default directory tenants and the default tenant (exact figures, 2 affected tenants); internal-ops-summary.service.spec.ts (per-tenant fake, exact tenant counting, merged top rules, unreadable tenant, mutation-checked)",
       "status": "open"
     },
     {
@@ -490,11 +490,11 @@
       "file": "internal-ops/internal-ops-summary.service.ts",
       "class": "A",
       "remediation": "maintenance-read",
-      "plan": "platform-wide readiness counts (counted above)",
-      "positiveAssertion": "see internal-ops-summary entry",
+      "plan": "P2.6a done: every RLS-backed card (jobs, imports, publishing, connectors, the three readiness sources, media totals) reads per tenant through forEachTenant (one short transaction per tenant, every query filtered by that tenant) and the figures are merged in the application: status counts and sums are added, affected-tenant counts are the number of tenants that have the condition, and the platform-wide top rule families are taken after the tenants are merged. A tenant that cannot be read fails the card it belongs to (shown as unavailable, logged by tenant and error code), never a silent undercount. Cards keep their own isolation. The media latest-run and the error-authority card read non-tenant stores. The four platform-wide DISTINCT queries are gone; one per-tenant DISTINCT remains. The file keeps the context-free client only as the carrier of the tenant transactions and for the platform scan table, so the direct-client entry stays open under the ratchet's definition. No generic bypass and no new policy were added.",
+      "positiveAssertion": "internal-ops-summary-restricted-role.test.cjs: under the restricted role the summary sums jobs, imports, publishing, connectors, readiness connector counts and media over two non-default directory tenants and the default tenant (exact figures, 2 affected tenants); internal-ops-summary.service.spec.ts (per-tenant fake, exact tenant counting, merged top rules, unreadable tenant, mutation-checked)",
       "noArgTenantRawSites": 0,
-      "rawSqlSites": 4,
-      "status": "open"
+      "rawSqlSites": 1,
+      "status": "migrated"
     },
     {
       "file": "bulk-import/bulk-import.service.ts",
@@ -583,7 +583,7 @@
     "intelligence/intelligence-execution-control.service.ts": 2,
     "intelligence/intelligence-reservation-maintenance.service.ts": 2,
     "internal-ops/internal-ops-alerts.service.ts": 13,
-    "internal-ops/internal-ops-summary.service.ts": 4,
+    "internal-ops/internal-ops-summary.service.ts": 1,
     "marketplace/marketplace.service.ts": 1,
     "outbound-webhooks/outbound-webhooks.service.ts": 1,
     "prisma/prisma.service.ts": 1,
@@ -598,7 +598,7 @@
   },
   "totals": {
     "directClientFiles": 28,
-    "rawSqlSites": 93,
+    "rawSqlSites": 90,
     "rawSqlFiles": 27
   },
   "otherClients": [

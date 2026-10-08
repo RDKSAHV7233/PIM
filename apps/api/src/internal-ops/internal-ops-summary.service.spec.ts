@@ -129,6 +129,9 @@ function makeDb(overrides?: {
     },
     connectorInstallation: {
       count: jest.fn((args: { where?: { status?: string | { in: string[] }; updatedAt?: unknown; lastValidationOutcome?: string } }) => {
+        if (overrides?.failReadinessConnector && args.where?.lastValidationOutcome === "INDETERMINATE") {
+          return Promise.reject(new Error("connector readiness aggregate failed"));
+        }
         if (overrides?.empty) {
           return Promise.resolve(0);
         }
@@ -186,7 +189,11 @@ function makeDb(overrides?: {
   return {
     tx,
     client: {
+      // SEC-DB-RLS-001 P2.6a: the cards read per tenant. An empty directory leaves the default tenant only, so these cases are the
+      // single-tenant case of the merge; the multi-tenant cases are further down.
+      workspaceDirectory: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((fn: (txArg: typeof tx) => Promise<unknown>, _options?: unknown) => fn(tx)),
+      mediaIntegrityScanRun: tx.mediaIntegrityScanRun,
     },
   };
 }
@@ -254,7 +261,7 @@ describe("InternalOpsSummaryService", () => {
         blockedProducts: 1,
         blockingIssues: 2,
         warningIssues: 3,
-        affectedTenants: 2,
+        affectedTenants: 1, // one tenant (the default) in this single-tenant case; was a platform-wide DISTINCT count
         topRuleFamilies: [
           { ruleFamily: "CUSTOM_RULE", impact: "WARNING", count: 3 },
           { ruleFamily: "ATTR_REQUIRED_*", impact: "BLOCKER", count: 2 },
@@ -279,7 +286,7 @@ describe("InternalOpsSummaryService", () => {
         warningInstallations: 2,
         inconclusiveInstallations: 4,
         configurationProblemInstallations: 1,
-        affectedTenants: 2,
+        affectedTenants: 1, // one tenant (the default) in this single-tenant case; was a platform-wide DISTINCT count
         byStatus: [
           { status: "ACTIVE", impact: "STATUS", count: 10 },
           { status: "PAUSED", impact: "WARNING", count: 2 },
@@ -447,4 +454,243 @@ describe("InternalOpsController", () => {
       expect(service.getSummary).not.toHaveBeenCalled();
     },
   );
+});
+
+// ---- SEC-DB-RLS-001 P2.6a: the cards read per tenant and merge ----------------------------------------------------------------------
+// Each query answers according to the tenant in ITS OWN filter (the fake throws if a query carries none), and the context-free client
+// sees nothing at all, as a restricted role with no tenant context would. The figures must come out as the sums over tenants.
+type TenantData = {
+  exportByStatus?: Record<string, number>;
+  importJobByStatus?: Record<string, number>;
+  submissionByStatus?: Record<string, number>;
+  stuckExports?: number;
+  stuckImports?: number;
+  activeRuns?: number;
+  runFailed?: number;
+  runDlq?: number;
+  jobFailed?: number;
+  jobDlq?: number;
+  connectors?: Record<string, number>;
+  inconclusive?: number;
+  configProblem?: number;
+  issuesError?: number;
+  issuesWarning?: number;
+  issuesOpen?: number;
+  blockedProducts?: number;
+  rules?: Array<{ ruleCode: string; severity: string; count: number }>;
+  mappingBlocking?: number;
+  mappingWarning?: number;
+  mappingAffected?: number;
+  mediaAssets?: number;
+};
+
+function makeMultiTenantService(data: Record<string, TenantData>, options: { failTenants?: string[]; failIn?: string } = {}) {
+  const untenantedQueries: string[] = [];
+  const tenantOf = (name: string, args: { where?: { tenantKey?: string } }): string => {
+    const tenantKey = args.where?.tenantKey;
+    if (!tenantKey) {
+      untenantedQueries.push(name);
+      throw new Error("query without a tenant filter: " + name);
+    }
+    if (options.failTenants?.includes(tenantKey) && (!options.failIn || options.failIn === name)) {
+      throw Object.assign(new Error("connection postgres://user:SECRET@host/db reset"), { code: "P1001" });
+    }
+    return tenantKey;
+  };
+  const rowsFor = (record: Record<string, number> | undefined, statuses: string[]) =>
+    Object.entries(record ?? {}).filter(([status]) => statuses.includes(status)).map(([status, count]) => ({ status, _count: { _all: count } }));
+
+  const makeTx = () => ({
+    $queryRaw: jest.fn(async (first: unknown) => {
+      if (Array.isArray(first)) {
+        return [];
+      }
+      const sql = first as { values: unknown[] };
+      const tenantKey = String(sql.values[0]);
+      return [{ count: data[tenantKey]?.blockedProducts ?? 0 }];
+    }),
+    marketplaceExportJob: {
+      groupBy: jest.fn(async (args: any) => rowsFor(data[tenantOf("exportGroupBy", args)]?.exportByStatus, args.where.status.in)),
+      count: jest.fn(async (args: any) => data[tenantOf("exportCount", args)]?.stuckExports ?? 0),
+    },
+    bulkImportJob: {
+      groupBy: jest.fn(async (args: any) => rowsFor(data[tenantOf("importGroupBy", args)]?.importJobByStatus, args.where.status.in)),
+      count: jest.fn(async (args: any) => data[tenantOf("importCount", args)]?.stuckImports ?? 0),
+      aggregate: jest.fn(async (args: any) => {
+        const t = data[tenantOf("importJobAggregate", args)];
+        return { _sum: { failedRows: t?.jobFailed ?? null, deadLetterRows: t?.jobDlq ?? null } };
+      }),
+    },
+    bulkImportRun: {
+      count: jest.fn(async (args: any) => data[tenantOf("runCount", args)]?.activeRuns ?? 0),
+      aggregate: jest.fn(async (args: any) => {
+        const t = data[tenantOf("runAggregate", args)];
+        return { _sum: { failedRows: t?.runFailed ?? null, deadLetterRows: t?.runDlq ?? null } };
+      }),
+    },
+    connectorSubmission: {
+      groupBy: jest.fn(async (args: any) => rowsFor(data[tenantOf("submissionGroupBy", args)]?.submissionByStatus, args.where.status.in)),
+    },
+    validationIssue: {
+      count: jest.fn(async (args: any) => {
+        const t = data[tenantOf("issueCount", args)];
+        if (args.where.severity === "error") return t?.issuesError ?? 0;
+        if (args.where.severity === "warning") return t?.issuesWarning ?? 0;
+        return t?.issuesOpen ?? 0;
+      }),
+      groupBy: jest.fn(async (args: any) => {
+        const t = data[tenantOf("issueGroupBy", args)];
+        return (t?.rules ?? []).map((rule) => ({ ruleCode: rule.ruleCode, severity: rule.severity, _count: { ruleCode: rule.count } }));
+      }),
+    },
+    connectorMappingVersion: {
+      count: jest.fn(async (args: any) => {
+        const t = data[tenantOf("mappingCount", args)];
+        const where = args.where;
+        if (Array.isArray(where.OR)) return where.OR.length === 3 ? (t?.mappingBlocking ?? 0) : (t?.mappingAffected ?? 0);
+        if (typeof where.compatibilityState === "object") return t?.mappingWarning ?? 0;
+        return 0;
+      }),
+    },
+    connectorInstallation: {
+      count: jest.fn(async (args: any) => {
+        const t = data[tenantOf("installationCount", args)];
+        if (args.where.lastValidationOutcome === "INDETERMINATE") return t?.inconclusive ?? 0;
+        if (args.where.lastValidationOutcome === "CONFIGURATION_ERROR") return t?.configProblem ?? 0;
+        return t?.connectors?.[String(args.where.status)] ?? 0;
+      }),
+    },
+    mediaAsset: {
+      count: jest.fn(async (args: any) => data[tenantOf("mediaCount", args)]?.mediaAssets ?? 0),
+    },
+    mediaIntegrityScanRun: { findFirst: jest.fn(async () => null) },
+  });
+
+  const contextFree = {
+    mediaIntegrityScanRun: { findFirst: jest.fn(async () => null) },
+    marketplaceExportJob: { groupBy: jest.fn(async () => []), count: jest.fn(async () => 0) },
+    validationIssue: { count: jest.fn(async () => 0), groupBy: jest.fn(async () => []) },
+    connectorInstallation: { count: jest.fn(async () => 0) },
+  };
+  const client = {
+    ...contextFree,
+    workspaceDirectory: { findMany: jest.fn().mockResolvedValue(Object.keys(data).filter((key) => key !== "default").map((tenantKey) => ({ tenantKey }))) },
+    $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx())),
+  };
+  const logger = { warn: jest.fn() };
+  const observabilityDb = { countOpenP0P1Issues: jest.fn().mockResolvedValue({ count: 0, storageAvailable: true }) };
+  const service = new InternalOpsSummaryService({ getClient: () => client } as never, observabilityDb as never, logger as never);
+  return { service, client, logger, untenantedQueries };
+}
+
+describe("InternalOpsSummaryService — per-tenant reads of RLS-protected data (SEC-DB-RLS-001 P2.6a)", () => {
+  const TENANTS: Record<string, TenantData> = {
+    default: {
+      exportByStatus: { queued: 1, completed: 4, failed: 1 },
+      importJobByStatus: { queued: 2, failed: 1 },
+      submissionByStatus: { SUCCESS: 5, ERROR: 1 },
+      stuckExports: 1,
+      activeRuns: 1,
+      runFailed: 2,
+      jobFailed: 1,
+      connectors: { ACTIVE: 3, PAUSED: 1 },
+      inconclusive: 1,
+      issuesError: 2,
+      issuesWarning: 1,
+      issuesOpen: 3,
+      blockedProducts: 2,
+      rules: [{ ruleCode: "GST_HSN_REQUIRED", severity: "error", count: 2 }],
+      mappingBlocking: 1,
+      mappingAffected: 1,
+      mediaAssets: 10,
+    },
+    "tenant-b": {
+      exportByStatus: { processing: 2, completed: 6, dead_letter: 2 },
+      importJobByStatus: { retrying: 1, dead_letter: 1 },
+      submissionByStatus: { SUCCESS: 3, REJECTED: 2 },
+      stuckExports: 2,
+      stuckImports: 1,
+      activeRuns: 2,
+      runFailed: 3,
+      runDlq: 1,
+      jobDlq: 2,
+      connectors: { ACTIVE: 2, CREDENTIAL_EXPIRED: 2, DISABLED: 1 },
+      configProblem: 2,
+      issuesError: 3,
+      issuesWarning: 2,
+      issuesOpen: 5,
+      blockedProducts: 3,
+      rules: [
+        { ruleCode: "GST_HSN_REQUIRED", severity: "error", count: 3 },
+        { ruleCode: "ATTR_REQUIRED_SIZE", severity: "error", count: 1 },
+      ],
+      mappingBlocking: 2,
+      mappingWarning: 1,
+      mappingAffected: 3,
+      mediaAssets: 5,
+    },
+    "tenant-c": {}, // a tenant with no data at all
+  };
+
+  it("sums every card over the tenants, although the context-free client sees nothing (the silent all-zero summary)", async () => {
+    const { service, client } = makeMultiTenantService(TENANTS);
+
+    const summary = await service.getSummary();
+
+    // jobs: active = queued + processing + retrying over export and import jobs
+    expect(summary.jobs).toMatchObject({ availability: "available", active: 1 + 2 + 2 + 1, stuck: 1 + 2 + 1, failed: 1 + 1, deadLetter: 2 + 1 });
+    expect(summary.imports).toMatchObject({ availability: "available", activeRuns: 3, failedRows: 2 + 3 + 1, dlqRows: 1 + 2, runFailedRows: 5, jobFailedRows: 1 });
+    expect(summary.publishing.exports).toEqual({ success: 10, failed: 3, successRate: Number(((10 / 13) * 100).toFixed(2)) });
+    expect(summary.publishing.submissions).toEqual({ success: 8, failed: 3, successRate: Number(((8 / 11) * 100).toFixed(2)) });
+    expect(summary.connectors).toMatchObject({ availability: "available", totalInstallations: 3 + 1 + 2 + 2 + 1 });
+    expect(summary.mediaIntegrity).toMatchObject({ availability: "available", totalAssets: 15 });
+    expect(summary.readiness.productData).toMatchObject({ blockedProducts: 5, blockingIssues: 5, warningIssues: 3 });
+    expect(summary.readiness.mapping).toMatchObject({ blockingMappings: 3, warningMappings: 1 });
+    expect(summary.readiness.connector).toMatchObject({ blockingInstallations: 2, warningInstallations: 1, inconclusiveInstallations: 1, configurationProblemInstallations: 2 });
+    // the context-free client was never asked for any RLS-protected figure
+    expect(client.marketplaceExportJob.groupBy).not.toHaveBeenCalled();
+    expect(client.validationIssue.count).not.toHaveBeenCalled();
+    expect(client.connectorInstallation.count).not.toHaveBeenCalled();
+  });
+
+  it("counts affected tenants exactly: the tenants that have the condition, not the sum of their rows", async () => {
+    const { service } = makeMultiTenantService(TENANTS);
+    const summary = await service.getSummary();
+    // open issues: default and tenant-b (tenant-c has none); mappings affected: default and tenant-b; paused/expired connectors: default and tenant-b
+    expect(summary.readiness.productData.affectedTenants).toBe(2);
+    expect(summary.readiness.mapping.affectedTenants).toBe(2);
+    expect(summary.readiness.connector.affectedTenants).toBe(2);
+  });
+
+  it("merges the rule families across tenants before taking the platform-wide top", async () => {
+    const { service } = makeMultiTenantService(TENANTS);
+    const summary = await service.getSummary();
+    expect(summary.readiness.productData.topRuleFamilies).toEqual([
+      { ruleFamily: "GST_HSN_REQUIRED", impact: "BLOCKER", count: 5 },
+      { ruleFamily: "ATTR_REQUIRED_*", impact: "BLOCKER", count: 1 },
+    ]);
+  });
+
+  it("every query carries its own tenant filter", async () => {
+    const { service, untenantedQueries } = makeMultiTenantService(TENANTS);
+    await service.getSummary();
+    expect(untenantedQueries).toEqual([]);
+  });
+
+  it("one unreadable tenant makes the cards that read it unavailable, never a silent undercount, and is logged without the message", async () => {
+    const { service, logger } = makeMultiTenantService(TENANTS, { failTenants: ["tenant-b"], failIn: "exportGroupBy" });
+
+    const summary = await service.getSummary();
+
+    expect(summary.jobs.availability).toBe("unavailable");
+    expect(summary.jobs.active).toBe(0);
+    expect(summary.publishing.availability).toBe("unavailable");
+    // a card that does not touch the failing statement is unaffected
+    expect(summary.imports.availability).toBe("available");
+    expect(summary.connectors.availability).toBe("available");
+    const logged = JSON.stringify(logger.warn.mock.calls);
+    expect(logged).toContain("tenant-b");
+    expect(logged).toContain("P1001");
+    expect(logged).not.toContain("SECRET");
+  });
 });

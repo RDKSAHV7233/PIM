@@ -41,7 +41,8 @@
     "plan-usage-tenant-detail-restricted-role.test.cjs",
     "connector-heartbeat-tenant-iteration.test.cjs",
     "woocommerce-reconciliation-tenant-iteration.test.cjs",
-    "media-integrity-scan-tenant-iteration.test.cjs"
+    "media-integrity-scan-tenant-iteration.test.cjs",
+    "internal-ops-summary-restricted-role.test.cjs"
   ],
   "expectedFailing": []
 }
