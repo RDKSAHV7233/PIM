@@ -25,10 +25,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { PrismaClient } = require("@prisma/client");
 const { resolveRestrictedRoleName, restrictedUrlFor } = require("./ci/restricted-lane-config.cjs");
+const { safeFailureStage } = require("./ci/restricted-lane-safe-diagnostics.cjs");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const lane = JSON.parse(fs.readFileSync(process.env.LANE_CONFIG || path.join(__dirname, "restricted-role-lane.v1.json"), "utf8"));
-const { evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
+const { IDENTITY_PROOF_TESTS, classifyFailure, evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
 const ROLE = resolveRestrictedRoleName();
 const adminUrl = String(process.env.DATABASE_URL || "").trim();
 if (!adminUrl) {
@@ -43,6 +44,9 @@ const tests = lane.tests.filter((t) => only.length === 0 || only.includes(t));
 const expectedFailing = new Map(lane.expectedFailing.map((e) => [e.test, e]));
 const CONCURRENCY = Number(process.env.LANE_CONCURRENCY || 6);
 const TIMEOUT_MS = Number(process.env.LANE_TIMEOUT_SECONDS || 300) * 1000;
+// Integration subjects can complete their database work before a coarse timer
+// samples pg_stat_activity. This lane runs only against disposable local DBs.
+const SESSION_MONITOR_INTERVAL_MS = 100;
 
 const MAX_SIGNAL_LINES = 12;
 
@@ -59,9 +63,8 @@ function runTest(test) {
     };
     const child = spawn(process.execPath, [path.join(REPO_ROOT, "apps", "api", "test", "integration", test)], { cwd: REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
     const tail = [];
-    // A test prints its own assertion message, then the API's stderr tail, then exits: the message is usually pushed out of a
-    // last-N-lines window by the API's own log lines. Keep the first few lines that look like a failure message from the test itself
-    // (not the API's JSON/Nest log lines) so a failure is diagnosable from CI output alone.
+    // Raw child output exists only while its process is alive so we can derive a
+    // fixed category. It is discarded before the result reaches CI or evidence.
     const signals = [];
     const keep = (chunk) => {
       for (const line of String(chunk).split("\n")) {
@@ -82,7 +85,18 @@ function runTest(test) {
     const timer = setTimeout(() => child.kill("SIGKILL"), TIMEOUT_MS);
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      resolve({ test, passed: code === 0, code, timedOut: signal === "SIGKILL", seconds: Math.round((Date.now() - started) / 1000), tail, signals });
+      const timedOut = signal === "SIGKILL";
+      const failureCategory = code === 0 ? null : classifyFailure({ timedOut, signals, tail });
+      const failureStage = code === 0 ? null : safeFailureStage([...signals, ...tail]);
+      resolve({
+        test,
+        passed: code === 0,
+        code,
+        timedOut,
+        seconds: Math.round((Date.now() - started) / 1000),
+        failureCategory,
+        failureStage,
+      });
     });
   });
 }
@@ -90,16 +104,17 @@ function runTest(test) {
 async function main() {
   const admin = new PrismaClient({ datasources: { db: { url: adminUrl } } });
   const apiUsers = new Set();
-  const monitor = setInterval(async () => {
+  const observeRestrictedApiSessions = async () => {
     try {
-      const rows = await admin.$queryRaw`SELECT usename FROM pg_stat_activity WHERE datname = current_database() AND application_name = 'vexa-pim-api-restricted'`;
+      const rows = await admin.$queryRaw`SELECT usename FROM pg_stat_activity WHERE application_name = 'vexa-pim-api-restricted'`;
       for (const r of rows) {
         apiUsers.add(r.usename);
       }
     } catch {
       /* the monitor is best effort */
     }
-  }, 1500);
+  };
+  const monitor = setInterval(() => void observeRestrictedApiSessions(), SESSION_MONITOR_INTERVAL_MS);
 
   const results = [];
   const queue = [...tests];
@@ -109,7 +124,7 @@ async function main() {
         const test = queue.shift();
         const r = await runTest(test);
         results.push(r);
-        console.log(`${r.passed ? "ok  " : "FAIL"} ${test} (${r.seconds}s)`);
+        console.log(`${r.passed ? "ok  " : "FAIL"} ${test} (${r.seconds}s)${r.passed ? "" : ` ${r.failureCategory}${r.failureStage ? ` ${r.failureStage}` : ""}`}`);
       }
     }),
   );
@@ -136,13 +151,7 @@ async function main() {
   for (const r of rows.filter((x) => x.status === "UNEXPECTED_FAIL" || x.status === "UNEXPECTED_PASS")) {
     lines.push(`- **${r.status}** ${r.test}${r.timedOut ? " (timed out)" : ""}`);
     if (r.status === "UNEXPECTED_FAIL") {
-      lines.push(`  exit code ${r.code === null ? "none" : r.code}${r.timedOut ? ", killed on timeout" : ""}, ${r.seconds}s`);
-      if (r.signals && r.signals.length > 0) {
-        lines.push("  failure message(s) from the test:", "  ```", ...r.signals.map((l) => `  ${l}`), "  ```");
-      } else {
-        lines.push("  (no failure message was printed by the test; see the output tail)");
-      }
-      lines.push("  output tail:", "  ```", ...r.tail.slice(-12).map((l) => `  ${l}`), "  ```");
+      lines.push(`  exit code ${r.code === null ? "none" : r.code}${r.timedOut ? ", killed on timeout" : ""}, ${r.seconds}s, category ${r.failureCategory}${r.failureStage ? `, stage ${r.failureStage}` : ""}`);
     }
   }
   for (const r of rows.filter((x) => x.status === "EXPECTED_FAIL")) {
@@ -157,7 +166,25 @@ async function main() {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
   if (process.env.LANE_RESULTS_OUT) {
-    fs.writeFileSync(process.env.LANE_RESULTS_OUT, `${JSON.stringify(rows.map(({ tail, ...rest }) => ({ ...rest, expected: undefined })), null, 2)}\n`);
+    // This file is consumed by the v2 evidence runner. Keep it deliberately
+    // diagnostic enough to classify a failed lane, but never retain child output.
+    fs.writeFileSync(
+      process.env.LANE_RESULTS_OUT,
+      `${JSON.stringify({
+        sessionObserved: sessionsOk,
+        identityProof: verdict.identityProof,
+        identityProofTest: [...IDENTITY_PROOF_TESTS].find((test) => rows.some((row) => row.test === test && row.status === "PASS")) || null,
+        tests: rows.map(({ test, status, code, timedOut, seconds, failureCategory, failureStage }) => ({
+          test,
+          status,
+          code,
+          timedOut,
+          seconds,
+          failureCategory,
+          failureStage,
+        })),
+      }, null, 2)}\n`,
+    );
   }
   if (!verdict.ok) {
     console.error(`restricted-role lane failed: ${count("UNEXPECTED_FAIL")} unexpected failure(s), ${count("UNEXPECTED_PASS")} unexpected pass(es), sessions ${sessionsOk ? "ok" : "NOT proven restricted"}`);

@@ -44,13 +44,13 @@ function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
   const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
   const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
-  if (!databaseUrl || /HOST:5432/i.test(databaseUrl)) {
+  if (!databaseUrl || /\bHOST:5432\b/.test(databaseUrl)) {
     process.env.DATABASE_URL = localDatabaseUrl;
   }
-  if (!process.env.DATABASE_URL_POOLED || /HOST:5432/i.test(String(process.env.DATABASE_URL_POOLED))) {
+  if (!process.env.DATABASE_URL_POOLED || /\bHOST:5432\b/.test(String(process.env.DATABASE_URL_POOLED))) {
     process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL;
   }
-  if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
+  if (!process.env.DATABASE_URL_DIRECT || /\bHOST:5432\b/.test(String(process.env.DATABASE_URL_DIRECT))) {
     process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
   setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");

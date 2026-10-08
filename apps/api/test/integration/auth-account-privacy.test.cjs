@@ -10,6 +10,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+let restrictedLaneStage = "STARTUP";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -43,13 +44,13 @@ function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
   const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
   const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
-  if (!databaseUrl || /HOST:5432/i.test(databaseUrl)) {
+  if (!databaseUrl || /\bHOST:5432\b/.test(databaseUrl)) {
     process.env.DATABASE_URL = localDatabaseUrl;
   }
-  if (!process.env.DATABASE_URL_POOLED || /HOST:5432/i.test(String(process.env.DATABASE_URL_POOLED))) {
+  if (!process.env.DATABASE_URL_POOLED || /\bHOST:5432\b/.test(String(process.env.DATABASE_URL_POOLED))) {
     process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL;
   }
-  if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
+  if (!process.env.DATABASE_URL_DIRECT || /\bHOST:5432\b/.test(String(process.env.DATABASE_URL_DIRECT))) {
     process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
 
@@ -292,8 +293,10 @@ async function run() {
   });
 
   try {
+    restrictedLaneStage = "API_HEALTH";
     await waitForHealth(baseUrl, 60_000);
 
+    restrictedLaneStage = "TENANT_PROVISIONING";
     const provision = await apiRequest(
       baseUrl,
       "POST",
@@ -310,6 +313,7 @@ async function run() {
     );
     assertStatus(provision, 201, "platform tenant provisioning");
 
+    restrictedLaneStage = "LOGIN";
     const loginResult = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId,
@@ -322,6 +326,7 @@ async function run() {
       throw new Error(`Login did not return accessToken. payload=${JSON.stringify(loginResult.payload)}`);
     }
 
+    restrictedLaneStage = "CONSENT";
     const consentResult = await apiRequest(baseUrl, "POST", "/auth/consent", token, {
       accepted: true,
       policyVersion: "dpdp-v1",
@@ -329,6 +334,7 @@ async function run() {
     });
     assertStatus(consentResult, 200, "Consent endpoint failed");
 
+    restrictedLaneStage = "SHADOW_SEED";
     const shadowConsentPurpose = `shadow-consent-${runId}`;
     const shadowExportJobId = `exp_shadow_${runId}`;
     const shadowDeletionId = `del_shadow_${runId}`;
@@ -344,6 +350,7 @@ async function run() {
       },
     });
 
+    restrictedLaneStage = "EXPORT_REQUEST";
     const exportResult = await apiRequest(baseUrl, "POST", "/auth/account/export", token, {
       format: "json",
     });
@@ -380,6 +387,7 @@ async function run() {
       },
     });
 
+    restrictedLaneStage = "EXPORT_READBACK";
     const statusPayload = await waitForExportReady(baseUrl, token, 15_000);
     if (String(statusPayload?.commercialState?.accessStatus ?? "") !== "active") {
       throw new Error(
@@ -396,6 +404,7 @@ async function run() {
       throw new Error(`Completed export should expose downloadAvailable=true. payload=${JSON.stringify(statusPayload)}`);
     }
 
+    restrictedLaneStage = "EXPORT_DOWNLOAD";
     const downloadResult = await apiRequest(
       baseUrl,
       "GET",
@@ -430,24 +439,28 @@ async function run() {
       throw new Error(`Account export leaked cross-tenant privacy records. body=${downloadText}`);
     }
 
+    restrictedLaneStage = "DELETE_GUARD";
     const badDeleteResult = await apiRequest(baseUrl, "DELETE", "/auth/account", token, {
       confirmation: "REMOVE",
       reason: "test invalid confirmation",
     });
     assertStatus(badDeleteResult, 400, "Delete account should fail without DELETE confirmation");
 
+    restrictedLaneStage = "DELETE_ACCOUNT";
     const deleteResult = await apiRequest(baseUrl, "DELETE", "/auth/account", token, {
       confirmation: "DELETE",
       reason: "test requested erasure",
     });
     assertStatus(deleteResult, 202, "Delete account endpoint failed");
 
+    restrictedLaneStage = "POST_DELETE_READBACK";
     const postDeleteStatus = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", token);
     assertStatus(postDeleteStatus, 200, "Privacy status after delete failed");
     if (String(postDeleteStatus.payload?.latestDeletion?.ticketId ?? "") !== String(deleteResult.payload?.ticketId ?? "")) {
       throw new Error(`Privacy status leaked deletion data across tenants. payload=${JSON.stringify(postDeleteStatus.payload)}`);
     }
 
+    restrictedLaneStage = "AUDIT_READBACK";
     const auditResult = await apiRequest(baseUrl, "GET", `/audit/logs?limit=100&actorId=${encodeURIComponent(userId)}`, token);
     assertStatus(auditResult, 200, "Audit logs endpoint failed");
     const actions = new Set((Array.isArray(auditResult.payload) ? auditResult.payload : []).map((entry) => String(entry?.action ?? "")));
@@ -488,6 +501,7 @@ async function run() {
       ),
     );
   } catch (error) {
+    console.error(`SAFE_RESTRICTED_LANE_STAGE=${restrictedLaneStage}`);
     const details = error instanceof Error ? error.message : String(error);
     const stdout = stdoutBuffer.join("").slice(-4000);
     const stderr = stderrBuffer.join("").slice(-4000);

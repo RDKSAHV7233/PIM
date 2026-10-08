@@ -21,6 +21,7 @@ const FILES = {
   role: path.join(__dirname, "ci", "create-restricted-runtime-role.cjs"),
   preload: path.join(__dirname, "ci", "restricted-db-preload.cjs"),
   evaluate: path.join(__dirname, "ci", "restricted-lane-evaluate.cjs"),
+  diagnostics: path.join(__dirname, "ci", "restricted-lane-safe-diagnostics.cjs"),
   runner: path.join(__dirname, "run-restricted-role-lane.cjs"),
   config: path.join(__dirname, "ci", "restricted-lane-config.cjs"),
   ci: path.join(ROOT, ".github", "workflows", "ci.yml"),
@@ -49,6 +50,9 @@ function validateLane(transforms = {}) {
   }
   if (new Set(lane.tests).size !== (lane.tests || []).length) {
     fail("lane.tests", "duplicate test entries");
+  }
+  if (!(lane.tests || []).includes("credential-rotation-tenant-iteration.test.cjs")) {
+    fail("lane.tests", "the dedicated restricted-identity proof test must remain in the lane");
   }
   for (const e of lane.expectedFailing || []) {
     if (!(lane.tests || []).includes(e.test)) {
@@ -94,7 +98,7 @@ function validateLane(transforms = {}) {
     fail("preload", "the restricted API must carry a distinct application name so the lane can prove which sessions it is");
   }
 
-  if (!/sessionsOk/.test(src.evaluate) || !/users\.length > 0/.test(src.evaluate) || !/every\(\(u\) => u === role\)/.test(src.evaluate)) {
+  if (!/sessionsOk/.test(src.evaluate) || !/IDENTITY_PROOF_TESTS/.test(src.evaluate) || !/credential-rotation-tenant-iteration\.test\.cjs/.test(src.evaluate) || !/monitorSawUnexpectedUser/.test(src.evaluate)) {
     fail("evaluate", "the lane must fail unless it observed API sessions and every one was the restricted role");
   }
   if (!/UNEXPECTED_PASS/.test(src.evaluate) || !/UNEXPECTED_FAIL/.test(src.evaluate)) {
@@ -108,6 +112,15 @@ function validateLane(transforms = {}) {
   }
   if (!/NODE_OPTIONS/.test(src.runner) || !/--require=/.test(src.runner)) {
     fail("runner", "the runner must inject the preload through NODE_OPTIONS");
+  }
+  if (!/application_name = 'vexa-pim-api-restricted'/.test(src.runner) || /datname = current_database\(\)/.test(src.runner) || !/SESSION_MONITOR_INTERVAL_MS = 100/.test(src.runner)) {
+    fail("runner", "the session monitor must prove the restricted API identity across its disposable isolated databases");
+  }
+  if (/r\.(signals|tail)/.test(src.runner) || !/fixed category/.test(src.runner)) {
+    fail("runner", "the runner may classify child output transiently but must never retain or publish raw child output");
+  }
+  if (!/safeFailureStage/.test(src.runner) || !/SAFE_RESTRICTED_LANE_STAGE/.test(src.diagnostics)) {
+    fail("runner", "the runner must retain only the bounded safe checkpoint code when a subject fails");
   }
 
   const job = /\n  restricted-role-lane:\n([\s\S]*?)(?=\n  [a-z0-9-]+:\n|$)/.exec(src.ci);

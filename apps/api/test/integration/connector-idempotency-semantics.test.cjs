@@ -82,6 +82,7 @@ const MIGRATIONS = [
     ),
   },
 ];
+let restrictedLaneStage = "STARTUP";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -114,13 +115,13 @@ function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
   const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
   const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
-  if (!databaseUrl || /HOST:5432/i.test(databaseUrl)) {
+  if (!databaseUrl || /\bHOST:5432\b/.test(databaseUrl)) {
     process.env.DATABASE_URL = localDatabaseUrl;
   }
-  if (!process.env.DATABASE_URL_POOLED || /HOST:5432/i.test(String(process.env.DATABASE_URL_POOLED))) {
+  if (!process.env.DATABASE_URL_POOLED || /\bHOST:5432\b/.test(String(process.env.DATABASE_URL_POOLED))) {
     process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL;
   }
-  if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
+  if (!process.env.DATABASE_URL_DIRECT || /\bHOST:5432\b/.test(String(process.env.DATABASE_URL_DIRECT))) {
     process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
   setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
@@ -493,6 +494,7 @@ async function seedCredentials(repoRoot, tenantKey, installationId) {
 
 async function run() {
   prepareEnv();
+  restrictedLaneStage = "MIGRATIONS";
   await runMigrations();
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -549,8 +551,10 @@ async function run() {
   });
 
   try {
+    restrictedLaneStage = "API_HEALTH";
     await waitForHealth(baseUrl, Number.isFinite(API_HEALTH_TIMEOUT_MS) ? API_HEALTH_TIMEOUT_MS : 240_000);
 
+    restrictedLaneStage = "LOGIN";
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId,
@@ -561,11 +565,13 @@ async function run() {
     const accessToken = login.payload?.accessToken;
     assert(typeof accessToken === "string" && accessToken.length > 10, "missing access token from login");
 
+    restrictedLaneStage = "CATEGORY";
     const category = await apiRequest(baseUrl, "POST", "/taxonomy/categories", accessToken, {
       name: `Idempotency Category ${runId}`,
     });
     assertStatus(category, 201, "create category");
 
+    restrictedLaneStage = "PRODUCT";
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", accessToken, {
       title: `Idempotency Product ${runId}`,
       brand: "Vexa PIM",
@@ -595,6 +601,7 @@ async function run() {
     }
     assertStatus(product, 201, "create product");
 
+    restrictedLaneStage = "VARIANT";
     const createVariant = await apiRequest(
       baseUrl,
       "POST",
@@ -611,14 +618,18 @@ async function run() {
     );
     assertStatus(createVariant, 201, "create variant");
 
+    restrictedLaneStage = "APPROVAL";
     const approvedProduct = await advanceToApproved(baseUrl, accessToken, product.payload);
 
+    restrictedLaneStage = "CONNECTOR_INSTALL";
     const installFlipkart = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", accessToken, {
       accountAlias: "primary",
     });
     assertStatus(installFlipkart, 201, "install flipkart connector");
+    restrictedLaneStage = "CREDENTIAL_SEED";
     await seedCredentials(REPO_ROOT, tenantId, String(installFlipkart.payload.id));
 
+    restrictedLaneStage = "EXPORT_JOB";
     const createJob = await apiRequest(
       baseUrl,
       "POST",
@@ -634,6 +645,7 @@ async function run() {
     const stableKey = `${jobId}:PUBLISH`;
     const installationId = String(installFlipkart.payload.id);
 
+    restrictedLaneStage = "PROCESS_ATTEMPT_1";
     const processAttempt1 = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${jobId}/process`, accessToken);
     assertStatus(processAttempt1, 201, "process attempt 1");
     assert(
@@ -647,14 +659,17 @@ async function run() {
     // The first attempt fails due to the Flipkart stub transient error (see createFlipkartStub).
     // Brief pause to drain any in-flight async Flipkart calls before triggering attempt 2.
     await sleep(500);
+    restrictedLaneStage = "REQUEUE";
     const requeue = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${jobId}/requeue`, accessToken);
     assertStatus(requeue, 201, "requeue export job");
 
+    restrictedLaneStage = "PROCESS_ATTEMPT_2";
     const processAttempt2 = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${jobId}/process`, accessToken);
     assertStatus(processAttempt2, 201, "process attempt 2");
     assert(processAttempt2.payload.status === "completed", `expected completed on second attempt, got ${processAttempt2.payload.status}`);
 
     // RLS-BYPASS: manual tenant filter
+    restrictedLaneStage = "SUBMISSION_ASSERT";
     const rows = await prisma.$queryRawUnsafe(
       `
       SELECT
@@ -695,6 +710,7 @@ async function run() {
       "found non-stable idempotency keys for same job (attempt-number keyed duplicates detected)",
     );
 
+    restrictedLaneStage = "CROSS_TENANT_SEED";
     const otherTenantId = `${tenantId}-b`;
     const otherInstallationId = randomUUID();
     const otherSubmissionId = randomUUID();
@@ -748,6 +764,7 @@ async function run() {
       stableKey,
     );
     // RLS-BYPASS: manual tenant filter
+    restrictedLaneStage = "CROSS_TENANT_ASSERT";
     const crossTenantRows = await prisma.$queryRawUnsafe(
       `
       SELECT tenant_key AS "tenantKey"
@@ -782,6 +799,7 @@ async function run() {
       ),
     );
   } catch (error) {
+    console.error(`SAFE_RESTRICTED_LANE_STAGE=${restrictedLaneStage}`);
     const details = error instanceof Error ? error.message : String(error);
     const stdout = stdoutBuffer.join("").slice(-4000);
     const stderr = stderrBuffer.join("").slice(-4000);
@@ -818,8 +836,7 @@ async function run() {
 }
 
 run().catch((error) => {
+  console.error(`SAFE_RESTRICTED_LANE_STAGE=${restrictedLaneStage}`);
   console.error(error);
   process.exit(1);
 });
-
-

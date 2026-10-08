@@ -28,6 +28,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(MODEL_DIR, "identity-model
 const fixture = JSON.parse(fs.readFileSync(path.join(MODEL_DIR, "production-ownership-split.v1.json"), "utf8"));
 const KEEP = process.argv.includes("--keep");
 const CONTAINER = String(process.env.REHEARSAL_DOCKER_CONTAINER || "").trim();
+const RESULT_OUT = String(process.env.REHEARSAL_RESULT_OUT || "").trim();
 
 const adminRaw = String(process.env.REHEARSAL_ADMIN_URL || "").trim();
 if (!adminRaw) {
@@ -640,6 +641,9 @@ async function main() {
   }
 
   const failed = results.filter((r) => !r.ok);
+  if (RESULT_OUT) {
+    fs.writeFileSync(RESULT_OUT, `${JSON.stringify({ checks: results, passed: failed.length === 0 }, null, 2)}\n`);
+  }
   console.log(`\n${failed.length === 0 ? "REHEARSAL PASSED" : "REHEARSAL FAILED"}: ${results.length - failed.length}/${results.length} checks passed`);
   if (failed.length > 0) {
     for (const f of failed) {

@@ -124,6 +124,9 @@ jobs:
           node scripts/db-identity/lib.test.cjs
           node scripts/db-identity/tool.test.cjs
           node scripts/prisma-migrate-deploy.test.cjs
+          node scripts/validate-lane-test-database-url-placeholder.cjs
+          node scripts/validate-lane-test-database-url-placeholder.test.cjs
+          node scripts/ci/restricted-lane-evaluate.isolated-roles.test.cjs
 
       - name: AI governance validators and fixture tests
         shell: bash
@@ -499,11 +502,10 @@ jobs:
       - name: Run integration tests with the API on the restricted role
         run: node scripts/run-restricted-role-lane.cjs
 
-  # SEC-DB-RLS-001 I1: rehearses the database identity model (migrator, runtime, backup, ops) against a database that reproduces the
-  # production ownership split. Rehearsal only: it never touches production and never reads a production credential.
-  # PostgreSQL 16 and 18: production runs 18. The server runs as a plain container (not a service) so pg_dump and pg_restore run inside
-  # it at exactly the server's version; the job fails if they cannot run, it never skips the backup proof.
-  db-identity-rehearsal:
+  # SEC-DB-RLS-001 7.10R: the production-shaped local rehearsal. Each PostgreSQL
+  # version must create a validated, redacted evidence artifact; CI policy makes
+  # this mandatory even where repository rulesets cannot enforce required checks.
+  db-identity-rehearsal-v2:
     needs: detect-changes
     if: needs.detect-changes.outputs.backend == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -516,6 +518,12 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
       REHEARSAL_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
       REHEARSAL_DOCKER_CONTAINER: pg-rehearsal
+      JWT_SECRET: pim1-ci-jwt-secret-minimum-length-32
+      CREDENTIAL_ENCRYPTION_KEY_V1: pim1-ci-encryption-key-v1-minimum-32
+      CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION: "1"
+      PIM_AUTH_PASSWORD: vexa-pim-demo-password
+      QUEUE_BACKEND: memory
+      QUEUE_WORKER_ENABLED: "true"
       # redis-memory-server (a root devDependency) otherwise compiles a Redis binary during npm ci; this rehearsal does not use Redis.
       REDISMS_DISABLE_POSTINSTALL: "true"
     steps:
@@ -533,6 +541,9 @@ jobs:
 
       - name: Prisma generate
         run: npm run prisma:generate
+
+      - name: Build API for restricted-role subject tests
+        run: npm run build --workspace @pim1/api
 
       - name: Start PostgreSQL ${{ matrix.postgres }}
         run: |
@@ -554,8 +565,22 @@ jobs:
           CHECKPOINT_DISABLE: "1"
         run: node scripts/sec-db-rls-001-probe-proof.cjs
 
-      - name: Rehearse the database identity model
-        run: node scripts/db-identity/rehearse.cjs
+      - name: Run production-shaped identity rehearsal v2
+        run: |
+          mkdir -p artifacts
+          node scripts/db-identity/rehearse-v2.cjs --output artifacts/db-identity-rehearsal-v2-pg${{ matrix.postgres }}.json
+
+      - name: Validate redacted rehearsal evidence
+        if: always() && hashFiles(format('artifacts/db-identity-rehearsal-v2-pg{0}.json', matrix.postgres)) != ''
+        run: node scripts/db-identity/validate-rehearse-v2-evidence.cjs --artifact artifacts/db-identity-rehearsal-v2-pg${{ matrix.postgres }}.json
+
+      - name: Upload validated redacted rehearsal evidence
+        if: always() && hashFiles(format('artifacts/db-identity-rehearsal-v2-pg{0}.json', matrix.postgres)) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-identity-rehearsal-v2-pg${{ matrix.postgres }}
+          path: artifacts/db-identity-rehearsal-v2-pg${{ matrix.postgres }}.json
+          if-no-files-found: error
 
   e2e:
     needs: [detect-changes, build]

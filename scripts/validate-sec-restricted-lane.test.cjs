@@ -2,7 +2,8 @@
 
 const assert = require("node:assert/strict");
 const { validateLane } = require("./validate-sec-restricted-lane.cjs");
-const { evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
+const { classifyFailure, evaluate, isFailureSignal } = require("./ci/restricted-lane-evaluate.cjs");
+const { safeFailureStage } = require("./ci/restricted-lane-safe-diagnostics.cjs");
 
 const clean = validateLane();
 assert.equal(clean.ok, true, clean.errors.join("\n"));
@@ -41,10 +42,14 @@ expectFail("control row writable by the runtime", { role: replace("REVOKE INSERT
 expectFail("preload no longer scoped to the API entry", { preload: replace(String.raw`dist\/main\.js`, "") }, "preload");
 expectFail("preload assigns something else", { preload: (t) => `${t}\nprocess.env.DATABASE_URL_X = "postgresql://elsewhere";\n` }, "preload");
 expectFail("restricted API loses its application name", { preload: replace("vexa-pim-api-restricted", "vexa-pim-api") }, "preload");
-expectFail("lane stops requiring proof of restricted sessions", { evaluate: replace("users.length > 0 && ", "") }, "evaluate");
+expectFail("lane stops requiring dedicated restricted-identity proof", { evaluate: replace("IDENTITY_PROOF_TESTS", "REMOVED_PROOF") }, "evaluate");
 expectFail("lane stops being a ratchet", { evaluate: replace("UNEXPECTED_PASS", "UNEXPECTED_OK") }, "evaluate");
 expectFail("runner no longer uses the shared logic", { runner: replace("verdict.ok", "true") }, "runner");
 expectFail("runner no longer uses validated role configuration", { config: replace("RESTRICTED_ROLE_NAME", "V2_ROLE_NAME") }, "runner");
+expectFail("session monitor ignores isolated subject databases", { runner: replace("application_name = 'vexa-pim-api-restricted'", "datname = current_database() AND application_name = 'vexa-pim-api-restricted'") }, "runner");
+expectFail("session monitor is too coarse for short-lived API pools", { runner: replace("SESSION_MONITOR_INTERVAL_MS = 100", "SESSION_MONITOR_INTERVAL_MS = 1500") }, "runner");
+expectFail("runner exposes a child-output tail", { runner: replace("r.failureCategory", "r.tail") }, "runner");
+expectFail("runner loses its bounded failure checkpoint parser", { diagnostics: replace("SAFE_RESTRICTED_LANE_STAGE", "UNSAFE_STAGE") }, "runner");
 expectFail("CI lets the lane fail silently", { ci: replace("  restricted-role-lane:\n    needs: detect-changes", "  restricted-role-lane:\n    continue-on-error: true\n    needs: detect-changes") }, "ci");
 expectFail("CI skips the migration", { ci: replace("      - name: Prisma migrate deploy (admin identity)\n        run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma\n\n      - name: Create the restricted runtime role", "      - name: Create the restricted runtime role") }, "ci");
 expectFail("CI lane job removed", { ci: replace("  restricted-role-lane:\n", "  restricted-role-lane-renamed:\n") }, "ci");
@@ -61,6 +66,8 @@ assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", true]), [ROLE]).o
 assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), []).ok, false, "no observed API sessions can never pass");
 assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), [ROLE, "postgres"]).ok, false, "an API session as the admin user fails the lane");
 assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), ["postgres"]).ok, false, "an API running only as the admin user fails the lane");
+assert.equal(run(rows(["credential-rotation-tenant-iteration.test.cjs", true], ["known.test.cjs", false]), []).ok, true, "the dedicated database-side identity proof covers short-lived API pools");
+assert.equal(run(rows(["credential-rotation-tenant-iteration.test.cjs", true], ["known.test.cjs", false]), ["postgres"]).ok, false, "an observed privileged API identity always fails even when the dedicated proof passes");
 const detail = run(rows(["a.test.cjs", false], ["known.test.cjs", true]), [ROLE]);
 assert.deepEqual([detail.unexpectedFail, detail.unexpectedPass], [1, 1]);
 assert.equal(run([], [ROLE]).ok, true, "an empty run has nothing to fail but the runner always has tests");
@@ -74,5 +81,11 @@ assert.equal(isFailureSignal('{"timestamp":"2026-10-06T18:58:11.951Z","level":"e
 assert.equal(isFailureSignal("[Nest] 4535  - LOG [RouterExplorer] Mapped {/api/v1/x, GET} route Error: none"), false, "Nest log lines are not kept");
 assert.equal(isFailureSignal("    at Object.<anonymous> (file.cjs:10:5) Error: stack frame"), false, "stack frames are not kept");
 assert.equal(isFailureSignal("ok   worker-backpressure.test.cjs (3s)"), false, "a passing line is not a failure");
+assert.equal(classifyFailure({ timedOut: false, signals: ["new row violates row-level security policy"], tail: [] }), "RLS_DENIED");
+assert.equal(classifyFailure({ timedOut: false, signals: ["permission denied for table Product"], tail: [] }), "PRIVILEGE_DENIED");
+assert.equal(classifyFailure({ timedOut: true, signals: [], tail: [] }), "TIMEOUT");
+assert.equal(classifyFailure({ timedOut: false, signals: [], tail: [] }), "UNCLASSIFIED_FAILURE");
+assert.equal(safeFailureStage(["noise", "SAFE_RESTRICTED_LANE_STAGE=TENANT_PROVISIONING"]), "TENANT_PROVISIONING");
+assert.equal(safeFailureStage(["SAFE_RESTRICTED_LANE_STAGE=contains-dashes"]), null, "only fixed safe stage codes may cross the evidence boundary");
 
 console.log("validate-sec-restricted-lane tests passed.");

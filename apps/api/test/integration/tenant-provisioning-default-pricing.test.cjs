@@ -18,6 +18,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+let restrictedLaneStage = "STARTUP";
 
 function setDefaultEnv(name, value) {
   if (!process.env[name] || String(process.env[name]).trim().length === 0) {
@@ -28,7 +29,7 @@ function setDefaultEnv(name, value) {
 function prepareEnv() {
   const local = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
   const url = String(process.env.DATABASE_URL ?? "").trim();
-  if (!url || /HOST:5432/i.test(url)) {
+  if (!url || /\bHOST:5432\b/.test(url)) {
     process.env.DATABASE_URL = local;
   }
   process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
@@ -99,7 +100,9 @@ async function main() {
   const admin = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
 
   try {
+    restrictedLaneStage = "API_HEALTH";
     await waitForHealth(baseUrl, 60_000);
+    restrictedLaneStage = "TENANT_PROVISIONING";
     const response = await fetch(`${baseUrl}/platform/tenants`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-pim-platform-admin-token": platformToken },
@@ -108,6 +111,7 @@ async function main() {
     if (response.status !== 201) {
       throw new Error(`provisioning failed: expected 201, got ${response.status} ${await response.text()}`);
     }
+    restrictedLaneStage = "PRICING_ASSERT";
     const [markets, currencies, priceLists] = await Promise.all([
       admin.market.count({ where: { tenantKey } }),
       admin.currency.count({ where: { tenantKey } }),
@@ -125,6 +129,7 @@ async function main() {
 }
 
 main().catch((error) => {
+  console.error(`SAFE_RESTRICTED_LANE_STAGE=${restrictedLaneStage}`);
   console.error(error && error.message ? error.message : error);
   process.exit(1);
 });

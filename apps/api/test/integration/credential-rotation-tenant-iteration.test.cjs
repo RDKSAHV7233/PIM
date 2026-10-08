@@ -20,13 +20,14 @@ const assert = require("node:assert/strict");
 const { spawn, spawnSync } = require("node:child_process");
 const net = require("node:net");
 const path = require("node:path");
+const { resolveRestrictedRoleName } = require(path.resolve(__dirname, "../../../../scripts/ci/restricted-lane-config.cjs"));
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const DIST = path.join(REPO_ROOT, "apps", "api", "dist");
 const { PrismaClient } = require(path.join(REPO_ROOT, "node_modules", "@prisma", "client"));
 
 const ADMIN_URL = String(process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/pim1?schema=public").trim();
-const ROLE = "vexa_runtime_ci";
+const ROLE = resolveRestrictedRoleName();
 const ROLE_PASSWORD = String(process.env.RESTRICTED_ROLE_PASSWORD || "vexa_runtime_ci_password").replace(/[^A-Za-z0-9_]/g, "");
 const KEY_V1 = "pim1-ci-rotation-key-v1-minimum-32-chars";
 const KEY_V2 = "pim1-ci-rotation-key-v2-minimum-32-chars";
@@ -60,6 +61,28 @@ function loadService(currentVersion, adminClient) {
   return new ConnectorCredentialEncryptionService({ getClient: () => adminClient }, new LoggerService());
 }
 
+function prepareRestrictedRole(dbAdminUrl) {
+  if (ROLE !== "vexa_runtime") {
+    return spawnSync(process.execPath, [path.join(REPO_ROOT, "scripts", "ci", "create-restricted-runtime-role.cjs")], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, DATABASE_URL: dbAdminUrl, RESTRICTED_ROLE_PASSWORD: ROLE_PASSWORD },
+      encoding: "utf8",
+    });
+  }
+
+  for (const mode of ["create-roles", "apply-ownership", "apply-grants"]) {
+    const step = spawnSync(process.execPath, [path.join(REPO_ROOT, "scripts", "db-identity", "tool.cjs"), mode], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, DB_IDENTITY_ADMIN_URL: dbAdminUrl },
+      encoding: "utf8",
+    });
+    if (step.status !== 0) {
+      return step;
+    }
+  }
+  return { status: 0, stdout: "identity-model role prepared", stderr: "" };
+}
+
 async function waitForHealth(baseUrl, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -74,6 +97,16 @@ async function waitForHealth(baseUrl, timeoutMs) {
     await sleep(400);
   }
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
+}
+
+function startupDiagnostic(lines, process) {
+  const output = lines.join("\n");
+  const code = output.match(/\b(?:P\d{4}|EADDRINUSE|ECONNREFUSED|permission denied|must be owner|row-level security)\b/i);
+  return [
+    `apiExited=${process.exitCode !== null}`,
+    `startupLogged=${/API running|STARTUP FAILED/i.test(output)}`,
+    `failureClass=${code ? code[0] : "none"}`,
+  ].join(" ");
 }
 
 /**
@@ -111,11 +144,7 @@ async function main() {
       encoding: "utf8",
     });
     assert.equal(migrate.status, 0, `migrations failed: ${String(migrate.stderr || migrate.stdout).slice(-300)}`);
-    const grant = spawnSync(process.execPath, [path.join(REPO_ROOT, "scripts", "ci", "create-restricted-runtime-role.cjs")], {
-      cwd: REPO_ROOT,
-      env: { ...process.env, DATABASE_URL: dbAdminUrl, RESTRICTED_ROLE_PASSWORD: ROLE_PASSWORD },
-      encoding: "utf8",
-    });
+    const grant = prepareRestrictedRole(dbAdminUrl);
     assert.equal(grant.status, 0, `restricted role setup failed: ${String(grant.stdout).slice(-300)}`);
     const restrictedUrl = urlFor(dbName, ROLE, ROLE_PASSWORD);
     admin = new PrismaClient({ datasources: { db: { url: dbAdminUrl } } });
@@ -228,7 +257,11 @@ async function main() {
         }
       });
     }
-    await waitForHealth(baseUrl, 90_000);
+    try {
+      await waitForHealth(baseUrl, 90_000);
+    } catch (error) {
+      throw new Error(`${error.message}; ${startupDiagnostic(apiOutput, api)}`);
+    }
 
     const deadline = Date.now() + 60_000;
     let c = await readRow(ids.c);
