@@ -45,7 +45,9 @@ function makeMockDb() {
 }
 
 function makeService(mockDb: ReturnType<typeof makeMockDb>) {
-  const prisma = { tenant: jest.fn() };
+  // The tenant-scoped client and the context-free client are the same mock here, so the assertions below keep checking WHAT is
+  // queried (shape, scoping, counts). The "which client reads which table" contract has its own describe block further down.
+  const prisma = { tenant: jest.fn().mockReturnValue(mockDb) };
   const prismaDirect = { getClient: jest.fn().mockReturnValue(mockDb) };
   const cache = { getOrSet: jest.fn() };
   return new PlanUsageService(prisma as never, prismaDirect as never, cache as never);
@@ -644,5 +646,80 @@ describe("Controller tenant-key validation", () => {
 
   it("rejects dash-start", () => {
     expect(TENANT_KEY_PATTERN.test("-dashed")).toBe(false);
+  });
+});
+
+// SEC-DB-RLS-001 P2.1b-i: getTenantDetail reads the RLS-protected tables through the requested tenant's own client and only the
+// non-RLS tables through the context-free client. Under row level security the context-free client sees none of the RLS tables'
+// rows, so reading them through it would silently return an empty plan, usage and connector section.
+describe("PlanUsageService.getTenantDetail — which client reads which table (SEC-DB-RLS-001 P2.1b-i)", () => {
+  function split() {
+    // Context-free client: sees NOTHING in the RLS tables, as a restricted role with no tenant context would.
+    const direct = makeMockDb();
+    direct.workspaceDirectory.findUnique.mockResolvedValue(WORKSPACE_ACME);
+    direct.publicSignupRequest.findFirst.mockResolvedValue(SIGNUP_ROW);
+    direct.authIdentity.findMany.mockResolvedValue([]);
+    direct.authIdentity.count.mockResolvedValue(0);
+    direct.tenantPlanProfile.findFirst.mockResolvedValue(null);
+    direct.planUsage.findFirst.mockResolvedValue(null);
+    direct.$queryRaw.mockResolvedValue([]);
+
+    // The requested tenant's own client: sees that tenant's rows.
+    const scoped = makeMockDb();
+    scoped.tenantPlanProfile.findFirst.mockResolvedValue(PROFILE_ENTERPRISE);
+    scoped.planUsage.findFirst.mockResolvedValue(USAGE_ROW);
+    scoped.$queryRaw.mockImplementation((strings: TemplateStringsArray) => {
+      const query = typeof strings === "object" && strings.raw ? strings.raw.join("") : String(strings);
+      return Promise.resolve(query.includes("COUNT") ? [{ count: 1 }] : [{ installationId: "ci-1", connectorName: "Shopify", connectorSlug: "shopify", status: "ACTIVE", createdAt: new Date("2026-06-10") }]);
+    });
+
+    const prisma = { tenant: jest.fn().mockReturnValue(scoped) };
+    const service = new PlanUsageService(prisma as never, { getClient: jest.fn().mockReturnValue(direct) } as never, { getOrSet: jest.fn() } as never);
+    return { service, direct, scoped, prisma };
+  }
+
+  it("returns the tenant's plan, usage and connectors from its own client even though the context-free client sees nothing", async () => {
+    const { service } = split();
+    const result = (await service.getTenantDetail("acme"))!;
+
+    expect(result.commercial.planTier).toBe("ENTERPRISE");
+    expect(result.commercial.billingContactEmail).toBe("billing@acme.com");
+    expect(result.usage.skuCount).toBe(9200);
+    expect(result.connectors.items.map((c) => c.installationId)).toEqual(["ci-1"]);
+    expect(result.connectors.total).toBe(1);
+  });
+
+  it("opens the tenant client for the requested tenant only", async () => {
+    const { service, prisma } = split();
+    await service.getTenantDetail("acme");
+    expect(prisma.tenant).toHaveBeenCalledTimes(1);
+    expect(prisma.tenant).toHaveBeenCalledWith("acme");
+  });
+
+  it("never reads an RLS-protected table through the context-free client", async () => {
+    const { service, direct } = split();
+    await service.getTenantDetail("acme");
+
+    expect(direct.tenantPlanProfile.findFirst).not.toHaveBeenCalled();
+    expect(direct.planUsage.findFirst).not.toHaveBeenCalled();
+    expect(direct.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("still reads the non-RLS tables through the context-free client", async () => {
+    const { service, direct, scoped } = split();
+    await service.getTenantDetail("acme");
+
+    expect(direct.workspaceDirectory.findUnique).toHaveBeenCalledTimes(1);
+    expect(direct.publicSignupRequest.findFirst).toHaveBeenCalledTimes(1);
+    expect(direct.authIdentity.findMany).toHaveBeenCalledTimes(1);
+    expect(direct.authIdentity.count).toHaveBeenCalledTimes(1);
+    expect(scoped.workspaceDirectory.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("does not open a tenant client for an unknown tenant's plan data", async () => {
+    const { service, direct, scoped } = split();
+    direct.workspaceDirectory.findUnique.mockResolvedValue(null);
+    expect(await service.getTenantDetail("ghost")).toBeNull();
+    expect(scoped.tenantPlanProfile.findFirst).not.toHaveBeenCalled();
   });
 });

@@ -1240,7 +1240,12 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   async getTenantDetail(tenantKeyInput: string): Promise<CommercialTenantDetail | null> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
+    // Non-RLS tables (the workspace directory, signup requests, identities and the connector catalogue) are read through the
+    // context-free client. The RLS-protected tables (TenantPlanProfile, PlanUsage, connector_installations) are read through the
+    // requested tenant's own client: under row level security the context-free client sees none of their rows, so the plan, usage
+    // and connector sections of this view would silently come back empty (SEC-DB-RLS-001 P2.1b-i).
     const db = this.prismaDirect.getClient();
+    const tenantDb = this.prisma.tenant(tenantKey);
     const month = this.getMonthKey();
 
     const workspace = await db.workspaceDirectory.findUnique({
@@ -1253,7 +1258,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const CONNECTOR_LIMIT = 50;
 
     const [profile, usageRow, signupRow, userRows, userTotal, connectorRows, connectorTotal] = await Promise.all([
-      db.tenantPlanProfile.findFirst({
+      tenantDb.tenantPlanProfile.findFirst({
         where: { tenantKey },
         select: {
           planTier: true, billingStatus: true, accessStatus: true,
@@ -1262,7 +1267,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           billingContactEmail: true,
         },
       }),
-      db.planUsage.findFirst({
+      tenantDb.planUsage.findFirst({
         where: { tenantKey, month },
         select: { skuCount: true, submissionCount: true, storageGb: true },
       }),
@@ -1278,8 +1283,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         take: USER_LIMIT,
       }),
       db.authIdentity.count({ where: { tenantKey } }),
-      // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below.
-      db.$queryRaw<Array<{
+      // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below, on the requested tenant's own client.
+      tenantDb.$queryRaw<Array<{
         installationId: string;
         connectorName: string;
         connectorSlug: string;
@@ -1298,8 +1303,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         ORDER BY ci.created_at DESC
         LIMIT ${CONNECTOR_LIMIT}
       `,
-      // RLS-BYPASS: manual tenant filter — WHERE tenant_key = ${tenantKey} below.
-      db.$queryRaw<Array<{ count: number }>>`
+      // RLS-BYPASS: manual tenant filter — WHERE tenant_key = ${tenantKey} below, on the requested tenant's own client.
+      tenantDb.$queryRaw<Array<{ count: number }>>`
         SELECT COUNT(*)::int AS "count"
         FROM connector_installations
         WHERE tenant_key = ${tenantKey}
