@@ -369,8 +369,8 @@
     {
       "file": "internal-ops/internal-ops-alerts.service.ts",
       "class": "A",
-      "remediation": "maintenance-read",
-      "plan": "platform-wide operator aggregates: a narrowly scoped SELECT-only maintenance policy on the specific tables, never a runtime bypass",
+      "remediation": "tenant-iteration",
+      "plan": "P2.6b done: the only two reads of tenant data, the stuck-job counts (export and bulk-import jobs) and the auth-email failure count (kpi_metric_events), are taken per tenant through forEachTenant (one short transaction per tenant, each query filtered by that tenant) and summed; a tenant that cannot be read makes the evaluation fail open with a warning (tenant and error code, never the message) and neither alerts nor resets the alert state on a partial count. The 13 raw SQL statements all target ops_alert_states, a global platform table (keyed by alert key, no tenant key, not row-level-secured, full CRUD for the runtime in the identity model) and need no tenant context. No maintenance-read policy, no generic bypass. The file keeps the context-free client only as the carrier of the tenant transactions and for ops_alert_states, so the entry stays open under the ratchet's definition.",
       "rlsProtectedModels": [
         "bulkImportJob",
         "kpiMetricEvent",
@@ -378,7 +378,7 @@
       ],
       "otherModels": [],
       "rawSqlSites": 13,
-      "positiveAssertion": "alert counts include a non-default tenant's failed jobs",
+      "positiveAssertion": "internal-ops-alerts-restricted-role.test.cjs: under the restricted role the stuck-job watchdog counts 4 stuck jobs across two non-default directory tenants and the auth-email watchdog sums 5 failures none of which breaches the threshold alone, both queue their alert and record their cooldown in ops_alert_states; internal-ops-alerts.service.spec.ts (per-tenant fake, summed counts, unreadable tenant fails open, mutation-checked)",
       "status": "open"
     },
     {

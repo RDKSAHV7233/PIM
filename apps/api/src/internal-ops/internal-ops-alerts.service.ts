@@ -4,6 +4,7 @@ import { BulkImportJobStatus, ExportJobStatus, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { LoggerService } from "../common/logging/logger.service";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import {
@@ -406,16 +407,19 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
 
   private async countRecentAuthEmailJobFailures(now: Date): Promise<number> {
     const windowStart = new Date(now.getTime() - AUTH_EMAIL_JOB_FAILURE_WINDOW_MS);
-    const db = this.prismaDirect.getClient();
-    const count = await db.kpiMetricEvent.count({
-      where: {
-        metricKey: "auth.email.job_failed",
-        observedAt: { gte: windowStart, lte: now },
-      },
-    });
+    // SEC-DB-RLS-001: kpi_metric_events is tenant-keyed and row-level-secured. This was one count through the context-free client,
+    // which under row level security sees no tenant's rows, so the alert could never fire. It is now the sum of per-tenant counts.
+    const [count] = await this.sumAcrossTenants(async (tx, tenantKey) => [
+      await tx.kpiMetricEvent.count({
+        where: {
+          tenantKey,
+          metricKey: "auth.email.job_failed",
+          observedAt: { gte: windowStart, lte: now },
+        },
+      }),
+    ]);
     return Number(count ?? 0);
   }
-
   async captureMediaIntegrityDefects(input: {
     missingCount: number;
     unverifiableCount: number;
@@ -490,28 +494,55 @@ export class InternalOpsAlertsService implements OnModuleInit, OnApplicationBoot
   private async countStuckJobs(now: Date): Promise<{ stuckExports: number; stuckImports: number }> {
     const stuckFrom = subtractDays(now, INTERNAL_OPS_STUCK_LOOKBACK_DAYS);
     const stuckBefore = new Date(now.getTime() - INTERNAL_OPS_STUCK_THRESHOLD_HOURS * 60 * 60 * 1000);
-    const db = this.prismaDirect.getClient();
-    const [stuckExports, stuckImports] = await db.$transaction(
-      async (tx) =>
-        Promise.all([
-          tx.marketplaceExportJob.count({
-            where: {
-              status: { in: [...EXPORT_ACTIVE_STATUSES] },
-              updatedAt: { gte: stuckFrom, lte: stuckBefore },
-            },
-          }),
-          tx.bulkImportJob.count({
-            where: {
-              status: { in: [...IMPORT_JOB_ACTIVE_STATUSES] },
-              updatedAt: { gte: stuckFrom, lte: stuckBefore },
-            },
-          }),
-        ]),
-      { timeout: 3_000 },
+    // SEC-DB-RLS-001: the export and import job tables are tenant-keyed and row-level-secured. Two platform-wide counts through the
+    // context-free client would read zero under row level security and the stuck-job watchdog would stay silent forever, so the
+    // counts are taken per tenant, each filtered by its tenant, and summed.
+    const [stuckExports, stuckImports] = await this.sumAcrossTenants(async (tx, tenantKey) =>
+      Promise.all([
+        tx.marketplaceExportJob.count({
+          where: {
+            tenantKey,
+            status: { in: [...EXPORT_ACTIVE_STATUSES] },
+            updatedAt: { gte: stuckFrom, lte: stuckBefore },
+          },
+        }),
+        tx.bulkImportJob.count({
+          where: {
+            tenantKey,
+            status: { in: [...IMPORT_JOB_ACTIVE_STATUSES] },
+            updatedAt: { gte: stuckFrom, lte: stuckBefore },
+          },
+        }),
+      ]),
     );
     return { stuckExports: Number(stuckExports ?? 0), stuckImports: Number(stuckImports ?? 0) };
   }
 
+  /**
+   * Reads a vector of counts once per tenant, each in a short transaction in that tenant's own context (forEachTenant), and sums them.
+   * A tenant that cannot be read makes the whole read throw: an alert evaluation must never run on a partial count (an undercount
+   * could suppress an alert), so the evaluation fails open with a warning instead, exactly as it does for any other read failure.
+   * The message names the tenants and stable error codes, never a database message.
+   */
+  private async sumAcrossTenants(read: (tx: Prisma.TransactionClient, tenantKey: string) => Promise<number[]>): Promise<number[]> {
+    const totals: number[] = [];
+    const summary = await forEachTenant(
+      this.prismaDirect.getClient(),
+      async (tx, tenantKey) => {
+        const counts = await read(tx, tenantKey);
+        counts.forEach((count, index) => {
+          totals[index] = (totals[index] ?? 0) + Number(count ?? 0);
+        });
+        return { examinedCount: 1, changedCount: 0 };
+      },
+      { timeoutMs: 3_000 },
+    );
+    if (summary.tenantsFailed > 0) {
+      const failures = summary.results.filter((result) => result.status === "failed").map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`);
+      throw new Error(`INTERNAL_OPS_ALERT_TENANT_READ_FAILED ${summary.tenantsFailed}/${summary.tenantsEvaluated} [${failures.join(", ")}]`);
+    }
+    return totals;
+  }
   private async reserveNewIssueAlert(alertKey: string, observedAt: Date): Promise<boolean> {
     // RLS-BYPASS: ops_alert_states is a global platform-ops table by design, keyed on
     // alert_key (not per-tenant) — it dedupes/cooldowns internal alerting across the

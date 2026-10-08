@@ -3,15 +3,23 @@ import { InternalOpsAlertsService } from "./internal-ops-alerts.service";
 const ORIGINAL_ENV = process.env;
 
 function makeService() {
+  // SEC-DB-RLS-001 P2.6b: the stuck-job and auth-email-failure counts are read per tenant, inside a transaction in each tenant's
+  // context. An empty directory leaves the default tenant only, so these cases are the single-tenant case of the sum; the
+  // multi-tenant cases are at the bottom. The alert-state statements (ops_alert_states is a global platform table) still go
+  // through the base client's $queryRaw / $executeRaw, which is separate from the tenant transaction's own $queryRaw.
+  const kpiMetricEvent = { count: jest.fn().mockResolvedValue(0) };
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     marketplaceExportJob: { count: jest.fn().mockResolvedValue(0) },
     bulkImportJob: { count: jest.fn().mockResolvedValue(0) },
+    kpiMetricEvent,
   };
   const db = {
     $queryRaw: jest.fn(),
     $executeRaw: jest.fn().mockResolvedValue(1),
-    $transaction: jest.fn((fn: (txArg: typeof tx) => Promise<unknown>) => fn(tx)),
-    kpiMetricEvent: { count: jest.fn().mockResolvedValue(0) },
+    $transaction: jest.fn((fn: (txArg: typeof tx) => Promise<unknown>, _options?: unknown) => fn(tx)),
+    workspaceDirectory: { findMany: jest.fn().mockResolvedValue([]) },
+    kpiMetricEvent,
   };
   const prismaDirect = { getClient: jest.fn().mockReturnValue(db) };
   const queueService = {
@@ -347,6 +355,7 @@ describe("InternalOpsAlertsService", () => {
     expect(result.failureCount).toBe(2);
     expect(db.kpiMetricEvent.count).toHaveBeenCalledWith({
       where: {
+        tenantKey: "default",
         metricKey: "auth.email.job_failed",
         observedAt: { gte: new Date("2026-08-23T11:45:00Z"), lte: new Date("2026-08-23T12:00:00Z") },
       },
@@ -1099,5 +1108,117 @@ describe("InternalOpsAlertsService direct email destination (INC-93-S11)", () =>
     expect(body.text).toContain("View stuck jobs (https://ops.vexa.test/internal/ops)");
     expect(body.text).not.toMatch(/:warning:|<https?:/);
     expect(body.subject.length).toBeLessThanOrEqual(180);
+  });
+});
+
+// ---- SEC-DB-RLS-001 P2.6b: the watchdog counts read every tenant -----------------------------------------------------------------------
+// Each count answers according to the tenant in ITS OWN filter (the fake throws on a query with none), and the context-free client
+// has no tenant tables at all: it only carries the global ops_alert_states statements, as a restricted role would see it.
+describe("InternalOpsAlertsService — per-tenant counts for the watchdogs (SEC-DB-RLS-001 P2.6b)", () => {
+  type Counts = { stuckExports?: number; stuckImports?: number; authEmailFailures?: number };
+
+  function makeMultiTenantService(counts: Record<string, Counts>, options: { failTenant?: string } = {}) {
+    const tenantOf = (name: string, args: { where?: { tenantKey?: string } }): string => {
+      const tenantKey = args.where?.tenantKey;
+      if (!tenantKey) {
+        throw new Error("query without a tenant filter: " + name);
+      }
+      if (options.failTenant === tenantKey) {
+        throw Object.assign(new Error("connection postgres://user:SECRET@host/db reset"), { code: "P1001" });
+      }
+      return tenantKey;
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      marketplaceExportJob: { count: jest.fn(async (args: any) => counts[tenantOf("exportCount", args)]?.stuckExports ?? 0) },
+      bulkImportJob: { count: jest.fn(async (args: any) => counts[tenantOf("importCount", args)]?.stuckImports ?? 0) },
+      kpiMetricEvent: { count: jest.fn(async (args: any) => counts[tenantOf("kpiCount", args)]?.authEmailFailures ?? 0) },
+    };
+    const db = {
+      // ops_alert_states statements
+      $queryRaw: jest.fn().mockResolvedValue([{ alert_key: "reserved" }]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      workspaceDirectory: { findMany: jest.fn().mockResolvedValue(Object.keys(counts).filter((key) => key !== "default").map((tenantKey) => ({ tenantKey }))) },
+      $transaction: jest.fn((fn: (txArg: typeof tx) => Promise<unknown>) => fn(tx)),
+    };
+    const queueService = { enqueue: jest.fn().mockResolvedValue(undefined), processWithBackpressure: jest.fn() };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const service = new InternalOpsAlertsService({ getClient: () => db } as never, { get: jest.fn().mockReturnValue(queueService) } as never, logger as never);
+    return { service, db, tx, queueService, logger };
+  }
+
+  const NOW = new Date("2026-08-23T12:00:00Z");
+
+  // the same alert-delivery environment as the main suite above
+  beforeEach(() => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      APP_ENV: "test",
+      ERROR_AUTHORITY_RELEASE: "test-sha",
+      OPS_ALERT_WEBHOOK_URL: "http://localhost:3999/ops-alerts",
+      PIM_WEB_BASE_URL: "https://ops.vexa.test",
+    };
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  it("sums the stuck jobs of every tenant: a tenant other than the default one raises the alert (the silent watchdog)", async () => {
+    const { service, queueService } = makeMultiTenantService({
+      default: {},
+      "tenant-b": { stuckExports: 2, stuckImports: 1 },
+      "tenant-c": { stuckExports: 1 },
+    });
+
+    const result = await service.evaluateStuckJobs(NOW);
+
+    expect(result).toMatchObject({ alerted: true, stuckCount: 4, reason: "queued" });
+    expect(queueService.enqueue.mock.calls[0][1].envelope).toMatchObject({ stuckCount: 4, stuckExportCount: 3, stuckImportCount: 1 });
+  });
+
+  it("reports a healthy zero only when EVERY tenant is zero", async () => {
+    const { service } = makeMultiTenantService({ default: {}, "tenant-b": {}, "tenant-c": {} });
+    const result = await service.evaluateStuckJobs(NOW);
+    expect(result).toMatchObject({ alerted: false, stuckCount: 0, reason: "not_breached" });
+  });
+
+  it("reads each tenant's stuck jobs in that tenant's own transaction, filtered by that tenant", async () => {
+    const { service, tx } = makeMultiTenantService({ default: {}, "tenant-b": { stuckExports: 1 } });
+    await service.evaluateStuckJobs(NOW);
+    const tenants = (tx.marketplaceExportJob.count.mock.calls as Array<[{ where: { tenantKey: string } }]>).map((call) => call[0].where.tenantKey).sort();
+    expect(tenants).toEqual(["default", "tenant-b"]);
+  });
+
+  it("sums the auth-email job failures of every tenant before comparing with the threshold", async () => {
+    const { service, queueService } = makeMultiTenantService({
+      default: { authEmailFailures: 1 },
+      "tenant-b": { authEmailFailures: 2 },
+      "tenant-c": { authEmailFailures: 2 },
+    });
+
+    const result = await service.evaluateAuthEmailJobFailures(NOW);
+
+    // 5 > 3 only in total: no single tenant is over the threshold on its own
+    expect(result).toMatchObject({ alerted: true, failureCount: 5, reason: "queued" });
+    expect(queueService.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unreadable tenant fails the evaluation open with a warning and raises no alert on a partial count", async () => {
+    const { service, queueService, logger, db } = makeMultiTenantService(
+      { default: {}, "tenant-b": { stuckExports: 5 }, "tenant-c": {} },
+      { failTenant: "tenant-b" },
+    );
+
+    const result = await service.evaluateStuckJobs(NOW);
+
+    expect(result).toEqual({ alerted: false, stuckCount: 0, reason: "evaluation_failed_open" });
+    expect(queueService.enqueue).not.toHaveBeenCalled();
+    // the alert state is not reset by a read that could not be completed
+    expect(db.$executeRaw).not.toHaveBeenCalled();
+    const logged = JSON.stringify(logger.warn.mock.calls);
+    expect(logged).toContain("tenant-b");
+    expect(logged).toContain("P1001");
+    expect(logged).not.toContain("SECRET");
   });
 });
