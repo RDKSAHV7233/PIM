@@ -79,19 +79,6 @@
       "status": "open"
     },
     {
-      "file": "bulk-edit/bulk-edit-stale-operation-recovery.service.ts",
-      "class": "A",
-      "remediation": "tenant-iteration",
-      "plan": "discover stale operations per tenant from the authoritative tenant directory, then act inside that tenant's context",
-      "rlsProtectedModels": [
-        "bulkEditOperation"
-      ],
-      "otherModels": [],
-      "rawSqlSites": 0,
-      "positiveAssertion": "a stale operation seeded for a non-default tenant is recovered",
-      "status": "open"
-    },
-    {
       "file": "bulk-import/bulk-import-stale-row-recovery.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
@@ -578,6 +565,16 @@
       "noArgTenantRawSites": 0,
       "rawSqlSites": 9,
       "status": "migrated"
+    },
+    {
+      "file": "bulk-edit/bulk-edit-stale-operation-recovery.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "P2.3a done: stale operations are discovered per tenant through forEachTenant (transaction-local tenant context, bounded concurrency; the SQL ALSO filters by the tenant it is given so it is correct with or without RLS; rows of another tenant are counted as failures and never acted on), merged oldest-first under the batch limit, and each is failed through the existing per-tenant markStuckOperationFailed. Unreadable tenants are logged as errors by code and returned as tenantsFailed; a directory read failure rejects. The file no longer uses the context-free direct client.",
+      "positiveAssertion": "bulk-edit-stale-recovery-tenant-iteration.test.cjs: a stale processing operation in each of two non-default directory tenants and the default tenant is failed under the restricted role with its own tenant's applied/failed item counts, a fresh operation is left alone; bulk-edit-stale-operation-recovery.service.spec.ts (both RLS modes, mutation-checked)",
+      "noArgTenantRawSites": 0,
+      "rawSqlSites": 1,
+      "status": "migrated"
     }
   ],
   "rawSqlSitesByFile": {
@@ -603,12 +600,13 @@
     "workspace-users/workspace-users.service.ts": 2,
     "common/tenant/tenant-iteration.ts": 1,
     "common/tenant/fake-rls-db-spec.ts": 2,
-    "billing/fake-plan-profile-db-spec.ts": 2
+    "billing/fake-plan-profile-db-spec.ts": 2,
+    "bulk-edit/bulk-edit-stale-operation-recovery.service.ts": 1
   },
   "totals": {
-    "directClientFiles": 32,
-    "rawSqlSites": 86,
-    "rawSqlFiles": 23
+    "directClientFiles": 31,
+    "rawSqlSites": 87,
+    "rawSqlFiles": 24
   },
   "otherClients": [
     {

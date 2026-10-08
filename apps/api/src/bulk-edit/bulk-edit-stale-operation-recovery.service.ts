@@ -1,9 +1,10 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
-import { BulkEditOperationStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { runWithTenantContext } from "../common/tenant/tenant-context";
-import { PrismaDirectService } from "../prisma/prisma-direct.service";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
+import { PrismaService } from "../prisma/prisma.service";
 import { BulkEditService } from "./bulk-edit.service";
 
 // F-014: a worker that crashes mid-processApplyJob (deploy, OOM, transient DB
@@ -21,6 +22,23 @@ const RECOVERY_INITIAL_DELAY_MS = 3 * 60 * 1000;
 const RECOVERY_INTERVAL_MS = 15 * 60 * 1000;
 const RECOVERY_BATCH_LIMIT = 500;
 
+/** BULK_EDIT_STALE_RECOVERY_INITIAL_DELAY_MS (>= 100) shortens the first sweep for tests; unset or invalid keeps the 3 minute default. */
+function resolveInitialDelayMs(env: NodeJS.ProcessEnv = process.env): number {
+  const requested = Number(env.BULK_EDIT_STALE_RECOVERY_INITIAL_DELAY_MS);
+  return Number.isFinite(requested) && requested >= 100 ? Math.floor(requested) : RECOVERY_INITIAL_DELAY_MS;
+}
+
+export interface StaleOperationRecoveryResult {
+  recoveredOperations: number;
+  tenantsEvaluated: number;
+  /** Tenants whose stale operations could not be read this run; their operations were NOT evaluated. */
+  tenantsFailed: number;
+  /** A runtime role cannot see tenants missing from the directory, so this is never reported as zero. */
+  orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE";
+}
+
+type StaleOperationRow = { id: string; tenantKey: string; updatedAt: Date };
+
 @Injectable()
 export class BulkEditStaleOperationRecoveryService implements OnApplicationBootstrap, OnApplicationShutdown {
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -28,7 +46,7 @@ export class BulkEditStaleOperationRecoveryService implements OnApplicationBoots
   private recovering = false;
 
   constructor(
-    private readonly prismaDirect: PrismaDirectService,
+    private readonly prisma: PrismaService,
     private readonly bulkEditService: BulkEditService,
     private readonly logger: LoggerService,
   ) {}
@@ -45,7 +63,7 @@ export class BulkEditStaleOperationRecoveryService implements OnApplicationBoots
       void this.runScheduledRecovery();
       this.intervalId = setInterval(() => void this.runScheduledRecovery(), RECOVERY_INTERVAL_MS);
       this.intervalId.unref();
-    }, RECOVERY_INITIAL_DELAY_MS);
+    }, resolveInitialDelayMs());
     this.timer.unref();
   }
 
@@ -70,31 +88,59 @@ export class BulkEditStaleOperationRecoveryService implements OnApplicationBoots
     }
   }
 
-  async recoverStaleOperations(now = new Date()): Promise<{ recoveredOperations: number }> {
+  async recoverStaleOperations(now = new Date()): Promise<StaleOperationRecoveryResult> {
     if (this.recovering) {
-      return { recoveredOperations: 0 };
+      return { recoveredOperations: 0, tenantsEvaluated: 0, tenantsFailed: 0, orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE" };
     }
     this.recovering = true;
     try {
       const staleBefore = new Date(now.getTime() - STALE_PROCESSING_THRESHOLD_MS);
-      const client = this.prismaDirect.getClient();
 
-      // Global (cross-tenant) read via the direct client, matching
-      // BulkImportStaleRowRecoveryService's established pattern — tenant
-      // isolation is enforced by PrismaService's per-tenant query extension,
-      // not Postgres RLS, so this direct client legitimately sees every
-      // tenant. markStuckOperationFailed() below restores per-tenant scoping.
-      const staleOperations = await client.bulkEditOperation.findMany({
-        where: {
-          status: { in: [BulkEditOperationStatus.queued, BulkEditOperationStatus.processing] },
-          updatedAt: { lte: staleBefore },
-        },
-        select: { id: true, tenantKey: true },
-        take: RECOVERY_BATCH_LIMIT,
+      // SEC-DB-RLS-001: this used to be ONE cross-tenant read through the context-free direct client, which under row level
+      // security sees no tenant's rows, so stale operations would have stayed stuck while the sweep reported nothing to do. It now
+      // discovers per tenant (forEachTenant), inside that tenant's own transaction, and the query ALSO filters by the tenant it is
+      // given, so it is correct whether or not the runtime role bypasses RLS. A tenant that could not be read is reported, never
+      // skipped silently. Per-tenant results are merged oldest-first under the overall batch limit.
+      const found: StaleOperationRow[] = [];
+      const summary = await forEachTenant(this.prisma.tenant(), async (tx, tenantKey) => {
+        // RLS-BYPASS: manual tenant filter — WHERE "tenantKey" = ${tenantKey} below, on a transaction whose tenant context is that tenant.
+        const rows = await tx.$queryRaw<StaleOperationRow[]>(Prisma.sql`
+          SELECT id, "tenantKey", "updatedAt"
+          FROM "BulkEditOperation"
+          WHERE "tenantKey" = ${tenantKey}
+            AND status IN ('queued'::"BulkEditOperationStatus", 'processing'::"BulkEditOperationStatus")
+            AND "updatedAt" <= ${staleBefore}
+          ORDER BY "updatedAt" ASC
+          LIMIT ${RECOVERY_BATCH_LIMIT}
+        `);
+        // A row of another tenant means the filter above was bypassed: count it as a failure, never act on it.
+        const own = rows.filter((row) => row.tenantKey === tenantKey);
+        found.push(...own);
+        return { examinedCount: rows.length, changedCount: 0, failedCount: rows.length - own.length };
+      });
+
+      if (summary.tenantsFailed > 0) {
+        // A tenant we could not read is a tenant whose stuck operations we may have missed: an error, never a quiet success.
+        this.logger.error("Bulk-edit stale-operation recovery could not read some tenants; their operations were NOT evaluated this run.", {
+          tenantsFailed: summary.tenantsFailed,
+          tenantsEvaluated: summary.tenantsEvaluated,
+          failures: summary.results.filter((result) => result.status === "failed").map((result) => ({ tenantKey: result.tenantKey, errorCode: result.errorCode ?? "UNKNOWN" })),
+        });
+      }
+
+      const staleOperations = found
+        .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+        .slice(0, RECOVERY_BATCH_LIMIT);
+
+      const result = (recoveredOperations: number): StaleOperationRecoveryResult => ({
+        recoveredOperations,
+        tenantsEvaluated: summary.tenantsEvaluated,
+        tenantsFailed: summary.tenantsFailed,
+        orphanDetection: summary.orphanDetection,
       });
 
       if (staleOperations.length === 0) {
-        return { recoveredOperations: 0 };
+        return result(0);
       }
 
       this.logger.warn("Recovering bulk-edit operations stuck past the staleness threshold.", {
@@ -122,7 +168,7 @@ export class BulkEditStaleOperationRecoveryService implements OnApplicationBoots
         }
       }
 
-      return { recoveredOperations };
+      return result(recoveredOperations);
     } finally {
       this.recovering = false;
     }
