@@ -3,7 +3,7 @@ import { Prisma, RecordStatus } from "@prisma/client";
 import { CacheService } from "../common/cache/cache.service";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
-import { listTenantKeys } from "../common/tenant/tenant-iteration";
+import { forEachTenant, listTenantKeys } from "../common/tenant/tenant-iteration";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -175,6 +175,31 @@ interface CommercialWorkspaceCandidate {
   displayName: string;
   workspaceIsActive: boolean;
   updatedAt: Date;
+}
+
+/** listEnrichedTenants with a plan/billing filter scans the newest workspaces this many at a time, up to the bound. */
+const ENRICHED_FILTER_SCAN_PAGE = 50;
+const ENRICHED_FILTER_SCAN_MAX = 2_500;
+
+interface TenantCommercialProfileRow {
+  planTier: string | null;
+  billingStatus: string | null;
+  accessStatus: string | null;
+  trialEndsAt: Date | null;
+  paidThroughAt: Date | null;
+  graceEndsAt: Date | null;
+  cancelledAt: Date | null;
+  suspendedAt: Date | null;
+  suspensionReason: string | null;
+  billingContactEmail: string | null;
+}
+
+/** The RLS-protected commercial data of one tenant, read in that tenant's own transaction (readTenantCommercialSnapshots). */
+interface TenantCommercialSnapshot {
+  profile: TenantCommercialProfileRow | null;
+  latestUsagePlanTier: string | null;
+  usage: { skuCount: number; submissionCount: number; storageGb: number; connectorInstallationsCount: number } | null;
+  connectors: Array<{ slug: string; displayName: string; accountCount: number }>;
 }
 
 interface BytesRow {
@@ -994,17 +1019,17 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       take: 2_500,
     });
 
-    const rows = await this.buildCommercialTenantRows(
-      workspaceCandidates.map((workspace) => ({
-        tenantKey: workspace.tenantKey,
+    // Rank and cut to the requested page on the directory fields first: the ranking uses only the tenant key, slug, display name,
+    // admin match and workspace update time, never plan data. Only the returned page is then enriched with the RLS-protected plan
+    // profile (one read per returned tenant, at most 250) instead of every candidate (up to 2,500).
+    const page = workspaceCandidates
+      .map((workspace) => ({
+        tenantKey: normalizeTenantKey(workspace.tenantKey),
         workspaceSlug: workspace.workspaceSlug,
         displayName: workspace.displayName,
         workspaceIsActive: workspace.isActive,
         updatedAt: workspace.updatedAt,
-      })),
-    );
-
-    return rows
+      }))
       .sort((left, right) => {
         const rankDiff =
           this.rankCommercialTenantMatch(left, exactQuery, query, hasQuery, matchingAdminTenantKeys) -
@@ -1018,8 +1043,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         }
         return left.tenantKey.localeCompare(right.tenantKey);
       })
-      .slice(0, limit)
-      .map((row) => this.mapCommercialTenantSearchRow(row));
+      .slice(0, limit);
+
+    const rows = await this.buildCommercialTenantRows(page);
+    return rows.map((row) => this.mapCommercialTenantSearchRow(row));
   }
 
   async exportCommercialTenantsCsvInternal(input?: ListCommercialTenantsInternalInput): Promise<string> {
@@ -1076,72 +1103,69 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     limit?: number;
   }): Promise<EnrichedTenantResult[]> {
     const limit = Math.max(1, Math.min(filters?.limit ?? 50, 100));
+    // Non-RLS tables (the workspace directory and identities) are read through the context-free client. The RLS-protected plan
+    // profile, usage and connector data are read per tenant (readTenantCommercialSnapshots): under row level security the
+    // context-free client sees none of their rows (SEC-DB-RLS-001 P2.1b-ii).
     const db = this.prismaDirect.getClient();
     const month = this.getMonthKey();
 
-    // Step 1: Resolve tenant keys that match plan/billing filters (DB-level).
+    // Step 1: resolve the workspaces to show, newest first. Without a plan/billing filter that is simply the newest `limit`
+    // workspaces. With a filter the plan profile decides, and it is RLS-protected, so the newest workspaces are scanned a page
+    // at a time (profiles read per tenant) until `limit` matches are found or the scan bound is reached. Tenants without a
+    // profile never match a filter, as before.
+    const workspaceSelect = { tenantKey: true, workspaceSlug: true, displayName: true, isActive: true, createdAt: true } as const;
     const hasFilters = !!(filters?.planTier || filters?.billingStatus);
-    let filteredTenantKeys: string[] | null = null;
-    if (hasFilters) {
-      const profileWhere: Record<string, unknown> = {};
-      if (filters?.planTier) profileWhere.planTier = filters.planTier.toUpperCase();
-      if (filters?.billingStatus) profileWhere.billingStatus = filters.billingStatus.toLowerCase();
-      const matchingProfiles = await db.tenantPlanProfile.findMany({
-        where: profileWhere,
-        select: { tenantKey: true },
+    const planTierFilter = filters?.planTier ? filters.planTier.toUpperCase() : null;
+    const billingStatusFilter = filters?.billingStatus ? filters.billingStatus.toLowerCase() : null;
+    let workspaces: Array<{ tenantKey: string; workspaceSlug: string; displayName: string; isActive: boolean; createdAt: Date }>;
+    if (!hasFilters) {
+      workspaces = await db.workspaceDirectory.findMany({
+        select: workspaceSelect,
+        orderBy: [{ createdAt: "desc" }, { tenantKey: "asc" }],
         take: limit,
       });
-      filteredTenantKeys = matchingProfiles.map((p) => normalizeTenantKey(p.tenantKey));
-      if (filteredTenantKeys.length === 0) return [];
+    } else {
+      workspaces = [];
+      for (let offset = 0; workspaces.length < limit && offset < ENRICHED_FILTER_SCAN_MAX; offset += ENRICHED_FILTER_SCAN_PAGE) {
+        const pageRows = await db.workspaceDirectory.findMany({
+          select: workspaceSelect,
+          orderBy: [{ createdAt: "desc" }, { tenantKey: "asc" }],
+          skip: offset,
+          take: ENRICHED_FILTER_SCAN_PAGE,
+        });
+        if (pageRows.length === 0) {
+          break;
+        }
+        const profiles = await this.readTenantCommercialSnapshots(pageRows.map((workspace) => workspace.tenantKey));
+        for (const workspace of pageRows) {
+          const profile = profiles.get(normalizeTenantKey(workspace.tenantKey))?.profile;
+          if (!profile) {
+            continue;
+          }
+          if (planTierFilter && profile.planTier !== planTierFilter) {
+            continue;
+          }
+          if (billingStatusFilter && profile.billingStatus !== billingStatusFilter) {
+            continue;
+          }
+          workspaces.push(workspace);
+          if (workspaces.length >= limit) {
+            break;
+          }
+        }
+        if (pageRows.length < ENRICHED_FILTER_SCAN_PAGE) {
+          break;
+        }
+      }
     }
-
-    // Step 2: Fetch workspaces (bounded by filter set or global limit).
-    const workspaces = await db.workspaceDirectory.findMany({
-      where: filteredTenantKeys ? { tenantKey: { in: filteredTenantKeys } } : undefined,
-      select: { tenantKey: true, workspaceSlug: true, displayName: true, isActive: true, createdAt: true },
-      orderBy: { createdAt: "desc" },
-      take: filteredTenantKeys ? filteredTenantKeys.length : limit,
-    });
     if (workspaces.length === 0) return [];
 
     const tenantKeys = workspaces.map((w) => normalizeTenantKey(w.tenantKey)).slice(0, limit);
 
-    // Step 3: Batch-enrich with profiles, usage, connectors, admin emails, and user counts.
-    const [profiles, usageRows, connectorRows, adminIdentities, userCounts] = await Promise.all([
-      db.tenantPlanProfile.findMany({
-        where: { tenantKey: { in: tenantKeys } },
-        select: {
-          tenantKey: true, planTier: true, billingStatus: true, accessStatus: true,
-          trialEndsAt: true, paidThroughAt: true, graceEndsAt: true, cancelledAt: true,
-          suspendedAt: true, suspensionReason: true, billingContactEmail: true,
-        },
-      }),
-      db.planUsage.findMany({
-        where: { tenantKey: { in: tenantKeys }, month },
-        select: {
-          tenantKey: true, skuCount: true, submissionCount: true,
-          storageGb: true, connectorInstallationsCount: true,
-        },
-      }),
-      // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ANY(${tenantKeys})
-      // below scopes this to exactly the tenant set already resolved in Step 1/2 above.
-      // db is the direct (unscoped) client deliberately, since this admin/commercial-ops
-      // enrichment view spans many tenants at once by design, not a single tenant.
-      db.$queryRaw<
-        Array<{ tenantKey: string; slug: string; displayName: string; accountCount: number }>
-      >`
-        SELECT
-          ci.tenant_key AS "tenantKey",
-          cd.slug AS slug,
-          cd.display_name AS "displayName",
-          COUNT(*)::int AS "accountCount"
-        FROM connector_installations ci
-        JOIN connector_definitions cd ON cd.id = ci.connector_id
-        WHERE ci.tenant_key = ANY(${tenantKeys}::text[])
-          AND ci.status <> 'DISABLED'
-        GROUP BY ci.tenant_key, cd.slug, cd.display_name
-        ORDER BY ci.tenant_key, "accountCount" DESC
-      `,
+    // Step 2: batch-enrich. Plan profile, usage and connectors: per tenant (RLS-protected). Admin emails and user counts:
+    // identities are not RLS-protected and stay batched.
+    const [snapshots, adminIdentities, userCounts] = await Promise.all([
+      this.readTenantCommercialSnapshots(tenantKeys, { usageMonth: month, connectors: true }),
       db.authIdentity.findMany({
         where: { tenantKey: { in: tenantKeys }, role: { equals: "admin", mode: "insensitive" }, isActive: true },
         select: { tenantKey: true, userId: true },
@@ -1154,15 +1178,6 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
-    const profileMap = new Map(profiles.map((p) => [normalizeTenantKey(p.tenantKey), p]));
-    const usageMap = new Map(usageRows.map((r) => [normalizeTenantKey(r.tenantKey), r]));
-    const connectorMap = new Map<string, Array<{ slug: string; displayName: string; accountCount: number }>>();
-    for (const row of connectorRows) {
-      const key = normalizeTenantKey(row.tenantKey);
-      const list = connectorMap.get(key) ?? [];
-      list.push({ slug: row.slug, displayName: row.displayName, accountCount: row.accountCount });
-      connectorMap.set(key, list);
-    }
     const adminMap = new Map<string, string[]>();
     for (const identity of adminIdentities) {
       const key = normalizeTenantKey(identity.tenantKey);
@@ -1176,9 +1191,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
     return workspaces.slice(0, limit).map((w) => {
       const tk = normalizeTenantKey(w.tenantKey);
-      const profile = profileMap.get(tk);
+      const snapshot = snapshots.get(tk);
+      const profile = snapshot?.profile ?? null;
       const planTier = this.normalizePlanTier(profile?.planTier ?? "TRIAL");
-      const usageRow = usageMap.get(tk);
+      const usageRow = snapshot?.usage ?? null;
       return {
         tenantKey: tk,
         workspaceSlug: w.workspaceSlug,
@@ -1204,7 +1220,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
               connectorInstallationsCount: usageRow.connectorInstallationsCount,
             }
           : null,
-        connectors: connectorMap.get(tk) ?? [],
+        connectors: snapshot?.connectors ?? [],
         createdAt: w.createdAt.toISOString(),
       };
     });
@@ -1947,7 +1963,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private rankCommercialTenantMatch(
-    row: CommercialTenantSearchRow & { updatedAt: Date },
+    row: CommercialWorkspaceCandidate,
     exactQuery: string,
     query: string,
     hasQuery: boolean,
@@ -1994,37 +2010,11 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
     const db = this.prismaDirect.getClient();
 
-    const [profiles, latestUsageRows, adminIdentities] = await Promise.all([
-      db.tenantPlanProfile.findMany({
-        where: {
-          tenantKey: { in: tenantKeys },
-        },
-        select: {
-          tenantKey: true,
-          planTier: true,
-          billingStatus: true,
-          accessStatus: true,
-          trialEndsAt: true,
-          paidThroughAt: true,
-          graceEndsAt: true,
-          cancelledAt: true,
-          suspendedAt: true,
-          suspensionReason: true,
-          billingContactEmail: true,
-        },
-      }),
-      db.planUsage.findMany({
-        where: {
-          tenantKey: { in: tenantKeys },
-        },
-        select: {
-          tenantKey: true,
-          planTier: true,
-          month: true,
-          updatedAt: true,
-        },
-        orderBy: [{ tenantKey: "asc" }, { month: "desc" }, { updatedAt: "desc" }],
-      }),
+    // The plan profile and latest usage tier are RLS-protected: they are read per tenant (readTenantCommercialSnapshots), never
+    // through the context-free client, which under row level security would show every tenant as the default TRIAL plan. Admin
+    // identities are not RLS-protected and stay one batched read.
+    const [snapshots, adminIdentities] = await Promise.all([
+      this.readTenantCommercialSnapshots(tenantKeys),
       db.authIdentity.findMany({
         where: {
           tenantKey: { in: tenantKeys },
@@ -2044,14 +2034,6 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
-    const profileMap = new Map(profiles.map((profile) => [normalizeTenantKey(profile.tenantKey), profile]));
-    const latestUsageMap = new Map<string, string>();
-    for (const usage of latestUsageRows) {
-      const tenantKey = normalizeTenantKey(usage.tenantKey);
-      if (!latestUsageMap.has(tenantKey)) {
-        latestUsageMap.set(tenantKey, usage.planTier);
-      }
-    }
     const adminMap = new Map<string, string[]>();
     for (const identity of adminIdentities) {
       const tenantKey = normalizeTenantKey(identity.tenantKey);
@@ -2064,13 +2046,14 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
     return workspaces.map((workspace) => {
       const tenantKey = normalizeTenantKey(workspace.tenantKey);
-      const profile = profileMap.get(tenantKey);
+      const snapshot = snapshots.get(tenantKey);
+      const profile = snapshot?.profile ?? null;
       return {
         tenantKey,
         workspaceSlug: workspace.workspaceSlug,
         displayName: workspace.displayName,
         workspaceIsActive: workspace.workspaceIsActive,
-        planTier: profile?.planTier ?? latestUsageMap.get(tenantKey) ?? "TRIAL",
+        planTier: profile?.planTier ?? snapshot?.latestUsagePlanTier ?? "TRIAL",
         billingStatus: profile?.billingStatus ?? null,
         accessStatus: profile?.accessStatus ?? null,
         trialEndsAt: profile?.trialEndsAt ?? null,
@@ -2084,6 +2067,90 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         updatedAt: workspace.updatedAt,
       };
     });
+  }
+
+  /**
+   * Reads, for each given tenant, the RLS-protected commercial data the internal operator views need: the plan profile and the
+   * latest usage tier (always), the usage row of `usageMonth` and the connector summary (when requested).
+   *
+   * SEC-DB-RLS-001 P2.1b-ii: these views span many tenants, so they used to read the RLS-protected tables with one batched query
+   * through the context-free client. Under row level security that client sees none of those rows, so every tenant would silently
+   * show as the default TRIAL plan with no usage. The reads now run per tenant (forEachTenant: one transaction per tenant on one
+   * shared client, tenant context set for that transaction) and every statement ALSO filters by the tenant it is given, so the
+   * result is correct whether or not the role bypasses RLS. (A client per tenant, prisma.tenant(key), is deliberately not used
+   * here: each is a separate connection pool and the service keeps at most 50, so iterating hundreds of tenants would thrash them.)
+   *
+   * A tenant that cannot be read makes the whole read FAIL, loudly, with stable error codes in the log: an operator must never be
+   * shown a defaulted TRIAL plan for a tenant that could not be read.
+   */
+  private async readTenantCommercialSnapshots(
+    tenantKeysInput: string[],
+    include: { usageMonth?: string; connectors?: boolean } = {},
+  ): Promise<Map<string, TenantCommercialSnapshot>> {
+    const snapshots = new Map<string, TenantCommercialSnapshot>();
+    const tenantKeys = this.uniqueNormalizedTenantKeys(tenantKeysInput);
+    if (tenantKeys.length === 0) {
+      return snapshots;
+    }
+    const summary = await forEachTenant(
+      this.prisma.tenant(),
+      async (tx, tenantKey) => {
+        // One statement for the profile and the latest usage tier. LEFT JOIN from a one-row relation so a tenant without a profile
+        // still returns its latest usage tier (planTier is NOT NULL on a real profile, so a null planTier means "no profile").
+        // RLS-BYPASS: manual tenant filter — "tenantKey" = ${tenantKey} in every clause below, on a transaction whose tenant context is that tenant.
+        const [head] = await tx.$queryRaw<Array<TenantCommercialProfileRow & { latestUsagePlanTier: string | null }>>(Prisma.sql`
+          SELECT p."planTier", p."billingStatus", p."accessStatus", p."trialEndsAt", p."paidThroughAt", p."graceEndsAt",
+                 p."cancelledAt", p."suspendedAt", p."suspensionReason", p."billingContactEmail",
+                 (SELECT u."planTier" FROM "PlanUsage" u WHERE u."tenantKey" = ${tenantKey} ORDER BY u."month" DESC, u."updatedAt" DESC LIMIT 1) AS "latestUsagePlanTier"
+          FROM (SELECT 1) AS one
+          LEFT JOIN "TenantPlanProfile" p ON p."tenantKey" = ${tenantKey}
+        `);
+        const snapshot: TenantCommercialSnapshot = {
+          profile: head && head.planTier !== null ? { ...head } : null,
+          latestUsagePlanTier: head?.latestUsagePlanTier ?? null,
+          usage: null,
+          connectors: [],
+        };
+        if (snapshot.profile) {
+          delete (snapshot.profile as { latestUsagePlanTier?: unknown }).latestUsagePlanTier;
+        }
+        if (include.usageMonth) {
+          // RLS-BYPASS: manual tenant filter — "tenantKey" = ${tenantKey} below.
+          const [usage] = await tx.$queryRaw<Array<NonNullable<TenantCommercialSnapshot["usage"]>>>(Prisma.sql`
+            SELECT "skuCount", "submissionCount", "storageGb", "connectorInstallationsCount"
+            FROM "PlanUsage"
+            WHERE "tenantKey" = ${tenantKey} AND "month" = ${include.usageMonth}
+            LIMIT 1
+          `);
+          snapshot.usage = usage ?? null;
+        }
+        if (include.connectors) {
+          // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below.
+          snapshot.connectors = await tx.$queryRaw<TenantCommercialSnapshot["connectors"]>(Prisma.sql`
+            SELECT cd.slug AS slug, cd.display_name AS "displayName", COUNT(*)::int AS "accountCount"
+            FROM connector_installations ci
+            JOIN connector_definitions cd ON cd.id = ci.connector_id
+            WHERE ci.tenant_key = ${tenantKey}
+              AND ci.status <> 'DISABLED'
+            GROUP BY cd.slug, cd.display_name
+            ORDER BY "accountCount" DESC
+          `);
+        }
+        snapshots.set(tenantKey, snapshot);
+        return { examinedCount: 1, changedCount: 0, failedCount: 0 };
+      },
+      { tenantKeys },
+    );
+    if (summary.tenantsFailed > 0) {
+      this.logger.error(
+        `Commercial tenant read could not read ${summary.tenantsFailed}/${summary.tenantsEvaluated} tenant(s) [${summary.results
+          .filter((result) => result.status === "failed")
+          .map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`)
+          .join(", ")}]; the view is not returned rather than showing defaulted plans.`,
+      );
+      throw new Error("COMMERCIAL_TENANT_READ_FAILED");
+    }
+    return snapshots;
   }
 
   private uniqueNormalizedTenantKeys(values: string[]): string[] {

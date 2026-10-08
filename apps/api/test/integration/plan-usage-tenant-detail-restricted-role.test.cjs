@@ -3,14 +3,15 @@
 "use strict";
 
 /**
- * SEC-DB-RLS-001 P2.1b-i: the internal commercial tenant-detail view reads each tenant's plan, usage and connectors under a restricted
- * (NOSUPERUSER, NOBYPASSRLS, non-owner) role, and one tenant's view never contains another tenant's data.
+ * SEC-DB-RLS-001 P2.1b-i and P2.1b-ii: the internal commercial views (tenant detail, enriched listing with plan and billing filters,
+ * tenant search, overview) read each tenant's plan, usage and connectors under a restricted (NOSUPERUSER, NOBYPASSRLS, non-owner) role,
+ * and one tenant's view never contains another tenant's data.
  *
- * Before the change, getTenantDetail read TenantPlanProfile, PlanUsage and connector_installations through the context-free direct
- * client. Under row level security that client sees none of their rows, so the view silently showed a default TRIAL plan, zero usage and
- * no connectors for every tenant. This test builds the real service in a child process whose database environment is the restricted
- * role, in a dedicated throwaway database (migrated here, dropped after), and asks it for two non-default tenants that have different
- * plans, usage, connectors and users, plus a directory tenant with no commercial data.
+ * Before the change, these views read TenantPlanProfile, PlanUsage and connector_installations through the context-free direct client.
+ * Under row level security that client sees none of their rows, so the views silently showed a default TRIAL plan, zero usage and no
+ * connectors for every tenant (and the plan/billing filters matched nothing). This test builds the real service in a child process whose
+ * database environment is the restricted role, in a dedicated throwaway database (migrated here, dropped after), and asks it for two
+ * non-default tenants that have different plans, usage, connectors and users, plus a directory tenant with no commercial data.
  */
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
@@ -102,6 +103,11 @@ async function main() {
         for (const key of ${JSON.stringify(Object.values(T))}) {
           out.detail[key] = await service.getTenantDetail(key);
         }
+        out.enriched = await service.listEnrichedTenants({ limit: 100 });
+        out.enrichedGrowth = await service.listEnrichedTenants({ planTier: "growth", limit: 100 });
+        out.enrichedPastDue = await service.listEnrichedTenants({ billingStatus: "past_due", limit: 100 });
+        out.search = await service.listCommercialTenantsInternal({ query: "td-", limit: 50 });
+        out.overview = await service.getCommercialTenantOverview();
         console.log("RESULT:" + JSON.stringify(out));
         await prisma.onModuleDestroy().catch(() => undefined);
         await direct.onModuleDestroy().catch(() => undefined);
@@ -115,7 +121,7 @@ async function main() {
     assert.equal(run.status, 0, `child failed: ${String(run.stdout).slice(-400)} ${String(run.stderr).slice(-600)}`);
     const line = String(run.stdout).split("\n").find((l) => l.startsWith("RESULT:"));
     assert.ok(line, "the child must print a RESULT line");
-    const { who, detail } = JSON.parse(line.slice("RESULT:".length));
+    const { who, detail, enriched, enrichedGrowth, enrichedPastDue, search, overview } = JSON.parse(line.slice("RESULT:".length));
     assert.equal(who.privileged, false, `the service must run as the restricted role (saw ${JSON.stringify(who)})`);
     assert.equal(who.name, ROLE);
     console.log("PASS 2. the service ran as the restricted role (not a superuser, not BYPASSRLS)");
@@ -149,6 +155,40 @@ async function main() {
     assert.equal(c.usage.skuCount, 0);
     assert.equal(c.users.total, 0);
     console.log("PASS 5. tenant C (no commercial data) shows empty sections, not another tenant's");
+    // ---- the multi-tenant views (P2.1b-ii) ------------------------------------------------------------------------------------------------
+    const mine = (rows) => rows.filter((r) => Object.values(T).includes(r.tenantKey));
+    const byKey = (rows) => Object.fromEntries(mine(rows).map((r) => [r.tenantKey, r]));
+    const e = byKey(enriched);
+    assert.equal(Object.keys(e).length, 3, "the enriched listing must include all three directory tenants");
+    assert.equal(e[T.a].planTier, "ENTERPRISE", "enriched: tenant A must not collapse to the default TRIAL plan");
+    assert.equal(e[T.a].usage.skuCount, 7000);
+    assert.equal(e[T.a].connectors.reduce((n, c) => n + c.accountCount, 0), 2);
+    assert.equal(e[T.a].adminEmails.length, 1);
+    assert.equal(e[T.b].planTier, "GROWTH");
+    assert.equal(e[T.b].billingStatus, "past_due");
+    assert.equal(e[T.b].accessStatus, "suspended");
+    assert.equal(e[T.b].usage.skuCount, 300);
+    assert.equal(e[T.b].connectors.reduce((n, c) => n + c.accountCount, 0), 1);
+    assert.equal(e[T.c].usage, null, "enriched: tenant C has no usage and must not show another tenant's");
+    assert.deepEqual(e[T.c].connectors, []);
+    console.log("PASS 6. the enriched listing shows each tenant's own plan, usage, connectors and admins");
+
+    assert.deepEqual(mine(enrichedGrowth).map((r) => r.tenantKey), [T.b], "the planTier filter must find tenant B through its per-tenant profile");
+    assert.deepEqual(mine(enrichedPastDue).map((r) => r.tenantKey), [T.b], "the billingStatus filter must find tenant B through its per-tenant profile");
+    console.log("PASS 7. the plan and billing filters match on each tenant's own profile (the context-free client would match nothing)");
+
+    const found = byKey(search);
+    assert.equal(found[T.a].planTier, "ENTERPRISE");
+    assert.equal(found[T.b].planTier, "GROWTH");
+    assert.equal(found[T.b].accessStatus, "suspended");
+    console.log("PASS 8. the tenant search shows each tenant's own plan and access status");
+
+    // The overview counts every tenant in the database, so assert it includes at least our tenants' contributions.
+    assert.ok(overview.planTierCounts.enterprise >= 1 && overview.planTierCounts.growth >= 1, "the overview must count tenant A as ENTERPRISE and tenant B as GROWTH");
+    assert.ok(overview.billingStatusCounts.pastDue >= 1, "the overview must count tenant B as past due");
+    assert.ok(overview.accessStatusCounts.suspended >= 1, "the overview must count tenant B as suspended");
+    assert.ok(overview.totalTenants >= 3);
+    console.log("PASS 9. the overview aggregates each tenant's own profile (enterprise, growth, past due, suspended are all counted)");
     console.log("plan-usage tenant-detail restricted-role integration test passed.");
   } finally {
     if (admin) {

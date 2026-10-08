@@ -60,7 +60,7 @@
       "file": "billing/plan-usage.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "P2.1a (nightly rollup tenant discovery) is implemented: tenants now come from the workspace directory plus the default tenant, each recomputed through its own tenant context, with a per-tenant result summary; the legacy cross-table scan is retained only as a best-effort addition for a superuser deployment. P2.1b-i is implemented: getTenantDetail reads TenantPlanProfile, PlanUsage and connector_installations through the requested tenant's own client (proven under the restricted role by plan-usage-tenant-detail-restricted-role.test.cjs). Remaining (P2.1b-ii): listEnrichedTenants, buildCommercialTenantRows (search, CSV export, overview) still read the RLS tables TenantPlanProfile, PlanUsage and connector_installations through the direct client and must move to per-tenant reads with application-side aggregation (rank and slice on directory fields first so only the returned page is enriched). The direct client may remain only for the non-RLS tables WorkspaceDirectory, AuthIdentity and PublicSignupRequest (AuthIdentity and the signup lookups belong to the P2.8 class C decision). PlanLimits stays a global config table. The file stays open until P2.1b-ii and the P2.8 decision remove the direct-client references",
+      "plan": "P2.1a (nightly rollup tenant discovery) is implemented: tenants now come from the workspace directory plus the default tenant, each recomputed through its own tenant context, with a per-tenant result summary; the legacy cross-table scan is retained only as a best-effort addition for a superuser deployment. P2.1b-i is implemented: getTenantDetail reads TenantPlanProfile, PlanUsage and connector_installations through the requested tenant's own client (proven under the restricted role by plan-usage-tenant-detail-restricted-role.test.cjs). P2.1b-ii is implemented: listEnrichedTenants, the tenant search / CSV export and the overview read the RLS tables TenantPlanProfile, PlanUsage and connector_installations per tenant through forEachTenant (one transaction per tenant, every statement filtered by that tenant; a tenant that cannot be read fails the whole view loudly), with search ranking and paging done on directory fields first so only the returned page is enriched (proven under the restricted role by the same test). No RLS-protected table is read through the direct client any more. The direct client remains only for the non-RLS tables WorkspaceDirectory, AuthIdentity and PublicSignupRequest (AuthIdentity and the signup lookups belong to the P2.8 class C decision, which keeps this file open). PlanLimits stays a global config table",
       "rlsProtectedModels": [
         "apiAccessKey",
         "authIdentity",
@@ -74,7 +74,7 @@
         "publicSignupRequest",
         "workspaceDirectory"
       ],
-      "rawSqlSites": 21,
+      "rawSqlSites": 23,
       "positiveAssertion": "a non-default tenant's PlanUsage is recomputed (non-empty); proven for the nightly rollup by apps/api/test/integration/plan-usage-rollup-tenant-iteration.test.cjs under the restricted role",
       "status": "open"
     },
@@ -483,7 +483,7 @@
       "plan": "tenant discovery scan inside the nightly rollup (counted above)",
       "positiveAssertion": "see plan-usage entry",
       "noArgTenantRawSites": 5,
-      "rawSqlSites": 21,
+      "rawSqlSites": 23,
       "status": "open"
     },
     {
@@ -571,7 +571,7 @@
     "billing/commercial-reminders.service.ts": 1,
     "billing/commercial-requests.service.ts": 2,
     "billing/grace-period-escalation.service.ts": 1,
-    "billing/plan-usage.service.ts": 21,
+    "billing/plan-usage.service.ts": 23,
     "billing/stripe.service.ts": 9,
     "bulk-import/bulk-import.service.ts": 4,
     "catalog/catalog.service.ts": 1,
@@ -598,7 +598,7 @@
   },
   "totals": {
     "directClientFiles": 28,
-    "rawSqlSites": 91,
+    "rawSqlSites": 93,
     "rawSqlFiles": 27
   },
   "otherClients": [
