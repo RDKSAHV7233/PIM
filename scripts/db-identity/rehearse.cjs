@@ -340,6 +340,13 @@ async function main() {
     await expectAllowed("runtime can UPDATE budget counters", rt, `UPDATE ai_platform_budget_periods SET request_count = request_count`);
     await expectDenied("runtime cannot INSERT a budget period", rt, `INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p-rogue','x', now(), now())`);
     await expectDenied("runtime cannot DELETE a budget period", rt, `DELETE FROM ai_platform_budget_periods`);
+    // 8.1a: the connector catalogue and the entitlement ledger are read-only for the runtime
+    for (const table of ["connector_definitions", "connector_tenant_entitlements"]) {
+      await rows(rt, `SELECT count(*) FROM ${table}`).then(() => check(`runtime can READ ${table}`, true), (e) => check(`runtime can READ ${table}`, false, e.message));
+      await expectDenied(`runtime cannot INSERT into ${table}`, rt, `INSERT INTO ${table} (id) VALUES ('rogue')`);
+      await expectDenied(`runtime cannot UPDATE ${table}`, rt, `UPDATE ${table} SET id = id`);
+      await expectDenied(`runtime cannot DELETE from ${table}`, rt, `DELETE FROM ${table}`);
+    }
     check("runtime proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
 
     // ---------------------------------------------------------------------------------------------------------------------------

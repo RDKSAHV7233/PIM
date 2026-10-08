@@ -22,7 +22,9 @@
     ],
     "exceptionsToCrud": {
       "ai_platform_controls": "SELECT only: operators write the kill switch through vexa_ops, never the API",
-      "ai_platform_budget_periods": "SELECT and UPDATE only: the API moves counters, operators create and delete periods"
+      "ai_platform_budget_periods": "SELECT and UPDATE only: the API moves counters, operators create and delete periods",
+      "connector_definitions": "SELECT only (SEC-DB-RLS-001 8.1a): the catalogue of connectors is reference data written by migrations and operator seeds; no API code path writes it (searched: typed accessors, raw SQL, nested writes), and the restricted-role lane runs the API without write access",
+      "connector_tenant_entitlements": "SELECT only (SEC-DB-RLS-001 8.1a): an append-only grant ledger (a trigger forbids edits) written by Product Operations, never by the API; the publication-target evaluator only reads it"
     },
     "tables": {
       "AccessScopeAssignment": "crud",
@@ -73,7 +75,7 @@
       "audit_logs": "crud",
       "change_requests": "crud",
       "connector_credentials": "crud",
-      "connector_definitions": "crud",
+      "connector_definitions": "select",
       "connector_installations": "crud",
       "connector_mapping_events": "crud",
       "connector_mapping_versions": "crud",
@@ -81,7 +83,7 @@
       "connector_product_sync_states": "crud",
       "connector_submissions": "crud",
       "connector_sync_schedules": "crud",
-      "connector_tenant_entitlements": "crud",
+      "connector_tenant_entitlements": "select",
       "connector_webhook_events": "crud",
       "dashboard_snapshots": "crud",
       "kpi_metric_events": "crud",
