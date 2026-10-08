@@ -108,7 +108,10 @@ async function main() {
     try {
       const rows = await admin.$queryRaw`SELECT usename FROM pg_stat_activity WHERE application_name = 'vexa-pim-api-restricted'`;
       for (const r of rows) {
-        apiUsers.add(r.usename);
+        // A backend still inside the connection handshake has an application name but a NULL user (PostgreSQL 18 reports it): not an identity.
+        if (typeof r.usename === "string" && r.usename.length > 0) {
+          apiUsers.add(r.usename);
+        }
       }
     } catch {
       /* the monitor is best effort */

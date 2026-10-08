@@ -33,7 +33,10 @@ function evaluate(rows, expectedFailing, apiUsers, role, isolatedRoles = [DEFAUL
     return { ...r, status, expected };
   });
   const count = (s) => classified.filter((r) => r.status === s).length;
-  const users = [...apiUsers];
+  // A session that is still inside the connection handshake already carries its application_name but has no user yet: pg_stat_activity
+  // reports a NULL usename for it (PostgreSQL 18 shows these). That is not an identity, so it is neither evidence for the restricted role
+  // nor an unexpected user. Any authenticated session is sampled again with its real user name, and a real other user still fails.
+  const users = [...apiUsers].filter((u) => typeof u === "string" && u.length > 0);
   const monitorSawUnexpectedUser = users.some((u) => u !== role && !isolatedRoles.includes(u));
   const monitorProvesIdentity = users.includes(role) && !monitorSawUnexpectedUser;
   const dedicatedTestProvesIdentity = classified.some((item) => IDENTITY_PROOF_TESTS.has(item.test) && item.status === "PASS");

@@ -68,6 +68,12 @@ assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), [ROLE, "
 assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), ["postgres"]).ok, false, "an API running only as the admin user fails the lane");
 assert.equal(run(rows(["credential-rotation-tenant-iteration.test.cjs", true], ["known.test.cjs", false]), []).ok, true, "the dedicated database-side identity proof covers short-lived API pools");
 assert.equal(run(rows(["credential-rotation-tenant-iteration.test.cjs", true], ["known.test.cjs", false]), ["postgres"]).ok, false, "an observed privileged API identity always fails even when the dedicated proof passes");
+// A backend still inside the connection handshake is reported with a NULL (or empty) user: not an identity, not an unexpected user.
+assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), [ROLE, null, ""]).ok, true, "a not-yet-authenticated session next to the restricted role does not fail the lane");
+assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), [null]).ok, false, "a not-yet-authenticated session proves nothing: no identity evidence still fails");
+assert.equal(run(rows(["credential-rotation-tenant-iteration.test.cjs", true], ["known.test.cjs", false]), [null, ""]).ok, true, "the dedicated proof still covers a lane that only ever sampled handshakes");
+assert.equal(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), [ROLE, null, "postgres"]).ok, false, "a real privileged user still fails the lane even when a handshake was also sampled");
+assert.deepEqual(run(rows(["a.test.cjs", true], ["known.test.cjs", false]), [null, ROLE]).identityProof, "MONITOR", "the restricted role is proven by the monitor, not by the unnamed session");
 const detail = run(rows(["a.test.cjs", false], ["known.test.cjs", true]), [ROLE]);
 assert.deepEqual([detail.unexpectedFail, detail.unexpectedPass], [1, 1]);
 assert.equal(run([], [ROLE]).ok, true, "an empty run has nothing to fail but the runner always has tests");
