@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 const fs = require("node:fs");
+const net = require("node:net");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
 
@@ -135,6 +136,22 @@ function hasTenantMismatch(payload) {
   return message.toLowerCase().includes("tenantkey mismatch");
 }
 
+/**
+ * A free port chosen by the OS. A random port from a fixed range is NOT safe here: Node's fetch (undici) refuses the WHATWG "bad"
+ * ports (6000, 6566, 6665-6669, 6679, 6697, ...) with an immediate "bad port" error, so the health check would retry forever against a
+ * perfectly healthy API and time out. OS-assigned ephemeral ports are outside that list.
+ */
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
@@ -142,7 +159,7 @@ async function run() {
   }
 
   const runId = Date.now().toString();
-  const apiPort = 6000 + Math.floor(Math.random() * 200);
+  const apiPort = await freePort();
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `bulk-tenant-${runId}`;
   const otherTenantId = `bulk-tenant-other-${runId}`;

@@ -17,6 +17,7 @@
  */
 const assert = require("node:assert/strict");
 const { spawn, spawnSync } = require("node:child_process");
+const net = require("node:net");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
@@ -55,6 +56,22 @@ async function waitForHealth(baseUrl, timeoutMs) {
     await sleep(400);
   }
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
+}
+
+/**
+ * A free port chosen by the OS. A random port from a fixed range is NOT safe here: Node's fetch (undici) refuses the WHATWG "bad"
+ * ports (6000, 6566, 6665-6669, 6679, 6697, ...) with an immediate "bad port" error, so the health check would retry forever against a
+ * perfectly healthy API and time out. OS-assigned ephemeral ports are outside that list.
+ */
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 async function main() {
@@ -130,7 +147,7 @@ async function main() {
     console.log("PASS 1. fixture seeded: tenant A (2 sellable SKUs, 1 GiB, 1 export), tenant B (1 sellable SKU, 0.5 GiB), tenant C (directory row only); no PlanUsage rows yet");
 
     // ---- a real API process as the restricted role, first rollup shortened -------------------------------------------------------
-    const port = 6100 + Math.floor(Math.random() * 800);
+    const port = await freePort();
     const baseUrl = `http://127.0.0.1:${port}/api/v1`;
     api = spawn(process.execPath, [path.join(DIST, "main.js")], {
       cwd: REPO_ROOT,
