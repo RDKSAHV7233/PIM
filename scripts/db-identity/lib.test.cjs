@@ -61,7 +61,8 @@ assert.equal(manifest.runtime.tables.ai_platform_controls, "select", "the runtim
 assert.equal(manifest.runtime.tables.ai_platform_budget_periods, "select-update");
 assert.equal(manifest.runtime.tables.connector_definitions, "select", "8.1a: the connector catalogue is reference data the API never writes");
 assert.equal(manifest.runtime.tables.connector_tenant_entitlements, "select", "8.1a: the entitlement ledger is append-only and written by operators, never by the API");
-assert.ok(manifest.runtime.exceptionsToCrud.connector_definitions && manifest.runtime.exceptionsToCrud.connector_tenant_entitlements, "each narrowed table carries its reason");
+assert.equal(manifest.runtime.tables.tax_regimes, "select", "8.1b: the tax regimes are a system registry the runtime only reads; the deploy seed writes as the migrator");
+assert.ok(manifest.runtime.exceptionsToCrud.connector_definitions && manifest.runtime.exceptionsToCrud.connector_tenant_entitlements && manifest.runtime.exceptionsToCrud.tax_regimes, "each narrowed table carries its reason");
 assert.deepEqual(Object.keys(manifest.ops.tables).sort(), ["Product", "Variant", "WorkspaceDirectory", "ai_platform_budget_periods", "ai_platform_controls"], "ops is confined to the platform control tables, the two tables the sellable-SKU backfill uses, and the tenant directory it lists tenants from");
 assert.equal(manifest.ops.tables.WorkspaceDirectory, "select", "the backfill only reads the tenant directory");
 assert.equal(manifest.ops.tables.Product, "select", "the backfill reads products");
@@ -95,6 +96,7 @@ assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "ai_platform_contro
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "ai_platform_budget_periods"), ["SELECT", "UPDATE"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "connector_definitions"), ["SELECT"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "connector_tenant_entitlements"), ["SELECT"]);
+assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "tax_regimes"), ["SELECT"]);
 assert.equal(lib.expectedPrivileges(manifest, "runtime", "a_table_nobody_listed"), null, "an unlisted table is unknown, not granted");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Product"), ["SELECT"], "the backfill reads products and cannot change them");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Variant"), ["INSERT", "SELECT"], "the backfill creates variants and cannot update or delete them");

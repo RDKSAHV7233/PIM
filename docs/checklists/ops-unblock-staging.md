@@ -217,9 +217,15 @@ will throw "Unknown tax regime" because `TaxRegime` rows don't exist yet.
 1. `prisma migrate deploy` runs automatically on deploy — no manual step needed if using the
    standard CI/CD pipeline. Verify the migration appears in `prisma migrate status`.
 
-2. Seed the TaxRegime registry (idempotent — safe to run multiple times):
+2. Seed the TaxRegime registry (idempotent — safe to run multiple times). While the application still connects with
+   the original database credential:
    ```
    DATABASE_URL=<staging-db-url> node scripts/seed-tax-regimes.cjs
+   ```
+   Once the application connects as the restricted runtime role (SEC-DB-RLS-001), that role can only read `tax_regimes`,
+   so the seed must run as the migrator. The script verifies the identity (`vexa_migrator`) before it writes:
+   ```
+   MIGRATION_DATABASE_URL=<migrator-db-url> node scripts/seed-tax-regimes.cjs
    ```
    Expected output: `[seed-tax-regimes] Done — 5 created / 0 updated.`
 

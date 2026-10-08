@@ -24,7 +24,8 @@
       "ai_platform_controls": "SELECT only: operators write the kill switch through vexa_ops, never the API",
       "ai_platform_budget_periods": "SELECT and UPDATE only: the API moves counters, operators create and delete periods",
       "connector_definitions": "SELECT only (SEC-DB-RLS-001 8.1a): the catalogue of connectors is reference data written by migrations and operator seeds; no API code path writes it (searched: typed accessors, raw SQL, nested writes), and the restricted-role lane runs the API without write access",
-      "connector_tenant_entitlements": "SELECT only (SEC-DB-RLS-001 8.1a): an append-only grant ledger (a trigger forbids edits) written by Product Operations, never by the API; the publication-target evaluator only reads it"
+      "connector_tenant_entitlements": "SELECT only (SEC-DB-RLS-001 8.1a): an append-only grant ledger (a trigger forbids edits) written by Product Operations, never by the API; the publication-target evaluator only reads it",
+      "tax_regimes": "SELECT only (SEC-DB-RLS-001 8.1b): a system registry of tax regimes (no RLS) read by catalog and bulk-import validation; the only writers are the deploy-time seed (scripts/seed-tax-regimes.cjs, which writes as vexa_migrator once MIGRATION_DATABASE_URL is set) and test-environment seeds"
     },
     "tables": {
       "AccessScopeAssignment": "crud",
@@ -98,7 +99,7 @@
       "product_relationships": "crud",
       "product_tax_codes": "crud",
       "stripe_webhook_events": "crud",
-      "tax_regimes": "crud",
+      "tax_regimes": "select",
       "tenant_commercial_requests": "crud",
       "user_mfa_backup_codes": "crud",
       "user_mfa_enrollments": "crud",

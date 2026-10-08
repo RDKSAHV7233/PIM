@@ -9,6 +9,12 @@
  *   DATABASE_URL=<url> node scripts/seed-tax-regimes.cjs
  *
  * Requires DATABASE_URL or DATABASE_URL_DIRECT in env (loads .env via dotenv if present).
+ *
+ * SEC-DB-RLS-001 8.1b. tax_regimes is a system registry that the restricted runtime role (vexa_runtime) may only READ. This script
+ * is the one deploy-time writer, so once the runtime credential is restricted it has to write as the migrator, the same identity
+ * that applies the migrations. MIGRATION_DATABASE_URL is the opt-in (a blank value is not): when set the script connects with it and
+ * first verifies the connection really is vexa_migrator (not a superuser, bypasses RLS). When it is not set the script behaves
+ * exactly as before (DATABASE_URL_DIRECT, then DATABASE_URL).
  */
 
 const path = require("node:path");
@@ -20,12 +26,26 @@ try {
   // dotenv not installed or .env not present — rely on env vars already set
 }
 
+const { assertOperatorIdentity } = require("./operator-db-identity.cjs");
+
+/** Which connection the seed uses. A blank MIGRATION_DATABASE_URL (an unset secret mapped into a workflow) is not the opt-in. */
+function resolveSeedConnection(env) {
+  const migration = String(env.MIGRATION_DATABASE_URL ?? "").trim();
+  if (migration) {
+    return { url: migration, optIn: true, source: "MIGRATION_DATABASE_URL" };
+  }
+  const direct = String(env.DATABASE_URL_DIRECT ?? "").trim();
+  if (direct) {
+    return { url: direct, optIn: false, source: "DATABASE_URL_DIRECT" };
+  }
+  return { url: String(env.DATABASE_URL ?? "").trim(), optIn: false, source: "DATABASE_URL" };
+}
+
 async function main() {
   const { PrismaClient } = require("@prisma/client");
 
-  const databaseUrl =
-    process.env.DATABASE_URL_DIRECT ??
-    process.env.DATABASE_URL;
+  const connection = resolveSeedConnection(process.env);
+  const databaseUrl = connection.url;
 
   if (!databaseUrl) {
     console.error("[seed-tax-regimes] ERROR: DATABASE_URL or DATABASE_URL_DIRECT must be set.");
@@ -35,6 +55,12 @@ async function main() {
   const prisma = new PrismaClient({
     datasources: { db: { url: databaseUrl } },
   });
+
+  if (connection.optIn) {
+    // The migrator owns the schema and bypasses RLS; anything else in MIGRATION_DATABASE_URL is a misconfiguration, so stop before writing.
+    await assertOperatorIdentity(prisma, "vexa_migrator", { requireBypassRls: true });
+    console.log("[seed-tax-regimes] connected as vexa_migrator (verified)");
+  }
 
   const regimes = [
     {
@@ -92,7 +118,11 @@ async function main() {
   await prisma.$disconnect();
 }
 
-main().catch((err) => {
-  console.error("[seed-tax-regimes] FAILED:", err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("[seed-tax-regimes] FAILED:", err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}
+
+module.exports = { resolveSeedConnection };

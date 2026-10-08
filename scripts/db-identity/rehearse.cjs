@@ -340,8 +340,8 @@ async function main() {
     await expectAllowed("runtime can UPDATE budget counters", rt, `UPDATE ai_platform_budget_periods SET request_count = request_count`);
     await expectDenied("runtime cannot INSERT a budget period", rt, `INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p-rogue','x', now(), now())`);
     await expectDenied("runtime cannot DELETE a budget period", rt, `DELETE FROM ai_platform_budget_periods`);
-    // 8.1a: the connector catalogue and the entitlement ledger are read-only for the runtime
-    for (const table of ["connector_definitions", "connector_tenant_entitlements"]) {
+    // 8.1a / 8.1b: the connector catalogue, the entitlement ledger and the tax regimes are read-only for the runtime
+    for (const table of ["connector_definitions", "connector_tenant_entitlements", "tax_regimes"]) {
       await rows(rt, `SELECT count(*) FROM ${table}`).then(() => check(`runtime can READ ${table}`, true), (e) => check(`runtime can READ ${table}`, false, e.message));
       await expectDenied(`runtime cannot INSERT into ${table}`, rt, `INSERT INTO ${table} (id) VALUES ('rogue')`);
       await expectDenied(`runtime cannot UPDATE ${table}`, rt, `UPDATE ${table} SET id = id`);
@@ -498,6 +498,36 @@ async function main() {
     check("no report printed the reporter password", [aud, med].every((r) => noPassword(r, REPORTER)));
     await pl.$executeRawUnsafe(`UPDATE "Product" SET status = 'draft' WHERE id IN ('prod-b','prod-d')`);
     check("the operator-script proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
+    section("R8d the deploy-time tax-regime seed: it writes as vexa_migrator once the runtime may only read tax_regimes");
+    const regimeCount = async () => (await rows(pl, `SELECT count(*)::int AS n FROM tax_regimes WHERE "marketCode" IN ('IN','GB','US','AE','AU')`))[0].n;
+    const seedAs = (env) => runScript("seed-tax-regimes.cjs", env);
+    await pl.$executeRawUnsafe(`DELETE FROM tax_regimes WHERE "marketCode" IN ('IN','GB','US','AE','AU')`);
+
+    // the break this item prevents: the seed with only the runtime credential, as the deploy step runs it today
+    const seedRuntime = seedAs({ DATABASE_URL_DIRECT: urlAs(RUNTIME), DATABASE_URL: urlAs(RUNTIME) });
+    check("with only the runtime credential the seed FAILS (permission denied) and writes nothing: this is why it must move to the migrator", seedRuntime.status !== 0 && (await regimeCount()) === 0 && noPassword(seedRuntime, RUNTIME), tail(seedRuntime.err));
+
+    // a wrong identity in MIGRATION_DATABASE_URL is refused before any write
+    for (const [label, role] of [["the runtime", RUNTIME], ["the reporter", REPORTER], ["ops", OPS], ["the backup role", BACKUP]]) {
+      const bad = seedAs({ MIGRATION_DATABASE_URL: urlAs(role), DATABASE_URL_DIRECT: urlAs(RUNTIME), DATABASE_URL: urlAs(RUNTIME) });
+      check(`MIGRATION_DATABASE_URL pointing at ${label} is refused by the identity check and writes nothing`, bad.status !== 0 && /operator identity check failed/.test(bad.err) && noPassword(bad, role) && (await regimeCount()) === 0, tail(bad.err));
+    }
+
+    // the opt-in: the migrator seeds, even though the runtime credential is also present
+    const seedMigrator = seedAs({ MIGRATION_DATABASE_URL: urlAs(MIGRATOR), DATABASE_URL_DIRECT: urlAs(RUNTIME), DATABASE_URL: urlAs(RUNTIME) });
+    check("with MIGRATION_DATABASE_URL the seed succeeds as vexa_migrator and writes all five regimes", seedMigrator.status === 0 && /connected as vexa_migrator/.test(seedMigrator.out) && (await regimeCount()) === 5 && noPassword(seedMigrator, MIGRATOR), tail(seedMigrator.err || seedMigrator.out));
+    const seedAgain = seedAs({ MIGRATION_DATABASE_URL: urlAs(MIGRATOR) });
+    check("running it again is idempotent (still five regimes)", seedAgain.status === 0 && (await regimeCount()) === 5);
+    check("the runtime can read what the migrator seeded", (await rows(rt, `SELECT count(*)::int AS n FROM tax_regimes`))[0].n >= 5);
+
+    // unchanged default: the original superuser path still works
+    await pl.$executeRawUnsafe(`DELETE FROM tax_regimes WHERE "marketCode" IN ('IN','GB','US','AE','AU')`);
+    const seedLegacy = seedAs({ DATABASE_URL_DIRECT: adminFor(PRODLIKE), DATABASE_URL: adminFor(PRODLIKE) });
+    check("without the opt-in the original path (admin credential) is unchanged and still seeds", seedLegacy.status === 0 && (await regimeCount()) === 5, tail(seedLegacy.err));
+    await pl.$executeRawUnsafe(`DELETE FROM tax_regimes WHERE "marketCode" IN ('IN','GB','US','AE','AU')`);
+    check("the seed proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R7c the backup in its production format (plain SQL, gzipped), restored the way the runbook says, and the identity pre-flight");

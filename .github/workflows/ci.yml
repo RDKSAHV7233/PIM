@@ -172,6 +172,7 @@ jobs:
           node scripts/staging-error-authority-ops-errors-acceptance.test.cjs
           node scripts/staging-connector-export-coverage.test.cjs
           node scripts/validate-deploy-staging-workflow.cjs
+          node scripts/seed-tax-regimes.test.cjs
           node scripts/validate-e2e-staging-workflow.cjs
           node scripts/validate-daily-rollout-evidence-workflow.cjs
           node scripts/validate-staging-deploy-config.test.cjs

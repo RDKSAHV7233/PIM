@@ -25,7 +25,7 @@ if (!adminUrl) {
 }
 const password = String(process.env.RESTRICTED_ROLE_PASSWORD || "vexa_runtime_ci_password").replace(/[^A-Za-z0-9_]/g, "");
 
-const SELECT_ONLY = ["ai_platform_controls", "connector_definitions", "connector_tenant_entitlements"];
+const SELECT_ONLY = ["ai_platform_controls", "connector_definitions", "connector_tenant_entitlements", "tax_regimes"];
 const NO_INSERT_DELETE = ["ai_platform_budget_periods"];
 
 const SHARED_CATALOG_RETRY_ATTEMPTS = 10;
@@ -104,8 +104,8 @@ function describeError(error) {
     check("the platform control row is read-only for the runtime", priv.sel === true && priv.upd === false);
     check("platform budget counters may be updated but not inserted by the runtime", priv.pupd === true && priv.ins === false);
     check("the runtime cannot read the migrations table", mig.can_read === false);
-    const [ref] = await db.$queryRaw`SELECT bool_and(has_table_privilege(${ROLE}, t, 'SELECT')) AS can_read, bool_or(has_table_privilege(${ROLE}, t, 'INSERT') OR has_table_privilege(${ROLE}, t, 'UPDATE') OR has_table_privilege(${ROLE}, t, 'DELETE')) AS can_write FROM unnest(ARRAY['connector_definitions', 'connector_tenant_entitlements']) AS t`;
-    check("the connector catalogue and the entitlement ledger are read-only for the runtime", ref.can_read === true && ref.can_write === false);
+    const [ref] = await db.$queryRaw`SELECT bool_and(has_table_privilege(${ROLE}, t, 'SELECT')) AS can_read, bool_or(has_table_privilege(${ROLE}, t, 'INSERT') OR has_table_privilege(${ROLE}, t, 'UPDATE') OR has_table_privilege(${ROLE}, t, 'DELETE')) AS can_write FROM unnest(ARRAY['connector_definitions', 'connector_tenant_entitlements', 'tax_regimes']) AS t`;
+    check("the connector catalogue, the entitlement ledger and the tax regimes are read-only for the runtime", ref.can_read === true && ref.can_write === false);
     const [rls] = await db.$queryRaw`SELECT count(*) FILTER (WHERE relrowsecurity)::int AS enabled, count(*) FILTER (WHERE relforcerowsecurity)::int AS forced FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'`;
     console.log(`INFO tables granted: ${tables.length}; RLS enabled on ${rls.enabled}, forced on ${rls.forced}`);
   } catch (error) {

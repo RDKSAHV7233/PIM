@@ -130,6 +130,9 @@ jobs:
         env:
           DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          # SEC-DB-RLS-001 8.1b, opt-in: tax_regimes is read-only for the restricted runtime, so once the vexa_migrator credential exists
+          # the seed writes as that identity (verified by the script). While the secret is unset the value is empty and nothing changes.
+          MIGRATION_DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
         run: |
           node scripts/seed-tax-regimes.cjs
 

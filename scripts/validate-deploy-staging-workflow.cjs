@@ -109,6 +109,14 @@ function main() {
     "Apply migrations",
   );
   requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
+  // SEC-DB-RLS-001 8.1b: the tax-regime seed writes a table the restricted runtime may only read, so it runs as the migrator when that identity exists.
+  const seedTaxStep = requireStep(steps, "Seed tax regimes");
+  assert(
+    seedTaxStep.env?.MIGRATION_DATABASE_URL === "${{ secrets.STAGING_MIGRATION_DATABASE_URL }}",
+    "Seed tax regimes must map MIGRATION_DATABASE_URL from the STAGING_MIGRATION_DATABASE_URL secret only",
+  );
+  requireRunContains(seedTaxStep, "node scripts/seed-tax-regimes.cjs", "Seed tax regimes");
+  requireStepOrder(steps, "Apply migrations", "Seed tax regimes");
   requireStep(steps, "Install Railway CLI");
   requireStepOrder(steps, "Apply migrations", "Install Railway CLI");
   const observabilityUrlStep = requireStep(steps, "Resolve observability database URL");
