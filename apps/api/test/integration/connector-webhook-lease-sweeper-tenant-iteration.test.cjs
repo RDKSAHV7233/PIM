@@ -179,7 +179,10 @@ async function main() {
     let rows = {};
     while (Date.now() < deadline) {
       rows = Object.fromEntries(await Promise.all(stranded.map(async (id) => [id, await getEvent(id)])));
-      if (Object.values(rows).every((row) => Number(row.attempts) >= 1)) {
+      // The sweeper counts the attempt when it takes the lease and only later releases the event (status back to "received" with the
+      // lease-recovery outcome). Stopping at the first sight of attempts >= 1 raced that release on a slow runner, so wait for the
+      // finished state; the assertions below then judge a settled row.
+      if (Object.values(rows).every((row) => Number(row.attempts) >= 1 && row.status !== "processing" && /^lease recovery:/.test(String(row.lastError ?? "")))) {
         break;
       }
       await sleep(500);
