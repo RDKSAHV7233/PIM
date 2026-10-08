@@ -36,7 +36,7 @@ expectFail("expected failure without a tracking PR", { lane: lane((j) => { withE
 expectFail("expected failure without a reason", { lane: lane((j) => { withEntry(j).reason = "x"; }) }, "lane.expectedFailing");
 expectFail("role loses NOBYPASSRLS", { role: replace("NOSUPERUSER NOBYPASSRLS NOCREATEDB", "NOSUPERUSER BYPASSRLS NOCREATEDB") }, "role");
 expectFail("role granted ALL", { role: replace("GRANT SELECT, INSERT, UPDATE, DELETE ON", "GRANT ALL ON") }, "role");
-expectFail("role may create roles", { role: replace("NOCREATEROLE NOREPLICATION`);\n    } else", "CREATEROLE NOREPLICATION`);\n    } else") }, "role");
+expectFail("role may create roles", { role: replace("NOCREATEROLE NOREPLICATION`);\n      } else", "CREATEROLE NOREPLICATION`);\n      } else") }, "role");
 expectFail("control row writable by the runtime", { role: replace("REVOKE INSERT, UPDATE, DELETE ON", "REVOKE INSERT ON") }, "role");
 expectFail("preload no longer scoped to the API entry", { preload: replace(String.raw`dist\/main\.js`, "") }, "preload");
 expectFail("preload assigns something else", { preload: (t) => `${t}\nprocess.env.DATABASE_URL_X = "postgresql://elsewhere";\n` }, "preload");

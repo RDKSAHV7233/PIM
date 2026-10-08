@@ -28,6 +28,31 @@ const password = String(process.env.RESTRICTED_ROLE_PASSWORD || "vexa_runtime_ci
 const SELECT_ONLY = ["ai_platform_controls"];
 const NO_INSERT_DELETE = ["ai_platform_budget_periods"];
 
+const SHARED_CATALOG_RETRY_ATTEMPTS = 10;
+// 42710 duplicate_object (role created by a concurrent setup), XX000 "tuple concurrently updated" (concurrent ALTER/GRANT on the same
+// shared-catalog row), 40P01 deadlock_detected, 40001 serialization_failure.
+const TRANSIENT_CATALOG_ERROR = /Code: `(42710|XX000|40P01|40001)`|already exists|tuple concurrently updated|deadlock detected/;
+
+async function withSharedCatalogRetry(step) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await step();
+    } catch (error) {
+      if (attempt >= SHARED_CATALOG_RETRY_ATTEMPTS || !TRANSIENT_CATALOG_ERROR.test(String(error && error.message))) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 40 * attempt + Math.floor(Math.random() * 120)));
+    }
+  }
+}
+
+/** Prisma errors start with a blank line and an "Invalid ... invocation" banner; keep the part that says what went wrong. */
+function describeError(error) {
+  const text = String((error && error.message) || error || "unknown error").replace(/\s+/g, " ").trim();
+  const detail = /(Raw query failed\..*)$/.exec(text);
+  return (detail ? detail[1] : text).slice(0, 300);
+}
+
 (async () => {
   const db = new PrismaClient({ datasources: { db: { url: adminUrl } } });
   const failures = [];
@@ -39,12 +64,18 @@ const NO_INSERT_DELETE = ["ai_platform_budget_periods"];
   };
   try {
     const [current] = await db.$queryRaw`SELECT current_database() AS name, current_user AS admin_user`;
-    const exists = await db.$queryRaw`SELECT 1 FROM pg_roles WHERE rolname = ${ROLE}`;
-    if (exists.length === 0) {
-      await db.$executeRawUnsafe(`CREATE ROLE ${ROLE} LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);
-    } else {
-      await db.$executeRawUnsafe(`ALTER ROLE ${ROLE} WITH LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);
-    }
+    // The role is CLUSTER-WIDE, but the lane runs several isolated test databases at once and each one runs this script. Two of them
+    // can both see "no role" and both CREATE it (42710 already exists), or both ALTER it at the same moment (XX000 tuple concurrently
+    // updated). Those are races between identical, idempotent setups, not failures, so retry the shared-catalog step with a short
+    // jittered backoff. Anything else fails immediately, and the error text is reported in full.
+    await withSharedCatalogRetry(async () => {
+      const exists = await db.$queryRaw`SELECT 1 FROM pg_roles WHERE rolname = ${ROLE}`;
+      if (exists.length === 0) {
+        await db.$executeRawUnsafe(`CREATE ROLE ${ROLE} LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);
+      } else {
+        await db.$executeRawUnsafe(`ALTER ROLE ${ROLE} WITH LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);
+      }
+    });
     await db.$executeRawUnsafe(`GRANT CONNECT ON DATABASE "${current.name}" TO ${ROLE}`);
     await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${ROLE}`);
     const tables = (await db.$queryRaw`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations' ORDER BY 1`).map((r) => r.tablename);
@@ -76,7 +107,7 @@ const NO_INSERT_DELETE = ["ai_platform_budget_periods"];
     const [rls] = await db.$queryRaw`SELECT count(*) FILTER (WHERE relrowsecurity)::int AS enabled, count(*) FILTER (WHERE relforcerowsecurity)::int AS forced FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'`;
     console.log(`INFO tables granted: ${tables.length}; RLS enabled on ${rls.enabled}, forced on ${rls.forced}`);
   } catch (error) {
-    failures.push(`error: ${String(error && error.message).split("\n")[0].slice(0, 160)}`);
+    failures.push(`error: ${describeError(error)}`);
     console.error(failures[failures.length - 1]);
   } finally {
     await db.$disconnect().catch(() => undefined);
