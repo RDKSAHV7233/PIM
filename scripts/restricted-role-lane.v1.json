@@ -40,7 +40,8 @@
     "export-job-reconciliation-tenant-iteration.test.cjs",
     "plan-usage-tenant-detail-restricted-role.test.cjs",
     "connector-heartbeat-tenant-iteration.test.cjs",
-    "woocommerce-reconciliation-tenant-iteration.test.cjs"
+    "woocommerce-reconciliation-tenant-iteration.test.cjs",
+    "media-integrity-scan-tenant-iteration.test.cjs"
   ],
   "expectedFailing": []
 }

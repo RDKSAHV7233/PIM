@@ -407,7 +407,7 @@
       "file": "media/media-integrity.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "scan per tenant context; keep the platform scan-run and checkpoint tables non-RLS",
+      "plan": "P2.5 done: the bounded media-integrity scan is now per tenant instead of one global (createdAt, id) cursor over every tenant's media. Tenants come from the workspace directory plus the default tenant; each tenant has its own cursor and checkpoint (checkpoint key <key>::<tenant>; the platform scan-run and checkpoint tables are not row-level-secured); tenants are visited least-recently-completed first so a finished tenant cannot starve the others of the per-run row budget; every count and page is a short transaction in that tenant's own context, filtered by that tenant, and storage probes run outside any transaction. An unreadable tenant is logged by code, counted in impact.unreadableTenantCount, keeps its cursor, and makes the run partial; a directory read failure marks the run failed. The old single global checkpoint key is no longer read, so the first run after deploy starts every tenant's cycle afresh (a read-only scan, so this is harmless). The file keeps the context-free client only as the carrier of the tenant transactions and for the platform scan tables, so it stays open under the ratchet's definition.",
       "rlsProtectedModels": [
         "mediaAsset"
       ],
@@ -416,7 +416,7 @@
         "mediaIntegrityScanRun"
       ],
       "rawSqlSites": 0,
-      "positiveAssertion": "a media asset of a non-default tenant is scanned",
+      "positiveAssertion": "media-integrity-scan-tenant-iteration.test.cjs: the scheduled scan under the restricted role examines the media of two non-default directory tenants and the default tenant (4 of 4 rows, complete coverage, exact invalid-path / affected-tenant / active-product totals, per-tenant checkpoints with cleared cursors); media-integrity.service.spec.ts (RLS-faithful fake database, per-run budget across tenants, rotation order, unreadable tenant, mutation-checked)",
       "status": "open"
     },
     {

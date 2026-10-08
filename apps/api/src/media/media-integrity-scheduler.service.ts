@@ -88,6 +88,7 @@ export class MediaIntegritySchedulerService implements OnApplicationBootstrap, O
         storageErrors: result.totals.storageErrors,
         affectedTenantCount: result.impact.affectedTenantCount,
         activeProductImpactCount: result.impact.activeProductImpactCount,
+        unreadableTenantCount: result.impact.unreadableTenantCount,
       });
       await this.captureMediaIntegrityAlert(result);
       return { ran: true, result };
