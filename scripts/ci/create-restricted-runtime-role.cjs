@@ -27,6 +27,8 @@ const password = String(process.env.RESTRICTED_ROLE_PASSWORD || "vexa_runtime_ci
 
 const SELECT_ONLY = ["ai_platform_controls", "connector_definitions", "connector_tenant_entitlements", "tax_regimes"];
 const NO_INSERT_DELETE = ["ai_platform_budget_periods"];
+// SEC-DB-RLS-001 8.2: append-only ledgers. The API inserts and reads them; nothing updates or deletes a row.
+const APPEND_ONLY = ["audit_logs", "account_consent_events", "kpi_metric_events", "approval_comments", "connector_mapping_events"];
 
 const SHARED_CATALOG_RETRY_ATTEMPTS = 10;
 // 42710 duplicate_object (role created by a concurrent setup), XX000 "tuple concurrently updated" (concurrent ALTER/GRANT on the same
@@ -88,6 +90,9 @@ function describeError(error) {
     for (const table of NO_INSERT_DELETE) {
       await db.$executeRawUnsafe(`REVOKE INSERT, DELETE ON "${table}" FROM ${ROLE}`);
     }
+    for (const table of APPEND_ONLY) {
+      await db.$executeRawUnsafe(`REVOKE UPDATE, DELETE ON "${table}" FROM ${ROLE}`);
+    }
 
     const [attrs] = await db.$queryRaw`SELECT rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolreplication FROM pg_roles WHERE rolname = ${ROLE}`;
     check("role is NOSUPERUSER", attrs.rolsuper === false);
@@ -104,6 +109,8 @@ function describeError(error) {
     check("the platform control row is read-only for the runtime", priv.sel === true && priv.upd === false);
     check("platform budget counters may be updated but not inserted by the runtime", priv.pupd === true && priv.ins === false);
     check("the runtime cannot read the migrations table", mig.can_read === false);
+    const [app] = await db.$queryRaw`SELECT bool_and(has_table_privilege(${ROLE}, t, 'SELECT') AND has_table_privilege(${ROLE}, t, 'INSERT')) AS can_append, bool_or(has_table_privilege(${ROLE}, t, 'UPDATE') OR has_table_privilege(${ROLE}, t, 'DELETE')) AS can_edit FROM unnest(ARRAY['audit_logs', 'account_consent_events', 'kpi_metric_events', 'approval_comments', 'connector_mapping_events']) AS t`;
+    check("the append-only ledgers can be read and appended to but not edited or deleted by the runtime", app.can_append === true && app.can_edit === false);
     const [ref] = await db.$queryRaw`SELECT bool_and(has_table_privilege(${ROLE}, t, 'SELECT')) AS can_read, bool_or(has_table_privilege(${ROLE}, t, 'INSERT') OR has_table_privilege(${ROLE}, t, 'UPDATE') OR has_table_privilege(${ROLE}, t, 'DELETE')) AS can_write FROM unnest(ARRAY['connector_definitions', 'connector_tenant_entitlements', 'tax_regimes']) AS t`;
     check("the connector catalogue, the entitlement ledger and the tax regimes are read-only for the runtime", ref.can_read === true && ref.can_write === false);
     const [rls] = await db.$queryRaw`SELECT count(*) FILTER (WHERE relrowsecurity)::int AS enabled, count(*) FILTER (WHERE relforcerowsecurity)::int AS forced FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'`;

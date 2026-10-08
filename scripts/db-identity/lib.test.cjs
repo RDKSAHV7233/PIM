@@ -97,6 +97,11 @@ assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "ai_platform_budget
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "connector_definitions"), ["SELECT"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "connector_tenant_entitlements"), ["SELECT"]);
 assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", "tax_regimes"), ["SELECT"]);
+for (const table of ["audit_logs","account_consent_events","kpi_metric_events","approval_comments","connector_mapping_events"]) {
+  assert.equal(manifest.runtime.tables[table], "select-insert", `8.2: ${table} is an append-only ledger for the runtime`);
+  assert.deepEqual(lib.expectedPrivileges(manifest, "runtime", table), ["INSERT", "SELECT"], `${table}: the runtime appends and reads, never edits or deletes`);
+  assert.ok(manifest.runtime.exceptionsToCrud[table], `${table} carries its reason`);
+}
 assert.equal(lib.expectedPrivileges(manifest, "runtime", "a_table_nobody_listed"), null, "an unlisted table is unknown, not granted");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Product"), ["SELECT"], "the backfill reads products and cannot change them");
 assert.deepEqual(lib.expectedPrivileges(manifest, "ops", "Variant"), ["INSERT", "SELECT"], "the backfill creates variants and cannot update or delete them");

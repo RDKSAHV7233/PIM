@@ -108,7 +108,7 @@ async function main() {
   const [{ n: enumTypes }] = await q(`SELECT count(*)::int AS n FROM pg_type t JOIN pg_namespace ns ON ns.oid = t.typnamespace WHERE ns.nspname = 'public' AND t.typtype = 'e'`);
   const [{ n: tableCount }] = await q(`SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE ns.nspname = 'public' AND c.relkind = 'r'`);
   const manifestTables = Object.keys(manifest.runtime.tables);
-  const crudTables = manifestTables.filter((t) => manifest.runtime.tables[t] === "crud").length;
+  const crudTables = manifestTables.filter((t) => ["crud", "select-insert"].includes(manifest.runtime.tables[t])).length;
   const updTables = manifestTables.filter((t) => ["crud", "select-update"].includes(manifest.runtime.tables[t])).length;
 
   // ── Production-like: the deployed superuser ──────────────────────────────────────────────────────────────────────

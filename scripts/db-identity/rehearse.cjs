@@ -340,6 +340,36 @@ async function main() {
     await expectAllowed("runtime can UPDATE budget counters", rt, `UPDATE ai_platform_budget_periods SET request_count = request_count`);
     await expectDenied("runtime cannot INSERT a budget period", rt, `INSERT INTO ai_platform_budget_periods (id, period_key, period_started_at, period_ends_at) VALUES ('p-rogue','x', now(), now())`);
     await expectDenied("runtime cannot DELETE a budget period", rt, `DELETE FROM ai_platform_budget_periods`);
+    // 8.2: the append-only ledgers. The runtime can read them and append a row under its own tenant, but cannot edit or delete one.
+    const APPEND_ROWS = {
+      audit_logs: `INSERT INTO audit_logs (id, tenant_key, actor_id, actor_role, action, resource) VALUES ('rt-append-1','tenant-a','u','admin','x','y')`,
+      account_consent_events: `INSERT INTO account_consent_events (id, tenant_key, user_id, accepted) VALUES ('rt-append-1','tenant-a','u', true)`,
+      kpi_metric_events: `INSERT INTO kpi_metric_events (id, tenant_key, metric_key, metric_value) VALUES ('rt-append-1','tenant-a','m', 1)`,
+      approval_comments: `INSERT INTO approval_comments (id, tenant_key, product_id, actor_id, actor_role, body, updated_at) VALUES ('rt-append-1','tenant-a','p','u','admin','b', now())`,
+      connector_mapping_events: `INSERT INTO connector_mapping_events (id, tenant_key, mapping_version_id, event_type) VALUES ('rt-append-1','tenant-a','rt-append-v','created')`,
+    };
+    // connector_mapping_events is the one ledger with a foreign key (to connector_mapping_versions, ON DELETE CASCADE): give it a real parent.
+    await pl.$executeRawUnsafe(`INSERT INTO connector_mapping_versions (id, tenant_key, connector_slug, category_scope, mapping_level, lifecycle_state, connector_definition_id, connector_definition_version) VALUES ('rt-append-v','tenant-a','shopify','*','tenant_connector_default','draft','cd-x','1')`);
+    for (const [table, insertSql] of Object.entries(APPEND_ROWS)) {
+      await rows(rt, `SELECT count(*) FROM ${table}`).then(() => check(`runtime can READ ${table}`, true), (e) => check(`runtime can READ ${table}`, false, e.message));
+      await inTenant(rt, "tenant-a", (tx) => tx.$executeRawUnsafe(insertSql)).then(
+        () => check(`runtime can APPEND to ${table} under its own tenant`, true),
+        (e) => check(`runtime can APPEND to ${table} under its own tenant`, false, String(e.message).split("\n").slice(-1)[0]),
+      );
+      await expectDenied(`runtime cannot UPDATE ${table}`, rt, `UPDATE ${table} SET id = id`);
+      await expectDenied(`runtime cannot DELETE from ${table}`, rt, `DELETE FROM ${table}`);
+      await expectDenied(`runtime cannot TRUNCATE ${table}`, rt, `TRUNCATE ${table}`);
+      if (table === "connector_mapping_events") {
+        // A parent delete cascades into the ledger under the referencing table's owner, so it needs no DELETE privilege on the ledger.
+        await inTenant(rt, "tenant-a", (tx) => tx.$executeRawUnsafe(`DELETE FROM connector_mapping_versions WHERE id = 'rt-append-v'`)).then(
+          async () => check("deleting a mapping version as the runtime still cascades into the append-only ledger (no DELETE privilege needed on the child)", (await rows(pl, `SELECT count(*)::int AS n FROM connector_mapping_events WHERE mapping_version_id = 'rt-append-v'`))[0].n === 0),
+          (e) => check("deleting a mapping version as the runtime still cascades into the append-only ledger (no DELETE privilege needed on the child)", false, String(e.message).split("\n").slice(-1)[0]),
+        );
+      }
+      await pl.$executeRawUnsafe(`DELETE FROM ${table} WHERE id = 'rt-append-1'`);
+    }
+    await pl.$executeRawUnsafe(`DELETE FROM connector_mapping_versions WHERE id = 'rt-append-v'`);
+
     // 8.1a / 8.1b: the connector catalogue, the entitlement ledger and the tax regimes are read-only for the runtime
     for (const table of ["connector_definitions", "connector_tenant_entitlements", "tax_regimes"]) {
       await rows(rt, `SELECT count(*) FROM ${table}`).then(() => check(`runtime can READ ${table}`, true), (e) => check(`runtime can READ ${table}`, false, e.message));
