@@ -23,6 +23,7 @@ import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { cn } from "@/lib/utils";
 import { canEditWorkspace, canPublishToChannels } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { selectReadinessInstallation } from "@/lib/readiness-installation";
 import { formatDateTime } from "@/lib/format";
 import { ProductDetailDeferredSection } from "./_components/product-detail-deferred-section";
 import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigation-guard";
@@ -136,6 +137,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const effectiveSelectedChannel =
     !query.channel && firstPublishableChannel ? firstPublishableChannel : selectedChannel;
 
+  // Same installation the deferred section evaluates against: an account-scoped published mapping is only visible
+  // to a readiness evaluation that names its installation (see lib/readiness-installation.ts).
+  const readinessInstallation = selectReadinessInstallation(
+    installedConnectors,
+    mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
+    isConnectorReadyToPublish,
+  );
+
   effectiveReadinessUnavailable = channelsUnavailable;
 
   const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader }).catch(() => {
@@ -148,7 +157,12 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     exportJobsPromise,
     evaluateConnectorPublishReadiness(
       mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
-      { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
+      {
+        categoryScope: product.categoryId,
+        productId: id,
+        fallbackAcknowledged: false,
+        installationId: readinessInstallation?.id,
+      },
       { role: actorRole, authHeader },
     ).catch(() => {
       effectiveReadinessUnavailable = true;

@@ -190,6 +190,7 @@ const GLOB_COVERED_TESTS = [
   "mapping-access-denied-and-rollback-session.test.cjs",
   "mapping-archive-admin-only.test.cjs",
   "mapping-blocked-publish-warning.test.cjs",
+  "product-page-readiness-installation.test.cjs",
   "playwright-env-role-identities.test.cjs",
   "mapping-structured-editor.test.cjs",
   "mapping-version-label.test.cjs",

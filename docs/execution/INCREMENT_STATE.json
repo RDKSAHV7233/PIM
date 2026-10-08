@@ -6770,6 +6770,45 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-100",
+      "name": "Product page header readiness uses the connector account (G1a)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-PRD-READINESS-HEADER-INSTALLATION-001",
+          "title": "The product page header evaluates channel readiness against the same connector account as the rest of the page",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "cbd91406",
+          "scope": [
+            "apps/web/src/lib/readiness-installation.ts",
+            "apps/web/src/app/products/[id]/page.tsx",
+            "apps/web/src/app/products/[id]/_components/product-detail-deferred-section.tsx",
+            "apps/web/test/integration/product-page-readiness-installation.test.cjs"
+          ],
+          "scope_expansion": [
+            "scripts/check-integration-test-coverage.cjs -- registers the new test (AGENTS.md rule 3)."
+          ],
+          "problem": "Found by the recorded connected-account mapping session (2026-10-09). The product page header called evaluateConnectorPublishReadiness with only categoryScope and productId. A mapping published for one connector account is installation-scoped and resolveEffectiveMapping keeps it only when the evaluation names that installation, so the header matched no version and added using_system_default_mapping: 'Mapping readiness: Warnings - 1 mapping warning remain' while a live account mapping existed. Verified against the live API: without installationId warnings [using_system_default_mapping] and matched []; with it warnings [] and matched [<published version>].",
+          "proposed_fix": "New import-free selectReadinessInstallation(installedConnectors, connectorSlug, isReadyToPublish) (first ready installation for the channel's connector, the rule the deferred section already used). The header selects the installation for effectiveSelectedChannel and passes installationId; the deferred section uses the same helper. A not-ready account (for example CREDENTIAL_EXPIRED) still yields no installation id, unchanged behavior.",
+          "team_investigation": "QA: reproduced in the browser and by the API before the fix; after the fix the header card reads 'Ready - Selected Flipkart mapping is clear'. Engineering: the other two readiness callers (mapping wizard, deferred section) already passed the installation. CTO-lens (analysis, not approval): web-only, one product page, no authorization or API change.",
+          "acceptance": [
+            "Every product-page readiness call passes installationId from the shared selector.",
+            "The selector skips non-ready accounts, other channels' connectors, and returns null when none qualifies.",
+            "With an active account-scoped mapping the header Mapping readiness no longer reports the system-default warning."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/product-page-readiness-installation.test.cjs (selector executed as code plus contracts; fails on the original header call with 'a readiness call does not pass installationId')",
+            "node apps/web/test/integration/run-all.cjs (WEBTEST_SUMMARY total=208 failed=0)",
+            "npx tsc --noEmit -p apps/web/tsconfig.lint.json (clean)",
+            "Browser, local stack, admin, ACTIVE Flipkart account with an account-scoped live mapping: header Mapping readiness 'Warnings - 1 mapping warning remain' before, 'Ready - Selected Flipkart mapping is clear' after"
+          ],
+          "notes": "Not fixed here: G1b (the Media readiness card is a channel-agnostic UI rule and still says Blocked / 'Add product media' for Flipkart although the API's Flipkart media check is blocked:false); it needs a product decision. If the account is not ready to publish (the local test account flips to CREDENTIAL_EXPIRED after the connector heartbeat unless credentials are re-seeded), no installation id is sent and the system-default warning can still appear; that is the pre-existing, intended gating."
+        }
+      ]
     }
   ]
 }

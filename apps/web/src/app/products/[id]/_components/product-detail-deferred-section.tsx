@@ -34,6 +34,7 @@ import { QualityTab } from "./quality-tab";
 import { VariantsTab } from "./variants-tab";
 import { PricingTab } from "./pricing-tab";
 import { canEditPricing } from "@/lib/role-capabilities";
+import { selectReadinessInstallation } from "@/lib/readiness-installation";
 
 interface ProductDetailDeferredSectionProps {
   productId: string;
@@ -74,12 +75,11 @@ export async function ProductDetailDeferredSection({
   returnTo,
   tabHref,
 }: ProductDetailDeferredSectionProps) {
-  const readinessInstallation =
-    installedConnectors.find(
-      (connector) =>
-        isConnectorReadyToPublish(connector) &&
-        connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel),
-    ) ?? null;
+  const readinessInstallation = selectReadinessInstallation(
+    installedConnectors,
+    mapMarketplaceChannelToConnectorSlug(selectedChannel),
+    isConnectorReadyToPublish,
+  );
 
   const [templates, mapping, simulation, categoryAttributes, readiness, submissionsRaw, activity] = await Promise.all([
     getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }).catch(
