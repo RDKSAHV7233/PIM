@@ -43,9 +43,9 @@
     },
     {
       "file": "billing/commercial-requests.service.ts",
-      "class": "C",
-      "remediation": "decision-needed",
-      "plan": "platform-admin cross-tenant listing of commercial requests plus tenant lookups: decide between iteration and a maintenance read; known-tenant writes move to the tenant client",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "P2.8b done: the three platform-operator reads of upgrade requests (listing, overview, find-by-id for the status action) no longer query tenant_commercial_requests with no tenant context. Each runs per tenant through forEachTenant (one short transaction per tenant, tenant context set inside it, every query also filtered by that tenant; a row of another tenant fails the tenant's read) and the results are merged app-side: the listing takes each tenant's newest `limit` rows and merges newest first, the overview sums the counts and takes the earliest active request, find-by-id returns a match from any readable tenant. A tenant that cannot be read makes the listing and the overview throw COMMERCIAL_REQUESTS_TENANT_READ_FAILED (tenant:code only, never a database message), and find-by-id throw instead of reporting not-found. A tenant filter reads that tenant only. Known-tenant writes already used prisma.tenant(<tenant>). The directory read of WorkspaceDirectory (no row level security) is unchanged. Orphan limit: a tenant with requests but no directory row is not covered. The file keeps the context-free client as the carrier of the tenant transactions and for WorkspaceDirectory, so it stays open.",
       "rlsProtectedModels": [
         "tenantCommercialRequest"
       ],
@@ -53,7 +53,7 @@
         "workspaceDirectory"
       ],
       "rawSqlSites": 2,
-      "positiveAssertion": "an admin listing includes a non-default tenant's request",
+      "positiveAssertion": "commercial-requests-restricted-role.test.cjs: under the restricted role the listing, the overview counts and the status action cover the default tenant and two non-default directory tenants, the former context-free listing is shown to return the default tenant's request only; commercial-requests.service.spec.ts (RLS-faithful fake, unreadable tenant, not-found semantics, mutation-checked)",
       "status": "open"
     },
     {

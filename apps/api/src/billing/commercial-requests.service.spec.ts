@@ -57,8 +57,23 @@ function makeService(existingOpenRequest: unknown = null) {
     $transaction: jest.fn().mockImplementation((callback: (tx: unknown) => Promise<unknown>) => callback(tenantClient)),
   };
   const prisma = { tenant: jest.fn().mockReturnValue(tenantClient) };
+  // SEC-DB-RLS-001: the operator reads (find by id, listing, overview) go through the direct client one tenant at a time, inside a
+  // transaction in that tenant's context. The directory lists the tenants to visit (here "acme"; the default tenant is always added).
+  // A row is only visible to the iteration of its own tenant, as under row level security.
   const directClientFindFirst = jest.fn().mockResolvedValue(null);
-  const directClient = { tenantCommercialRequest: { findFirst: directClientFindFirst } };
+  const directTx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    tenantCommercialRequest: {
+      findFirst: jest.fn(async (args: { where: { tenantKey?: string } }) => {
+        const row = (await directClientFindFirst(args)) as { tenantKey?: string } | null;
+        return row && row.tenantKey === args.where.tenantKey ? row : null;
+      }),
+    },
+  };
+  const directClient = {
+    workspaceDirectory: { findMany: jest.fn().mockResolvedValue([{ tenantKey: "acme" }]) },
+    $transaction: jest.fn((fn: (tx: typeof directTx) => Promise<unknown>) => fn(directTx)),
+  };
   const prismaDirect = { getClient: jest.fn().mockReturnValue(directClient) };
   const setTenantPlanTierForTenant = jest.fn().mockResolvedValue(undefined);
   // Defaults to STARTER so it matches pendingUpgradeRequest()'s default
@@ -470,5 +485,166 @@ describe("CommercialRequestsService.updateUpgradeRequestStatusInternal", () => {
     await expect(service.updateUpgradeRequestStatusInternal("req_missing", "resolved", "ops_1")).rejects.toThrow(
       "COMMERCIAL_REQUEST_NOT_FOUND",
     );
+  });
+});
+
+// ---- SEC-DB-RLS-001: the operator views read every tenant -------------------------------------------------------------------------------------
+// The fake direct client is RLS-faithful: every query runs in a transaction whose tenant context the iteration set, and sees only that
+// tenant's requests. A query with no tenant filter would see every row in a bypass role, so the fake also fails any query that has none.
+describe("CommercialRequestsService — operator views across tenants (SEC-DB-RLS-001)", () => {
+  type Row = {
+    id: string;
+    tenantKey: string;
+    requestType: string;
+    status: string;
+    createdAt: Date;
+    resolvedAt: Date | null;
+  };
+
+  const day = 24 * 60 * 60 * 1000;
+  const ago = (days: number) => new Date(Date.now() - days * day);
+  const row = (id: string, tenantKey: string, status: string, createdDaysAgo: number, resolvedDaysAgo: number | null = null, requestType = "upgrade"): Row => ({
+    id,
+    tenantKey,
+    requestType,
+    status,
+    createdAt: ago(createdDaysAgo),
+    resolvedAt: resolvedDaysAgo === null ? null : ago(resolvedDaysAgo),
+  });
+
+  function matches(r: Row, where: Record<string, any>): boolean {
+    if (where.tenantKey === undefined) throw new Error("query without a tenant filter");
+    if (where.tenantKey !== r.tenantKey) return false;
+    if (where.requestType && where.requestType !== r.requestType) return false;
+    if (where.id && where.id !== r.id) return false;
+    if (where.status) {
+      if (typeof where.status === "string" && where.status !== r.status) return false;
+      if (where.status.in && !where.status.in.includes(r.status)) return false;
+    }
+    if (where.createdAt?.gte && !(r.createdAt >= where.createdAt.gte)) return false;
+    if (where.createdAt?.lt && !(r.createdAt < where.createdAt.lt)) return false;
+    if (where.resolvedAt?.gte && !(r.resolvedAt && r.resolvedAt >= where.resolvedAt.gte)) return false;
+    if (where.OR && !where.OR.some((clause: Record<string, any>) => matches(r, { ...clause, tenantKey: where.tenantKey, requestType: where.requestType }))) return false;
+    return true;
+  }
+
+  function makeViews(rows: Row[], options: { directory?: string[]; failTenant?: string } = {}) {
+    const seenTenants: string[] = [];
+    const makeTx = (context: { tenant: string }) => {
+      const guard = (where: Record<string, any>) => {
+        if (options.failTenant && where.tenantKey === options.failTenant) {
+          throw Object.assign(new Error("connection postgres://u:SECRET@h/db reset"), { code: "P1001" });
+        }
+        if (where.tenantKey !== context.tenant) throw new Error("query for another tenant than the transaction context");
+      };
+      return {
+        $queryRaw: async (_strings: unknown, ...values: unknown[]) => {
+          context.tenant = String(values[0]);
+          seenTenants.push(context.tenant);
+          return [];
+        },
+        tenantCommercialRequest: {
+          count: async (args: { where: Record<string, any> }) => {
+            guard(args.where);
+            return rows.filter((r) => matches(r, args.where)).length;
+          },
+          findMany: async (args: { where: Record<string, any>; take?: number }) => {
+            guard(args.where);
+            return rows
+              .filter((r) => matches(r, args.where))
+              .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1))
+              .slice(0, args.take ?? 1000);
+          },
+          findFirst: async (args: { where: Record<string, any>; orderBy?: unknown }) => {
+            guard(args.where);
+            const found = rows.filter((r) => matches(r, args.where)).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+            return found[0] ?? null;
+          },
+        },
+      };
+    };
+    const direct = {
+      workspaceDirectory: {
+        findMany: jest.fn(async (args: { where?: { tenantKey?: { in: string[] } } }) =>
+          args?.where?.tenantKey
+            ? args.where.tenantKey.in.map((tenantKey) => ({ tenantKey, workspaceSlug: tenantKey, displayName: tenantKey.toUpperCase() }))
+            : (options.directory ?? []).map((tenantKey) => ({ tenantKey })),
+        ),
+      },
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx({ tenant: "" }))),
+    };
+    const prisma = { tenant: jest.fn() };
+    const service = new CommercialRequestsService(prisma as never, { getClient: () => direct } as never, {} as never);
+    return { service, direct, seenTenants };
+  }
+
+  const rows: Row[] = [
+    row("r1", "default", "open", 0.1),
+    row("r2", "tenant-b", "open", 3), // open for 3 days: stale (open > 1 day)
+    row("r3", "tenant-b", "acknowledged", 5), // acknowledged > 3 days: stale
+    row("r4", "tenant-c", "resolved", 20, 1),
+    row("r5", "tenant-c", "cancelled", 30),
+    row("r6", "tenant-c", "open", 1.5, null, "storage_limit_overage"), // not an upgrade request
+  ];
+
+  it("lists the requests of every tenant, newest first, under the overall limit", async () => {
+    const { service } = makeViews(rows, { directory: ["tenant-b", "tenant-c"] });
+    const items = await service.listUpgradeRequestsInternal({ limit: 4 });
+    expect(items.map((item) => item.id)).toEqual(["r1", "r2", "r3", "r4"]);
+  });
+
+  it("a tenant filter reads that tenant only", async () => {
+    const { service, seenTenants } = makeViews(rows, { directory: ["tenant-b", "tenant-c"] });
+    const items = await service.listUpgradeRequestsInternal({ tenantKey: "tenant-b" });
+    expect(items.map((item) => item.id)).toEqual(["r2", "r3"]);
+    expect(seenTenants).toEqual(["tenant-b"]);
+  });
+
+  it("the overview sums every tenant and takes the earliest active request across tenants", async () => {
+    const { service } = makeViews(rows, { directory: ["tenant-b", "tenant-c"] });
+    const overview = await service.getUpgradeRequestOverviewInternal();
+    expect(overview).toMatchObject({
+      totalRequests: 5, // the overage flag is not an upgrade request
+      openRequests: 2, // r1, r2
+      acknowledgedRequests: 1, // r3
+      activeRequests: 3,
+      resolvedRequests: 1,
+      cancelledRequests: 1,
+      staleOpenRequests: 1, // r2 only (r1 is hours old)
+      staleAcknowledgedRequests: 1,
+      attentionRequiredRequests: 2,
+    });
+    expect(overview.recentRequests).toBe(3); // r1, r2, r3 created within 7 days
+    expect(overview.recentResolvedRequests).toBe(1); // r4 resolved a day ago
+    expect(new Date(overview.oldestActiveRequestCreatedAt as string).getTime()).toBe(rows[2].createdAt.getTime()); // r3, the oldest active
+  });
+
+  it("finds a request that lives in a tenant other than the default one", async () => {
+    const { service } = makeViews(rows, { directory: ["tenant-b", "tenant-c"] });
+    const found = await (service as unknown as { findRequestByIdInternal(id: string): Promise<{ id: string; tenantKey: string } | null> }).findRequestByIdInternal("r4");
+    expect(found).toMatchObject({ id: "r4", tenantKey: "tenant-c" });
+  });
+
+  it("reports not-found only when every tenant was read", async () => {
+    const { service } = makeViews(rows, { directory: ["tenant-b", "tenant-c"] });
+    await expect(service.updateUpgradeRequestStatusInternal("nope", "resolved", "ops_1")).rejects.toThrow("COMMERCIAL_REQUEST_NOT_FOUND");
+  });
+
+  it("an unreadable tenant fails the listing and the overview instead of returning figures without it (codes only, no message)", async () => {
+    const { service } = makeViews(rows, { directory: ["tenant-b", "tenant-c"], failTenant: "tenant-b" });
+    for (const call of [() => service.listUpgradeRequestsInternal({}), () => service.getUpgradeRequestOverviewInternal()]) {
+      const error = await call().catch((e: Error) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("COMMERCIAL_REQUESTS_TENANT_READ_FAILED");
+      expect((error as Error).message).toContain("tenant-b:P1001");
+      expect((error as Error).message).not.toContain("SECRET");
+    }
+  });
+
+  it("a request found in a readable tenant is returned although another tenant is unreadable; an unfound one then fails rather than reading as not found", async () => {
+    const { service } = makeViews(rows, { directory: ["tenant-b", "tenant-c"], failTenant: "tenant-b" });
+    const find = (id: string) => (service as unknown as { findRequestByIdInternal(id: string): Promise<{ id: string } | null> }).findRequestByIdInternal(id);
+    await expect(find("r4")).resolves.toMatchObject({ id: "r4" });
+    await expect(find("r2")).rejects.toThrow("COMMERCIAL_REQUESTS_TENANT_READ_FAILED");
   });
 });

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -133,6 +134,26 @@ interface CommercialRequestRow {
   createdAt: Date;
   updatedAt: Date;
 }
+
+const COMMERCIAL_REQUEST_SELECT = {
+  id: true,
+  tenantKey: true,
+  requestType: true,
+  status: true,
+  requestedBy: true,
+  requesterRole: true,
+  currentPlanTier: true,
+  requestedPlanTier: true,
+  currentBillingStatus: true,
+  currentAccessStatus: true,
+  usageSnapshot: true,
+  notes: true,
+  source: true,
+  resolvedAt: true,
+  resolvedBy: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 @Injectable()
 export class CommercialRequestsService {
@@ -318,53 +339,47 @@ export class CommercialRequestsService {
     const tenantKey = input?.tenantKey ? normalizeTenantKey(input.tenantKey) : undefined;
     const status = input?.status ? this.normalizeStatus(input.status) : undefined;
     const sla = input?.sla ? this.normalizeSla(input.sla) : undefined;
-    const db = this.prismaDirect.getClient();
-    const rows = await db.tenantCommercialRequest.findMany({
-      where: {
-        requestType: "upgrade",
-        ...(tenantKey ? { tenantKey } : {}),
-        ...(status ? { status } : {}),
-        ...(sla === "attention"
-          ? {
-              OR: [
-                {
-                  status: "open",
-                  createdAt: {
-                    lt: this.getAttentionOpenCutoff(),
-                  },
-                },
-                {
-                  status: "acknowledged",
-                  createdAt: {
-                    lt: this.getAttentionAcknowledgedCutoff(),
-                  },
-                },
-              ],
-            }
-          : {}),
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: limit,
-      select: {
-        id: true,
-        tenantKey: true,
-        requestType: true,
-        status: true,
-        requestedBy: true,
-        requesterRole: true,
-        currentPlanTier: true,
-        requestedPlanTier: true,
-        currentBillingStatus: true,
-        currentAccessStatus: true,
-        usageSnapshot: true,
-        notes: true,
-        source: true,
-        resolvedAt: true,
-        resolvedBy: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    // SEC-DB-RLS-001: tenant_commercial_requests is tenant-keyed and row-level-secured. This operator listing spans tenants, and one
+    // query with no tenant context would see only the default tenant's requests under a restricted role. It is read per tenant (each
+    // query filtered by its tenant, at most `limit` rows each) and merged newest first, so the result is the same `limit` newest
+    // requests overall. A tenant that cannot be read makes the listing fail rather than return a list with that tenant missing.
+    const { values, failures } = await this.collectAcrossTenants(
+      (tx, iterationTenant) =>
+        tx.tenantCommercialRequest.findMany({
+          where: {
+            requestType: "upgrade",
+            tenantKey: iterationTenant,
+            ...(status ? { status } : {}),
+            ...(sla === "attention"
+              ? {
+                  OR: [
+                    {
+                      status: "open",
+                      createdAt: {
+                        lt: this.getAttentionOpenCutoff(),
+                      },
+                    },
+                    {
+                      status: "acknowledged",
+                      createdAt: {
+                        lt: this.getAttentionAcknowledgedCutoff(),
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: limit,
+          select: COMMERCIAL_REQUEST_SELECT,
+        }),
+      tenantKey ? [tenantKey] : undefined,
+    );
+    this.assertEveryTenantRead(failures);
+    const rows = values
+      .flat()
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || (left.id < right.id ? 1 : left.id > right.id ? -1 : 0))
+      .slice(0, limit);
     const workspaceMap = await this.getWorkspaceDirectoryMap(rows.map((row) => row.tenantKey));
     return rows.map((row) => this.mapListRecord(row, workspaceMap));
   }
@@ -446,109 +461,73 @@ export class CommercialRequestsService {
   }
 
   async getUpgradeRequestOverviewInternal(): Promise<UpgradeRequestOverview> {
-    const db = this.prismaDirect.getClient();
     const recentCutoff = this.getRecentWindowCutoff();
     const openAttentionCutoff = this.getAttentionOpenCutoff();
     const acknowledgedAttentionCutoff = this.getAttentionAcknowledgedCutoff();
-    const [
-      totalRequests,
-      openRequests,
-      acknowledgedRequests,
-      resolvedRequests,
-      cancelledRequests,
-      recentRequests,
-      recentResolvedRequests,
-      staleOpenRequests,
-      staleAcknowledgedRequests,
-      oldestActiveRequest,
-    ] = await Promise.all([
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          status: "open",
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          status: "acknowledged",
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          status: "resolved",
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          status: "cancelled",
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          createdAt: {
-            gte: recentCutoff,
-          },
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          resolvedAt: {
-            gte: recentCutoff,
-          },
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          status: "open",
-          createdAt: {
-            lt: openAttentionCutoff,
-          },
-        },
-      }),
-      db.tenantCommercialRequest.count({
-        where: {
-          requestType: "upgrade",
-          status: "acknowledged",
-          createdAt: {
-            lt: acknowledgedAttentionCutoff,
-          },
-        },
-      }),
-      db.tenantCommercialRequest.findFirst({
-        where: {
-          requestType: "upgrade",
-          status: {
-            in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
-          },
-        },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: {
-          createdAt: true,
-        },
-      }),
-    ]);
+    // SEC-DB-RLS-001: platform-wide counts over a row-level-secured table. Under a restricted role one count with no tenant context
+    // would see the default tenant only, so every figure would silently undercount. Each tenant is counted in its own transaction
+    // (filtered by that tenant) and the figures are summed; the oldest active request is the earliest across tenants. A tenant that
+    // cannot be read makes the overview fail rather than report totals with that tenant missing.
+    const { values, failures } = await this.collectAcrossTenants(async (tx, tenantKey) => {
+      const base = { requestType: "upgrade", tenantKey } as const;
+      const [
+        totalRequests,
+        openRequests,
+        acknowledgedRequests,
+        resolvedRequests,
+        cancelledRequests,
+        recentRequests,
+        recentResolvedRequests,
+        staleOpenRequests,
+        staleAcknowledgedRequests,
+        oldestActiveRequest,
+      ] = await Promise.all([
+        tx.tenantCommercialRequest.count({ where: base }),
+        tx.tenantCommercialRequest.count({ where: { ...base, status: "open" } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, status: "acknowledged" } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, status: "resolved" } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, status: "cancelled" } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, createdAt: { gte: recentCutoff } } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, resolvedAt: { gte: recentCutoff } } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, status: "open", createdAt: { lt: openAttentionCutoff } } }),
+        tx.tenantCommercialRequest.count({ where: { ...base, status: "acknowledged", createdAt: { lt: acknowledgedAttentionCutoff } } }),
+        tx.tenantCommercialRequest.findFirst({
+          where: { ...base, status: { in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES] } },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { createdAt: true },
+        }),
+      ]);
+      return {
+        totalRequests,
+        openRequests,
+        acknowledgedRequests,
+        resolvedRequests,
+        cancelledRequests,
+        recentRequests,
+        recentResolvedRequests,
+        staleOpenRequests,
+        staleAcknowledgedRequests,
+        oldestActiveRequestCreatedAt: oldestActiveRequest?.createdAt ?? null,
+      } satisfies UpgradeRequestOverviewRow;
+    });
+    this.assertEveryTenantRead(failures);
+    const sum = (pick: (row: UpgradeRequestOverviewRow) => number | bigint | null | undefined): number =>
+      values.reduce((total, value) => total + Number(pick(value) ?? 0), 0);
+    const oldestActiveRequestCreatedAt = values
+      .map((value) => value.oldestActiveRequestCreatedAt)
+      .filter((value): value is Date => value instanceof Date)
+      .sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
     const row: UpgradeRequestOverviewRow = {
-      totalRequests,
-      openRequests,
-      acknowledgedRequests,
-      resolvedRequests,
-      cancelledRequests,
-      recentRequests,
-      recentResolvedRequests,
-      staleOpenRequests,
-      staleAcknowledgedRequests,
-      oldestActiveRequestCreatedAt: oldestActiveRequest?.createdAt ?? null,
+      totalRequests: sum((value) => value.totalRequests),
+      openRequests: sum((value) => value.openRequests),
+      acknowledgedRequests: sum((value) => value.acknowledgedRequests),
+      resolvedRequests: sum((value) => value.resolvedRequests),
+      cancelledRequests: sum((value) => value.cancelledRequests),
+      recentRequests: sum((value) => value.recentRequests),
+      recentResolvedRequests: sum((value) => value.recentResolvedRequests),
+      staleOpenRequests: sum((value) => value.staleOpenRequests),
+      staleAcknowledgedRequests: sum((value) => value.staleAcknowledgedRequests),
+      oldestActiveRequestCreatedAt,
     };
     const normalizedOpenRequests = Number(row.openRequests ?? 0);
     const normalizedAcknowledgedRequests = Number(row.acknowledgedRequests ?? 0);
@@ -746,31 +725,54 @@ export class CommercialRequestsService {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
   }
 
+  /**
+   * The request with this id, wherever it lives. Operator actions name a request by id only (ids are globally unique), so with row
+   * level security the tenant has to be found: each tenant is searched in its own transaction, filtered by that tenant. A match in a
+   * readable tenant is returned even if another tenant could not be read; "not found" is reported only when every tenant was read.
+   */
   private async findRequestByIdInternal(requestId: string): Promise<CommercialRequestRow | null> {
-    return this.prismaDirect.getClient().tenantCommercialRequest.findFirst({
-      where: {
-        id: requestId,
+    const { values, failures } = await this.collectAcrossTenants((tx, tenantKey) =>
+      tx.tenantCommercialRequest.findFirst({ where: { id: requestId, tenantKey }, select: COMMERCIAL_REQUEST_SELECT }),
+    );
+    const found = values.find((row): row is CommercialRequestRow => row !== null);
+    if (found) {
+      return found;
+    }
+    this.assertEveryTenantRead(failures);
+    return null;
+  }
+
+  /**
+   * Runs a read once per tenant (forEachTenant: one short transaction each, tenant context set inside it) and collects the results.
+   * A row that belongs to another tenant than the iteration's is counted as a failure by the caller's own filter, never returned.
+   */
+  private async collectAcrossTenants<T>(
+    read: (tx: Prisma.TransactionClient, tenantKey: string) => Promise<T>,
+    tenantKeys?: string[],
+  ): Promise<{ values: T[]; failures: string[] }> {
+    const values: T[] = [];
+    const summary = await forEachTenant(
+      this.prismaDirect.getClient(),
+      async (tx, tenantKey) => {
+        const value = await read(tx, tenantKey);
+        const rows = Array.isArray(value) ? value : value === null ? [] : [value];
+        const foreign = rows.filter((row) => (row as { tenantKey?: string }).tenantKey !== undefined && (row as { tenantKey?: string }).tenantKey !== tenantKey).length;
+        if (foreign === 0) {
+          values.push(value);
+        }
+        return { examinedCount: rows.length, changedCount: 0, failedCount: foreign };
       },
-      select: {
-        id: true,
-        tenantKey: true,
-        requestType: true,
-        status: true,
-        requestedBy: true,
-        requesterRole: true,
-        currentPlanTier: true,
-        requestedPlanTier: true,
-        currentBillingStatus: true,
-        currentAccessStatus: true,
-        usageSnapshot: true,
-        notes: true,
-        source: true,
-        resolvedAt: true,
-        resolvedBy: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+      { timeoutMs: 5_000, ...(tenantKeys ? { tenantKeys } : {}) },
+    );
+    const failures = summary.results.filter((result) => result.status === "failed").map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`);
+    return { values, failures };
+  }
+
+  /** An operator view must not be built from a partial read: a tenant that could not be read fails the call (codes only, never a database message). */
+  private assertEveryTenantRead(failures: string[]): void {
+    if (failures.length > 0) {
+      throw new Error(`COMMERCIAL_REQUESTS_TENANT_READ_FAILED ${failures.length} [${failures.join(", ")}]`);
+    }
   }
 
   private getRecentWindowCutoff(): Date {
