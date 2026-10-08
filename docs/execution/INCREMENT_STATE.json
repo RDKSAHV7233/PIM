@@ -6518,15 +6518,21 @@
         },
         {
           "storyId": "INC-96-S9",
-          "title": "Production-shaped rehearsal v2: plan and lane configuration, 7.10 (#1240)",
-          "status": "in_progress",
+          "title": "Production-shaped rehearsal v2 and validated PG16/PG18 evidence, 7.10 (#1240, #1244, #1258)",
+          "status": "completed",
           "locked": false,
-          "pr": "https://github.com/Mixwage/PIM/pull/1240",
-          "commit": "731c4ec4",
+          "pr": "https://github.com/Vexaappss/PIM/pull/1258",
+          "commit": "2351634bd852ccc7fe0e403bb5cd3a43c1cf6ac9",
           "tests_passed": [
-            "exact head 731c4ec4: CI green on all nine jobs including e2e; db-identity-rehearsal 163/163 on PG16 and PG18; restricted-role lane 30 pass, 0 unexpected"
+            "exact main 2351634bd852ccc7fe0e403bb5cd3a43c1cf6ac9: CI run 37803148374 green on all jobs including build, backend, restricted-role, e2e and Node 22/24 transport",
+            "PG16 job 113400644294 PASS; redacted JSON sha256 c0cf49a9332a814b806dd37d0b09ccc8507e8e41dcf0bfc2087b9be73c8c8a9a; artifact 11561204671",
+            "PG18 job 113400644344 PASS; redacted JSON sha256 8854604193f16fa1f42b5e49eaf5aa644ba5cae1d2ef182804da956e7ae9a519; artifact 11560974556"
           ],
-          "pending_for_lock": "PO acceptance and CTO approval are not recorded; stories lock only after both (AGENTS.md rules 6 and 7); full API/worker runtime-role orchestration with positive-result assertions across AI, billing, rotation and sweepers is not yet implemented"
+          "pending_for_lock": "7.10R-3 documentation-only closure must merge with explicit PO acceptance and CTO approval before this completed story is locked",
+          "notes": [
+            "PR #1240 remains permanently PARTIAL DELIVERY; #1241 corrected status, #1244 delivered the accepted runner, and #1258 made evidence upload validation-gated with raw JSON checksum recording.",
+            "No production role, credential, ownership, RLS, Railway variable, migration identity, deployment or database action is authorized."
+          ]
         }
       ]
     },

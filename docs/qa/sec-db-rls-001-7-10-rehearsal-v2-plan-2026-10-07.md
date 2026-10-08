@@ -1,10 +1,10 @@
 # SEC-DB-RLS-001 7.10: Production-Shaped Rehearsal v2
 
-Status: **PARTIAL / INCOMPLETE**
+Status: **DONE / CLOSED ON MERGE OF 7.10R-3**
 
 Date: 2026-10-07
 
-Baseline: `origin/main` at `731c4ec4` (#1240 merged)
+Closure baseline: `origin/main` at `2351634b` (#1258 merged)
 
 Issue: #1189. Stage 1 design: `sec-db-rls-001-stage1-remediation-design-2026-10-07.md` section 9.
 
@@ -23,6 +23,12 @@ rehearsal. The corrective 7.10R implementation must start from fresh
 The eventual closure record must repeat this invariant and cite both #1240 and
 the corrective implementation PR. This correction authorizes no production
 role, credential, ownership, RLS, deployment, or database change.
+
+## Closure Evidence
+
+The completion record is `sec-db-rls-001-7-10r-closure-2026-10-08.md`. PR #1244 delivered the accepted orchestration; PR #1258 corrected the upload dependency and recorded the checksum of each validated redacted JSON. Exact-main CI run `37803148374` at `2351634b` passed PostgreSQL 16 and 18 independently, with JSON SHA-256 values `c0cf49a9332a814b806dd37d0b09ccc8507e8e41dcf0bfc2087b9be73c8c8a9a` and `8854604193f16fa1f42b5e49eaf5aa644ba5cae1d2ef182804da956e7ae9a519` respectively.
+
+PR #1240 remains permanently **PARTIAL DELIVERY**. Closing 7.10 does not rewrite that history and authorizes no production action.
 
 ## Purpose
 

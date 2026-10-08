@@ -1,7 +1,7 @@
 # Programme reconciliation: current programme-state index
 
 Date: 2026-10-08 (evidence gathered 2026-10-07 to 2026-10-08)
-Baseline: `origin/main` at **`731c4ec4`** (#1240). Exact-head CI **green on all nine jobs including `e2e`**, and exact-head **Deploy Staging successful**, verified before this document was written.
+Closure baseline: `origin/main` at **`2351634b`** (#1258). Exact-main CI run `37803148374` is green on all jobs, including independent PostgreSQL 16/18 rehearsal evidence and `e2e`.
 Type: **documentation and state only.** No code, flag, validator, migration or workflow changed. No approval, sign-off or acceptance is created or inferred.
 
 **This reconciliation is the current programme-state index as of 2026-10-08. Earlier plans and ledgers remain historical evidence but do not override current `origin/main`, verified runtime evidence, or this reconciliation.**
@@ -43,6 +43,7 @@ Other vocabulary: `DECISION_READY` is a merged packet, plan or runbook that prep
 | Investigation, probe, call-site inventory and ratchet, restricted-role lane (#1188 `821c6948`, #1190 `1712c465`, #1199 `09d8ed52`, #1193 `731afa94`, #1195 `5a2c325c`, #1203 `ef144449`, #1205 `4dc700a3`) | DONE | NO_PRODUCTION_EFFECT (docs, tooling, CI) | read-only production probe 2026-10-06: only `postgres` and `vexa_app_v2` exist, **both superusers** | NOT RECORDED; locked false |
 | Identity model and rehearsal (#1198 `37299a6b`, #1217 `9a9241d0`) | DONE | NO_PRODUCTION_EFFECT | CI at `96b60ff3`: **163/163 checks on PG16 and 163/163 on PG18** | NOT RECORDED; locked false |
 | Rehearsal v2 plan and lane config (#1240 `731c4ec4`) | PARTIAL (plan plus lane config; full API/worker runtime-role orchestration UNVERIFIED) | NO_PRODUCTION_EFFECT | CI at `731c4ec4`: rehearsal 163/163 on both versions, restricted-role lane 30 pass / 0 unexpected | NOT RECORDED; locked false |
+| Rehearsal v2 corrective implementation and evidence (#1241, #1244 `ee75b726`, #1258 `2351634b`) | DONE on merge of the 7.10R-3 closure record; #1240 remains permanently PARTIAL | NO_PRODUCTION_EFFECT | exact-main run `37803148374`: PG16 and PG18 execution, validation, secret scan, JSON checksum and upload PASS; all other jobs PASS | closure acceptance PENDING; production cutover remains HOLD |
 | Connector credential writes and connectors on the tenant client (M1a #1200 `47f31c98`, M1b #1202 `a71fc6d1`) | DONE (15 connectors use `tenantDb()` **with an optional direct-client fallback**) | DEPLOYED | restricted-role lane green | NOT RECORDED; locked false |
 | Tenant iteration helpers (#1204 `772fd2c5`; #1209 `5d141a8e`) | DONE; two helpers exist, the service has **zero consumers**, the transaction helper has six | DEPLOYED | unit and lane tests | NOT RECORDED; **no third abstraction authorised** |
 | Credential rotation (#1204), provisioning seed (#1206 `b2d61b87`), billing jobs (#1210 `73a4af06`), explicit-tenant raw SQL (#1208 `03f26bd2`), lane isolation (#1213 `7e74a8e9`) | DONE | DEPLOYED | positive-result tests and mutation checks in CI; restricted-role lane | NOT RECORDED; locked false |

@@ -44,7 +44,7 @@ These change how the cutover and the rollback must be done. Each is checked agai
 | P2 | Class C resolved: `auth.service` review, `commercial-requests` (D2), `stripe.service` (D3), `tenant-directory` split, `media.service` unsigned branch | Platform + owner | **OPEN** |
 | P3 | M1c: the optional direct-client fallback removed from 15 connectors and 3 services | Platform | **OPEN** |
 | P4 | 7.2a deployed **and** runtime-verified (sweeper and counter audit produce a positive per-tenant result in production), then 7.2b merged and deployed, probe shows no `ai_maintenance_read_*` policy | Human + Platform | **OPEN** (runtime verification not done) |
-| P5 | Final restricted-runtime rehearsal passes on PG16 and PG18 with the API and workers running as the real `vexa_runtime` (7.10R, #1244) | Platform | **IN PROGRESS**: #1244 is a draft; at head `eb92baf5` both `db-identity-rehearsal-v2` lanes fail with validated redacted artifacts, and the other CI jobs are green. The failures are real restricted-runtime failures, not infrastructure, and are the other stream's slice |
+| P5 | Final restricted-runtime rehearsal passes on PG16 and PG18 with the API and workers running as the real `vexa_runtime` (7.10R, #1244 and #1258) | Platform | **DONE on merge of 7.10R-3**: exact-main run `37803148374` at `2351634b` passed both lanes with validated, secret-clean artifacts and separately logged JSON checksums. This closes rehearsal evidence only; it does not authorize production cutover. |
 | P6 | A real restore: the newest R2 backup restored into a scratch database with the 7.9b workflow (`restore-test-r2.yml`), all nine checks pass | SRE | **OPEN** (workflow never run) |
 | P7 | Rollback rehearsal passes (rehearsal R5 covers ownership rollback; the credential rollback is section 7) | SRE | partly rehearsed |
 | P8 | Credentials created and stored: `vexa_runtime`, `vexa_migrator`, `vexa_backup`; `vexa_reporter` and `vexa_ops` as required | SRE | **OPEN** (none exists; no `MIGRATION_`, `BACKUP_`, `REPORTER_`, `OPS_DATABASE_URL` secret in GitHub as of 2026-10-07) |
@@ -160,6 +160,6 @@ Blank on purpose. This document records none.
 
 - Nothing here was run against production, Railway or GitHub settings. Findings F1 to F5 and F7 are read from repository files; F6's unverified part is stated there.
 - What any existing secret holds (P11), and what the Railway variables hold, is unknown.
-- Whether the post-transfer `seed-tax-regimes`, smoke-identity and coverage scripts run cleanly as `vexa_runtime` is not rehearsed; it belongs to P5.
+- The 7.10R evidence closes P5's disposable rehearsal requirement. Any production-specific credential, restore, or cutover proof remains governed by the other preconditions and human gates in this document.
 - The O-1 (503) behaviour is unresolved and could be confused with a cutover regression; the baseline in Phase 5 exists for that reason.
 - Phase 3 step 6 assumes the ownership and grants can be applied in a maintenance window without the application running against the old owner set; the rehearsal proves metadata-only change and unchanged data hashes, not production lock duration.
