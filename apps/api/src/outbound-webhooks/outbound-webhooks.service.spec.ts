@@ -224,9 +224,10 @@ describe("OutboundWebhooksService — stuck-delivery recovery timer (prod-cert D
 
   it("a DB error in the scheduled recovery is logged, not left as an unhandled rejection that would crash the API", async () => {
     const stubs = makeStubs();
-    // Simulate Prisma P2024 (connection pool timeout) from the cross-tenant scan query.
+    // Simulate Prisma P2024 (connection pool timeout) from the first query of the scan: the tenant-directory read
+    // (the scan now iterates tenants, SEC-DB-RLS-001 P2.2, instead of one cross-tenant query).
     const poolTimeout = Object.assign(new Error("Timed out fetching a new connection from the connection pool"), { code: "P2024" });
-    (stubs.prisma.tenant as jest.Mock).mockReturnValue({ $queryRaw: jest.fn().mockRejectedValue(poolTimeout) });
+    (stubs.prisma.tenant as jest.Mock).mockReturnValue({ workspaceDirectory: { findMany: jest.fn().mockRejectedValue(poolTimeout) } });
 
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);

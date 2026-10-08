@@ -13,6 +13,7 @@ import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import type { AppRole } from "../common/rbac/roles";
 import { getWebhookTransport } from "../common/security/connector-transport";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import {
   buildEncryptedCredential,
@@ -34,6 +35,24 @@ const OUTBOUND_WEBHOOK_MAX_RESPONSE_CHARS = 2_000;
 const OUTBOUND_WEBHOOK_STUCK_QUEUED_MS = 60_000;
 const OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS = 60_000;
 const OUTBOUND_WEBHOOK_ENQUEUE_ERROR_LIMIT = 1_000;
+
+/** The recovery interval. OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS (>= 100) shortens it for tests; unset or invalid keeps the 60s default. */
+function resolveRecoveryIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+  const requested = Number(env.OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS);
+  return Number.isFinite(requested) && requested >= 100 ? Math.floor(requested) : OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS;
+}
+
+export interface StuckQueuedRecoveryResult {
+  recovered: number;
+  failed: number;
+  tenantsEvaluated: number;
+  /** Tenants whose stuck deliveries could not be read this run; their deliveries were NOT evaluated. */
+  tenantsFailed: number;
+  /** A runtime role cannot see tenants missing from the directory, so this is never reported as zero. */
+  orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE";
+}
+
+type StuckQueuedRow = { id: string; tenantKey: string; endpointId: string; createdAt: Date };
 
 export type OutboundWebhookDeliveryStatus = "queued" | "delivered" | "failed" | "skipped";
 
@@ -132,7 +151,7 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
           error instanceof Error ? error.stack : undefined,
         );
       });
-    }, OUTBOUND_WEBHOOK_RECOVERY_INTERVAL_MS);
+    }, resolveRecoveryIntervalMs());
   }
 
   onApplicationShutdown(): void {
@@ -521,32 +540,53 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
     );
   }
 
-  async recoverStuckQueuedDeliveries(limit = 100): Promise<{ recovered: number; failed: number }> {
+  async recoverStuckQueuedDeliveries(limit = 100): Promise<StuckQueuedRecoveryResult> {
     if (this.recoveringQueuedDeliveries) {
-      return { recovered: 0, failed: 0 };
+      return { recovered: 0, failed: 0, tenantsEvaluated: 0, tenantsFailed: 0, orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE" };
     }
     this.recoveringQueuedDeliveries = true;
     const cutoff = new Date(Date.now() - OUTBOUND_WEBHOOK_STUCK_QUEUED_MS);
+    const overallLimit = Math.max(1, Math.min(500, Math.floor(limit)));
     let recovered = 0;
     let failed = 0;
     try {
-      // RLS-BYPASS: intentional cross-tenant scan — scheduled recovery job, must find
-      // every tenant's stuck queued deliveries, not just one; each row carries its own
-      // tenantKey for correctly-scoped per-row recovery below.
-      const rows = await this.prisma.tenant().$queryRaw<
-        Array<{ id: string; tenantKey: string; endpointId: string }>
-      >(Prisma.sql`
-        SELECT id, tenant_key AS "tenantKey", endpoint_id AS "endpointId"
-        FROM outbound_webhook_deliveries
-        WHERE status = 'queued'
-          AND attempted_at IS NULL
-          AND created_at < ${cutoff}
-          AND (last_enqueue_attempt_at IS NULL OR last_enqueue_attempt_at < ${cutoff})
-        ORDER BY created_at ASC
-        LIMIT ${Math.max(1, Math.min(500, Math.floor(limit)))}
-      `);
+      // SEC-DB-RLS-001: this used to be ONE scan through `this.prisma.tenant()` (no argument), which under row level security sees
+      // only the default tenant, so every other tenant's stuck deliveries would have stayed stuck while the job reported success. It
+      // now scans per tenant (forEachTenant), inside that tenant's own transaction, and the query ALSO filters by the tenant it is
+      // given, so it is correct whether or not the runtime role bypasses RLS. A tenant that could not be read is reported, never
+      // skipped silently. The per-tenant results are merged oldest-first under the overall limit, as the single scan ordered them.
+      const found: StuckQueuedRow[] = [];
+      const summary = await forEachTenant(this.prisma.tenant(), async (tx, tenantKey) => {
+        // RLS-BYPASS: manual tenant filter — WHERE tenant_key = ${tenantKey} below, on a transaction whose tenant context is that tenant.
+        const rows = await tx.$queryRaw<StuckQueuedRow[]>(Prisma.sql`
+          SELECT id, tenant_key AS "tenantKey", endpoint_id AS "endpointId", created_at AS "createdAt"
+          FROM outbound_webhook_deliveries
+          WHERE tenant_key = ${tenantKey}
+            AND status = 'queued'
+            AND attempted_at IS NULL
+            AND created_at < ${cutoff}
+            AND (last_enqueue_attempt_at IS NULL OR last_enqueue_attempt_at < ${cutoff})
+          ORDER BY created_at ASC
+          LIMIT ${overallLimit}
+        `);
+        // A row of another tenant means the filter above was bypassed: count it as a failure, never act on it.
+        const own = rows.filter((row) => row.tenantKey === tenantKey);
+        found.push(...own);
+        return { examinedCount: rows.length, changedCount: 0, failedCount: rows.length - own.length };
+      });
 
-      for (const row of rows) {
+      if (summary.tenantsFailed > 0) {
+        // A tenant we could not read is a tenant whose stuck deliveries we may have missed: an error, never a quiet success.
+        this.logger.error(
+          `Outbound webhook stuck-delivery recovery could not read ${summary.tenantsFailed}/${summary.tenantsEvaluated} tenant(s) [${summary.results
+            .filter((result) => result.status === "failed")
+            .map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`)
+            .join(", ")}]; their stuck deliveries were NOT evaluated this run.`,
+        );
+      }
+
+      const ordered = found.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(0, overallLimit);
+      for (const row of ordered) {
         const delivery = await this.enqueueDelivery(row.tenantKey, row.id, row.endpointId);
         if (delivery.status === "failed") {
           failed++;
@@ -554,17 +594,23 @@ export class OutboundWebhooksService implements OnApplicationBootstrap, OnApplic
           recovered++;
         }
       }
-      if (recovered > 0 || failed > 0) {
+      if (recovered > 0 || failed > 0 || summary.tenantsFailed > 0) {
         await this.auditService.record({
           actorId: "system",
           actorRole: "system",
           action: "outbound_webhook.queued_recovery",
           resource: "OutboundWebhookDelivery",
           resourceId: "stuck-queued",
-          metadata: { recovered, failed },
+          metadata: { recovered, failed, tenantsEvaluated: summary.tenantsEvaluated, tenantsFailed: summary.tenantsFailed },
         });
       }
-      return { recovered, failed };
+      return {
+        recovered,
+        failed,
+        tenantsEvaluated: summary.tenantsEvaluated,
+        tenantsFailed: summary.tenantsFailed,
+        orphanDetection: summary.orphanDetection,
+      };
     } finally {
       this.recoveringQueuedDeliveries = false;
     }

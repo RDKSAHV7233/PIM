@@ -32,7 +32,8 @@
     "woocommerce-credential-verification-endpoint.test.cjs",
     "tenant-iteration.test.cjs",
     "credential-rotation-tenant-iteration.test.cjs",
-    "plan-usage-rollup-tenant-iteration.test.cjs"
+    "plan-usage-rollup-tenant-iteration.test.cjs",
+    "outbound-webhook-recovery-tenant-iteration.test.cjs"
   ],
   "expectedFailing": []
 }

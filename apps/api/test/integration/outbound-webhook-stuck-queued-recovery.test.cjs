@@ -122,6 +122,13 @@ async function run() {
   try {
     built = await build();
 
+    // The recovery sweep iterates the tenant directory (SEC-DB-RLS-001 P2.2), so the fixture tenant must be a real directory tenant.
+    await raw.$executeRawUnsafe(
+      `INSERT INTO "WorkspaceDirectory" (id, "tenantKey", "workspaceSlug", "displayName", "isActive", "createdAt", "updatedAt") VALUES ($1, $2, $3, 'E3 stuck-queued', TRUE, NOW(), NOW())`,
+      `wd_${runId}`,
+      tenantKey,
+      `owsq-${runId}`,
+    );
     await raw.$executeRawUnsafe(
       `
       INSERT INTO outbound_webhook_endpoints
@@ -256,6 +263,7 @@ async function run() {
     try {
       await raw.$executeRawUnsafe(`DELETE FROM outbound_webhook_deliveries WHERE tenant_key = $1`, tenantKey);
       await raw.$executeRawUnsafe(`DELETE FROM outbound_webhook_endpoints WHERE tenant_key = $1`, tenantKey);
+      await raw.$executeRawUnsafe(`DELETE FROM "WorkspaceDirectory" WHERE "tenantKey" = $1`, tenantKey);
     } catch {
       /* best effort */
     }

@@ -513,11 +513,11 @@
       "file": "outbound-webhooks/outbound-webhooks.service.ts",
       "class": "A2",
       "remediation": "tenant-iteration",
-      "plan": "stuck-delivery recovery scan; iterate tenants",
-      "positiveAssertion": "a stuck delivery for a non-default tenant is recovered",
-      "noArgTenantRawSites": 1,
+      "plan": "P2.2 done: the stuck-delivery recovery scan runs per tenant through forEachTenant (transaction-local tenant context, the SQL ALSO filters by the tenant it is given, rows of another tenant are counted as failures and never acted on); per-tenant results are merged oldest-first under the overall limit; unreadable tenants are logged as errors and reported in the result and the audit entry; a directory read failure rejects. Re-enqueue and status updates were already per-tenant (prisma.tenant(tenantKey))",
+      "positiveAssertion": "outbound-webhook-recovery-tenant-iteration.test.cjs: a stuck delivery in each of two non-default directory tenants and the default tenant is re-enqueued under its own tenant by the API running as the restricted role, a fresh delivery is left alone; outbound-webhooks-recovery-tenant-iteration.spec.ts (both RLS modes, mutation-checked)",
+      "noArgTenantRawSites": 0,
       "rawSqlSites": 1,
-      "status": "open"
+      "status": "migrated"
     },
     {
       "file": "billing/stripe.service.ts",
