@@ -404,19 +404,6 @@
       "status": "open"
     },
     {
-      "file": "marketplace/export-job-reconciliation.service.ts",
-      "class": "A",
-      "remediation": "tenant-iteration",
-      "plan": "discovery moves to tenant iteration (the per-row step already uses runWithTenantContext)",
-      "rlsProtectedModels": [
-        "marketplaceExportJob"
-      ],
-      "otherModels": [],
-      "rawSqlSites": 0,
-      "positiveAssertion": "a stuck export job for a non-default tenant is reconciled",
-      "status": "open"
-    },
-    {
       "file": "media/media-integrity.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
@@ -568,6 +555,16 @@
       "noArgTenantRawSites": 0,
       "rawSqlSites": 1,
       "status": "migrated"
+    },
+    {
+      "file": "marketplace/export-job-reconciliation.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "P2.3d done: stale active export jobs are discovered per tenant through forEachTenant (transaction-local tenant context, bounded concurrency; the SQL ALSO filters by the tenant it is given so it is correct with or without RLS; rows of another tenant are counted as failures and never acted on), merged oldest-first under the original 200-job bound, and each is checked against the queue and failed through the existing per-tenant updateMany under runWithTenantContext. Unreadable tenants are logged as errors by code and returned as tenantsFailed; a directory read failure rejects. The file no longer uses the context-free direct client.",
+      "positiveAssertion": "export-job-reconciliation-tenant-iteration.test.cjs: stale active export jobs in two non-default directory tenants and the default tenant are failed with a Reconciled reason under the restricted role, each staying on its own tenant, a fresh job and a completed job are left alone; export-job-reconciliation.service.spec.ts (both RLS modes, bound across tenants, mutation-checked)",
+      "noArgTenantRawSites": 0,
+      "rawSqlSites": 1,
+      "status": "migrated"
     }
   ],
   "rawSqlSitesByFile": {
@@ -596,12 +593,13 @@
     "billing/fake-plan-profile-db-spec.ts": 2,
     "bulk-edit/bulk-edit-stale-operation-recovery.service.ts": 1,
     "bulk-import/bulk-import-stale-row-recovery.service.ts": 2,
-    "connector-framework/connector-webhook-lease-sweeper.service.ts": 1
+    "connector-framework/connector-webhook-lease-sweeper.service.ts": 1,
+    "marketplace/export-job-reconciliation.service.ts": 1
   },
   "totals": {
-    "directClientFiles": 29,
-    "rawSqlSites": 90,
-    "rawSqlFiles": 26
+    "directClientFiles": 28,
+    "rawSqlSites": 91,
+    "rawSqlFiles": 27
   },
   "otherClients": [
     {

@@ -36,7 +36,8 @@
     "outbound-webhook-recovery-tenant-iteration.test.cjs",
     "bulk-edit-stale-recovery-tenant-iteration.test.cjs",
     "bulk-import-stale-row-recovery-tenant-iteration.test.cjs",
-    "connector-webhook-lease-sweeper-tenant-iteration.test.cjs"
+    "connector-webhook-lease-sweeper-tenant-iteration.test.cjs",
+    "export-job-reconciliation-tenant-iteration.test.cjs"
   ],
   "expectedFailing": []
 }
