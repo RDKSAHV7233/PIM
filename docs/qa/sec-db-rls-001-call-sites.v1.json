@@ -126,19 +126,6 @@
       "status": "open"
     },
     {
-      "file": "connector-framework/connector-webhook-lease-sweeper.service.ts",
-      "class": "A",
-      "remediation": "tenant-iteration",
-      "plan": "iterate tenants; sweep expired leases per tenant context",
-      "rlsProtectedModels": [
-        "connectorWebhookEvent"
-      ],
-      "otherModels": [],
-      "rawSqlSites": 0,
-      "positiveAssertion": "an expired webhook lease for a non-default tenant is redriven",
-      "status": "open"
-    },
-    {
       "file": "connector-installer/credential-encryption.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
@@ -571,6 +558,16 @@
       "noArgTenantRawSites": 0,
       "rawSqlSites": 2,
       "status": "migrated"
+    },
+    {
+      "file": "connector-framework/connector-webhook-lease-sweeper.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "P2.3c done: stranded webhook events are discovered per tenant through forEachTenant (transaction-local tenant context, bounded concurrency; the SQL ALSO filters by the tenant it is given so it is correct with or without RLS; rows of another tenant are counted as failures and never acted on), merged oldest-first under the batch bound, and each is re-driven through the existing redriveStrandedWebhookEvent, which already runs under the event's own tenant. options.tenantKey still scopes a sweep to one tenant. Unreadable tenants are logged as errors by code and returned as tenantsFailed; a directory read failure rejects. The file no longer uses the context-free direct client.",
+      "positiveAssertion": "connector-webhook-lease-sweeper-tenant-iteration.test.cjs: stranded events in two non-default directory tenants and the default tenant are re-driven under the restricted role, each under its own tenant, a still-leased event and a processed event are left alone; connector-webhook-lease-sweeper.service.spec.ts (both RLS modes, bound across tenants, mutation-checked)",
+      "noArgTenantRawSites": 0,
+      "rawSqlSites": 1,
+      "status": "migrated"
     }
   ],
   "rawSqlSitesByFile": {
@@ -598,12 +595,13 @@
     "common/tenant/fake-rls-db-spec.ts": 2,
     "billing/fake-plan-profile-db-spec.ts": 2,
     "bulk-edit/bulk-edit-stale-operation-recovery.service.ts": 1,
-    "bulk-import/bulk-import-stale-row-recovery.service.ts": 2
+    "bulk-import/bulk-import-stale-row-recovery.service.ts": 2,
+    "connector-framework/connector-webhook-lease-sweeper.service.ts": 1
   },
   "totals": {
-    "directClientFiles": 30,
-    "rawSqlSites": 89,
-    "rawSqlFiles": 25
+    "directClientFiles": 29,
+    "rawSqlSites": 90,
+    "rawSqlFiles": 26
   },
   "otherClients": [
     {

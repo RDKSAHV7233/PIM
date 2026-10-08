@@ -259,7 +259,7 @@ async function run() {
     assert(String(beforeC.processingStatus) === "processing", `C: precondition — row must be stranded 'processing', got ${beforeC.processingStatus}`);
     assert(beforeC.leaseUntil && new Date(beforeC.leaseUntil).getTime() < Date.now(), "C: precondition — lease must be expired");
 
-    const sweeper = new ConnectorWebhookLeaseSweeperService(svc.prismaDirect, svc.ingestion);
+    const sweeper = new ConnectorWebhookLeaseSweeperService(svc.prisma, svc.ingestion);
     // Tenant-scoped + tiny cap keeps the run deterministic in a shared dev DB.
     const sweepSummary = await sweeper.runSweep({ tenantKey, maxAttempts: 3 });
     assert(

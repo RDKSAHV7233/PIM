@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { runWithAdvisoryLock } from "../common/scheduling/advisory-lock";
-import { PrismaDirectService } from "../prisma/prisma-direct.service";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
+import { PrismaService } from "../prisma/prisma.service";
 import { ConnectorWebhookIngestionService } from "./connector-webhook-ingestion.service";
 
 /**
@@ -31,12 +33,25 @@ const SWEEP_INITIAL_DELAY_MS = 2 * 60 * 1000; // 2 min after boot
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
+/** CONNECTOR_WEBHOOK_LEASE_SWEEP_INITIAL_DELAY_MS (>= 100) shortens the first sweep for tests; unset or invalid keeps 2 minutes. */
+function resolveInitialDelayMs(env: NodeJS.ProcessEnv = process.env): number {
+  const requested = Number(env["CONNECTOR_WEBHOOK_LEASE_SWEEP_INITIAL_DELAY_MS"]);
+  return Number.isFinite(requested) && requested >= 100 ? Math.floor(requested) : SWEEP_INITIAL_DELAY_MS;
+}
+
+type StrandedRow = { id: string; tenantKey: string; installationId: string; receivedAt: Date };
+
 export type WebhookLeaseSweepSummary = {
   scanned: number;
   processed: number;
   failed: number;
   retried: number;
   skipped: number;
+  tenantsEvaluated: number;
+  /** Tenants whose stranded events could not be read this run; their events were NOT evaluated. */
+  tenantsFailed: number;
+  /** A runtime role cannot see tenants missing from the directory, so this is never reported as zero. */
+  orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE";
 };
 
 @Injectable()
@@ -47,7 +62,7 @@ export class ConnectorWebhookLeaseSweeperService implements OnModuleInit, OnModu
   private running = false;
 
   constructor(
-    private readonly prismaDirect: PrismaDirectService,
+    private readonly prisma: PrismaService,
     private readonly ingestion: ConnectorWebhookIngestionService,
   ) {}
 
@@ -66,7 +81,7 @@ export class ConnectorWebhookLeaseSweeperService implements OnModuleInit, OnModu
       void this.runScheduledSweep();
       this.intervalHandle = setInterval(() => void this.runScheduledSweep(), SWEEP_INTERVAL_MS);
       this.intervalHandle.unref();
-    }, SWEEP_INITIAL_DELAY_MS);
+    }, resolveInitialDelayMs());
     this.initialTimeout.unref();
   }
 
@@ -97,6 +112,9 @@ export class ConnectorWebhookLeaseSweeperService implements OnModuleInit, OnModu
       failed: 0,
       retried: 0,
       skipped: 0,
+      tenantsEvaluated: 0,
+      tenantsFailed: 0,
+      orphanDetection: "UNVERIFIED_BY_RUNTIME_ROLE",
     };
 
     if (this.running) {
@@ -106,24 +124,52 @@ export class ConnectorWebhookLeaseSweeperService implements OnModuleInit, OnModu
     this.running = true;
 
     try {
-      const client = this.prismaDirect.getClient();
       const now = new Date();
       const batchSize = options.batchSize ?? this.batchSize();
       const maxAttempts = options.maxAttempts ?? this.maxAttempts();
 
-      // Column order matches idx_connector_webhooks_recovery
-      // (tenant_key, processing_status, processing_lease_until, received_at).
-      const stranded = await client.connectorWebhookEvent.findMany({
-        where: {
-          ...(options.tenantKey ? { tenantKey: options.tenantKey } : {}),
-          processingStatus: { in: ["received", "processing"] },
-          processingLeaseUntil: { lt: now },
+      // SEC-DB-RLS-001: this used to be ONE cross-tenant read through the context-free direct client, which under row level
+      // security sees no tenant's rows, so stranded events would have stayed stranded while the sweep found nothing to do. It now
+      // scans per tenant (forEachTenant), inside that tenant's own transaction, and the query ALSO filters by the tenant it is
+      // given, so it is correct whether or not the runtime role bypasses RLS. A tenant that could not be read is reported, never
+      // skipped silently. Per-tenant results are merged oldest-first under the batch bound. `options.tenantKey` scopes the sweep to
+      // one tenant (deterministic tests). The re-drive itself is unchanged and already runs under the event's own tenant.
+      const found: StrandedRow[] = [];
+      const discovery = await forEachTenant(
+        this.prisma.tenant(),
+        async (tx, tenantKey) => {
+          // Column order matches idx_connector_webhooks_recovery (tenant_key, processing_status, processing_lease_until, received_at).
+          // RLS-BYPASS: manual tenant filter — WHERE tenant_key = ${tenantKey} below, on a transaction whose tenant context is that tenant.
+          const rows = await tx.$queryRaw<StrandedRow[]>(Prisma.sql`
+            SELECT id, tenant_key AS "tenantKey", installation_id AS "installationId", received_at AS "receivedAt"
+            FROM connector_webhook_events
+            WHERE tenant_key = ${tenantKey}
+              AND processing_status IN ('received', 'processing')
+              AND processing_lease_until < ${now}
+            ORDER BY received_at ASC
+            LIMIT ${batchSize}
+          `);
+          // A row of another tenant means the filter above was bypassed: count it as a failure, never act on it.
+          const own = rows.filter((row) => row.tenantKey === tenantKey);
+          found.push(...own);
+          return { examinedCount: rows.length, changedCount: 0, failedCount: rows.length - own.length };
         },
-        select: { id: true, tenantKey: true, installationId: true },
-        orderBy: { receivedAt: "asc" },
-        take: batchSize,
-      });
-
+        options.tenantKey ? { tenantKeys: [options.tenantKey] } : {},
+      );
+      summary.tenantsEvaluated = discovery.tenantsEvaluated;
+      summary.tenantsFailed = discovery.tenantsFailed;
+      if (discovery.tenantsFailed > 0) {
+        // A tenant we could not read is a tenant whose stranded events we may have missed: an error, never a quiet success.
+        this.logger.error(
+          `Connector webhook lease sweep could not read ${discovery.tenantsFailed}/${discovery.tenantsEvaluated} tenant(s) [${discovery.results
+            .filter((result) => result.status === "failed")
+            .map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`)
+            .join(", ")}]; their stranded events were NOT evaluated this run.`,
+        );
+      }
+      const stranded = found
+        .sort((x, y) => new Date(x.receivedAt).getTime() - new Date(y.receivedAt).getTime())
+        .slice(0, batchSize);
       summary.scanned = stranded.length;
       if (stranded.length === 0) {
         this.logger.log("Connector webhook lease sweep: no stranded events.");
