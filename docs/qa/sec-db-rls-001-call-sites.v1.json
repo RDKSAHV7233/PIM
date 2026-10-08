@@ -113,7 +113,7 @@
       "file": "connector-framework/connector-heartbeat.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "The key-rotation trigger (stale-credential count) now iterates tenants; a tenant whose count cannot be read is not treated as nothing stale. STILL OPEN: runHeartbeat scans installations across tenants through the context-free client (I-4).",
+      "plan": "The key-rotation trigger (stale-credential count) iterates tenants; a tenant whose count cannot be read is not treated as nothing stale. P2.4 done: runHeartbeat now discovers installations per tenant through forEachTenant (every query filtered by the tenant it is given; a row of another tenant is counted as a failure and never acted on; each tenant contributes at most one batch and the results are merged never-attempted-first, then longest-unattempted, then id, and cut to one batch, so every installation is still visited once before any is visited twice) and writes each validation outcome inside the installation's own tenant transaction (both writes together); a failed write throws so the caller counts it. An unreadable tenant is logged as an error by code and the readable tenants are still checked. The file keeps the context-free client only as the carrier of those tenant transactions and for the non-RLS connector catalogue, so it stays open under the ratchet's definition.",
       "rlsProtectedModels": [
         "connectorCredential",
         "connectorInstallation"
@@ -122,7 +122,7 @@
         "connectorDefinition"
       ],
       "rawSqlSites": 0,
-      "positiveAssertion": "rotation trigger: credential-rotation-tenant-iteration.test.cjs (API startup path); runHeartbeat: an expired credential of a non-default tenant is detected and marked",
+      "positiveAssertion": "connector-heartbeat-tenant-iteration.test.cjs: installations in two non-default directory tenants and the default tenant each get a recorded validation attempt and outcome under the restricted role, a disabled installation is left alone; connector-heartbeat.service.spec.ts (RLS-faithful stub database, merge order and bound across tenants, mutation-checked); rotation trigger: credential-rotation-tenant-iteration.test.cjs",
       "status": "open"
     },
     {

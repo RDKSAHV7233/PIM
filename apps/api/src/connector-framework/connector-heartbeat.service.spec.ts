@@ -62,30 +62,60 @@ function comparatorFor(orderBy: OrderByEntry | OrderByEntry[] | undefined): (a: 
 
 function makeStubs(installations: Row[] = [], definitions: any[] = []) {
   const installationRows = new Map<string, Row>(installations.map((i) => [i.id, { ...i }]));
-  const connectorInstallation = {
-    // Honors where.status.in, orderBy (attempt NULLS FIRST, then id) and take, like the real query.
-    findMany: jest.fn().mockImplementation((args: any = {}) => {
-      let rows = [...installationRows.values()];
-      const allowed: string[] | undefined = args.where?.status?.in;
-      if (allowed) rows = rows.filter((r) => allowed.includes(r.status));
-      rows.sort(comparatorFor(args.orderBy));
-      if (typeof args.take === "number") rows = rows.slice(0, args.take);
-      return Promise.resolve(rows.map((r) => ({ id: r.id, tenantKey: r.tenantKey, connectorId: r.connectorId })));
-    }),
-    updateMany: jest.fn().mockImplementation(({ where, data }: any) => {
-      const row = installationRows.get(where.id);
-      if (!row) return Promise.resolve({ count: 0 });
-      if (where.status && row.status !== where.status) return Promise.resolve({ count: 0 });
-      if (where.tenantKey && row.tenantKey !== where.tenantKey) return Promise.resolve({ count: 0 });
-      Object.assign(row, data);
-      return Promise.resolve({ count: 1 });
-    }),
-  };
+  // SEC-DB-RLS-001: the database below behaves like row level security. The base client has NO tenant context and so sees only the
+  // `default` tenant's installations; a transaction sees only the tenant set with set_config('app.tenant_key', ...) inside it.
+  // The mocks are shared (so tests can inspect every call across clients); each call also records the tenant it ran under as the
+  // second argument.
+  const findMany = jest.fn().mockImplementation((args: any = {}, visibleTenant = "default") => {
+    let rows = [...installationRows.values()].filter((r) => r.tenantKey === visibleTenant);
+    const allowed: string[] | undefined = args.where?.status?.in;
+    if (allowed) rows = rows.filter((r) => allowed.includes(r.status));
+    if (args.where?.tenantKey) rows = rows.filter((r) => r.tenantKey === args.where.tenantKey);
+    rows.sort(comparatorFor(args.orderBy));
+    if (typeof args.take === "number") rows = rows.slice(0, args.take);
+    return Promise.resolve(
+      rows.map((r) => ({ id: r.id, tenantKey: r.tenantKey, connectorId: r.connectorId, lastValidationAttemptAt: r.lastValidationAttemptAt ?? null })),
+    );
+  });
+  const updateMany = jest.fn().mockImplementation(({ where, data }: any, visibleTenant = "default") => {
+    const row = installationRows.get(where.id);
+    if (!row || row.tenantKey !== visibleTenant) return Promise.resolve({ count: 0 });
+    if (where.status && row.status !== where.status) return Promise.resolve({ count: 0 });
+    if (where.tenantKey && row.tenantKey !== where.tenantKey) return Promise.resolve({ count: 0 });
+    Object.assign(row, data);
+    return Promise.resolve({ count: 1 });
+  });
+  const connectorInstallation = { findMany, updateMany };
   const connectorDefinition = { findMany: jest.fn().mockResolvedValue(definitions) };
   const connectorCredential = { count: jest.fn().mockResolvedValue(0) };
-  // The same object is the base client and every tenant transaction client here: these tests are about heartbeat behaviour, not RLS.
-  const baseClient: any = { connectorInstallation, connectorDefinition, connectorCredential, workspaceDirectory: { findMany: jest.fn().mockResolvedValue([]) }, $queryRaw: jest.fn().mockResolvedValue([]) };
-  baseClient.$transaction = jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(baseClient));
+  // Non-default tenants that exist in the directory: every tenant that has an installation here.
+  const directoryFindMany = jest.fn().mockImplementation(async () =>
+    [...new Set([...installationRows.values()].map((r) => r.tenantKey))].filter((t) => t !== "default").map((tenantKey) => ({ tenantKey })),
+  );
+  const transactionTenants: string[] = [];
+  const clientFor = (visibleTenant: () => string): any => ({
+    connectorInstallation: {
+      findMany: (args: any) => findMany(args, visibleTenant()),
+      updateMany: (args: any) => updateMany(args, visibleTenant()),
+    },
+    connectorDefinition,
+    connectorCredential,
+    workspaceDirectory: { findMany: directoryFindMany },
+    $queryRaw: jest.fn().mockResolvedValue([]),
+  });
+  const baseClient: any = clientFor(() => "default");
+  baseClient.$transaction = jest.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => {
+    let tenant = "default";
+    const tx = clientFor(() => tenant);
+    tx.$queryRaw = jest.fn().mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (String(strings.join("?")).includes("set_config")) {
+        tenant = String(values[0]);
+        transactionTenants.push(tenant);
+      }
+      return [];
+    });
+    return fn(tx);
+  });
   const prismaDirect = {
     getClient: jest.fn().mockReturnValue(baseClient),
   } as unknown as PrismaDirectService;
@@ -100,7 +130,7 @@ function makeStubs(installations: Row[] = [], definitions: any[] = []) {
   const httpClient = { fetch: jest.fn() } as unknown as ConnectorHttpClient;
   const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as LoggerService;
 
-  return { prismaDirect, registry, credentialService, httpClient, logger, connector, connectorsBySlug, connectorInstallation, connectorCredential, installationRows };
+  return { prismaDirect, registry, credentialService, httpClient, logger, connector, connectorsBySlug, connectorInstallation, connectorCredential, installationRows, transactionTenants, baseClient };
 }
 
 function makeService(stubs: ReturnType<typeof makeStubs>) {
@@ -298,7 +328,13 @@ describe("ConnectorHeartbeatService.runHeartbeat - truthful credential health", 
 
       const args = stubs.connectorInstallation.findMany.mock.calls[0][0];
       expect(args.take).toBe(50);
-      expect(args.where).toEqual({ status: { in: ["ACTIVE", "CREDENTIAL_EXPIRED"] } });
+      // per tenant (SEC-DB-RLS-001): the query carries the tenant it is given, and the bound applies to each tenant
+      for (const [callArgs, tenant] of stubs.connectorInstallation.findMany.mock.calls as Array<[any, string]>) {
+        expect(callArgs.take).toBe(50);
+        expect(callArgs.where).toEqual({ tenantKey: tenant, status: { in: ["ACTIVE", "CREDENTIAL_EXPIRED"] } });
+        expect(callArgs.orderBy).toEqual([{ lastValidationAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }]);
+      }
+      expect(stubs.connectorInstallation.findMany.mock.calls.map((c: any[]) => c[1]).sort()).toEqual(["default", "tenant-a"]);
       expect(args.orderBy).toEqual([{ lastValidationAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }]);
     });
 
@@ -492,5 +528,98 @@ describe("ConnectorHeartbeatService.runKeyRotationIfNeeded — stale credentials
     await (service as any).runKeyRotationIfNeeded();
 
     expect(stubs.logger.warn).toHaveBeenCalledWith("connector.credential.rotation_degraded", expect.objectContaining({ status: "PARTIAL_FAILURE", tenantsFailed: 1 }));
+  });
+});
+
+describe("ConnectorHeartbeatService.runHeartbeat — installations of every tenant (SEC-DB-RLS-001 P2.4)", () => {
+  const inst = (id: string, tenantKey: string, extra: Partial<Row> = {}): Row => ({ id, tenantKey, connectorId: "def-1", status: "ACTIVE", ...extra });
+
+  it("validates the installations of every non-default directory tenant, not only the default tenant (the silent single-tenant failure)", async () => {
+    const stubs = makeStubs([inst("d1", "default"), inst("a1", "tenant-a"), inst("b1", "tenant-b")], [DEF]);
+    detailed(stubs, { outcome: "valid" });
+
+    await run(makeService(stubs));
+
+    expect([...stubs.installationRows.values()].map((r) => [r.id, r.lastValidationOutcome])).toEqual([
+      ["d1", "VALID"],
+      ["a1", "VALID"],
+      ["b1", "VALID"],
+    ]);
+    expect([...new Set(stubs.transactionTenants)].sort()).toEqual(["default", "tenant-a", "tenant-b"]);
+  });
+
+  it("MUTATION: one read through the context-free client sees only the default tenant's installations", async () => {
+    const stubs = makeStubs([inst("d1", "default"), inst("a1", "tenant-a")], [DEF]);
+    const seen = await stubs.baseClient.connectorInstallation.findMany({ where: { status: { in: ["ACTIVE"] } } });
+    expect(seen.map((r: { id: string }) => r.id)).toEqual(["d1"]);
+  });
+
+  it("writes each outcome inside the installation's own tenant transaction, so it is recorded under row level security", async () => {
+    const stubs = makeStubs([inst("a1", "tenant-a")], [DEF]);
+    detailed(stubs, { outcome: "invalid", reasonCode: "HTTP_401" });
+
+    await run(makeService(stubs));
+
+    // the write ran as a tenant transaction for tenant-a, and the row changed (a write through the context-free client would match nothing)
+    expect(stubs.installationRows.get("a1")).toMatchObject({ status: "CREDENTIAL_EXPIRED", lastValidationOutcome: "INVALID" });
+    const writes = stubs.connectorInstallation.updateMany.mock.calls.map((c: any[]) => c[1]);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(new Set(writes)).toEqual(new Set(["tenant-a"]));
+  });
+
+  it("merges the tenants' batches in the original order and applies the batch bound across tenants", async () => {
+    const old = new Date("2026-01-01T00:00:00Z");
+    const fleet: Row[] = [
+      ...Array.from({ length: 40 }, (_, i) => inst("a-" + String(i).padStart(2, "0"), "tenant-a", { lastValidationAttemptAt: new Date(old.getTime() + i * 1000) })),
+      ...Array.from({ length: 40 }, (_, i) => inst("b-" + String(i).padStart(2, "0"), "tenant-b", { lastValidationAttemptAt: new Date(old.getTime() + 500 + i * 1000) })),
+      inst("never-b", "tenant-b"), // never attempted: must come first
+    ];
+    const stubs = makeStubs(fleet, [DEF]);
+    detailed(stubs, { outcome: "valid" });
+
+    await run(makeService(stubs));
+
+    const attempted = [...stubs.installationRows.values()].filter((r) => (r.lastValidationAttemptAt?.getTime() ?? 0) > Date.now() - 60_000).map((r) => r.id);
+    expect(attempted).toHaveLength(50);
+    expect(attempted).toContain("never-b");
+    // the oldest attempts of both tenants are the ones re-checked, the newest are not
+    expect(attempted).toContain("a-00");
+    expect(attempted).toContain("b-00");
+    expect(attempted).not.toContain("a-39");
+    expect(attempted).not.toContain("b-39");
+  });
+
+  it("an unreadable tenant is logged by code and the readable tenants are still checked", async () => {
+    const stubs = makeStubs([inst("a1", "tenant-a"), inst("b1", "tenant-b")], [DEF]);
+    detailed(stubs, { outcome: "valid" });
+    const original = stubs.connectorInstallation.findMany.getMockImplementation()!;
+    stubs.connectorInstallation.findMany.mockImplementation((args: any, tenant: string) =>
+      tenant === "tenant-a" ? Promise.reject(Object.assign(new Error("connection postgres://u:SECRET@h/db reset"), { code: "P1001" })) : original(args, tenant),
+    );
+
+    await run(makeService(stubs));
+
+    expect(stubs.installationRows.get("b1")!.lastValidationOutcome).toBe("VALID");
+    expect(stubs.installationRows.get("a1")!.lastValidationOutcome).toBeUndefined();
+    expect(stubs.logger.error).toHaveBeenCalled();
+    expect(JSON.stringify((stubs.logger.error as jest.Mock).mock.calls)).toContain("tenant-a");
+    expect(JSON.stringify((stubs.logger.error as jest.Mock).mock.calls)).not.toContain("SECRET");
+  });
+
+  it("a failed outcome write is counted as an error and does not stop the batch", async () => {
+    const stubs = makeStubs([inst("a1", "tenant-a"), inst("b1", "tenant-b")], [DEF]);
+    detailed(stubs, { outcome: "valid" });
+    const original = stubs.connectorInstallation.updateMany.getMockImplementation()!;
+    stubs.connectorInstallation.updateMany.mockImplementation((args: any, tenant: string) =>
+      tenant === "tenant-a" ? Promise.reject(new Error("write failed")) : original(args, tenant),
+    );
+
+    await run(makeService(stubs));
+
+    expect(stubs.installationRows.get("b1")!.lastValidationOutcome).toBe("VALID");
+    expect(stubs.logger.warn).toHaveBeenCalledWith(
+      "Connector credential heartbeat: could not record validation outcome",
+      expect.objectContaining({ installationId: "a1", tenantKey: "tenant-a" }),
+    );
   });
 });

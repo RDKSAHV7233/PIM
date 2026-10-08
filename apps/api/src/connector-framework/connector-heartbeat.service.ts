@@ -241,15 +241,50 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
 
   private async loadActiveInstallations(): Promise<InstallationRow[]> {
     const db = this.prismaDirect.getClient();
-    const rows = await db.connectorInstallation.findMany({
-      where: { status: { in: ["ACTIVE", "CREDENTIAL_EXPIRED"] } },
-      take: HEARTBEAT_BATCH_SIZE,
-      select: { id: true, tenantKey: true, connectorId: true },
-      // Never-attempted installations first, then the longest-unattempted, then id: a stable
-      // order in which every installation is visited once before any is visited twice.
-      orderBy: [{ lastValidationAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    // SEC-DB-RLS-001: this used to be ONE read through the context-free client, which under row level security sees no tenant's
+    // installations, so the heartbeat would have validated nothing while reporting a clean tick. It now reads per tenant
+    // (forEachTenant: one transaction per tenant, tenant context set inside it) and every query ALSO filters by the tenant it is
+    // given, so it is correct whether or not the role bypasses RLS. Each tenant contributes at most one batch; the results are
+    // merged in the same order the single query used (never-attempted first, then longest-unattempted, then id) and cut to one
+    // batch, so every installation is still visited once before any is visited twice. A tenant that cannot be read is logged as
+    // an error by code and the readable tenants are still checked this tick.
+    const found: Array<{ id: string; tenantKey: string; connectorId: string; lastValidationAttemptAt: Date | null }> = [];
+    const discovery = await forEachTenant(db, async (tx, tenantKey) => {
+      const tenantRows = await tx.connectorInstallation.findMany({
+        where: { tenantKey, status: { in: ["ACTIVE", "CREDENTIAL_EXPIRED"] } },
+        take: HEARTBEAT_BATCH_SIZE,
+        select: { id: true, tenantKey: true, connectorId: true, lastValidationAttemptAt: true },
+        // Never-attempted installations first, then the longest-unattempted, then id: a stable
+        // order in which every installation is visited once before any is visited twice.
+        orderBy: [{ lastValidationAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+      });
+      // A row of another tenant means the filter above was bypassed: count it as a failure, never act on it.
+      const own = tenantRows.filter((row: { tenantKey: string }) => row.tenantKey === tenantKey);
+      found.push(...own);
+      return { examinedCount: tenantRows.length, changedCount: 0, failedCount: tenantRows.length - own.length };
     });
-
+    if (discovery.tenantsFailed > 0) {
+      this.logger.error("Connector credential heartbeat could not read some tenants; their installations were NOT checked this tick.", {
+        tenantsFailed: discovery.tenantsFailed,
+        tenantsEvaluated: discovery.tenantsEvaluated,
+        failures: discovery.results
+          .filter((result) => result.status === "failed")
+          .map((result) => ({ tenantKey: result.tenantKey, errorCode: result.errorCode ?? "UNKNOWN" })),
+      });
+    }
+    const attemptTime = (row: { lastValidationAttemptAt: Date | null }) => (row.lastValidationAttemptAt ? new Date(row.lastValidationAttemptAt).getTime() : null);
+    const rows = found
+      .sort((x, y) => {
+        const xa = attemptTime(x);
+        const ya = attemptTime(y);
+        if (xa !== ya) {
+          if (xa === null) return -1;
+          if (ya === null) return 1;
+          return xa - ya;
+        }
+        return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+      })
+      .slice(0, HEARTBEAT_BATCH_SIZE);
     if (rows.length === 0) return [];
 
     const connectorIds = [...new Set(rows.map((r: { connectorId: string }) => r.connectorId))];
@@ -298,21 +333,33 @@ export class ConnectorHeartbeatService implements OnApplicationBootstrap, OnAppl
   // whatever status the installation had. VALID promotes CREDENTIAL_EXPIRED back to ACTIVE
   // and leaves ACTIVE as it is. updatedAt moves only on a status transition, as before.
   private async recordOutcome(inst: InstallationRow, record: ValidationRecord): Promise<void> {
-    const db = this.prismaDirect.getClient();
-    await db.connectorInstallation.updateMany({
-      where: { id: inst.id, tenantKey: inst.tenantKey },
-      data: validationColumns(record, new Date()),
-    });
-    if (record.outcome === "INVALID") {
-      await db.connectorInstallation.updateMany({
-        where: { id: inst.id, tenantKey: inst.tenantKey },
-        data: { status: "CREDENTIAL_EXPIRED", updatedAt: new Date() },
-      });
-    } else if (record.outcome === "VALID") {
-      await db.connectorInstallation.updateMany({
-        where: { id: inst.id, tenantKey: inst.tenantKey, status: "CREDENTIAL_EXPIRED" },
-        data: { status: "ACTIVE", updatedAt: new Date() },
-      });
+    // SEC-DB-RLS-001: this wrote through the context-free client, whose updateMany matches no row under row level security, so a
+    // recorded outcome would have been silently lost. It now writes inside the installation's own tenant transaction (both
+    // writes together). A failed write throws so the caller counts it, exactly as a failed query did before.
+    const outcome = await forEachTenant(
+      this.prismaDirect.getClient(),
+      async (tx) => {
+        await tx.connectorInstallation.updateMany({
+          where: { id: inst.id, tenantKey: inst.tenantKey },
+          data: validationColumns(record, new Date()),
+        });
+        if (record.outcome === "INVALID") {
+          await tx.connectorInstallation.updateMany({
+            where: { id: inst.id, tenantKey: inst.tenantKey },
+            data: { status: "CREDENTIAL_EXPIRED", updatedAt: new Date() },
+          });
+        } else if (record.outcome === "VALID") {
+          await tx.connectorInstallation.updateMany({
+            where: { id: inst.id, tenantKey: inst.tenantKey, status: "CREDENTIAL_EXPIRED" },
+            data: { status: "ACTIVE", updatedAt: new Date() },
+          });
+        }
+        return { examinedCount: 1, changedCount: 1 };
+      },
+      { tenantKeys: [inst.tenantKey] },
+    );
+    if (outcome.tenantsFailed > 0) {
+      throw new Error(`validation outcome not recorded (${outcome.results[0]?.errorCode ?? "UNKNOWN"})`);
     }
   }
 }
