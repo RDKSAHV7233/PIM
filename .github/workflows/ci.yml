@@ -571,11 +571,18 @@ jobs:
           node scripts/db-identity/rehearse-v2.cjs --output artifacts/db-identity-rehearsal-v2-pg${{ matrix.postgres }}.json
 
       - name: Validate redacted rehearsal evidence
+        id: evidence_validation
         if: always() && hashFiles(format('artifacts/db-identity-rehearsal-v2-pg{0}.json', matrix.postgres)) != ''
         run: node scripts/db-identity/validate-rehearse-v2-evidence.cjs --artifact artifacts/db-identity-rehearsal-v2-pg${{ matrix.postgres }}.json
 
+      - name: Record validated evidence checksum
+        id: evidence_checksum
+        if: always() && steps.evidence_validation.outcome == 'success'
+        run: |
+          sha256sum artifacts/db-identity-rehearsal-v2-pg${{ matrix.postgres }}.json
+
       - name: Upload validated redacted rehearsal evidence
-        if: always() && hashFiles(format('artifacts/db-identity-rehearsal-v2-pg{0}.json', matrix.postgres)) != ''
+        if: always() && steps.evidence_validation.outcome == 'success' && steps.evidence_checksum.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: db-identity-rehearsal-v2-pg${{ matrix.postgres }}
