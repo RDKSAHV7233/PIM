@@ -79,20 +79,6 @@
       "status": "open"
     },
     {
-      "file": "bulk-import/bulk-import-stale-row-recovery.service.ts",
-      "class": "A",
-      "remediation": "tenant-iteration",
-      "plan": "iterate tenants; recover stale rows per tenant context",
-      "rlsProtectedModels": [
-        "bulkImportJob",
-        "bulkImportRow"
-      ],
-      "otherModels": [],
-      "rawSqlSites": 0,
-      "positiveAssertion": "a stale row seeded for a non-default tenant is recovered",
-      "status": "open"
-    },
-    {
       "file": "common/tenant/tenant-directory.service.ts",
       "class": "C",
       "remediation": "split",
@@ -575,6 +561,16 @@
       "noArgTenantRawSites": 0,
       "rawSqlSites": 1,
       "status": "migrated"
+    },
+    {
+      "file": "bulk-import/bulk-import-stale-row-recovery.service.ts",
+      "class": "A2",
+      "remediation": "tenant-iteration",
+      "plan": "P2.3b done: stale rows are discovered per tenant through forEachTenant (transaction-local tenant context, bounded concurrency; every statement ALSO filters by the tenant it is given so it is correct with or without RLS; rows of another tenant are counted as failures and never acted on). Two passes keep the original 500-row bound: pass 1 reads each tenant's oldest stale rows, results are merged oldest-first and cut to the bound, pass 2 resets exactly the chosen rows per tenant (only rows still in processing) and each affected job is re-driven once under its own tenant context via the existing processJob. Unreadable tenants are logged as errors by code and returned as tenantsFailed; a directory read failure rejects. The file no longer uses the context-free direct client.",
+      "positiveAssertion": "bulk-import-stale-row-recovery-tenant-iteration.test.cjs: stale processing rows in two non-default directory tenants and the default tenant are reset to retrying under the restricted role, each staying on its own tenant and job, a fresh row is left alone; bulk-import-stale-row-recovery.service.spec.ts (both RLS modes, bound across tenants, mutation-checked)",
+      "noArgTenantRawSites": 0,
+      "rawSqlSites": 2,
+      "status": "migrated"
     }
   ],
   "rawSqlSitesByFile": {
@@ -601,12 +597,13 @@
     "common/tenant/tenant-iteration.ts": 1,
     "common/tenant/fake-rls-db-spec.ts": 2,
     "billing/fake-plan-profile-db-spec.ts": 2,
-    "bulk-edit/bulk-edit-stale-operation-recovery.service.ts": 1
+    "bulk-edit/bulk-edit-stale-operation-recovery.service.ts": 1,
+    "bulk-import/bulk-import-stale-row-recovery.service.ts": 2
   },
   "totals": {
-    "directClientFiles": 31,
-    "rawSqlSites": 87,
-    "rawSqlFiles": 24
+    "directClientFiles": 30,
+    "rawSqlSites": 89,
+    "rawSqlFiles": 25
   },
   "otherClients": [
     {
