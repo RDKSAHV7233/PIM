@@ -45,7 +45,8 @@
     "internal-ops-summary-restricted-role.test.cjs",
     "internal-ops-alerts-restricted-role.test.cjs",
     "stripe-customer-tenant-resolution-restricted-role.test.cjs",
-    "commercial-requests-restricted-role.test.cjs"
+    "commercial-requests-restricted-role.test.cjs",
+    "password-reset-token-restricted-role.test.cjs"
   ],
   "expectedFailing": []
 }

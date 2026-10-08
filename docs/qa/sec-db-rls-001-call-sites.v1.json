@@ -25,7 +25,7 @@
       "file": "auth/auth.service.ts",
       "class": "C",
       "remediation": "review",
-      "plan": "mostly tenant(tenantId) already; the two direct uses are pre-tenant identity lookups on an unscoped table; review each",
+      "plan": "P2.8c done: confirmPasswordReset no longer looks the recovery token up (or writes the password and the token) through the context-free client. AuthRecoveryToken is tenant-keyed and forced row-level-secured but the reset link carries only the token, so the token hash is looked up per tenant through forEachTenant (one short transaction per tenant, filtered by that tenant; token format, expiry, single use and the API contract unchanged); once found, the identity lookup and both writes run in that tenant's own client. A token found in a readable tenant works even if another tenant is unreadable; no match while a tenant was unreadable returns 503 PASSWORD_RESET_TEMPORARILY_UNAVAILABLE (retry the same link), never an invalid-link answer. Remaining direct-client use: requestPasswordReset looks the identity up by e-mail on AuthIdentity, which has NO row level security (checked on a migrated database), so it works for every tenant and stays; it is pre-tenant by nature and is left unchanged pending a decision on whether AuthIdentity should become row-level-secured (which would need a different design for login, e-mail lookup and recovery). Orphan limit: a tenant with a token but no directory row is not covered.",
       "rlsProtectedModels": [
         "accountConsentEvent",
         "accountDeletionRequest",
@@ -38,7 +38,7 @@
       ],
       "otherModels": [],
       "rawSqlSites": 0,
-      "positiveAssertion": "login and MFA flows for a non-default tenant under a restricted role",
+      "positiveAssertion": "password-reset-token-restricted-role.test.cjs: under the restricted role a reset for each of two non-default directory tenants and the default tenant replaces the password, clears the lock and consumes the token, the former lookup is shown to find the default tenant's token only, and garbage, expired, used and consumed tokens are still PASSWORD_RESET_TOKEN_INVALID; auth-password-reset-tenant.spec.ts (RLS-faithful fake, unreadable tenant, mutation-checked)",
       "status": "open"
     },
     {

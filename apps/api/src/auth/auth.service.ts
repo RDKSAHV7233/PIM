@@ -24,6 +24,7 @@ import {
   normalizeWorkspaceSlug,
 } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
@@ -1014,20 +1015,12 @@ export class AuthService implements OnModuleDestroy {
       throw new BadRequestException({ error: "PASSWORD_TOO_LONG", maxLength: 72 });
     }
 
-    const directPrisma = this.prismaDirect.getClient();
-    const recoveryToken = await directPrisma.authRecoveryToken.findUnique({
-      where: {
-        tokenHash: this.hashRecoveryToken(token),
-      },
-      select: {
-        id: true,
-        tenantKey: true,
-        userId: true,
-        purpose: true,
-        expiresAt: true,
-        usedAt: true,
-      },
-    });
+    // SEC-DB-RLS-001: AuthRecoveryToken is tenant-keyed and row-level-secured, but the reset link carries only the token, so the
+    // tenant is not known until the token is found. A lookup with no tenant context sees the default tenant's tokens only under a
+    // restricted role, so every other tenant's reset link would read as invalid. The token hash (SHA-256 of 32 random bytes, unique) is
+    // looked up per tenant; once found, the tenant is known and the writes run in that tenant's own transaction. Token format,
+    // expiry, single use and the API contract are unchanged.
+    const recoveryToken = await this.findRecoveryTokenAcrossTenants(this.hashRecoveryToken(token));
     if (!recoveryToken || recoveryToken.usedAt || recoveryToken.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedException({ error: "PASSWORD_RESET_TOKEN_INVALID" });
     }
@@ -1036,7 +1029,8 @@ export class AuthService implements OnModuleDestroy {
     const userId = this.normalizeUserKey(recoveryToken.userId);
     const passwordHash = await bcrypt.hash(normalizedPassword, 12);
 
-    const identity = await directPrisma.authIdentity.findFirst({
+    const tenantPrisma = this.prisma.tenant(tenantId);
+    const identity = await tenantPrisma.authIdentity.findFirst({
       where: {
         tenantKey: tenantId,
         userId,
@@ -1049,8 +1043,8 @@ export class AuthService implements OnModuleDestroy {
       throw new UnauthorizedException({ error: "PASSWORD_RESET_TOKEN_INVALID" });
     }
 
-    await directPrisma.$transaction([
-      directPrisma.authIdentity.update({
+    await tenantPrisma.$transaction([
+      tenantPrisma.authIdentity.update({
         where: {
           id: identity.id,
         },
@@ -1059,7 +1053,7 @@ export class AuthService implements OnModuleDestroy {
           lockedUntil: null,
         },
       }),
-      directPrisma.authRecoveryToken.update({
+      tenantPrisma.authRecoveryToken.update({
         where: {
           id: recoveryToken.id,
         },
@@ -1725,6 +1719,51 @@ export class AuthService implements OnModuleDestroy {
     });
 
     return rawToken;
+  }
+
+  /**
+   * The recovery token with this hash, wherever it lives. Each tenant is searched in its own transaction (forEachTenant), filtered by
+   * that tenant. A match is returned even if another tenant could not be read. "No such token" is reported only when every tenant was
+   * read; otherwise the request fails as temporarily unavailable (the user can retry the same link) instead of reading as an invalid
+   * link. The error carries no tenant or database detail.
+   */
+  private async findRecoveryTokenAcrossTenants(tokenHash: string): Promise<{
+    id: string;
+    tenantKey: string;
+    userId: string;
+    purpose: string;
+    expiresAt: Date;
+    usedAt: Date | null;
+  } | null> {
+    let found: { id: string; tenantKey: string; userId: string; purpose: string; expiresAt: Date; usedAt: Date | null } | null = null;
+    const summary = await forEachTenant(
+      this.prismaDirect.getClient(),
+      async (tx, tenantKey) => {
+        const row = await tx.authRecoveryToken.findFirst({
+          where: { tokenHash, tenantKey },
+          select: { id: true, tenantKey: true, userId: true, purpose: true, expiresAt: true, usedAt: true },
+        });
+        if (row && row.tenantKey === tenantKey) {
+          found = found ?? row;
+          return { examinedCount: 1, changedCount: 0 };
+        }
+        return { examinedCount: row ? 1 : 0, changedCount: 0, failedCount: row ? 1 : 0 };
+      },
+      { timeoutMs: 3_000 },
+    );
+    if (found) {
+      return found;
+    }
+    if (summary.tenantsFailed > 0) {
+      this.logger.error(
+        `Password reset: ${summary.tenantsFailed}/${summary.tenantsEvaluated} tenants could not be read [${summary.results
+          .filter((result) => result.status === "failed")
+          .map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`)
+          .join(", ")}]`,
+      );
+      throw new ServiceUnavailableException({ error: "PASSWORD_RESET_TEMPORARILY_UNAVAILABLE" });
+    }
+    return null;
   }
 
   private hashRecoveryToken(token: string): string {
