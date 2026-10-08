@@ -142,7 +142,7 @@
       "file": "connectors/amazon/amazon.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -155,7 +155,7 @@
       "file": "connectors/bigcommerce/bigcommerce.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -168,7 +168,7 @@
       "file": "connectors/dynamics365/dynamics365.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -181,7 +181,7 @@
       "file": "connectors/ebay/ebay.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -194,7 +194,7 @@
       "file": "connectors/etsy/etsy.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -207,7 +207,7 @@
       "file": "connectors/flipkart/flipkart.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -220,7 +220,7 @@
       "file": "connectors/myntra/myntra.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -233,7 +233,7 @@
       "file": "connectors/odoo/odoo.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -246,7 +246,7 @@
       "file": "connectors/prestashop/prestashop.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -259,7 +259,7 @@
       "file": "connectors/shopify/shopify.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential",
         "connectorInstallation"
@@ -273,7 +273,7 @@
       "file": "connectors/shopware/shopware.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
@@ -286,7 +286,7 @@
       "file": "connectors/woocommerce/woocommerce-brownfield-import.service.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorSubmission",
         "variant"
@@ -300,7 +300,7 @@
       "file": "connectors/woocommerce/woocommerce-bulk-publish.service.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorSubmission"
       ],
@@ -329,7 +329,7 @@
       "file": "connectors/woocommerce/woocommerce.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential",
         "connectorSubmission",
@@ -344,7 +344,7 @@
       "file": "connectors/zoho-inventory/zoho-inventory.connector.ts",
       "class": "B",
       "remediation": "tenant-client",
-      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. Remaining (M1c): the optional direct-client constructor fallback, which exists only so tests that build this class by hand keep working; remove it when those fixtures pass a tenant client. Proven by connector-tenant-client.spec.ts and the restricted-role lane.",
+      "plan": "M1b done: every known-tenant read and write goes through tenantDb(prisma, fallback, tenant), i.e. prisma.tenant(<tenant>), and a blank tenant is refused. M1c (wiring pinned): the optional direct-client constructor fallback exists only so tests that build this class by hand keep working; tenant-client-wiring.spec.ts proves PrismaService is among the injected constructor parameters of every class that has it, so the fallback is unreachable in the running application and a change that stops Nest injecting it fails that spec. Deleting the optional parameter itself is a test-fixture migration (about 45 hand-built fixtures) with no production effect and is deferred. Proven by connector-tenant-client.spec.ts, tenant-client-wiring.spec.ts and the restricted-role lane.",
       "rlsProtectedModels": [
         "connectorCredential"
       ],
