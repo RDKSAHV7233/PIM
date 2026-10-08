@@ -10,6 +10,7 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { LoggerService } from '../../common/logging/logger.service';
 import { runWithAdvisoryLock } from '../../common/scheduling/advisory-lock';
+import { forEachTenant } from '../../common/tenant/tenant-iteration';
 import { PrismaDirectService } from '../../prisma/prisma-direct.service';
 import { WooCommerceConnector } from './woocommerce.connector';
 import { ConnectorContext } from '../../connector-framework/connector.interface';
@@ -18,6 +19,12 @@ const RECONCILE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 h
 const INITIAL_DELAY_MS      = 90 * 1000;            // 90 s after boot
 export const RECONCILE_BATCH_SIZE = 50;             // submissions per installation per tick
 const WOO_SLUG = 'woocommerce';
+
+/** WOO_RECONCILE_INITIAL_DELAY_MS (>= 100) shortens the first run for tests; unset or invalid keeps 90 seconds. */
+function resolveInitialDelayMs(env: NodeJS.ProcessEnv = process.env): number {
+  const requested = Number(env['WOO_RECONCILE_INITIAL_DELAY_MS']);
+  return Number.isFinite(requested) && requested >= 100 ? Math.floor(requested) : INITIAL_DELAY_MS;
+}
 
 type InstallationRow = {
   id: string;
@@ -45,7 +52,7 @@ export class WooCommerceReconciliationService implements OnApplicationBootstrap,
     this.timer = setTimeout(() => {
       void this.runScheduledReconciliation();
       this.intervalId = setInterval(() => void this.runScheduledReconciliation(), RECONCILE_INTERVAL_MS);
-    }, INITIAL_DELAY_MS);
+    }, resolveInitialDelayMs());
   }
 
   onApplicationShutdown(): void {
@@ -66,7 +73,19 @@ export class WooCommerceReconciliationService implements OnApplicationBootstrap,
 
       for (const inst of installations) {
         const ctx = this.buildContext(inst);
-        const submissions = await this.loadPendingSubmissions(inst.id);
+        let submissions: Array<{ externalRef: string; payloadSnapshot: unknown }>;
+        try {
+          submissions = await this.loadPendingSubmissions(inst);
+        } catch (err) {
+          // One installation whose submissions cannot be read must not stop the others; it is counted and logged by code.
+          errors++;
+          this.logger.warn('WooCommerce reconciliation: could not read an installation\'s submissions', {
+            installationId: inst.id,
+            tenantKey:      inst.tenantKey,
+            error:          err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
 
         for (const sub of submissions) {
           try {
@@ -145,38 +164,74 @@ export class WooCommerceReconciliationService implements OnApplicationBootstrap,
     if (defs.length === 0) return [];
     const wooConnectorIds = defs.map((d: { id: string }) => d.id);
 
-    const rows = await db.connectorInstallation.findMany({
-      where: { connectorId: { in: wooConnectorIds }, status: 'ACTIVE' },
-      select: { id: true, tenantKey: true, connectorId: true },
-      orderBy: { updatedAt: 'asc' },
+    // SEC-DB-RLS-001: this used to be ONE read through the context-free client, which under row level security sees no tenant's
+    // installations, so the job that enforces PIM as the source of truth against live WooCommerce drift would have checked
+    // nothing while reporting a clean tick. It now reads per tenant (forEachTenant: one transaction per tenant, tenant context set
+    // inside it) and the query ALSO filters by the tenant it is given, so it is correct whether or not the role bypasses RLS.
+    // The connector catalogue (connector_definitions) is not row-level-secured and stays on the context-free client. A tenant that
+    // cannot be read is logged as an error by code and the readable tenants are still reconciled. Order is unchanged (least
+    // recently updated first), now across tenants.
+    const found: Array<InstallationRow & { updatedAt: Date }> = [];
+    const discovery = await forEachTenant(db, async (tx, tenantKey) => {
+      const rows = await tx.connectorInstallation.findMany({
+        where: { tenantKey, connectorId: { in: wooConnectorIds }, status: 'ACTIVE' },
+        select: { id: true, tenantKey: true, connectorId: true, updatedAt: true },
+        orderBy: { updatedAt: 'asc' },
+      });
+      // A row of another tenant means the filter above was bypassed: count it as a failure, never act on it.
+      const own = rows.filter((row: { tenantKey: string }) => row.tenantKey === tenantKey);
+      found.push(...own);
+      return { examinedCount: rows.length, changedCount: 0, failedCount: rows.length - own.length };
     });
-    return rows as InstallationRow[];
+    if (discovery.tenantsFailed > 0) {
+      this.logger.error('WooCommerce reconciliation could not read some tenants; their installations were NOT reconciled this tick.', {
+        tenantsFailed:    discovery.tenantsFailed,
+        tenantsEvaluated: discovery.tenantsEvaluated,
+        failures: discovery.results
+          .filter((result) => result.status === 'failed')
+          .map((result) => ({ tenantKey: result.tenantKey, errorCode: result.errorCode ?? 'UNKNOWN' })),
+      });
+    }
+    return found
+      .sort((x, y) => new Date(x.updatedAt).getTime() - new Date(y.updatedAt).getTime() || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
+      .map(({ id, tenantKey, connectorId }) => ({ id, tenantKey, connectorId }));
   }
 
   private async loadPendingSubmissions(
-    installationId: string,
+    inst: InstallationRow,
   ): Promise<Array<{ externalRef: string; payloadSnapshot: unknown }>> {
+    // Submissions are row-level-secured: read them inside the installation's own tenant transaction. A failed read throws so the
+    // caller counts it, instead of treating an unreadable tenant as having nothing to reconcile.
     const db = this.prismaDirect.getClient();
     // Only reconcile SUCCESS submissions resolved in the last 48 h to bound the work window.
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    const rows = await db.connectorSubmission.findMany({
-      where: {
-        installationId,
-        status: 'SUCCESS',
-        externalRef: { not: null },
-        resolvedAt: { gte: cutoff },
+    let rows: Array<{ externalRef: string | null; payloadSnapshot: unknown }> = [];
+    const read = await forEachTenant(
+      db,
+      async (tx) => {
+        rows = await tx.connectorSubmission.findMany({
+          where: {
+            tenantKey: inst.tenantKey,
+            installationId: inst.id,
+            status: 'SUCCESS',
+            externalRef: { not: null },
+            resolvedAt: { gte: cutoff },
+          },
+          select: { externalRef: true, payloadSnapshot: true },
+          take: RECONCILE_BATCH_SIZE,
+          orderBy: { resolvedAt: 'desc' },
+        });
+        return { examinedCount: rows.length, changedCount: 0 };
       },
-      select: { externalRef: true, payloadSnapshot: true },
-      take: RECONCILE_BATCH_SIZE,
-      orderBy: { resolvedAt: 'desc' },
-    });
-    return rows.filter((r: { externalRef: string | null; payloadSnapshot: unknown }) => r.externalRef != null)
-      .map((r: { externalRef: string | null; payloadSnapshot: unknown }) => ({
-        externalRef: r.externalRef as string,
-        payloadSnapshot: r.payloadSnapshot,
-      }));
+      { tenantKeys: [inst.tenantKey] },
+    );
+    if (read.tenantsFailed > 0) {
+      throw new Error(`submissions not readable (${read.results[0]?.errorCode ?? 'UNKNOWN'})`);
+    }
+    return rows
+      .filter((r) => r.externalRef != null)
+      .map((r) => ({ externalRef: r.externalRef as string, payloadSnapshot: r.payloadSnapshot }));
   }
-
   private buildContext(inst: InstallationRow): ConnectorContext {
     return {
       tenantId:       inst.tenantKey,

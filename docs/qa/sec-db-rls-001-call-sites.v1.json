@@ -313,7 +313,7 @@
       "file": "connectors/woocommerce/woocommerce-reconciliation.service.ts",
       "class": "A",
       "remediation": "tenant-iteration",
-      "plan": "iterate tenants; reconcile per tenant context",
+      "plan": "P2.4b done: the 4-hourly pim_wins reconciliation discovers active WooCommerce installations per tenant through forEachTenant (every query filtered by the tenant it is given; a row of another tenant is counted as a failure and never acted on; order unchanged, least recently updated first, now across tenants) and reads each installation's recent successful submissions inside that installation's own tenant transaction; a submission read that fails is counted as an error and does not stop the other installations. An unreadable tenant is logged as an error by code and the readable tenants are still reconciled. The drift check and the republish are unchanged (the connector already reads through the tenant client, M1b). The file keeps the context-free client only as the carrier of those tenant transactions and for the non-RLS connector catalogue, so it stays open under the ratchet's definition. WooCommerce pilot status (p1_blocker_hold) is not affected by this change.",
       "rlsProtectedModels": [
         "connectorInstallation",
         "connectorSubmission"
@@ -322,7 +322,7 @@
         "connectorDefinition"
       ],
       "rawSqlSites": 0,
-      "positiveAssertion": "a stuck submission for a non-default tenant is reconciled",
+      "positiveAssertion": "woocommerce-reconciliation-tenant-iteration.test.cjs: the in-window submissions of the active WooCommerce installations of two non-default directory tenants and the default tenant are all reached under the restricted role (nothing republished, no store contacted), an out-of-window submission and a disabled installation's are left alone; woocommerce-reconciliation.service.spec.ts (RLS-faithful stub database, mutation-checked)",
       "status": "open"
     },
     {

@@ -39,7 +39,8 @@
     "connector-webhook-lease-sweeper-tenant-iteration.test.cjs",
     "export-job-reconciliation-tenant-iteration.test.cjs",
     "plan-usage-tenant-detail-restricted-role.test.cjs",
-    "connector-heartbeat-tenant-iteration.test.cjs"
+    "connector-heartbeat-tenant-iteration.test.cjs",
+    "woocommerce-reconciliation-tenant-iteration.test.cjs"
   ],
   "expectedFailing": []
 }
