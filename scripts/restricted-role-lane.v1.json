@@ -43,7 +43,8 @@
     "woocommerce-reconciliation-tenant-iteration.test.cjs",
     "media-integrity-scan-tenant-iteration.test.cjs",
     "internal-ops-summary-restricted-role.test.cjs",
-    "internal-ops-alerts-restricted-role.test.cjs"
+    "internal-ops-alerts-restricted-role.test.cjs",
+    "stripe-customer-tenant-resolution-restricted-role.test.cjs"
   ],
   "expectedFailing": []
 }

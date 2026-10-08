@@ -433,6 +433,19 @@
       "rawSqlSites": 0,
       "positiveAssertion": "media-public-file-token.test.cjs: under the restricted role a valid token serves a non-default tenant's image (bytes compared) while the same request without the key is a 404; no token, wrong asset, expired, garbage are 401 with no bytes; another tenant's token finds nothing",
       "status": "open"
+    },
+    {
+      "file": "billing/stripe.service.ts",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "Stripe webhook customer-to-tenant resolution (resolveTenantKeyFromCustomerId) now reads TenantPlanProfile per tenant through forEachTenant (one short transaction per tenant, the query also filtered by that tenant) instead of one query with no tenant context, which under a restricted role saw only the default tenant and dropped every other tenant's invoice and subscription events as \"no tenant\". Exactly one match returns that tenant; more than one throws; no match while any tenant was unreadable throws, so the webhook returns HTTP 500 and Stripe retries; no match with every tenant readable returns null. A context-free best-effort step is kept last so today's bypass role still finds a tenant with a profile but no directory row. stripe_webhook_events is a non-RLS global ledger keyed on Stripe's event id and is unchanged. The file keeps the context-free client as the carrier of the tenant transactions, so it stays open.",
+      "rlsProtectedModels": [
+        "tenantPlanProfile"
+      ],
+      "otherModels": [],
+      "rawSqlSites": 10,
+      "positiveAssertion": "stripe-customer-tenant-resolution-restricted-role.test.cjs: under the restricted role the customers of two non-default directory tenants and the default tenant each resolve to their own tenant, an unknown customer to none, and the former context-free lookup is shown to resolve the default tenant only; stripe.service.spec.ts (RLS-faithful fake, unreadable tenant, ambiguity, orphan step, mutation-checked)",
+      "status": "open"
     }
   ],
   "crossTenantRawSqlFiles": [
@@ -468,10 +481,10 @@
     },
     {
       "file": "billing/stripe.service.ts",
-      "class": "C",
-      "remediation": "decision-needed",
-      "plan": "Stripe customer id to tenant resolution reads TenantPlanProfile with no tenant context (pre-tenant); stripe_webhook_events is a non-RLS global ledger",
-      "positiveAssertion": "a webhook for a non-default tenant's customer resolves to that tenant",
+      "class": "A",
+      "remediation": "tenant-iteration",
+      "plan": "Stripe webhook customer-to-tenant resolution (resolveTenantKeyFromCustomerId) now reads TenantPlanProfile per tenant through forEachTenant (one short transaction per tenant, the query also filtered by that tenant) instead of one query with no tenant context, which under a restricted role saw only the default tenant and dropped every other tenant's invoice and subscription events as \"no tenant\". Exactly one match returns that tenant; more than one throws; no match while any tenant was unreadable throws, so the webhook returns HTTP 500 and Stripe retries; no match with every tenant readable returns null. A context-free best-effort step is kept last so today's bypass role still finds a tenant with a profile but no directory row. stripe_webhook_events is a non-RLS global ledger keyed on Stripe's event id and is unchanged. The file keeps the context-free client as the carrier of the tenant transactions, so it stays open.",
+      "positiveAssertion": "stripe-customer-tenant-resolution-restricted-role.test.cjs: under the restricted role the customers of two non-default directory tenants and the default tenant each resolve to their own tenant, an unknown customer to none, and the former context-free lookup is shown to resolve the default tenant only; stripe.service.spec.ts (RLS-faithful fake, unreadable tenant, ambiguity, orphan step, mutation-checked)",
       "noArgTenantRawSites": 3,
       "rawSqlSites": 9,
       "status": "open"
@@ -572,7 +585,7 @@
     "billing/commercial-requests.service.ts": 2,
     "billing/grace-period-escalation.service.ts": 1,
     "billing/plan-usage.service.ts": 23,
-    "billing/stripe.service.ts": 9,
+    "billing/stripe.service.ts": 10,
     "bulk-import/bulk-import.service.ts": 4,
     "catalog/catalog.service.ts": 1,
     "common/scheduling/advisory-lock.ts": 2,
@@ -597,8 +610,8 @@
     "marketplace/export-job-reconciliation.service.ts": 1
   },
   "totals": {
-    "directClientFiles": 28,
-    "rawSqlSites": 90,
+    "directClientFiles": 29,
+    "rawSqlSites": 91,
     "rawSqlFiles": 27
   },
   "otherClients": [

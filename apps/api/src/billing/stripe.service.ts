@@ -3,7 +3,9 @@ import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { forEachTenant } from "../common/tenant/tenant-iteration";
 import { PrismaService } from "../prisma/prisma.service";
+import { PrismaDirectService } from "../prisma/prisma-direct.service";
 
 type StripeClient = InstanceType<typeof Stripe>;
 
@@ -22,7 +24,10 @@ export class StripeService implements OnModuleInit {
   private readonly logger = new Logger(StripeService.name);
   private stripeClient: StripeClient | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prismaDirect: PrismaDirectService,
+  ) {}
 
   onModuleInit(): void {
     if (!this.isEnabled()) {
@@ -200,18 +205,67 @@ export class StripeService implements OnModuleInit {
     }
   }
 
+  /**
+   * Which tenant owns a Stripe customer id. Called from webhook handling before any tenant context is known.
+   *
+   * SEC-DB-RLS-001: TenantPlanProfile is tenant-keyed and row-level-secured. A single lookup with no tenant context sees only the
+   * default tenant's profile under a restricted role, so every other tenant's invoice and subscription events would resolve to
+   * "no tenant" and be acknowledged without updating billing state. The lookup is therefore taken per tenant (forEachTenant: one
+   * short transaction per tenant, tenant context set inside it, the query also filtered by that tenant) and the match is the tenant
+   * whose profile carries the id.
+   *
+   * - Exactly one match: that tenant. More than one is a data fault and throws (never pick one).
+   * - No match while every tenant was readable: null (an unknown customer), as before.
+   * - No match while some tenant could not be read: throws, so the webhook fails (HTTP 500) and Stripe retries; an unreadable tenant
+   *   must never turn into "no tenant found".
+   * Limit: a tenant with a profile but no directory row is not covered by the iteration; the previous context-free lookup is kept
+   * as a last, best-effort step so today's deployment (whose role bypasses row level security) still finds such a tenant.
+   */
   async resolveTenantKeyFromCustomerId(customerId: string): Promise<string | null> {
-    // RLS-BYPASS: cross-tenant by necessity — this function's entire purpose is to
-    // resolve WHICH tenant owns a given Stripe customer id (called from webhook
-    // handling before any tenant context is known), so it cannot itself be scoped
-    // to a tenant. customerId is Stripe's own globally-unique id, not caller-supplied
-    // tenant data.
-    const rows = await this.prisma.tenant().$queryRaw<{ tenantKey: string }[]>(Prisma.sql`
-      SELECT "tenantKey" FROM "TenantPlanProfile"
-      WHERE "externalCustomerId" = ${customerId}
-      LIMIT 1
-    `);
-    return rows[0]?.tenantKey ?? null;
+    const id = String(customerId ?? "").trim();
+    if (!id) {
+      return null;
+    }
+    const matches: string[] = [];
+    const summary = await forEachTenant(
+      this.prismaDirect.getClient(),
+      async (tx, tenantKey) => {
+        // RLS-BYPASS: manual tenant filter — "tenantKey" = ${tenantKey} on a transaction whose tenant context is that tenant.
+        const rows = await tx.$queryRaw<{ tenantKey: string }[]>(Prisma.sql`
+          SELECT "tenantKey" FROM "TenantPlanProfile"
+          WHERE "tenantKey" = ${tenantKey} AND "externalCustomerId" = ${id}
+          LIMIT 1
+        `);
+        const own = rows.filter((row) => row.tenantKey === tenantKey);
+        if (own.length > 0) {
+          matches.push(tenantKey);
+        }
+        return { examinedCount: rows.length, changedCount: 0, failedCount: rows.length - own.length };
+      },
+      { timeoutMs: 3_000 },
+    );
+    if (matches.length > 1) {
+      throw new Error(`STRIPE_CUSTOMER_TENANT_AMBIGUOUS ${matches.length} tenants carry the same customer id`);
+    }
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (summary.tenantsFailed > 0) {
+      const failures = summary.results.filter((result) => result.status === "failed").map((result) => `${result.tenantKey}:${result.errorCode ?? "UNKNOWN"}`);
+      throw new Error(`STRIPE_CUSTOMER_TENANT_READ_FAILED ${summary.tenantsFailed}/${summary.tenantsEvaluated} [${failures.join(", ")}]`);
+    }
+    try {
+      // RLS-BYPASS: best-effort last step for a tenant with a profile but no directory row; correctness for directory tenants does not
+      // depend on it, and under a restricted role it sees the default tenant only (already covered above) and adds nothing.
+      const rows = await this.prisma.tenant().$queryRaw<{ tenantKey: string }[]>(Prisma.sql`
+        SELECT "tenantKey" FROM "TenantPlanProfile"
+        WHERE "externalCustomerId" = ${id}
+        LIMIT 1
+      `);
+      return rows[0]?.tenantKey ?? null;
+    } catch {
+      return null;
+    }
   }
 
   constructWebhookEvent(payload: Buffer | string, signature: string): ReturnType<StripeClient["webhooks"]["constructEvent"]> {

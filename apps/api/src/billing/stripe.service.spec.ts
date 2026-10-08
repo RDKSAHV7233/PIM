@@ -13,7 +13,7 @@ describe("StripeService.createCustomerAndSubscription idempotency (H-3)", () => 
 
   function makeService(): StripeService {
     const prisma = { tenant: jest.fn() };
-    const service = new StripeService(prisma as never);
+    const service = new StripeService(prisma as never, { getClient: jest.fn() } as never);
 
     jest
       .spyOn(service as unknown as { getClient: () => unknown }, "getClient")
@@ -120,5 +120,101 @@ describe("StripeService.createCustomerAndSubscription idempotency (H-3)", () => 
 
     expect(customersCreate).not.toHaveBeenCalled();
     expect(subscriptionsCreate).not.toHaveBeenCalled();
+  });
+});
+
+// ---- SEC-DB-RLS-001: the webhook's customer-to-tenant lookup reads every tenant ------------------------------------------------------------
+// The fake direct client is RLS-faithful: a query sees only profiles of the tenant context set by the iteration, and the context-free
+// client (this.prisma.tenant()) sees the default tenant only, as a restricted role would.
+describe("StripeService.resolveTenantKeyFromCustomerId — per-tenant lookup (SEC-DB-RLS-001)", () => {
+  type Profile = { tenantKey: string; externalCustomerId: string };
+
+  function makeService(profiles: Profile[], options: { directory?: string[]; failTenant?: string; orphan?: Profile } = {}) {
+    const direct = {
+      workspaceDirectory: { findMany: jest.fn().mockResolvedValue((options.directory ?? []).map((tenantKey) => ({ tenantKey }))) },
+      // each transaction has its own tenant context, as a real connection does (the iteration runs several at once)
+      $transaction: jest.fn(async (fn: (t: unknown) => Promise<unknown>) => {
+        let context = "";
+        const tx = {
+          $queryRaw: async (arg: unknown, ...values: unknown[]) => {
+            if (Array.isArray(arg)) {
+              // set_config tagged template from forEachTenant: the first interpolated value is the tenant
+              context = String(values[0]);
+              return [];
+            }
+            const [tenantKey, customerId] = (arg as { values: unknown[] }).values as [string, string];
+            if (options.failTenant === tenantKey) {
+              throw Object.assign(new Error("connection postgres://u:SECRET@h/db reset"), { code: "P1001" });
+            }
+            return profiles
+              .filter((p) => p.tenantKey === context && p.tenantKey === tenantKey && p.externalCustomerId === customerId)
+              .map((p) => ({ tenantKey: p.tenantKey }));
+          },
+        };
+        return fn(tx);
+      }),
+    };
+    const contextFree = {
+      $queryRaw: jest.fn(async (arg: unknown) => {
+        const customerId = (arg as { values: unknown[] }).values[0];
+        const all = options.orphan ? [...profiles, options.orphan] : profiles;
+        // restricted role: default tenant only (an orphan is invisible); today's superuser role would see the orphan
+        return all.filter((p) => p.tenantKey === "default" && p.externalCustomerId === customerId).map((p) => ({ tenantKey: p.tenantKey }));
+      }),
+    };
+    const prisma = { tenant: jest.fn(() => contextFree) };
+    const service = new StripeService(prisma as never, { getClient: () => direct } as never);
+    return { service, direct, contextFree };
+  }
+
+  const profiles: Profile[] = [
+    { tenantKey: "default", externalCustomerId: "cus_default" },
+    { tenantKey: "tenant-b", externalCustomerId: "cus_b" },
+    { tenantKey: "tenant-c", externalCustomerId: "cus_c" },
+  ];
+
+  it("resolves a non-default tenant's customer to that tenant (the silently dropped webhook)", async () => {
+    const { service } = makeService(profiles, { directory: ["tenant-b", "tenant-c"] });
+    await expect(service.resolveTenantKeyFromCustomerId("cus_b")).resolves.toBe("tenant-b");
+    await expect(service.resolveTenantKeyFromCustomerId("cus_c")).resolves.toBe("tenant-c");
+    await expect(service.resolveTenantKeyFromCustomerId("cus_default")).resolves.toBe("default");
+  });
+
+  it("returns null for an unknown customer when every tenant was readable", async () => {
+    const { service } = makeService(profiles, { directory: ["tenant-b", "tenant-c"] });
+    await expect(service.resolveTenantKeyFromCustomerId("cus_unknown")).resolves.toBeNull();
+  });
+
+  it("returns null for a blank customer id without querying", async () => {
+    const { service, direct } = makeService(profiles, { directory: ["tenant-b"] });
+    await expect(service.resolveTenantKeyFromCustomerId("  ")).resolves.toBeNull();
+    expect(direct.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("an unreadable tenant with no match throws (so the webhook fails and Stripe retries) instead of reporting no tenant", async () => {
+    const { service } = makeService(profiles, { directory: ["tenant-b", "tenant-c"], failTenant: "tenant-b" });
+    const error = await service.resolveTenantKeyFromCustomerId("cus_unknown").catch((e: Error) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("STRIPE_CUSTOMER_TENANT_READ_FAILED");
+    expect((error as Error).message).toContain("tenant-b:P1001");
+    expect((error as Error).message).not.toContain("SECRET");
+  });
+
+  it("a match in a readable tenant is returned although another tenant is unreadable", async () => {
+    const { service } = makeService(profiles, { directory: ["tenant-b", "tenant-c"], failTenant: "tenant-b" });
+    await expect(service.resolveTenantKeyFromCustomerId("cus_c")).resolves.toBe("tenant-c");
+  });
+
+  it("two tenants carrying the same customer id is a data fault and throws", async () => {
+    const dup = [...profiles, { tenantKey: "tenant-c", externalCustomerId: "cus_b" }];
+    const { service } = makeService(dup, { directory: ["tenant-b", "tenant-c"] });
+    await expect(service.resolveTenantKeyFromCustomerId("cus_b")).rejects.toThrow("STRIPE_CUSTOMER_TENANT_AMBIGUOUS");
+  });
+
+  it("still finds a tenant with a profile but no directory row through the best-effort context-free step", async () => {
+    // today's role bypasses row level security and sees the orphan; modelled by a context-free client that returns it
+    const orphan = { tenantKey: "default", externalCustomerId: "cus_orphan" };
+    const { service } = makeService(profiles, { directory: ["tenant-b"], orphan });
+    await expect(service.resolveTenantKeyFromCustomerId("cus_orphan")).resolves.toBe("default");
   });
 });
