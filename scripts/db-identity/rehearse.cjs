@@ -229,8 +229,27 @@ async function main() {
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R3 transfer to the target model from that state");
+    // The cluster outlives a run, so the identities may already exist. Take one out of the way for a moment (a rename keeps its grants)
+    // so the refusal is proven on a first run and on every rerun alike.
+    const hadOps = (await rows(pl, `SELECT 1 AS x FROM pg_roles WHERE rolname = '${OPS}'`)).length > 0;
+    if (hadOps) {
+      await pl.$executeRawUnsafe(`ALTER ROLE "${OPS}" RENAME TO rehearsal_ops_away`);
+    }
+    const earlyNarrow = tool("narrow-public", PRODLIKE);
+    if (hadOps) {
+      await pl.$executeRawUnsafe(`ALTER ROLE rehearsal_ops_away RENAME TO "${OPS}"`);
+    }
+    check("narrow-public REFUSES while an identity does not exist yet, and changes nothing", earlyNarrow.status === 3 && /create-roles first/.test(earlyNarrow.err), tail(earlyNarrow.err));
     const cr = tool("create-roles", PRODLIKE);
     check("create-roles", cr.status === 0, tail(cr.err));
+    const np = tool("narrow-public", PRODLIKE);
+    check("narrow-public (administrator): PUBLIC's database and schema privileges are revoked, the identities hold explicit CONNECT and USAGE", np.status === 0, tail(np.err));
+    // two roles that are NOT among the five identities, to show what PUBLIC no longer gives anyone
+    await pl.$executeRawUnsafe(`DROP ROLE IF EXISTS rt_stranger`);
+    await pl.$executeRawUnsafe(`DROP ROLE IF EXISTS rt_noschema`);
+    await pl.$executeRawUnsafe(`CREATE ROLE rt_stranger LOGIN PASSWORD '${rehearsalPassword("rt_stranger")}' NOSUPERUSER NOBYPASSRLS`);
+    await pl.$executeRawUnsafe(`CREATE ROLE rt_noschema LOGIN PASSWORD '${rehearsalPassword("rt_noschema")}' NOSUPERUSER NOBYPASSRLS`);
+    await pl.$executeRawUnsafe(`GRANT CONNECT ON DATABASE ${PRODLIKE} TO rt_noschema`);
     const plan = tool("plan-ownership", PRODLIKE);
     check("plan-ownership is read-only and lists the statements", plan.status === 0 && plan.out.includes("ALTER TABLE") && plan.out.startsWith("--"), tail(plan.err));
     const ao = tool("apply-ownership", PRODLIKE);
@@ -267,12 +286,17 @@ async function main() {
     const nowKeys = restoredOwners.filter((o) => o.kind !== "function").map(key).sort();
     check("tables and types are back to exactly their original owners (63 + 15 split)", JSON.stringify(startKeys) === JSON.stringify(nowKeys));
     check("verify FAILS again on the rolled-back state (ownership is wrong again)", tool("verify", PRODLIKE).status === 1);
+    const rpub = tool("restore-public", PRODLIKE);
+    const [restoredFlags] = await rows(pl, `SELECT has_database_privilege('rt_stranger', current_database(), 'CONNECT') AS conn, has_schema_privilege('rt_stranger', 'public', 'USAGE') AS usage, has_function_privilege('rt_stranger', 'ai_suggestions_reject_generated_field_update()', 'EXECUTE') AS fn, has_type_privilege('rt_stranger', '"RecordStatus"', 'USAGE') AS typ`);
+    check("restore-public puts PUBLIC's database, schema, function and enum privileges back (the rollback is complete)", rpub.status === 0 && restoredFlags.conn === true && restoredFlags.usage === true && restoredFlags.fn === true && restoredFlags.typ === true, JSON.stringify(restoredFlags));
     const oldRole = asRole(PRODLIKE, OLD_OWNER);
     const [who] = await rows(oldRole, `SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS su`);
     check("the old role is untouched by the whole round trip (still a working superuser)", who.u === OLD_OWNER && who.su === true);
     await expectAllowed("the old role can still write the control row (rollback target is functional)", oldRole, `UPDATE ai_platform_controls SET kill_switch = kill_switch`);
     check("rollback also left the data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
-    check("re-apply forward after the rollback", tool("apply-ownership", PRODLIKE).status === 0 && tool("apply-grants", PRODLIKE).status === 0 && tool("verify", PRODLIKE).status === 0);
+    check("re-apply forward after the rollback (ownership, narrow-public, grants)", tool("apply-ownership", PRODLIKE).status === 0 && tool("narrow-public", PRODLIKE).status === 0 && tool("apply-grants", PRODLIKE).status === 0 && tool("verify", PRODLIKE).status === 0);
+    const [narrowedAgain] = await rows(pl, `SELECT has_database_privilege('rt_stranger', current_database(), 'CONNECT') AS conn, has_schema_privilege('rt_stranger', 'public', 'USAGE') AS usage`);
+    check("and PUBLIC holds nothing again afterwards", narrowedAgain.conn === false && narrowedAgain.usage === false, JSON.stringify(narrowedAgain));
 
     // ---------------------------------------------------------------------------------------------------------------------------
     section("R6 the runtime role: CRUD where granted, tenant isolation, and nothing else");
@@ -530,6 +554,77 @@ async function main() {
     check("the operator-script proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
 
     // ---------------------------------------------------------------------------------------------------------------------------
+    section("R3b PUBLIC holds nothing, every identity's access is an explicit grant, and nothing the application needs broke");
+    const pubFlags = async () => (await rows(pl, `SELECT has_database_privilege('rt_stranger', current_database(), 'CONNECT') AS conn, has_database_privilege('rt_stranger', current_database(), 'TEMPORARY') AS tmp, has_schema_privilege('rt_stranger', 'public', 'USAGE') AS usage, has_function_privilege('rt_stranger', 'ai_suggestions_reject_generated_field_update()', 'EXECUTE') AS fn, has_type_privilege('rt_stranger', '"RecordStatus"', 'USAGE') AS typ`))[0];
+    const flags = await pubFlags();
+    check("a role that was never granted anything holds no PUBLIC privilege: it cannot connect, create temporary tables, use the schema, execute the functions or use the enum types", flags.conn === false && flags.tmp === false && flags.usage === false && flags.fn === false && flags.typ === false, JSON.stringify(flags));
+    const refused = async (name, role, sql) => {
+      try {
+        await rows(asRole(PRODLIKE, role), sql);
+        check(name, false, "the statement succeeded");
+      } catch (error) {
+        const message = String(error && error.message ? error.message : error);
+        check(name, /denied|permission|not allowed|CONNECT/i.test(message), message.split("\n").slice(-1)[0]);
+      }
+    };
+    await refused("a stranger role cannot connect to the database at all", "rt_stranger", `SELECT 1`);
+    await refused("a role that may connect but was never granted the schema cannot read a table", "rt_noschema", `SELECT count(*) FROM public."Product"`);
+
+    await expectDenied("the runtime cannot create a temporary table", rt, `CREATE TEMP TABLE rt_temp_probe (i int)`);
+    await expectDenied("ops cannot create a temporary table", op, `CREATE TEMP TABLE rt_temp_probe (i int)`);
+    await expectDenied("the reporter cannot create a temporary table", rp, `CREATE TEMP TABLE rt_temp_probe (i int)`);
+    await expectDenied("the backup role cannot create a temporary table", bk, `CREATE TEMP TABLE rt_temp_probe (i int)`);
+
+    // enum values: USAGE on a type does not control using its values, so every identity still casts them without holding USAGE
+    const enumRead = await inTenant(rt, "tenant-b", (tx) => tx.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "Product" WHERE status = 'draft'::"RecordStatus"`)).then((r) => r[0].n, () => -1);
+    check("the runtime still reads and casts an enum column", enumRead >= 0);
+    const enumOps = await inTenant(op, "tenant-b", (tx) => tx.$queryRawUnsafe(`SELECT 'approved'::"RecordStatus" AS v`)).then((r) => r[0].v === "approved", () => false);
+    check("ops still uses the enum type (the backfill writes Variant.status)", enumOps);
+    const enumRep = await rows(rp, `SELECT 'approved'::"RecordStatus" AS v`).then((r) => r[0].v === "approved", () => false);
+    check("the reporter still uses the enum type (the audit report filters on status)", enumRep);
+    const enumBackup = await rows(bk, `SELECT 'approved'::"RecordStatus" AS v`).then((r) => r[0].v === "approved", () => false);
+    check("and the backup role casts it too, so no identity needs USAGE on the enum types (PostgreSQL only checks it when creating dependent objects)", enumBackup);
+    const [usage83] = await rows(pl, `SELECT bool_or(has_type_privilege('${RUNTIME}', t.oid, 'USAGE')) AS rt, bool_or(has_type_privilege('${OPS}', t.oid, 'USAGE')) AS ops, bool_or(has_type_privilege('${REPORTER}', t.oid, 'USAGE')) AS rp, bool_or(has_type_privilege('${BACKUP}', t.oid, 'USAGE')) AS bk, bool_and(has_type_privilege('${MIGRATOR}', t.oid, 'USAGE')) AS mg FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e'`);
+    check("no identity but the owner holds USAGE on any enum type", usage83.rt === false && usage83.ops === false && usage83.rp === false && usage83.bk === false && usage83.mg === true, JSON.stringify(usage83));
+    await expectDenied("creating an object that depends on an enum type is what USAGE controls: the runtime cannot", rt, `CREATE FUNCTION public.rt_enum_dep(x "RecordStatus") RETURNS int LANGUAGE sql AS 'SELECT 1'`);
+
+    // a trigger fires for a role that cannot EXECUTE its function: only creating the trigger checks that privilege
+    await pl.$executeRawUnsafe(`INSERT INTO ai_executions (id, capability, entity_type, entity_id, source_version, source_hash, request_fingerprint, prompt_version, schema_version, idempotency_fingerprint) VALUES ('rt-exec-1','c','Product','p',1,'h','rf','pv','sv','if-rt-exec-1')`);
+    await pl.$executeRawUnsafe(`INSERT INTO ai_suggestions (id, execution_id, capability, entity_type, entity_id, field_path, source_record_id, source_version, source_hash, prompt_version, schema_version, generation_fingerprint, idempotency_fingerprint, generated_payload, generated_payload_hash, suggested_value, suggested_value_hash) VALUES ('rt-sug-1','rt-exec-1','c','Product','p','title','sr',1,'h','pv','sv','gf','if-rt-sug-1','{}'::jsonb,'gph','{}'::jsonb,'svh')`);
+    const trig = await inTenant(rt, null, (tx) => tx.$executeRawUnsafe(`UPDATE ai_suggestions SET entity_id = 'changed' WHERE id = 'rt-sug-1'`)).then(() => "succeeded", (e) => String(e.message));
+    check("the immutability trigger still fires for the runtime (it raises its own error, not 'permission denied for function')", /generated fields are immutable/i.test(trig) && !/permission denied for function/i.test(trig), trig.split("\n").slice(-1)[0]);
+    await expectDenied("the runtime cannot call the trigger function directly (PUBLIC no longer has EXECUTE)", rt, `SELECT ai_suggestions_reject_generated_field_update()`);
+    await pl.$executeRawUnsafe(`DELETE FROM ai_suggestions WHERE id = 'rt-sug-1'`);
+    await pl.$executeRawUnsafe(`DELETE FROM ai_executions WHERE id = 'rt-exec-1'`);
+
+    // objects the migrator creates LATER are born closed to PUBLIC and open to the identities that need them
+    const mgr83 = asRole(PRODLIKE, MIGRATOR);
+    await mgr83.$executeRawUnsafe(`CREATE TYPE public.rehearsal_new_enum AS ENUM ('a')`);
+    await mgr83.$executeRawUnsafe(`CREATE FUNCTION public.rehearsal_new_fn() RETURNS int LANGUAGE sql AS 'SELECT 1'`);
+    const [fresh83] = await rows(pl, `SELECT has_type_privilege('rt_stranger', 'public.rehearsal_new_enum', 'USAGE') AS pub_type, has_function_privilege('rt_stranger', 'public.rehearsal_new_fn()', 'EXECUTE') AS pub_fn, has_type_privilege('${RUNTIME}', 'public.rehearsal_new_enum', 'USAGE') AS rt_type, has_type_privilege('${OPS}', 'public.rehearsal_new_enum', 'USAGE') AS ops_type, has_type_privilege('${REPORTER}', 'public.rehearsal_new_enum', 'USAGE') AS rp_type, has_type_privilege('${BACKUP}', 'public.rehearsal_new_enum', 'USAGE') AS bk_type, has_function_privilege('${RUNTIME}', 'public.rehearsal_new_fn()', 'EXECUTE') AS rt_fn`);
+    check("a type and a function the migrator creates later are not usable by PUBLIC (the default ACL, not a one-off revoke)", fresh83.pub_type === false && fresh83.pub_fn === false, JSON.stringify(fresh83));
+    check("a new enum type is likewise held by no identity but the migrator, with no further grant", fresh83.rt_type === false && fresh83.ops_type === false && fresh83.rp_type === false && fresh83.bk_type === false, JSON.stringify(fresh83));
+    check("a new function is not executable by the runtime until someone grants it", fresh83.rt_fn === false);
+    await mgr83.$executeRawUnsafe(`DROP TYPE public.rehearsal_new_enum`);
+    await mgr83.$executeRawUnsafe(`DROP FUNCTION public.rehearsal_new_fn()`);
+    check("the 8.3 proofs left the seeded data unchanged", sameFingerprint(seeded, await fingerprint(pl)));
+    // A database nobody has ever granted anything on has NULL ACLs, which PostgreSQL reads as "the built-in default": PUBLIC can connect, use
+    // the schema, execute functions and use types. The verifier has to read it that way, not as "no grant", or an untouched database would pass.
+    await recreate("rehearsal_untouched");
+    const untouched = asAdmin("rehearsal_untouched");
+    await untouched.$executeRawUnsafe(`CREATE TYPE public.untouched_enum AS ENUM ('a')`);
+    await untouched.$executeRawUnsafe(`CREATE FUNCTION public.untouched_fn() RETURNS int LANGUAGE sql AS 'SELECT 1'`);
+    const vu = tool("verify", "rehearsal_untouched");
+    check("a database nobody has granted anything on is reported as open to PUBLIC (a NULL ACL is the built-in default, not 'no grant')", vu.status === 1 && /FAIL PUBLIC holds no privilege on the database/.test(vu.out) && /FAIL no function in public is executable by PUBLIC/.test(vu.out) && /FAIL no enum type in public is usable by PUBLIC/.test(vu.out), tail(vu.out));
+    await untouched.$disconnect().catch(() => undefined);
+    await pl.$executeRawUnsafe(`DROP DATABASE IF EXISTS rehearsal_untouched WITH (FORCE)`);
+    await pl.$executeRawUnsafe(`DROP OWNED BY rt_noschema`);
+    await pl.$executeRawUnsafe(`DROP ROLE rt_noschema`);
+    await pl.$executeRawUnsafe(`DROP ROLE rt_stranger`);
+    const v1b = tool("verify", PRODLIKE);
+    check("the verifier still passes after the proofs (including the new database, schema, function and enum checks)", v1b.status === 0, tail(v1b.out));
+
+    // ---------------------------------------------------------------------------------------------------------------------------
     section("R8d the deploy-time tax-regime seed: it writes as vexa_migrator once the runtime may only read tax_regimes");
     const regimeCount = async () => (await rows(pl, `SELECT count(*)::int AS n FROM tax_regimes WHERE "marketCode" IN ('IN','GB','US','AE','AU')`))[0].n;
     const seedAs = (env) => runScript("seed-tax-regimes.cjs", env);
@@ -687,6 +782,7 @@ async function main() {
     section("R10 a fresh database built entirely as the non-superuser migrator");
     await recreate(FRESH);
     check("create-roles on the fresh database", tool("create-roles", FRESH).status === 0);
+    check("narrow-public on the fresh database, before any migration runs", tool("narrow-public", FRESH).status === 0);
     const fresh = migrate(FRESH, MIGRATOR, rehearsalPassword(MIGRATOR));
     check("EVERY migration applies as vexa_migrator (no migration needs a superuser)", fresh.status === 0, tail(fresh.err || fresh.out));
     const fo = asAdmin(FRESH);

@@ -121,6 +121,10 @@ function sameOwnership(a, b) {
  *   publicTableGrants: number                           table privileges granted to PUBLIC
  *   memberships: [{ role, member }]                     for the four identities
  *   schemaCreate: { role: boolean }                     CREATE on schema public
+ *   publicAcl: { database: { connect, temporary, create }, schema: { usage, create }, functionsExecutable: number, enumTypesUsable: number }
+ *                                                      what PUBLIC holds (a NULL ACL is the built-in default, which includes PUBLIC)
+ *   identityAccess: { role: { connect, temporary, schemaUsage, enumUsage } }   enumUsage = enum types the role may use; enumTotal below
+ *   enumTotal: number                                   enum types in public
  * Returns [{ check, ok, detail? }].
  */
 function evaluateModel(state, manifest) {
@@ -181,6 +185,25 @@ function evaluateModel(state, manifest) {
   }
 
   add("no table privilege is granted to PUBLIC", state.publicTableGrants === 0, state.publicTableGrants ? { count: state.publicTableGrants } : undefined);
+
+  // SEC-DB-RLS-001 8.3: PUBLIC holds nothing beyond the table rules, and every identity's access is an explicit grant.
+  const pub = state.publicAcl || { database: {}, schema: {}, functionsExecutable: -1, enumTypesUsable: -1 };
+  const heldDb = ["connect", "temporary", "create"].filter((k) => pub.database[k] === true);
+  add("PUBLIC holds no privilege on the database (no CONNECT, TEMPORARY or CREATE)", heldDb.length === 0, heldDb.length ? heldDb : undefined);
+  const heldSchema = ["usage", "create"].filter((k) => pub.schema[k] === true);
+  add("PUBLIC holds no privilege on the public schema", heldSchema.length === 0, heldSchema.length ? heldSchema : undefined);
+  add("no function in public is executable by PUBLIC", pub.functionsExecutable === 0, pub.functionsExecutable ? { count: pub.functionsExecutable } : undefined);
+  add("no enum type in public is usable by PUBLIC", pub.enumTypesUsable === 0, pub.enumTypesUsable ? { count: pub.enumTypesUsable } : undefined);
+  const access = state.identityAccess || {};
+  const enumUsers = ((manifest.public && manifest.public.enumTypeUsage) || []).map((k) => ROLES[k].name);
+  for (const key of ["migrator", "runtime", "ops", "backup", "reporter"]) {
+    const name = ROLES[key].name;
+    const a = access[name] || {};
+    add(`${name} can connect to the database and cannot create temporary tables`, a.connect === true && a.temporary === false);
+    add(`${name} can use the public schema`, a.schemaUsage === true);
+    const want = key === "migrator" || enumUsers.includes(name) ? state.enumTotal : 0;
+    add(`${name} can use exactly the enum types the model gives it`, a.enumUsage === want, a.enumUsage === want ? undefined : { has: a.enumUsage, expected: want });
+  }
   const roleNames = Object.values(ROLES).map((r) => r.name);
   const memberships = state.memberships.filter((m) => roleNames.includes(m.member));
   add("none of the five identities is a member of another role", memberships.length === 0, memberships.length ? memberships : undefined);

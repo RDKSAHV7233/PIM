@@ -48,6 +48,15 @@ function goodState() {
     publicTableGrants: 0,
     memberships: [],
     schemaCreate: { [MIGRATOR]: true, vexa_runtime: false, vexa_backup: false, vexa_reporter: false, vexa_ops: false },
+    publicAcl: { database: { connect: false, temporary: false, create: false }, schema: { usage: false, create: false }, functionsExecutable: 0, enumTypesUsable: 0 },
+    enumTotal: 1,
+    identityAccess: {
+      [MIGRATOR]: { connect: true, temporary: false, schemaUsage: true, enumUsage: 1 },
+      vexa_runtime: { connect: true, temporary: false, schemaUsage: true, enumUsage: 0 },
+      vexa_ops: { connect: true, temporary: false, schemaUsage: true, enumUsage: 0 },
+      vexa_reporter: { connect: true, temporary: false, schemaUsage: true, enumUsage: 0 },
+      vexa_backup: { connect: true, temporary: false, schemaUsage: true, enumUsage: 0 },
+    },
   };
 }
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -223,6 +232,54 @@ mutate("migrator cannot create objects in public", (s) => { s.schemaCreate.vexa_
   const s = clone(goodState());
   s.memberships.push({ role: "postgres", member: "some_other_role" });
   assert.deepEqual(failures(s), []);
+}
+
+// ---- SEC-DB-RLS-001 8.3: what PUBLIC holds and what each identity is explicitly given ----------------------------------------------
+assert.deepEqual(manifest.public.enumTypeUsage, [], "no identity but the owner holds USAGE on the enum types: USAGE only controls creating dependent objects, and the application only queries enum values");
+mutate("PUBLIC can connect to the database", (s) => { s.publicAcl.database.connect = true; }, "PUBLIC holds no privilege on the database");
+mutate("PUBLIC can create temporary tables", (s) => { s.publicAcl.database.temporary = true; }, "PUBLIC holds no privilege on the database");
+mutate("PUBLIC can create in the database", (s) => { s.publicAcl.database.create = true; }, "PUBLIC holds no privilege on the database");
+mutate("PUBLIC can use the public schema", (s) => { s.publicAcl.schema.usage = true; }, "PUBLIC holds no privilege on the public schema");
+mutate("PUBLIC can create in the public schema", (s) => { s.publicAcl.schema.create = true; }, "PUBLIC holds no privilege on the public schema");
+mutate("PUBLIC can execute a function", (s) => { s.publicAcl.functionsExecutable = 2; }, "no function in public is executable by PUBLIC");
+mutate("PUBLIC can use an enum type", (s) => { s.publicAcl.enumTypesUsable = 31; }, "no enum type in public is usable by PUBLIC");
+mutate("an identity lost CONNECT (it was relying on PUBLIC)", (s) => { s.identityAccess.vexa_runtime.connect = false; }, "vexa_runtime can connect to the database");
+mutate("an identity can create temporary tables", (s) => { s.identityAccess.vexa_ops.temporary = true; }, "vexa_ops can connect to the database and cannot create temporary tables");
+mutate("an identity lost schema USAGE", (s) => { s.identityAccess.vexa_reporter.schemaUsage = false; }, "vexa_reporter can use the public schema");
+mutate("the migrator lost schema USAGE", (s) => { s.identityAccess[MIGRATOR].schemaUsage = false; }, "vexa_migrator can use the public schema");
+mutate("the runtime is given enum USAGE it does not need", (s) => { s.identityAccess.vexa_runtime.enumUsage = 1; }, "vexa_runtime can use exactly the enum types");
+mutate("the reporter is given enum USAGE it does not need", (s) => { s.identityAccess.vexa_reporter.enumUsage = 1; }, "vexa_reporter can use exactly the enum types");
+mutate("the backup role is given enum USAGE it does not need", (s) => { s.identityAccess.vexa_backup.enumUsage = 1; }, "vexa_backup can use exactly the enum types");
+mutate("the migrator lost USAGE on its own enum types", (s) => { s.identityAccess[MIGRATOR].enumUsage = 0; }, "vexa_migrator can use exactly the enum types");
+mutate("a new enum type exists and the migrator does not own it yet", (s) => { s.enumTotal = 2; }, "vexa_migrator can use exactly the enum types");
+{
+  // The model is manifest-driven: listing a role makes USAGE required for it, so the rule can be widened by a reviewed change.
+  const widened = clone(manifest);
+  widened.public.enumTypeUsage = ["reporter"];
+  assert.ok(failures(goodState(), widened).some((c) => c.includes("vexa_reporter can use exactly the enum types")), "a listed role must hold USAGE");
+  const s = clone(goodState());
+  s.identityAccess.vexa_reporter.enumUsage = 1;
+  assert.deepEqual(failures(s, widened), [], "and passes once it does");
+}
+{
+  // A state gathered before 8.3 existed (no ACL facts) must fail closed, never pass.
+  const s = clone(goodState());
+  delete s.publicAcl;
+  delete s.identityAccess;
+  assert.ok(failures(s).length > 0, "a state without the ACL facts is not accepted");
+}
+{
+  // The tool's strict deploy-time check is responsible for exactly the parts the migrator can change.
+  const tool = fs.readFileSync(path.join(__dirname, "tool.cjs"), "utf8");
+  const responsibility = tool.match(/const GRANTS_RESPONSIBILITY = (\/.*\/);/);
+  assert.ok(responsibility, "the strict responsibility pattern exists");
+  const re = new RegExp(responsibility[1].slice(1, -1));
+  for (const mine of ["no function in public is executable by PUBLIC", "no enum type in public is usable by PUBLIC", "vexa_runtime can use exactly the enum types the model gives it"]) {
+    assert.ok(re.test(mine), `strict apply-grants verifies: ${mine}`);
+  }
+  for (const notMine of ["PUBLIC holds no privilege on the database (no CONNECT, TEMPORARY or CREATE)", "PUBLIC holds no privilege on the public schema", "vexa_runtime can connect to the database and cannot create temporary tables", "vexa_runtime can use the public schema"]) {
+    assert.ok(!re.test(notMine), `the migrator cannot change this, so strict apply-grants only warns: ${notMine}`);
+  }
 }
 
 console.log("db-identity lib tests passed.");

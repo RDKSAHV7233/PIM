@@ -12,6 +12,8 @@
  *   node scripts/db-identity/tool.cjs apply-ownership                     transfers ownership of public objects to vexa_migrator (one transaction)
  *   node scripts/db-identity/tool.cjs rollback-ownership --snapshot file  restores the owners recorded in a before-snapshot
  *   node scripts/db-identity/tool.cjs apply-grants                        applies the grants manifest (revoke everything, then grant explicitly)
+ *   node scripts/db-identity/tool.cjs narrow-public                       revokes PUBLIC's database and schema privileges (administrator: only the owner can)
+ *   node scripts/db-identity/tool.cjs restore-public                      puts PUBLIC's database, schema, function and enum privileges back (rollback of the two above)
  *
  * DB_IDENTITY_ADMIN_URL is required and explicit. **Every write mode refuses any host that is not local**: I1 is rehearsal and
  * foundation only, and a production ownership transfer, credential rotation or cutover is out of scope until separately authorised
@@ -31,11 +33,11 @@ const path = require("node:path");
 const lib = require("./lib.cjs");
 
 const MODEL_DIR = path.resolve(__dirname, "..", "..", "packages", "db", "identity");
-const WRITE_MODES = new Set(["create-roles", "apply-ownership", "rollback-ownership", "apply-grants"]);
+const WRITE_MODES = new Set(["create-roles", "apply-ownership", "rollback-ownership", "apply-grants", "narrow-public", "restore-public"]);
 const READ_MODES = new Set(["snapshot", "plan-ownership", "verify"]);
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
 /** The verifier checks the strict grants step is accountable for: privileges, classification, ownership, PUBLIC. Role attributes are the cutover's concern. */
-const GRANTS_RESPONSIBILITY = /classified in the runtime grants manifest|lists no table that does not exist|ops and reporter grants|holds exactly the manifest privileges|no table privilege is granted to PUBLIC|owned by the migrator|owns nothing|only the migrator can create/;
+const GRANTS_RESPONSIBILITY = /no function in public is executable by PUBLIC|no enum type in public is usable by PUBLIC|can use exactly the enum types|classified in the runtime grants manifest|lists no table that does not exist|ops and reporter grants|holds exactly the manifest privileges|no table privilege is granted to PUBLIC|owned by the migrator|owns nothing|only the migrator can create/;
 
 function loadManifest() {
   // DB_IDENTITY_MANIFEST lets the rehearsal evaluate a candidate manifest (for example one that classifies a table a new migration added).
@@ -94,7 +96,26 @@ async function gatherState(db) {
   }
   const [pub] = await db.$queryRawUnsafe("SELECT count(*)::int AS n FROM information_schema.role_table_grants WHERE table_schema = 'public' AND grantee = 'PUBLIC'");
   const memberships = await db.$queryRawUnsafe("SELECT pg_get_userbyid(roleid) AS role, pg_get_userbyid(member) AS member FROM pg_auth_members");
-  return { roles, objects, tables, effective, publicTableGrants: pub.n, memberships, schemaCreate };
+
+  // SEC-DB-RLS-001 8.3. A NULL ACL means "the built-in default", which grants PUBLIC CONNECT and TEMPORARY on a database, USAGE on a
+  // schema, EXECUTE on a function and USAGE on a type: COALESCE with acldefault() so a never-touched object is not read as "no grant".
+  const [dbAcl] = await db.$queryRawUnsafe(`SELECT coalesce(bool_or(a.privilege_type = 'CONNECT'), false) AS connect, coalesce(bool_or(a.privilege_type = 'TEMPORARY'), false) AS temporary, coalesce(bool_or(a.privilege_type = 'CREATE'), false) AS "create" FROM pg_database d CROSS JOIN LATERAL aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a WHERE d.datname = current_database() AND a.grantee = 0`);
+  const [schemaAcl] = await db.$queryRawUnsafe(`SELECT coalesce(bool_or(a.privilege_type = 'USAGE'), false) AS usage, coalesce(bool_or(a.privilege_type = 'CREATE'), false) AS "create" FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a WHERE n.nspname = 'public' AND a.grantee = 0`);
+  const [fnAcl] = await db.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.prokind = 'f' AND EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE')`);
+  const [typeAcl] = await db.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e' AND EXISTS (SELECT 1 FROM aclexplode(coalesce(t.typacl, acldefault('T', t.typowner))) a WHERE a.grantee = 0 AND a.privilege_type = 'USAGE')`);
+  const identityAccess = {};
+  for (const r of roles) {
+    const [acc] = await db.$queryRawUnsafe(`SELECT has_database_privilege(${quoteLiteral(r.rolname)}, current_database(), 'CONNECT') AS connect, has_database_privilege(${quoteLiteral(r.rolname)}, current_database(), 'TEMPORARY') AS temporary, has_schema_privilege(${quoteLiteral(r.rolname)}, 'public', 'USAGE') AS schema_usage, (SELECT count(*)::int FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e' AND has_type_privilege(${quoteLiteral(r.rolname)}, t.oid, 'USAGE')) AS enum_usage`);
+    identityAccess[r.rolname] = { connect: acc.connect === true, temporary: acc.temporary === true, schemaUsage: acc.schema_usage === true, enumUsage: acc.enum_usage };
+  }
+  const enumTotal = objects.filter((o) => o.kind === "type").length;
+  const publicAcl = {
+    database: { connect: dbAcl.connect === true, temporary: dbAcl.temporary === true, create: dbAcl.create === true },
+    schema: { usage: schemaAcl.usage === true, create: schemaAcl.create === true },
+    functionsExecutable: fnAcl.n,
+    enumTypesUsable: typeAcl.n,
+  };
+  return { roles, objects, tables, effective, publicTableGrants: pub.n, memberships, schemaCreate, publicAcl, identityAccess, enumTotal };
 }
 
 /**
@@ -195,6 +216,37 @@ async function main() {
       }
       await db.$executeRawUnsafe(`GRANT CREATE ON SCHEMA public TO ${quoteIdent(migrator)}`);
       console.log("roles created or updated: " + Object.values(lib.ROLES).map((r) => r.name).join(", "));
+    } else if (mode === "narrow-public") {
+      // Administrator step (the database and the schema belong to the database owner; the migrator cannot revoke them). The identities
+      // are granted explicitly first, so there is no moment at which an identity loses access it needs.
+      const [dbRow] = await db.$queryRawUnsafe("SELECT current_database() AS name");
+      const names = Object.values(lib.ROLES).map((r) => r.name);
+      const missing = (await db.$queryRawUnsafe(`SELECT r AS name FROM unnest(ARRAY[${names.map(quoteLiteral).join(",")}]) AS r WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r)`)).map((r) => r.name);
+      if (missing.length > 0) {
+        console.error(`narrow-public refused: these identities do not exist yet (run create-roles first): ${missing.join(", ")}`);
+        process.exit(3);
+      }
+      await db.$transaction(async (tx) => {
+        for (const name of names) {
+          await tx.$executeRawUnsafe(`GRANT CONNECT ON DATABASE ${quoteIdent(dbRow.name)} TO ${quoteIdent(name)}`);
+          await tx.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${quoteIdent(name)}`);
+        }
+        await tx.$executeRawUnsafe(`REVOKE ALL ON DATABASE ${quoteIdent(dbRow.name)} FROM PUBLIC`);
+        await tx.$executeRawUnsafe("REVOKE ALL ON SCHEMA public FROM PUBLIC");
+      });
+      console.log("PUBLIC's privileges on the database and the public schema are revoked; the five identities hold explicit CONNECT and USAGE");
+    } else if (mode === "restore-public") {
+      const [dbRow] = await db.$queryRawUnsafe("SELECT current_database() AS name");
+      const objects = await gatherObjects(db);
+      await db.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`GRANT CONNECT, TEMPORARY ON DATABASE ${quoteIdent(dbRow.name)} TO PUBLIC`);
+        await tx.$executeRawUnsafe("GRANT USAGE ON SCHEMA public TO PUBLIC");
+        await tx.$executeRawUnsafe("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO PUBLIC");
+        for (const o of objects.filter((x) => x.kind === "type")) {
+          await tx.$executeRawUnsafe(`GRANT USAGE ON TYPE public.${quoteIdent(o.name)} TO PUBLIC`);
+        }
+      });
+      console.log("PUBLIC's database, schema, function and enum privileges are restored to the original defaults");
     } else if (mode === "apply-ownership") {
       const objects = await gatherObjects(db);
       const plan = lib.buildOwnershipPlan(objects, migrator);
@@ -249,7 +301,28 @@ async function main() {
           }
         }
       });
-      console.log(`grants applied for runtime, ops, backup and reporter over ${tables.length} tables`);
+      // SEC-DB-RLS-001 8.3, the part the migrator can do (it owns the functions and the enum types after the transfer): nothing is
+      // executable or usable by PUBLIC, and objects the migrator creates LATER are born that way (the default ACL for this role), so a
+      // new migration cannot quietly re-open what this closes. A trigger function needs no EXECUTE to fire (only creating the trigger
+      // checks it) and USAGE on a type does not control using its values, so no identity is granted either; manifest.public.enumTypeUsage
+      // is empty and lists any role that would have to be.
+      const enumTypes = objects.filter((o) => o.kind === "type").map((o) => o.name);
+      const enumRoles = ((manifest.public && manifest.public.enumTypeUsage) || []).map((k) => quoteIdent(lib.ROLES[k].name));
+      await db.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC");
+        for (const type of enumTypes) {
+          await tx.$executeRawUnsafe(`REVOKE USAGE ON TYPE public.${quoteIdent(type)} FROM PUBLIC`);
+          for (const role of enumRoles) {
+            await tx.$executeRawUnsafe(`GRANT USAGE ON TYPE public.${quoteIdent(type)} TO ${role}`);
+          }
+        }
+        await tx.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES FOR ROLE ${quoteIdent(migrator)} REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`);
+        await tx.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES FOR ROLE ${quoteIdent(migrator)} REVOKE USAGE ON TYPES FROM PUBLIC`);
+        if (enumRoles.length > 0) {
+          await tx.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES FOR ROLE ${quoteIdent(migrator)} GRANT USAGE ON TYPES TO ${enumRoles.join(", ")}`);
+        }
+      });
+      console.log(`grants applied for runtime, ops, backup and reporter over ${tables.length} tables; functions and ${enumTypes.length} enum types closed to PUBLIC`);
       if (strictGrants) {
         const findings = lib.evaluateModel(await gatherState(db), manifest);
         const responsible = findings.filter((f) => GRANTS_RESPONSIBILITY.test(f.check));

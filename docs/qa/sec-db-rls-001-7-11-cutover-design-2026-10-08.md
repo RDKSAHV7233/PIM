@@ -85,7 +85,7 @@ No credential, URL or password is placed in this repository, in a PR, or in a lo
 Every step names who acts, what is verified, and when to stop. "Agent" steps use only read-only production access or local tools; every production change is a **human** step.
 
 **Phase 0: dress rehearsal on restored production data (before the window; human + agent).**
-Restore the newest backup into a scratch database (P6). On that copy run, with local tooling only: `snapshot`, `plan-ownership` (review), `create-roles`, `apply-ownership`, `apply-grants`, `verify`, then the application's own test suites and the restricted-role lane as `vexa_runtime`, then the three operator scripts with the dedicated credentials. This is the closest available proof that the real data, not the fixture, survives the sequence. Record counts only. *This phase is new relative to the earlier design; it exists because the rehearsal fixture has 15 tables of synthetic rows, and production has the real schema and real tenants.*
+Restore the newest backup into a scratch database (P6). On that copy run, with local tooling only: `snapshot`, `plan-ownership` (review), `create-roles`, `narrow-public`, `apply-ownership`, `apply-grants`, `verify`, then the application's own test suites and the restricted-role lane as `vexa_runtime`, then the three operator scripts with the dedicated credentials. This is the closest available proof that the real data, not the fixture, survives the sequence. Record counts only. *This phase is new relative to the earlier design; it exists because the rehearsal fixture has 15 tables of synthetic rows, and production has the real schema and real tenants.*
 
 **Phase 1: repository changes that are safe before the switch (agent, normal PRs).**
 1. Remove the Railway pre-deploy command from `apps/api/railway.toml` (F3). Safe now: the workflow migrates first.
@@ -97,7 +97,7 @@ Restore the newest backup into a scratch database (P6). On that copy run, with l
 
 **Phase 3: identities and grants (human, in a maintenance window).**
 5. SRE creates the five credentials and stores them as the GitHub secrets in section 4. `vexa_runtime`'s secrets are created **under new names** (for example `STAGING_DATABASE_URL_RESTRICTED`, `STAGING_DATABASE_URL_DIRECT_RESTRICTED`) so `vexa_app_v2`'s values stay intact for rollback (section 7).
-6. `create-roles`, then `plan-ownership` (reviewed by a second person), then `apply-ownership` (one transaction, metadata only), then `apply-grants`, then `verify`. These write modes refuse non-local hosts today; running them in production is a separately authorized change to that guard or a manual run by an administrator. **That authorization is itself a gate**, not assumed here.
+6. `create-roles`, then `narrow-public` (the administrator revokes `PUBLIC`'s privileges on the database and the `public` schema; only the owner can, and each identity already holds an explicit `CONNECT` and `USAGE`), then `plan-ownership` (reviewed by a second person), then `apply-ownership` (one transaction, metadata only), then `apply-grants` (which also closes the functions and enum types to `PUBLIC` and sets the migrator's default ACL so later objects are born closed), then `verify`. `narrow-public` removes `CONNECT` from every role that is not one of the five; the 2026-10-06 probe found only `postgres` and `vexa_app_v2` (both superusers, unaffected), and step 3 re-reads the role list immediately before, so a role added since is seen before it is cut off. These write modes refuse non-local hosts today; running them in production is a separately authorized change to that guard or a manual run by an administrator. **That authorization is itself a gate**, not assumed here.
 7. Run the probe as each candidate role and compare with the rehearsal expectations (NOSUPERUSER, NOBYPASSRLS for runtime, owns nothing).
 
 **Phase 4: switch (human).**
@@ -122,7 +122,7 @@ Restore the newest backup into a scratch database (P6). On that copy run, with l
 3. Verify readiness and the same smoke list.
 Because ownership may already have moved to `vexa_migrator`, `vexa_app_v2` (a superuser) still works: superusers do not need ownership. This is why the superuser is kept untouched and why the strategy works.
 
-**Rollback B, ownership (only if it must revert).** `rollback-ownership --snapshot before.json` (rehearsal R5). Not needed for a credential rollback.
+**Rollback B, ownership and `PUBLIC` (only if it must revert).** `rollback-ownership --snapshot before.json` and `restore-public` (rehearsal R5 proves both, and that `PUBLIC` holds nothing again after re-applying forward). Not needed for a credential rollback: `vexa_app_v2` is a superuser and is unaffected by `PUBLIC` being narrowed.
 
 **Not undone by rollback:** the new roles and grants (harmless, unused), rows written during the window (the same rows either way), and the removed Railway pre-deploy (the workflow migrates). Say so in the change record.
 

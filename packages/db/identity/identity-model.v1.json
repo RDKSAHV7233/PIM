@@ -133,5 +133,13 @@
   },
   "backup": {
     "tables": "select-all"
+  },
+  "public": {
+    "note": "SEC-DB-RLS-001 8.3. PUBLIC holds nothing beyond the table rules above: no CONNECT, TEMPORARY or CREATE on the database, no USAGE or CREATE on schema public, no EXECUTE on any function and no USAGE on any enum type. Every identity connects and uses the schema through an EXPLICIT grant; nobody creates temporary tables. Two facts about PostgreSQL decide what is NOT granted, and the rehearsal proves both: a trigger function needs no EXECUTE for the trigger to fire (only creating the trigger checks it), and USAGE on a type does not control using its values in queries or casts (it only controls creating objects that depend on the type), so the application, which creates no such objects, needs no USAGE on the enum types. The migrator owns them.",
+    "enumTypeUsage": [],
+    "database": "no PUBLIC privilege; every identity has CONNECT and none has TEMPORARY",
+    "schema": "no PUBLIC privilege; every identity has USAGE; only the migrator has CREATE",
+    "functions": "no EXECUTE for PUBLIC",
+    "types": "no USAGE for PUBLIC and none for any identity but the owner (the migrator): the application only queries enum values"
   }
 }
