@@ -40,14 +40,20 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vexa_app_
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vexa_app_runtime;
 
 -- ── 5. Default privileges for future objects ───────────────────────────────────
--- When vexa_app_v2 creates new tables/sequences in future migrations, the runtime
--- role automatically receives the same grants.
+-- When the migration user creates new tables/sequences in future migrations, the
+-- runtime role automatically receives the same grants. Uses CURRENT_USER so this
+-- works in both production (vexa_app_v2) and CI (postgres).
 
-ALTER DEFAULT PRIVILEGES FOR ROLE vexa_app_v2 IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vexa_app_runtime;
-
-ALTER DEFAULT PRIVILEGES FOR ROLE vexa_app_v2 IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO vexa_app_runtime;
+DO $$ BEGIN
+  EXECUTE format(
+    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vexa_app_runtime',
+    current_user
+  );
+  EXECUTE format(
+    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO vexa_app_runtime',
+    current_user
+  );
+END $$;
 
 -- ── 6. Revoke dangerous privileges ────────────────────────────────────────────
 -- Ensure the runtime role cannot modify schema, create objects, or truncate.
