@@ -8,6 +8,11 @@
 -- application connects as this role; RLS policies are enforced on every query. Migrations
 -- continue to run as vexa_app_v2 (via DIRECT_URL) which retains DDL privileges as table owner.
 --
+-- Guard: this migration only acts when run by a superuser (production: vexa_app_v2,
+-- CI: postgres). When the identity model tools have already created the roles and grants
+-- (the db-identity rehearsal runs migrations as vexa_migrator after create-roles and
+-- apply-grants), this migration is a safe no-op.
+--
 -- Post-migration steps (DBA/CTO — not automatable):
 --   1. SET PASSWORD:  ALTER ROLE vexa_runtime PASSWORD '<strong-random-64-char>';
 --   2. RAILWAY:       Add DIRECT_URL env var with the vexa_app_v2 connection string
@@ -15,9 +20,18 @@
 --   4. REDEPLOY:      Railway redeploy to pick up the new connection string
 --   5. VERIFY:        Run the verification queries at the bottom of this file
 
--- ── 1. Create the restricted role ──────────────────────────────────────────────
+DO $$
+DECLARE
+  _is_super BOOLEAN;
+BEGIN
+  SELECT rolsuper INTO _is_super FROM pg_roles WHERE rolname = current_user;
 
-DO $$ BEGIN
+  IF NOT _is_super THEN
+    RAISE NOTICE 'P0-B migration: current user % is not a superuser — skipping (identity tools handle this path)', current_user;
+    RETURN;
+  END IF;
+
+  -- ── 1. Create the restricted role ────────────────────────────────────────────
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vexa_runtime') THEN
     CREATE ROLE vexa_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
     RAISE NOTICE 'Created role vexa_runtime';
@@ -25,26 +39,19 @@ DO $$ BEGIN
     ALTER ROLE vexa_runtime NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
     RAISE NOTICE 'Role vexa_runtime already exists — attributes reset to restricted';
   END IF;
-END $$;
 
--- ── 2. Schema access ───────────────────────────────────────────────────────────
+  -- ── 2. Schema access ─────────────────────────────────────────────────────────
+  GRANT USAGE ON SCHEMA public TO vexa_runtime;
 
-GRANT USAGE ON SCHEMA public TO vexa_runtime;
+  -- ── 3. Table privileges (DML only — no DDL, no TRUNCATE) ────────────────────
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vexa_runtime;
 
--- ── 3. Table privileges (DML only — no DDL, no TRUNCATE) ──────────────────────
+  -- ── 4. Sequence privileges (required for auto-increment columns) ─────────────
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vexa_runtime;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vexa_runtime;
-
--- ── 4. Sequence privileges (required for auto-increment columns) ───────────────
-
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vexa_runtime;
-
--- ── 5. Default privileges for future objects ───────────────────────────────────
--- When the migration user creates new tables/sequences in future migrations, the
--- runtime role automatically receives the same grants. Uses CURRENT_USER so this
--- works in both production (vexa_app_v2) and CI (postgres).
-
-DO $$ BEGIN
+  -- ── 5. Default privileges for future objects ─────────────────────────────────
+  -- When the migration user creates new tables/sequences in future migrations, the
+  -- runtime role automatically receives the same grants.
   EXECUTE format(
     'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vexa_runtime',
     current_user
@@ -53,13 +60,13 @@ DO $$ BEGIN
     'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO vexa_runtime',
     current_user
   );
+
+  -- ── 6. Revoke dangerous privileges ──────────────────────────────────────────
+  REVOKE CREATE ON SCHEMA public FROM vexa_runtime;
+  REVOKE TRUNCATE ON ALL TABLES IN SCHEMA public FROM vexa_runtime;
+
+  RAISE NOTICE 'P0-B migration complete: vexa_runtime created/updated with restricted privileges';
 END $$;
-
--- ── 6. Revoke dangerous privileges ────────────────────────────────────────────
--- Ensure the runtime role cannot modify schema, create objects, or truncate.
-
-REVOKE CREATE ON SCHEMA public FROM vexa_runtime;
-REVOKE TRUNCATE ON ALL TABLES IN SCHEMA public FROM vexa_runtime;
 
 -- ── Verification queries (run as vexa_app_v2 after deployment) ─────────────────
 -- These are comments, not executed. DBA runs them manually to verify.
