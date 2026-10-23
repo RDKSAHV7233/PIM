@@ -11,7 +11,7 @@
 // - Editing is per-price-list.  Each card has "Edit" → inline inputs → "Save" / "Cancel".
 //   Changes are sent as a single PUT /pricing/price-lists/:id/prices bulk-upsert.
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { useEffect, useReducer, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";

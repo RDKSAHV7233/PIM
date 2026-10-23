@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { buttonVariants } from "@/components/ui/button";
 import { PlanLimitDialogShell } from "@/components/ui/plan-limit-dialog-shell";
 import { safeContactHref, safeUpgradeHref } from "@/lib/plan-limit-links";

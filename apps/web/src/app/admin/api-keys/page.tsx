@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { ApiKeyCreatePanel } from "./api-key-create-panel";
 import { revokeApiAccessKeyAction } from "./actions";

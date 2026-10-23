@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import type { Product } from "@/lib/api";
 import { Card, CardTitle } from "@/components/ui/card";
 import { StatusChip } from "@/components/ui/status-chip";

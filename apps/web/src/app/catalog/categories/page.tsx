@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { createCategoryAction } from "@/app/actions";
 import { CategoryDeleteButton } from "@/components/catalog/category-delete-button";

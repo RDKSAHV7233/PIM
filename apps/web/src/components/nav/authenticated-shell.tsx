@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";

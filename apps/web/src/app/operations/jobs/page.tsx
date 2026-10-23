@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { retryFailedBulkPublishRunAction, retrySubmissionAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";

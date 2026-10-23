@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChannelReadinessBadge } from "@/components/channel/channel-readiness-badge";
 import { Button } from "@/components/ui/button";

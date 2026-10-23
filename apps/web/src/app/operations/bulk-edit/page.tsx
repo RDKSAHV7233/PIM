@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { applyBulkEditAction } from "@/app/actions";
 import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";

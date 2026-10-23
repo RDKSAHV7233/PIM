@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { useRouter } from "next/navigation";
 import { type MouseEvent, useState } from "react";
 import { retrySubmissionInlineAction } from "@/app/actions";

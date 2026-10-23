@@ -4,7 +4,7 @@
 import { FacetedFilterToggle, FacetedFilterPanel } from "@/components/ui/faceted-filter-panel";
 import type { AdvancedSearchQuery } from "@/lib/api/catalog";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { triggerBulkPublishAction, updateProductStatusAction } from "@/app/actions";

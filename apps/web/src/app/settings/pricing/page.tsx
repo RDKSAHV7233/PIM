@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { PricingSettingsContent } from "./_components/pricing-settings-content";
 import { ApiHttpError, getCurrencies, getMarkets, getPriceLists } from "@/lib/api";

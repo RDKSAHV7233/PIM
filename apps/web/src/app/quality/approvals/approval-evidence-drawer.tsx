@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppDrawer } from "@/components/ui/app-drawer";

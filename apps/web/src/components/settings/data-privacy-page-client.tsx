@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import type { AppRole } from "@/lib/api";

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { memo } from "react";
 import type { Channel } from "@/lib/design-tokens";
 import { channelConfig } from "@/lib/design-tokens";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { notFound, redirect } from "next/navigation";
 import { ApiHttpError, getBulkEditItemPlanLimitPayload, getBulkEditOperation } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";

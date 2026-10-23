@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { AppRole } from "@/lib/api";
@@ -296,7 +296,6 @@ export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = 
                   <li key={`${section.title}:${item.label}:${item.href}`}>
                     <Link
                       href={item.href}
-                      prefetch={false}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition",

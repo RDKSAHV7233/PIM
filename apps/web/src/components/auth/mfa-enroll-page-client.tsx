@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { FormEvent, useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { PimLocale } from "@/lib/locale";

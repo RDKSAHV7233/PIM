@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { SideRailCard } from "@/components/ui/side-rail-card";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { ProductDetailPageData } from "./product-detail-types";

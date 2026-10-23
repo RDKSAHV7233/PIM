@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { ApiHttpError, getOidcConfig } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";

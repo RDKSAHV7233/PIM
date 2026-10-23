@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import type { ReactNode } from "react";
 import { createConnectorMappingVersionAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";

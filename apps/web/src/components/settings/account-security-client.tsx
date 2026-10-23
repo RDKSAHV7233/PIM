@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { FormEvent, useState } from "react";
 import type { MfaStatus } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";

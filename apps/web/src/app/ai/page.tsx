@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { notFound, redirect } from "next/navigation";
 import { applyAiRepairAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";

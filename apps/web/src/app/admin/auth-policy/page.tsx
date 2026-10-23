@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { updateTenantAuthPolicyAction } from "@/app/admin/auth-policy/actions";
 import { ApiHttpError, getBillingPlanProfile, getTenantAuthPolicy } from "@/lib/api";

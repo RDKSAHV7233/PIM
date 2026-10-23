@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { useRef, useState } from "react";
 
 interface AuthPolicyEnterpriseFormProps {

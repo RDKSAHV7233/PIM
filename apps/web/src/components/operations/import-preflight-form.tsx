@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { InlineAlert } from "@/components/ui/inline-alert";

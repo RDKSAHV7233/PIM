@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { FormEvent, useMemo, useState } from "react";
 import { sanitizeNextPath } from "@/lib/auth-redirect";
 import { PimLocale } from "@/lib/locale";

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { headers } from "next/headers";
 import { AuthenticatedShell } from "@/components/nav/authenticated-shell";
 import { BillingStatusBanner } from "@/components/nav/billing-status-banner";

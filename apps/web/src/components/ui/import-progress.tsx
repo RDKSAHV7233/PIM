@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getJson } from "@/lib/api";
 import type { AppRole, BulkImportJob } from "@/lib/api";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { redirect } from "next/navigation";
 import { installConnectorAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";

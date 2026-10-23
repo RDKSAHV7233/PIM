@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/app-link";
 import { BrandLogo } from "@/components/ui/brand-logo";
 
 export const metadata = {
