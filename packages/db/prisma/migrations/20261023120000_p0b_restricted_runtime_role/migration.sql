@@ -1,4 +1,4 @@
--- P0-B: Create a restricted runtime role that cannot bypass row level security.
+-- P0-B: Restricted runtime role — schema history marker.
 --
 -- Problem: vexa_app_v2 has SUPERUSER, which bypasses all RLS policies regardless of
 -- ENABLE/FORCE ROW LEVEL SECURITY on tables. Tenant isolation exists in policy definitions
@@ -8,37 +8,21 @@
 -- application connects as this role; RLS policies are enforced on every query. Migrations
 -- continue to run as vexa_app_v2 (via DIRECT_URL) which retains DDL privileges as table owner.
 --
--- Guard: this migration only acts when run by a superuser (production: vexa_app_v2,
--- CI: postgres). When the identity model tools have already created the roles and grants
--- (the db-identity rehearsal runs migrations as vexa_migrator after create-roles and
--- apply-grants), this migration is a safe no-op.
+-- The role itself is created by the identity tools (create-roles) in CI and by the DBA
+-- runbook in production. A Prisma migration cannot create cluster-level roles without
+-- conflicting with the identity rehearsal's ordering guarantees (the rehearsal proves
+-- that create-roles is the single authority for role creation).
 --
--- Post-migration steps (DBA/CTO — not automatable):
---   1. SET PASSWORD:  ALTER ROLE vexa_runtime PASSWORD '<strong-random-64-char>';
---   2. RAILWAY:       Add DIRECT_URL env var with the vexa_app_v2 connection string
---   3. RAILWAY:       Update DATABASE_URL to use vexa_runtime credentials
---   4. REDEPLOY:      Railway redeploy to pick up the new connection string
---   5. VERIFY:        Run the verification queries at the bottom of this file
+-- DBA runbook (run BEFORE deploy):
+--   1. CREATE ROLE:   CREATE ROLE vexa_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+--   2. SET PASSWORD:  ALTER ROLE vexa_runtime PASSWORD '<strong-random-64-char>';
+--   3. APPLY GRANTS:  Run scripts/db-identity/tool.cjs apply-grants (or the deploy pipeline does this)
+--   4. RAILWAY:       Add DIRECT_URL env var with the vexa_app_v2 connection string
+--   5. RAILWAY:       Update DATABASE_URL to use vexa_runtime credentials
+--   6. REDEPLOY:      Railway redeploy to pick up the new connection string
+--   7. VERIFY:        Run the verification queries at the bottom of this file
 
-DO $$
-DECLARE
-  _is_super BOOLEAN;
-BEGIN
-  SELECT rolsuper INTO _is_super FROM pg_roles WHERE rolname = current_user;
-
-  IF NOT _is_super THEN
-    RAISE NOTICE 'P0-B migration: current user % is not a superuser — skipping (identity tools handle this path)', current_user;
-    RETURN;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vexa_runtime') THEN
-    CREATE ROLE vexa_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-    RAISE NOTICE 'Created role vexa_runtime (grants are applied by the identity tools or the deploy pipeline)';
-  ELSE
-    ALTER ROLE vexa_runtime NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-    RAISE NOTICE 'Role vexa_runtime already exists — attributes reset to restricted';
-  END IF;
-END $$;
+SELECT 1;
 
 -- ── Verification queries (run as vexa_app_v2 after deployment) ─────────────────
 -- These are comments, not executed. DBA runs them manually to verify.
