@@ -31,41 +31,13 @@ BEGIN
     RETURN;
   END IF;
 
-  -- ── 1. Create the restricted role ────────────────────────────────────────────
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vexa_runtime') THEN
     CREATE ROLE vexa_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-    RAISE NOTICE 'Created role vexa_runtime';
+    RAISE NOTICE 'Created role vexa_runtime (grants are applied by the identity tools or the deploy pipeline)';
   ELSE
     ALTER ROLE vexa_runtime NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
     RAISE NOTICE 'Role vexa_runtime already exists — attributes reset to restricted';
   END IF;
-
-  -- ── 2. Schema access ─────────────────────────────────────────────────────────
-  GRANT USAGE ON SCHEMA public TO vexa_runtime;
-
-  -- ── 3. Table privileges (DML only — no DDL, no TRUNCATE) ────────────────────
-  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vexa_runtime;
-
-  -- ── 4. Sequence privileges (required for auto-increment columns) ─────────────
-  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vexa_runtime;
-
-  -- ── 5. Default privileges for future objects ─────────────────────────────────
-  -- When the migration user creates new tables/sequences in future migrations, the
-  -- runtime role automatically receives the same grants.
-  EXECUTE format(
-    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vexa_runtime',
-    current_user
-  );
-  EXECUTE format(
-    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO vexa_runtime',
-    current_user
-  );
-
-  -- ── 6. Revoke dangerous privileges ──────────────────────────────────────────
-  REVOKE CREATE ON SCHEMA public FROM vexa_runtime;
-  REVOKE TRUNCATE ON ALL TABLES IN SCHEMA public FROM vexa_runtime;
-
-  RAISE NOTICE 'P0-B migration complete: vexa_runtime created/updated with restricted privileges';
 END $$;
 
 -- ── Verification queries (run as vexa_app_v2 after deployment) ─────────────────
