@@ -914,20 +914,9 @@ export class AuthService implements OnModuleDestroy {
     let identityFound = false;
 
     if (this.isDbAuthMode()) {
-      const identity = await this.prismaDirect.getClient().authIdentity.findFirst({
-        where: {
-          userId: normalizedEmail,
-        },
-        select: {
-          userId: true,
-          tenantKey: true,
-          role: true,
-          assignedRoles: true,
-          isActive: true,
-          lockedUntil: true,
-          passwordHash: true,
-        },
-      });
+      // AuthIdentity is RLS-protected: cross-tenant lookup by email iterates active workspaces
+      // (P1 RLS closure 2026-10-24).
+      const identity = await this.findIdentityAcrossTenants(normalizedEmail);
       identityFound = Boolean(identity);
       if (identity?.isActive && rateLimit.allowed) {
         const resolvedIdentity: ResolvedLoginIdentity = {
@@ -1576,6 +1565,30 @@ export class AuthService implements OnModuleDestroy {
       };
     }
 
+    return null;
+  }
+
+  private async findIdentityAcrossTenants(normalizedUserId: string) {
+    const workspaces = await this.prismaDirect.getClient().workspaceDirectory.findMany({
+      where: { isActive: true },
+      select: { tenantKey: true },
+      take: 200,
+    });
+    for (const w of workspaces) {
+      const row = await this.prisma.tenant(w.tenantKey).authIdentity.findFirst({
+        where: { userId: normalizedUserId },
+        select: {
+          userId: true,
+          tenantKey: true,
+          role: true,
+          assignedRoles: true,
+          isActive: true,
+          lockedUntil: true,
+          passwordHash: true,
+        },
+      });
+      if (row) return row;
+    }
     return null;
   }
 
