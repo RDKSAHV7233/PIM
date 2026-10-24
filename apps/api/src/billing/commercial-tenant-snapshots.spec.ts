@@ -85,6 +85,10 @@ function makeFake(options: {
     return {
       authIdentity: {
         findMany: jest.fn(async () => adminsForTenant),
+        findFirst: jest.fn(async (args?: { where?: { userId?: { contains?: string } } }) => {
+          const q = args?.where?.userId?.contains?.toLowerCase();
+          return q ? adminsForTenant.find((a) => a.userId.toLowerCase().includes(q)) ?? null : adminsForTenant[0] ?? null;
+        }),
         count: jest.fn(async () => adminsForTenant.length),
       },
       $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx())),
