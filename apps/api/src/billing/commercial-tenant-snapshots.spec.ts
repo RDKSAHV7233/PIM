@@ -79,8 +79,23 @@ function makeFake(options: {
     };
   };
 
-  const tenantClient = { $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx())) };
-  const prisma = { tenant: jest.fn(() => tenantClient) };
+  const tenantClients = new Map<string, ReturnType<typeof makeTenantClient>>();
+  function makeTenantClient(tk: string) {
+    const adminsForTenant = (options.admins ?? []).filter((a) => a.tenantKey === tk);
+    return {
+      authIdentity: {
+        findMany: jest.fn(async () => adminsForTenant),
+        count: jest.fn(async () => adminsForTenant.length),
+      },
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx())),
+    };
+  }
+  const prisma = {
+    tenant: jest.fn((tk: string) => {
+      if (!tenantClients.has(tk)) tenantClients.set(tk, makeTenantClient(tk));
+      return tenantClients.get(tk)!;
+    }),
+  };
 
   // The context-free client: workspaces, identities and signups only. No tenantPlanProfile, planUsage or $queryRaw.
   const direct = {

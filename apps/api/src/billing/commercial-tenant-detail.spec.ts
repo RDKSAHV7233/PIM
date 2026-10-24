@@ -668,6 +668,10 @@ describe("PlanUsageService.getTenantDetail — which client reads which table (S
     const scoped = makeMockDb();
     scoped.tenantPlanProfile.findFirst.mockResolvedValue(PROFILE_ENTERPRISE);
     scoped.planUsage.findFirst.mockResolvedValue(USAGE_ROW);
+    scoped.authIdentity.findMany.mockResolvedValue([
+      { userId: "admin@acme.com", role: "admin", isActive: true, lockedUntil: null, createdAt: new Date("2026-06-01") },
+    ]);
+    scoped.authIdentity.count.mockResolvedValue(1);
     scoped.$queryRaw.mockImplementation((strings: TemplateStringsArray) => {
       const query = typeof strings === "object" && strings.raw ? strings.raw.join("") : String(strings);
       return Promise.resolve(query.includes("COUNT") ? [{ count: 1 }] : [{ installationId: "ci-1", connectorName: "Shopify", connectorSlug: "shopify", status: "ACTIVE", createdAt: new Date("2026-06-10") }]);
@@ -702,6 +706,8 @@ describe("PlanUsageService.getTenantDetail — which client reads which table (S
 
     expect(direct.tenantPlanProfile.findFirst).not.toHaveBeenCalled();
     expect(direct.planUsage.findFirst).not.toHaveBeenCalled();
+    expect(direct.authIdentity.findMany).not.toHaveBeenCalled();
+    expect(direct.authIdentity.count).not.toHaveBeenCalled();
     expect(direct.$queryRaw).not.toHaveBeenCalled();
   });
 
@@ -711,8 +717,8 @@ describe("PlanUsageService.getTenantDetail — which client reads which table (S
 
     expect(direct.workspaceDirectory.findUnique).toHaveBeenCalledTimes(1);
     expect(direct.publicSignupRequest.findFirst).toHaveBeenCalledTimes(1);
-    expect(direct.authIdentity.findMany).toHaveBeenCalledTimes(1);
-    expect(direct.authIdentity.count).toHaveBeenCalledTimes(1);
+    expect(scoped.authIdentity.findMany).toHaveBeenCalledTimes(1);
+    expect(scoped.authIdentity.count).toHaveBeenCalledTimes(1);
     expect(scoped.workspaceDirectory.findUnique).not.toHaveBeenCalled();
   });
 
