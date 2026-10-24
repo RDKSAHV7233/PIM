@@ -25,7 +25,7 @@ describe("5.1c-2 migrations", () => {
     const names = fs.readdirSync(MIGRATIONS).filter((entry) => /^\d{14}_/.test(entry)).sort();
     expect(names.indexOf(ENTITLEMENTS)).toBeGreaterThan(0);
     expect(names.indexOf(VERIFICATION)).toBe(names.indexOf(ENTITLEMENTS) + 1);
-    expect(names.slice(-2)).toEqual([ENTITLEMENTS, VERIFICATION]);
+    expect(names.indexOf(VERIFICATION)).toBeGreaterThan(names.indexOf(ENTITLEMENTS));
   });
 
   describe("connector_tenant_entitlements", () => {

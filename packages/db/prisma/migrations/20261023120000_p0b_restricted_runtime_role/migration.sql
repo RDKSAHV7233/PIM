@@ -1,0 +1,56 @@
+-- P0-B: Restricted runtime role — schema history marker.
+--
+-- Problem: vexa_app_v2 has SUPERUSER, which bypasses all RLS policies regardless of
+-- ENABLE/FORCE ROW LEVEL SECURITY on tables. Tenant isolation exists in policy definitions
+-- but is not enforced at the database boundary.
+--
+-- Solution: Create vexa_runtime with NOSUPERUSER + NOBYPASSRLS + LOGIN. The running
+-- application connects as this role; RLS policies are enforced on every query. Migrations
+-- continue to run as vexa_app_v2 (via DIRECT_URL) which retains DDL privileges as table owner.
+--
+-- The role itself is created by the identity tools (create-roles) in CI and by the DBA
+-- runbook in production. A Prisma migration cannot create cluster-level roles without
+-- conflicting with the identity rehearsal's ordering guarantees (the rehearsal proves
+-- that create-roles is the single authority for role creation).
+--
+-- DBA runbook (run BEFORE deploy):
+--   1. CREATE ROLE:   CREATE ROLE vexa_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+--   2. SET PASSWORD:  ALTER ROLE vexa_runtime PASSWORD '<strong-random-64-char>';
+--   3. APPLY GRANTS:  Run scripts/db-identity/tool.cjs apply-grants (or the deploy pipeline does this)
+--   4. RAILWAY:       Add DIRECT_URL env var with the vexa_app_v2 connection string
+--   5. RAILWAY:       Update DATABASE_URL to use vexa_runtime credentials
+--   6. REDEPLOY:      Railway redeploy to pick up the new connection string
+--   7. VERIFY:        Run the verification queries at the bottom of this file
+
+SELECT 1;
+
+-- ── Verification queries (run as vexa_app_v2 after deployment) ─────────────────
+-- These are comments, not executed. DBA runs them manually to verify.
+--
+-- 1. Confirm restricted attributes:
+--    SELECT rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolcanlogin
+--    FROM pg_roles WHERE rolname = 'vexa_runtime';
+--    Expected: rolsuper=f, rolbypassrls=f, rolcreatedb=f, rolcreaterole=f, rolcanlogin=t
+--
+-- 2. Confirm RLS is enforced (connect as vexa_runtime, no tenant context):
+--    SET ROLE vexa_runtime;
+--    SET app.tenant_key = '';
+--    SELECT count(*) FROM "Product";
+--    -- Should return 0 or only 'default' tenant rows
+--
+-- 3. Confirm cross-tenant read is blocked:
+--    SET ROLE vexa_runtime;
+--    SET app.tenant_key = 'tenant-a';
+--    SELECT count(*) FROM "Product" WHERE "tenantKey" = 'tenant-b';
+--    -- Should return 0
+--
+-- 4. Confirm cross-tenant write is blocked:
+--    SET ROLE vexa_runtime;
+--    SET app.tenant_key = 'tenant-a';
+--    INSERT INTO "Product" ("tenantKey", ...) VALUES ('tenant-b', ...);
+--    -- Should fail with RLS policy violation
+--
+-- 5. Confirm DDL is blocked:
+--    SET ROLE vexa_runtime;
+--    DROP TABLE "Product";
+--    -- Should fail with permission denied

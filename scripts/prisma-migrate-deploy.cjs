@@ -74,7 +74,7 @@ function checkTcp(host, port, timeoutMs = 2000) {
 
 /** The child process for `prisma migrate deploy`: the same command and environment as before, per platform. */
 function migrateCommand(url, platform = process.platform, env = process.env) {
-  const childEnv = { ...env, DATABASE_URL: url };
+  const childEnv = { ...env, DATABASE_URL: url, DATABASE_URL_DIRECT: url };
   return platform === "win32"
     ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npx prisma migrate deploy --schema ${SCHEMA_PATH}`], options: { stdio: "inherit", env: childEnv } }
     : { command: "npx", args: ["prisma", "migrate", "deploy", "--schema", SCHEMA_PATH], options: { stdio: "inherit", env: childEnv } };

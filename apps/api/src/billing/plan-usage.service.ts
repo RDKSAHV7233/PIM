@@ -1162,20 +1162,21 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
     const tenantKeys = workspaces.map((w) => normalizeTenantKey(w.tenantKey)).slice(0, limit);
 
-    // Step 2: batch-enrich. Plan profile, usage and connectors: per tenant (RLS-protected). Admin emails and user counts:
-    // identities are not RLS-protected and stay batched.
+    // Step 2: batch-enrich. Plan profile, usage, connectors AND identities are all RLS-protected: read per tenant
+    // (SEC-DB-RLS-001 P2.1b-ii, P1 RLS closure 2026-10-24).
     const [snapshots, adminIdentities, userCounts] = await Promise.all([
       this.readTenantCommercialSnapshots(tenantKeys, { usageMonth: month, connectors: true }),
-      db.authIdentity.findMany({
-        where: { tenantKey: { in: tenantKeys }, role: { equals: "admin", mode: "insensitive" }, isActive: true },
-        select: { tenantKey: true, userId: true },
-        take: Math.max(tenantKeys.length * 5, 100),
-      }),
-      db.authIdentity.groupBy({
-        by: ["tenantKey"],
-        where: { tenantKey: { in: tenantKeys }, isActive: true },
-        _count: true,
-      }),
+      Promise.all(tenantKeys.map((tk) =>
+        this.prisma.tenant(tk).authIdentity.findMany({
+          where: { role: { equals: "admin", mode: "insensitive" }, isActive: true },
+          select: { tenantKey: true, userId: true },
+          take: 5,
+        }),
+      )).then((results) => results.flat()),
+      Promise.all(tenantKeys.map(async (tk) => ({
+        tenantKey: tk,
+        _count: await this.prisma.tenant(tk).authIdentity.count({ where: { isActive: true } }),
+      }))),
     ]);
 
     const adminMap = new Map<string, string[]>();
@@ -1256,10 +1257,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   async getTenantDetail(tenantKeyInput: string): Promise<CommercialTenantDetail | null> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
-    // Non-RLS tables (the workspace directory, signup requests, identities and the connector catalogue) are read through the
-    // context-free client. The RLS-protected tables (TenantPlanProfile, PlanUsage, connector_installations) are read through the
-    // requested tenant's own client: under row level security the context-free client sees none of their rows, so the plan, usage
-    // and connector sections of this view would silently come back empty (SEC-DB-RLS-001 P2.1b-i).
+    // Non-RLS tables (the workspace directory, signup requests and the connector catalogue) are read through the context-free
+    // client. RLS-protected tables (TenantPlanProfile, PlanUsage, connector_installations, AuthIdentity, api_access_keys) are
+    // read through the requested tenant's own client (SEC-DB-RLS-001 P2.1b-i, P1 RLS closure 2026-10-24).
     const db = this.prismaDirect.getClient();
     const tenantDb = this.prisma.tenant(tenantKey);
     const month = this.getMonthKey();
@@ -1292,13 +1292,13 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         select: { adminEmail: true, status: true, createdAt: true, verifiedAt: true },
         orderBy: { createdAt: "desc" },
       }),
-      db.authIdentity.findMany({
+      tenantDb.authIdentity.findMany({
         where: { tenantKey },
         select: { userId: true, role: true, isActive: true, lockedUntil: true, createdAt: true },
         orderBy: { createdAt: "asc" },
         take: USER_LIMIT,
       }),
-      db.authIdentity.count({ where: { tenantKey } }),
+      tenantDb.authIdentity.count({ where: { tenantKey } }),
       // RLS-BYPASS: manual tenant filter — WHERE ci.tenant_key = ${tenantKey} below, on the requested tenant's own client.
       tenantDb.$queryRaw<Array<{
         installationId: string;
@@ -1941,25 +1941,26 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async findCommercialAdminMatchTenantKeys(query: string): Promise<Set<string>> {
-    const matches = await this.prismaDirect.getClient().authIdentity.findMany({
-      where: {
-        role: {
-          equals: "admin",
-          mode: "insensitive",
-        },
-        isActive: true,
-        userId: {
-          contains: query,
-          mode: "insensitive",
-        },
-      },
-      select: {
-        tenantKey: true,
-      },
-      // We only need the set of matching tenantKeys — 100 is far more than enough.
-      take: 100,
+    // AuthIdentity is RLS-protected: search admin identities per tenant (P1 RLS closure 2026-10-24).
+    const workspaces = await this.prismaDirect.getClient().workspaceDirectory.findMany({
+      select: { tenantKey: true },
+      take: 200,
     });
-    return new Set(matches.map((match) => normalizeTenantKey(match.tenantKey)));
+    const results = await Promise.all(
+      workspaces.map((w) =>
+        this.prisma.tenant(w.tenantKey).authIdentity.findFirst({
+          where: {
+            role: { equals: "admin", mode: "insensitive" },
+            isActive: true,
+            userId: { contains: query, mode: "insensitive" },
+          },
+          select: { tenantKey: true },
+        }),
+      ),
+    );
+    return new Set(
+      results.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => normalizeTenantKey(r.tenantKey)),
+    );
   }
 
   private rankCommercialTenantMatch(
@@ -2008,30 +2009,20 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       return [];
     }
 
-    const db = this.prismaDirect.getClient();
-
-    // The plan profile and latest usage tier are RLS-protected: they are read per tenant (readTenantCommercialSnapshots), never
-    // through the context-free client, which under row level security would show every tenant as the default TRIAL plan. Admin
-    // identities are not RLS-protected and stay one batched read.
+    // Plan profile, usage and identities are all RLS-protected: read per tenant (P1 RLS closure 2026-10-24).
     const [snapshots, adminIdentities] = await Promise.all([
       this.readTenantCommercialSnapshots(tenantKeys),
-      db.authIdentity.findMany({
-        where: {
-          tenantKey: { in: tenantKeys },
-          role: {
-            equals: "admin",
-            mode: "insensitive",
+      Promise.all(tenantKeys.map((tk) =>
+        this.prisma.tenant(tk).authIdentity.findMany({
+          where: {
+            role: { equals: "admin", mode: "insensitive" },
+            isActive: true,
           },
-          isActive: true,
-        },
-        select: {
-          tenantKey: true,
-          userId: true,
-        },
-        orderBy: [{ tenantKey: "asc" }, { userId: "asc" }],
-        // Cap at 5 admins per tenant in the batch — in-memory aggregation uses at most 5 per tenant.
-        take: Math.max(tenantKeys.length * 5, 500),
-      }),
+          select: { tenantKey: true, userId: true },
+          orderBy: { userId: "asc" },
+          take: 5,
+        }),
+      )).then((results) => results.flat()),
     ]);
 
     const adminMap = new Map<string, string[]>();

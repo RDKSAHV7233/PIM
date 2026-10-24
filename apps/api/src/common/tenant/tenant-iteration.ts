@@ -198,9 +198,10 @@ export interface TenantDiscovery<T> {
  * uses, which carry their own tenant client; this avoids holding a transaction open while other services open other connections.
  *
  * THE DISCOVERY QUERY MUST FILTER BY THE TENANT IT IS GIVEN (WHERE "tenantKey" = the iteration's tenant), in addition to the tenant
- * context: while the runtime role still bypasses row level security (as the production role does today) a query with no tenant filter
- * returns EVERY tenant's rows in EVERY iteration, so each row would be acted on once per tenant. Rows whose tenant is not the
- * iteration's tenant are dropped and counted as an item failure, so that mistake is loud, never a silent duplicate.
+ * context set by RLS. This is defense-in-depth: RLS policies enforce tenant isolation at the database boundary (the runtime role is
+ * NOBYPASSRLS), but the explicit WHERE clause means a misconfigured policy or a future schema change cannot silently widen the scope.
+ * Without the filter a query would act on every matching row the connection can see, once per iteration. Rows whose tenant is not
+ * the iteration's tenant are dropped and counted as an item failure, so that mistake is loud, never a silent duplicate.
  */
 export async function discoverAcrossTenants<T extends { tenantKey?: string }>(
   client: PrismaClient,

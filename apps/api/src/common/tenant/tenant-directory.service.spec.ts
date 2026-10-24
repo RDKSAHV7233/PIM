@@ -49,6 +49,11 @@ function makeService(options: { existingMarketForTenant?: boolean; seedFails?: b
           return Promise.resolve({ id: `${model}_${created.length}`, ...data });
         });
       const client: any = {
+        authIdentity: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: "auth_1" }),
+          update: jest.fn(),
+        },
         market: {
           findFirst: jest.fn().mockResolvedValue(options.existingMarketForTenant ? { id: "market_existing" } : null),
           create: record("market"),
@@ -81,7 +86,7 @@ describe("TenantDirectoryService — initial admin password source", () => {
     process.env.AUTH_MODE = "db";
     process.env.APP_ENV = "staging";
     process.env.PIM_AUTH_PASSWORD = "shared-password-must-not-be-used";
-    const { svc, authIdentity } = makeService();
+    const { svc, tenantClients } = makeService();
 
     await svc.provisionWorkspace({
       tenantKey: "tenant-a",
@@ -90,7 +95,8 @@ describe("TenantDirectoryService — initial admin password source", () => {
       initialAdminUserId: "admin@example.test",
     });
 
-    const createPayload = authIdentity.create.mock.calls[0]?.[0]?.data;
+    const tenantAuth = tenantClients.get("tenant-a")!.authIdentity;
+    const createPayload = tenantAuth.create.mock.calls[0]?.[0]?.data;
     expect(createPayload).toMatchObject({
       tenantKey: "tenant-a",
       userId: "admin@example.test",
@@ -105,7 +111,7 @@ describe("TenantDirectoryService — initial admin password source", () => {
     process.env.APP_ENV = "staging";
     process.env.PIM_AUTH_PASSWORD = "shared-password-must-not-be-used";
     const explicitHash = await bcrypt.hash("Explicit#Password2026", 12);
-    const { svc, authIdentity } = makeService();
+    const { svc, tenantClients } = makeService();
 
     await svc.provisionWorkspaceWithPasswordHash({
       tenantKey: "tenant-a",
@@ -115,7 +121,8 @@ describe("TenantDirectoryService — initial admin password source", () => {
       initialAdminPasswordHash: explicitHash,
     });
 
-    const createPayload = authIdentity.create.mock.calls[0]?.[0]?.data;
+    const tenantAuth = tenantClients.get("tenant-a")!.authIdentity;
+    const createPayload = tenantAuth.create.mock.calls[0]?.[0]?.data;
     expect(createPayload.passwordHash).toBe(explicitHash);
     await expect(bcrypt.compare("Explicit#Password2026", createPayload.passwordHash)).resolves.toBe(true);
     await expect(bcrypt.compare("shared-password-must-not-be-used", createPayload.passwordHash)).resolves.toBe(false);

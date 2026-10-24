@@ -142,24 +142,25 @@ export class TenantDirectoryService {
       throw new Error("INITIAL_ADMIN_USER_REQUIRED");
     }
 
-    // Workspace provisioning creates identities for arbitrary tenants, so it must bypass
-    // the tenant-scoped Prisma extension that would otherwise restamp tenantKey=default.
-    const prisma = this.prismaDirect.getClient();
-    const existingBySlug = await prisma.workspaceDirectory.findUnique({
+    // WorkspaceDirectory is intentionally unscoped (cross-tenant directory), so it stays on the direct client.
+    // AuthIdentity is RLS-protected: reads and writes go through the tenant client so app.tenant_key is set.
+    const directPrisma = this.prismaDirect.getClient();
+    const tenantPrisma = this.prisma.tenant(tenantKey);
+    const existingBySlug = await directPrisma.workspaceDirectory.findUnique({
       where: { workspaceSlug },
     });
     if (existingBySlug && normalizeTenantKey(existingBySlug.tenantKey) !== tenantKey) {
       throw new Error("WORKSPACE_SLUG_ALREADY_ASSIGNED");
     }
 
-    const existingByTenant = await prisma.workspaceDirectory.findUnique({
+    const existingByTenant = await directPrisma.workspaceDirectory.findUnique({
       where: { tenantKey },
     });
     if (existingByTenant && normalizeWorkspaceSlug(existingByTenant.workspaceSlug) !== workspaceSlug) {
       throw new Error("TENANT_WORKSPACE_ALREADY_ASSIGNED");
     }
 
-    const existingIdentity = await prisma.authIdentity.findUnique({
+    const existingIdentity = await tenantPrisma.authIdentity.findUnique({
       where: { userId: initialAdminUserId },
       select: {
         id: true,
@@ -171,14 +172,14 @@ export class TenantDirectoryService {
     }
 
     const workspace = existingBySlug
-      ? await prisma.workspaceDirectory.update({
+      ? await directPrisma.workspaceDirectory.update({
           where: { workspaceSlug },
           data: {
             displayName,
             isActive: true,
           },
         })
-      : await prisma.workspaceDirectory.create({
+      : await directPrisma.workspaceDirectory.create({
           data: {
             tenantKey,
             workspaceSlug,
@@ -188,7 +189,7 @@ export class TenantDirectoryService {
         });
 
     if (existingIdentity) {
-      await prisma.authIdentity.update({
+      await tenantPrisma.authIdentity.update({
         where: { userId: initialAdminUserId },
         data: {
           role: "admin",
@@ -199,7 +200,7 @@ export class TenantDirectoryService {
         },
       });
     } else {
-      await prisma.authIdentity.create({
+      await tenantPrisma.authIdentity.create({
         data: {
           tenantKey,
           userId: initialAdminUserId,
