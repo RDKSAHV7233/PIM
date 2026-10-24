@@ -235,7 +235,10 @@ export class BillingController {
     const usage = await this.planUsageService.getUsageSummary();
     const tenantKey = usage.profile.tenantKey;
     const planTier = String(body.planTier ?? "GROWTH").toUpperCase();
-    const webBaseUrl = String(process.env.PIM_WEB_BASE_URL ?? "").trim().replace(/\/+$/, "") || "http://localhost:3000";
+    const webBaseUrl =
+      String(process.env.PIM_WEB_BASE_URL ?? "").trim().replace(/\/+$/, "") ||
+      String(process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? "").split(",")[0]?.trim().replace(/\/+$/, "") ||
+      "http://localhost:3000";
     const successUrl = String(body.successUrl ?? "").trim() || `${webBaseUrl}/admin/plan?checkout=success`;
     const cancelUrl = String(body.cancelUrl ?? "").trim() || `${webBaseUrl}/admin/plan?checkout=cancelled`;
     const { url } = await this.stripeService.createCheckoutSession({ tenantKey, planTier, successUrl, cancelUrl });
