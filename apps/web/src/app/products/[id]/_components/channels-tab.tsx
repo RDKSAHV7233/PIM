@@ -463,6 +463,46 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                     <p className="text-sm text-slate-600">No required field gaps for this channel.</p>
                   )}
                 </div>
+                {data.variants.length > 1 && data.simulation.missingFields.length > 0 ? (
+                  <div className="lg:col-span-2">
+                    <p className="mb-2 text-xs uppercase text-slate-500">Variant Attribution</p>
+                    <p className="mb-2 text-xs text-slate-500">
+                      Which variants are missing each required field. Product-level fields (title, brand, description) appear on all rows when missing.
+                    </p>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-left text-slate-500">
+                          <th className="pb-1 pr-4 font-medium">Variant (SKU)</th>
+                          <th className="pb-1 font-medium">Missing required fields</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {data.variants.map((variant, idx) => {
+                          const vAttrs = (variant.attributes && typeof variant.attributes === "object" ? variant.attributes : {}) as Record<string, unknown>;
+                          const variantIssues = data.simulation.missingFields.filter((field) => {
+                            const bare = field.startsWith("attributes.") ? field.slice("attributes.".length) : field;
+                            if (bare === "sku") return !variant.skuCode || variant.skuCode.trim() === "";
+                            if (bare === "price" || bare === "sellingPrice") return variant.sellingPrice == null;
+                            if (bare === "mrp") return variant.mrp == null;
+                            return !vAttrs[bare] || String(vAttrs[bare] ?? "").trim() === "";
+                          });
+                          return (
+                            <tr key={variant.id} className="align-top">
+                              <td className="py-1 pr-4 font-mono text-slate-700">{variant.skuCode || `Variant ${idx + 1}`}</td>
+                              <td className="py-1">
+                                {variantIssues.length > 0 ? (
+                                  <span className="text-red-600">{variantIssues.join(", ")}</span>
+                                ) : (
+                                  <span className="text-emerald-700">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
                 <div>
                   <p className="mb-2 text-xs uppercase text-slate-500">Mapped Payload Preview</p>
                   <JsonPreview value={JSON.stringify(data.simulation.mappedPayload, null, 2)} className="max-h-64 border-border" />

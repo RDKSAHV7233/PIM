@@ -81,6 +81,7 @@ export function ExportWithPreviewForm({
   const [confirmMode, setConfirmMode] = useState<"preview" | "simple" | null>(null);
 
   const [destinationKey, setDestinationKey] = useState(0);
+  const [selectedInstallationId, setSelectedInstallationId] = useState("");
 
   const channelSlug = mapMarketplaceChannelToConnectorSlug(selectedChannel as MarketplaceChannel);
   const channelInstallations = publishableInstallations.filter(i => i.slug === channelSlug);
@@ -238,7 +239,7 @@ export function ExportWithPreviewForm({
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-channel">
             Channel
           </label>
-          <Select id="epf-channel" name="channel" defaultValue={defaultExportChannel} onChange={(e) => { setSelectedChannel(e.target.value); resetPreviewState(); }}>
+          <Select id="epf-channel" name="channel" defaultValue={defaultExportChannel} onChange={(e) => { setSelectedChannel(e.target.value); setSelectedInstallationId(""); resetPreviewState(); }}>
             {publishableChannels.map((ch) => (
               <option key={ch.channel} value={ch.channel}>
                 {ch.displayName}
@@ -260,7 +261,7 @@ export function ExportWithPreviewForm({
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="epf-installation-id">
               Destination <span className="text-red-500">*</span>
             </label>
-            <Select key={destinationKey} id="epf-installation-id" name="installationId" defaultValue="" required onChange={resetPreviewState}>
+            <Select id="epf-installation-id" name="installationId" value={selectedInstallationId} required onChange={(e) => { setSelectedInstallationId(e.target.value); resetPreviewState(); }}>
               <option value="" disabled>Select a destination</option>
               {channelInstallations.map((inst) => (
                 <option key={inst.id} value={inst.id}>
