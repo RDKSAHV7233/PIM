@@ -1468,9 +1468,6 @@ export class ConnectorMappingService {
           }
           return true;
         });
-        if (missingRequiredProductValues.length > 0) {
-          blockers.push("required_product_data_missing");
-        }
         const mediaResult = await this.evaluateMediaExportReadiness({
           connectorSlug: input.connectorSlug,
           productId: product.id,
@@ -1483,6 +1480,20 @@ export class ConnectorMappingService {
           warnings.push(...mediaResult.warnings);
         }
         mediaExportCheck = mediaResult.check;
+        // Reconcile: if image is satisfied via media asset or attribute URL, don't
+        // count image-sourced required fields as missing — resolveConnectorImageUrl
+        // would succeed via the same fallback path the readiness check just used.
+        const mediaIsBlocked = Boolean((mediaResult.check as Record<string, unknown>).blocked);
+        if (!mediaIsBlocked) {
+          const IMAGE_FIELD_NAMES = new Set(["mainImageUrl", "imageUrl", "primaryImageUrl", "image_url"]);
+          missingRequiredProductValues = missingRequiredProductValues.filter((field) => {
+            const bare = field.startsWith("attributes.") ? field.slice("attributes.".length) : field;
+            return !IMAGE_FIELD_NAMES.has(bare);
+          });
+        }
+        if (missingRequiredProductValues.length > 0) {
+          blockers.push("required_product_data_missing");
+        }
         productCheck = {
           productId: product.id,
           categoryId: product.categoryId,
