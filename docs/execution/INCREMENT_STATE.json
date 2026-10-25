@@ -6809,6 +6809,52 @@
           "notes": "Not fixed here: G1b (the Media readiness card is a channel-agnostic UI rule and still says Blocked / 'Add product media' for Flipkart although the API's Flipkart media check is blocked:false); it needs a product decision. If the account is not ready to publish (the local test account flips to CREDENTIAL_EXPIRED after the connector heartbeat unless credentials are re-seeded), no installation id is sent and the system-default warning can still appear; that is the pre-existing, intended gating."
         }
       ]
+    },
+    {
+      "incrementId": "INC-101",
+      "name": "VEXA Production UX Cert P2 bug sprint (DEF-DESTINATION-001, VEXA-UX-011, DEF-MAPPING-002)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "INC-101-S1",
+          "title": "DEF-DESTINATION-001 — DESTINATION select resets on channel change (uncontrolled → controlled component)",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "35cc4043e",
+          "tests_passed": [
+            "Pre-fix broken state confirmed on prod via JS automation: destAfterSelection=1ff38939..., destAfterChannelRoundtrip='', wasReset=true",
+            "Code review: controlled component pattern (value+onChange+useState) verified in export-with-preview-form.tsx:84,242,264",
+            "Channel change handler resets selectedInstallationId to '' preventing stale destination on channel switch"
+          ]
+        },
+        {
+          "storyId": "INC-101-S2",
+          "title": "VEXA-UX-011 — Add per-variant attribution table in advanced diagnostics for multi-variant products",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "fd2ff5314",
+          "tests_passed": [
+            "Code review: variant cross-reference logic verified in channels-tab.tsx:467-500",
+            "Only renders when data.variants.length > 1 AND simulation.missingFields.length > 0",
+            "attributes.-prefixed field names stripped before attr lookup; sku/price/mrp given dedicated checks"
+          ]
+        },
+        {
+          "storyId": "INC-101-S3",
+          "title": "DEF-MAPPING-002 — Reconcile image required-fields check with media path fallback in connector-mapping.service",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "4743931cd",
+          "tests_passed": [
+            "Code review: media reconciliation ordering fix verified in connector-mapping.service.ts:1471-1495",
+            "evaluateMediaExportReadiness runs before required_product_data_missing blocker is pushed",
+            "IMAGE_FIELD_NAMES removed from missing list when mediaResult.check.blocked === false"
+          ]
+        }
+      ]
     }
   ]
 }
